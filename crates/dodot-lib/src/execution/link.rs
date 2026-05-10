@@ -255,3 +255,465 @@ fn cycle_message(user_path: &Path, ancestor: &Path, target: &Path) -> String {
         ancestor.display(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_support::make_datastore;
+    use super::super::Executor;
+    use crate::fs::Fs;
+    use crate::operations::HandlerIntent;
+    use crate::testing::TempEnvironment;
+    use std::path::Path;
+
+    #[test]
+    fn execute_link_creates_double_link() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let source = env.dotfiles_root.join("vim/vimrc");
+        let user_path = env.home.join(".vimrc");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+
+        // Verify the double-link chain
+        env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
+    }
+
+    #[test]
+    fn execute_link_conflict_returns_failed_result() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .done()
+            .home_file(".vimrc", "existing content")
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let source = env.dotfiles_root.join("vim/vimrc");
+        let user_path = env.home.join(".vimrc");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "should report conflict");
+        assert!(
+            results[0].message.contains("conflict"),
+            "msg: {}",
+            results[0].message
+        );
+        assert!(
+            results[0].message.contains("--force"),
+            "msg: {}",
+            results[0].message
+        );
+
+        // Data link should NOT have been created (pre-check prevents it)
+        env.assert_no_handler_state("vim", "symlink");
+
+        // Original file should be untouched
+        env.assert_file_contents(&user_path, "existing content");
+    }
+
+    #[test]
+    fn execute_link_force_overwrites_existing_file() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .done()
+            .home_file(".vimrc", "existing content")
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            true,
+            false,
+            true,
+        );
+
+        let source = env.dotfiles_root.join("vim/vimrc");
+        let user_path = env.home.join(".vimrc");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success, "force should succeed");
+
+        // Verify the double-link chain was created
+        env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
+
+        // Content should now be from the pack
+        let content = env.fs.read_to_string(&user_path).unwrap();
+        assert_eq!(content, "set nocompatible");
+    }
+
+    #[test]
+    fn execute_link_conflict_does_not_block_other_intents() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .file("gvimrc", "set guifont=Mono")
+            .done()
+            .home_file(".vimrc", "existing content")
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let results = executor
+            .execute(vec![
+                HandlerIntent::Link {
+                    pack: "vim".into(),
+                    handler: "symlink".into(),
+                    source: env.dotfiles_root.join("vim/vimrc"),
+                    user_path: env.home.join(".vimrc"),
+                },
+                HandlerIntent::Link {
+                    pack: "vim".into(),
+                    handler: "symlink".into(),
+                    source: env.dotfiles_root.join("vim/gvimrc"),
+                    user_path: env.home.join(".gvimrc"),
+                },
+            ])
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        // First should fail (conflict)
+        assert!(!results[0].success);
+        // Second should succeed (no conflict)
+        assert!(results[1].success);
+
+        // gvimrc should be deployed despite vimrc conflict
+        env.assert_double_link(
+            "vim",
+            "symlink",
+            "gvimrc",
+            &env.dotfiles_root.join("vim/gvimrc"),
+            &env.home.join(".gvimrc"),
+        );
+    }
+
+    #[test]
+    fn dry_run_detects_conflict() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "x")
+            .done()
+            .home_file(".vimrc", "existing")
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            true,
+            false,
+            false,
+            true,
+        );
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                source: env.dotfiles_root.join("vim/vimrc"),
+                user_path: env.home.join(".vimrc"),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(results[0].message.contains("conflict"));
+    }
+
+    #[test]
+    fn link_refuses_when_user_path_parent_symlinks_into_pack() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        // Legacy setup: ~/.config/warp is a symlink into the pack itself.
+        let pack_dir = env.dotfiles_root.join("warp");
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+        env.fs.symlink(&pack_dir, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let source = pack_dir.join("keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "expected failure, got: {:?}", results);
+        assert!(
+            results[0].message.contains("cycle"),
+            "expected cycle message, got: {}",
+            results[0].message
+        );
+
+        // No data link created, source file untouched.
+        env.assert_no_handler_state("warp", "symlink");
+        env.assert_file_contents(&source, "keep me");
+    }
+
+    /// Same check but the ancestor points into `data_dir`. Writing
+    /// through it would land in the datastore and still wedge the
+    /// system.
+    #[test]
+    fn link_refuses_when_user_path_parent_symlinks_into_data_dir() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+        env.fs.mkdir_all(&env.data_dir).unwrap();
+        env.fs.symlink(&env.data_dir, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let source = env.dotfiles_root.join("warp/keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(results[0].message.contains("cycle"));
+        env.assert_no_handler_state("warp", "symlink");
+    }
+
+    /// Dry-run must surface the same error, not silently report
+    /// "would link".
+    #[test]
+    fn simulate_link_reports_ancestor_cycle() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        let pack_dir = env.dotfiles_root.join("warp");
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+        env.fs.symlink(&pack_dir, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            true, // dry_run
+            false,
+            false,
+            true,
+        );
+
+        let source = pack_dir.join("keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source,
+                user_path,
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(
+            results[0].message.contains("cycle"),
+            "msg: {}",
+            results[0].message
+        );
+    }
+
+    /// --force must NOT bypass the ancestor-cycle check. A cycle can
+    /// never be "forced through" — it would corrupt the pack.
+    #[test]
+    fn force_does_not_bypass_ancestor_cycle_check() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        let pack_dir = env.dotfiles_root.join("warp");
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+        env.fs.symlink(&pack_dir, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            true, // force
+            false,
+            true,
+        );
+
+        let source = pack_dir.join("keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path,
+            }])
+            .unwrap();
+
+        assert!(!results[0].success, "force must not bypass cycle check");
+        env.assert_file_contents(&source, "keep me");
+    }
+
+    /// Relative-target ancestor symlinks must also be detected. A link
+    /// like `~/.config/warp -> ../../h/dotfiles/warp` joins lexically to
+    /// a path containing `..` segments that wouldn't naively pass
+    /// `starts_with(dotfiles_root)` — we normalize first.
+    #[test]
+    fn link_refuses_relative_ancestor_symlink_into_pack() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        let pack_dir = env.dotfiles_root.join("warp");
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+
+        // config_home is home/.config, dotfiles_root is home/dotfiles,
+        // so the relative hop is `../dotfiles/warp` — exactly the shape
+        // Copilot flagged: contains `..`, joins to a path that would
+        // NOT naively `starts_with(dotfiles_root)` without normalization.
+        let rel_target = Path::new("../dotfiles/warp");
+        env.fs.symlink(rel_target, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let source = pack_dir.join("keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path,
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            !results[0].success,
+            "relative ancestor symlink must still be caught: {:?}",
+            results
+        );
+        assert!(results[0].message.contains("cycle"));
+        env.assert_no_handler_state("warp", "symlink");
+        env.assert_file_contents(&source, "keep me");
+    }
+}

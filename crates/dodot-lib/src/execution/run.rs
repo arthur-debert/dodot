@@ -98,3 +98,121 @@ impl<'a> Executor<'a> {
         )]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_support::make_datastore;
+    use super::super::Executor;
+    use crate::fs::Fs;
+    use crate::operations::HandlerIntent;
+    use crate::paths::Pather;
+    use crate::testing::TempEnvironment;
+
+    #[test]
+    fn execute_run_creates_sentinel() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let results = executor
+            .execute(vec![HandlerIntent::Run {
+                pack: "vim".into(),
+                handler: "install".into(),
+                executable: "echo".into(),
+                arguments: vec!["hello".into()],
+                sentinel: "install.sh-abc123".into(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert_eq!(runner.calls.lock().unwrap().as_slice(), &["echo hello"]);
+        env.assert_sentinel("vim", "install", "install.sh-abc123");
+    }
+
+    #[test]
+    fn execute_run_skips_when_sentinel_exists() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        // Pre-create sentinel
+        let sentinel_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        env.fs
+            .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
+            .unwrap();
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+        let results = executor
+            .execute(vec![HandlerIntent::Run {
+                pack: "vim".into(),
+                handler: "install".into(),
+                executable: "echo".into(),
+                arguments: vec!["should-not-run".into()],
+                sentinel: "install.sh-abc123".into(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert!(results[0].message.contains("already completed"));
+        assert!(runner.calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn provision_rerun_ignores_sentinel() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        // Pre-create sentinel
+        let sentinel_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        env.fs
+            .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
+            .unwrap();
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            true,
+            true,
+        );
+        let results = executor
+            .execute(vec![HandlerIntent::Run {
+                pack: "vim".into(),
+                handler: "install".into(),
+                executable: "echo".into(),
+                arguments: vec!["rerun".into()],
+                sentinel: "install.sh-abc123".into(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert!(
+            results[0].message.contains("executed"),
+            "msg: {}",
+            results[0].message
+        );
+        assert_eq!(runner.calls.lock().unwrap().as_slice(), &["echo rerun"]);
+    }
+}
