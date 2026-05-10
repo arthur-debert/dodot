@@ -10,11 +10,13 @@
 //!
 //! Reference flow (from `secrets.lex` §4.2):
 //!
-//!     1. Scan finds `ssh/id_ed25519.age`
-//!     2. AgePreprocessor strips `.age` → expanded filename `id_ed25519`
-//!     3. expand() shells out to age, captures plaintext
-//!     4. Pipeline writes the bytes to the datastore + chmods 0600
-//!     5. Symlink handler links it to `~/.ssh/id_ed25519`
+//! ```text
+//! 1. Scan finds `ssh/id_ed25519.age`
+//! 2. AgePreprocessor strips `.age` → expanded filename `id_ed25519`
+//! 3. expand() shells out to age, captures plaintext
+//! 4. Pipeline writes the bytes to the datastore + chmods 0600
+//! 5. Symlink handler links it to `~/.ssh/id_ed25519`
+//! ```
 //!
 //! `age` reads its identity from the path passed via `--identity`.
 //! When the config doesn't set one explicitly, we fall back to

@@ -850,7 +850,7 @@ fn absolutize(raw: &Path) -> Result<PathBuf> {
             })?
             .join(raw)
     };
-    Ok(normalize_path(&abs))
+    Ok(crate::equivalence::normalize_path(&abs))
 }
 
 fn check_writable(fs: &dyn Fs, dir: &Path) -> Result<()> {
@@ -1063,29 +1063,6 @@ fn swap_dir(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
 }
 
 // ── helpers ──────────────────────────────────────────────────────
-
-/// Normalize a path by collapsing `.` and `..` components without touching
-/// the filesystem.
-///
-/// Unlike `std::fs::canonicalize`, this does not follow symlinks — important
-/// for `--no-follow`, where we want to preserve the source as a link rather
-/// than resolve through it. Parent refs (`..`) are collapsed purely
-/// lexically, which is correct for the nested-parent check here since the
-/// caller has already joined against `current_dir()` for relative inputs.
-fn normalize_path(path: &Path) -> PathBuf {
-    use std::path::Component;
-    let mut result = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                result.pop();
-            }
-            other => result.push(other),
-        }
-    }
-    result
-}
 
 fn temp_sibling(path: &Path, tag: &str) -> PathBuf {
     let parent = path.parent().unwrap_or(Path::new("."));
