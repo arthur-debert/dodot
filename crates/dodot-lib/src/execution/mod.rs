@@ -3,6 +3,13 @@
 //! The executor is where the complexity lives. Handlers just declare
 //! what they want; the executor figures out how to make it happen.
 //!
+//! Per-intent logic lives in sibling files: [`mod@link`] for symlink
+//! deployment (with ancestor-cycle and conflict handling), [`mod@stage`]
+//! for datastore staging (with auto-chmod for path handler bins), and
+//! [`mod@run`] for sentinel-gated command execution. This file owns the
+//! Executor struct, the per-call `execute()` entry point, and the
+//! match-based dispatchers (`execute_one`, `simulate`).
+//!
 //! ## Auto-executable permissions
 //!
 //! When `auto_chmod_exec` is enabled (the default), the executor
@@ -16,14 +23,15 @@
 //! `$PATH`, it just won't be directly runnable until the user fixes
 //! permissions manually.
 
-use std::path::{Path, PathBuf};
+mod link;
+mod run;
+mod stage;
 
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::datastore::DataStore;
 use crate::fs::Fs;
-use crate::handlers::HANDLER_PATH;
-use crate::operations::{HandlerIntent, Operation, OperationResult};
+use crate::operations::{HandlerIntent, OperationResult};
 use crate::paths::Pather;
 use crate::Result;
 
@@ -95,491 +103,20 @@ impl<'a> Executor<'a> {
     /// Execute a single intent, which may produce multiple operations.
     fn execute_one(&self, intent: &HandlerIntent) -> Result<Vec<OperationResult>> {
         match intent {
-            HandlerIntent::Link {
-                pack,
-                handler,
-                source,
-                user_path,
-            } => {
-                debug!(
-                    pack,
-                    handler,
-                    source = %source.display(),
-                    user_path = %user_path.display(),
-                    "executing link intent"
-                );
-
-                // Refuse to deploy when an ancestor of user_path is a symlink
-                // that resolves back into the pack store or dodot data dir.
-                // Writing through such an ancestor lands back inside the pack
-                // (clobbering source files) or creates a pack↔data-dir cycle.
-                if let Some((ancestor, target)) = self.ancestor_cycles_into_store(user_path) {
-                    let op = Operation::CreateUserLink {
-                        pack: pack.clone(),
-                        handler: handler.clone(),
-                        datastore_path: Default::default(),
-                        user_path: user_path.clone(),
-                    };
-                    return Ok(vec![OperationResult::fail(
-                        op,
-                        cycle_message(user_path, &ancestor, &target),
-                    )]);
-                }
-
-                // Pre-check: does a non-symlink file exist at user_path?
-                // We check BEFORE creating the data link to avoid leaving
-                // dangling state when the user link would fail.
-                //
-                // #44: if the existing file's content is byte-identical to
-                // the source we'd deploy, treat it as safe to replace —
-                // the content reaching `user_path` doesn't change, only
-                // the storage representation does. No `--force` required.
-                if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
-                    let content_equivalent =
-                        crate::equivalence::is_equivalent(user_path, source, self.fs);
-                    if self.force || content_equivalent {
-                        if content_equivalent {
-                            info!(
-                                pack,
-                                path = %user_path.display(),
-                                "auto-replacing content-equivalent file with dodot symlink"
-                            );
-                        } else {
-                            info!(
-                                pack,
-                                path = %user_path.display(),
-                                "force-removing existing file"
-                            );
-                        }
-                        // Remove the existing path before creating the symlink
-                        if self.fs.is_dir(user_path) {
-                            self.fs.remove_dir_all(user_path)?;
-                        } else {
-                            self.fs.remove_file(user_path)?;
-                        }
-                    } else {
-                        info!(
-                            pack,
-                            path = %user_path.display(),
-                            "conflict: file already exists"
-                        );
-                        // Return a failed result — non-fatal so other files
-                        // in the pack can still be processed.
-                        let op = Operation::CreateUserLink {
-                            pack: pack.clone(),
-                            handler: handler.clone(),
-                            datastore_path: Default::default(),
-                            user_path: user_path.clone(),
-                        };
-                        return Ok(vec![OperationResult::fail(
-                            op,
-                            format!(
-                                "conflict: {} already exists (use --force to overwrite)",
-                                user_path.display()
-                            ),
-                        )]);
-                    }
-                }
-
-                // Step 1: Create data link (source → datastore)
-                let datastore_path = self.datastore.create_data_link(pack, handler, source)?;
-                debug!(
-                    pack,
-                    datastore_path = %datastore_path.display(),
-                    "created data link"
-                );
-
-                // Step 2: Create user link (datastore → user location)
-                self.datastore
-                    .create_user_link(&datastore_path, user_path)?;
-
-                let filename = source.file_name().unwrap_or_default().to_string_lossy();
-                info!(
-                    pack,
-                    file = %filename,
-                    target = %user_path.display(),
-                    "created symlink"
-                );
-
-                let op = Operation::CreateUserLink {
-                    pack: pack.clone(),
-                    handler: handler.clone(),
-                    datastore_path: datastore_path.clone(),
-                    user_path: user_path.clone(),
-                };
-
-                Ok(vec![OperationResult::ok(
-                    op,
-                    format!("{} → {}", filename, user_path.display()),
-                )])
-            }
-
-            HandlerIntent::Stage {
-                pack,
-                handler,
-                source,
-            } => {
-                let filename = source.file_name().unwrap_or_default().to_string_lossy();
-                info!(pack, handler = handler.as_str(), file = %filename, "staging file");
-
-                self.datastore.create_data_link(pack, handler, source)?;
-
-                let op = Operation::CreateDataLink {
-                    pack: pack.clone(),
-                    handler: handler.clone(),
-                    source: source.clone(),
-                };
-
-                let mut results = vec![OperationResult::ok(op, format!("staged {}", filename))];
-
-                // Auto-chmod +x for path handler directories
-                if handler == HANDLER_PATH && self.auto_chmod_exec {
-                    debug!(pack, source = %source.display(), "checking executable permissions");
-                    results.extend(self.ensure_executable(pack, source));
-                }
-
-                Ok(results)
-            }
-
-            HandlerIntent::Run {
-                pack,
-                handler,
-                executable,
-                arguments,
-                sentinel,
-            } => {
-                // Check sentinel first — unless provision_rerun is set
-                if !self.provision_rerun {
-                    let already_done = self.datastore.has_sentinel(pack, handler, sentinel)?;
-
-                    if already_done {
-                        info!(
-                            pack,
-                            handler = handler.as_str(),
-                            sentinel,
-                            "sentinel found, skipping"
-                        );
-                        let op = Operation::CheckSentinel {
-                            pack: pack.clone(),
-                            handler: handler.clone(),
-                            sentinel: sentinel.clone(),
-                        };
-                        return Ok(vec![OperationResult::ok(op, "already completed")]);
-                    }
-                }
-
-                let cmd_str = format!("{} {}", executable, arguments.join(" "));
-                info!(pack, handler = handler.as_str(), command = %cmd_str.trim(), "running command");
-
-                // Run the command
-                self.datastore.run_and_record(
-                    pack,
-                    handler,
-                    executable,
-                    arguments,
-                    sentinel,
-                    self.provision_rerun,
-                )?;
-
-                info!(pack, sentinel, "command completed, sentinel recorded");
-
-                let op = Operation::RunCommand {
-                    pack: pack.clone(),
-                    handler: handler.clone(),
-                    executable: executable.clone(),
-                    arguments: arguments.clone(),
-                    sentinel: sentinel.clone(),
-                };
-
-                Ok(vec![OperationResult::ok(
-                    op,
-                    format!("executed: {}", cmd_str.trim()),
-                )])
-            }
+            HandlerIntent::Link { .. } => self.execute_link(intent),
+            HandlerIntent::Stage { .. } => self.execute_stage(intent),
+            HandlerIntent::Run { .. } => self.execute_run(intent),
         }
-    }
-
-    /// Ensure all files in a path-handler directory are executable.
-    ///
-    /// Iterates files in `dir`, checks each for the execute bit, and
-    /// adds it if missing. Returns one `OperationResult` per file that
-    /// was made executable (or that failed). Files that are already
-    /// executable produce no output.
-    ///
-    /// Permission failures are non-fatal: they are reported as
-    /// *successful* operations with a warning message, so they don't
-    /// flip the pack to "failed" status. The file is still staged and
-    /// visible in `$PATH`, it just won't be runnable until the user
-    /// fixes permissions manually.
-    fn ensure_executable(&self, pack: &str, dir: &std::path::Path) -> Vec<OperationResult> {
-        let mut results = Vec::new();
-        let entries = match self.fs.read_dir(dir) {
-            Ok(e) => e,
-            Err(e) => {
-                let op = Operation::CreateDataLink {
-                    pack: pack.into(),
-                    handler: HANDLER_PATH.into(),
-                    source: dir.to_path_buf(),
-                };
-                results.push(OperationResult::ok(
-                    op,
-                    format!(
-                        "warning: could not list {} for auto-chmod: {}",
-                        dir.display(),
-                        e
-                    ),
-                ));
-                return results;
-            }
-        };
-
-        for entry in entries {
-            if !entry.is_file {
-                continue;
-            }
-            let meta = match self.fs.stat(&entry.path) {
-                Ok(m) => m,
-                Err(e) => {
-                    let op = Operation::CreateDataLink {
-                        pack: pack.into(),
-                        handler: HANDLER_PATH.into(),
-                        source: entry.path.clone(),
-                    };
-                    results.push(OperationResult::ok(
-                        op,
-                        format!("warning: could not stat {}: {}", entry.name, e),
-                    ));
-                    continue;
-                }
-            };
-
-            let is_exec = meta.mode & 0o111 != 0;
-            if is_exec {
-                continue;
-            }
-
-            // Add user/group/other execute bits, preserving existing permissions.
-            let new_mode = meta.mode | 0o111;
-            let op = Operation::CreateDataLink {
-                pack: pack.into(),
-                handler: HANDLER_PATH.into(),
-                source: entry.path.clone(),
-            };
-
-            match self.fs.set_permissions(&entry.path, new_mode) {
-                Ok(()) => {
-                    info!(pack, file = %entry.name, mode = format!("{:o}", new_mode), "chmod +x");
-                    results.push(OperationResult::ok(op, format!("chmod +x {}", entry.name)));
-                }
-                Err(e) => {
-                    info!(pack, file = %entry.name, error = %e, "chmod +x failed");
-                    // Warning, not failure — don't mark the pack as failed
-                    // just because chmod didn't work.
-                    results.push(OperationResult::ok(
-                        op,
-                        format!("warning: could not chmod +x {}: {}", entry.name, e),
-                    ));
-                }
-            }
-        }
-
-        results
-    }
-
-    /// Report files in a path-handler directory that lack execute
-    /// permissions (dry-run mode — no mutations).
-    fn report_non_executable(&self, pack: &str, dir: &std::path::Path) -> Vec<OperationResult> {
-        let mut results = Vec::new();
-        let entries = match self.fs.read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => return results,
-        };
-
-        for entry in entries {
-            if !entry.is_file {
-                continue;
-            }
-            let meta = match self.fs.stat(&entry.path) {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-
-            let is_exec = meta.mode & 0o111 != 0;
-            if !is_exec {
-                let op = Operation::CreateDataLink {
-                    pack: pack.into(),
-                    handler: HANDLER_PATH.into(),
-                    source: entry.path.clone(),
-                };
-                results.push(OperationResult::ok(
-                    op,
-                    format!("[dry-run] would chmod +x {}", entry.name),
-                ));
-            }
-        }
-
-        results
     }
 
     /// Simulate an intent without touching the filesystem.
     fn simulate(&self, intent: &HandlerIntent) -> Vec<OperationResult> {
         match intent {
-            HandlerIntent::Link {
-                pack,
-                handler,
-                source,
-                user_path,
-            } => {
-                // Surface ancestor-into-pack-store cycles in dry-run too so
-                // the user sees the problem before committing.
-                if let Some((ancestor, target)) = self.ancestor_cycles_into_store(user_path) {
-                    return vec![OperationResult::fail(
-                        Operation::CreateUserLink {
-                            pack: pack.clone(),
-                            handler: handler.clone(),
-                            datastore_path: Default::default(),
-                            user_path: user_path.clone(),
-                        },
-                        cycle_message(user_path, &ancestor, &target),
-                    )];
-                }
-
-                // Check for conflicts even in dry-run
-                if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
-                    if self.force {
-                        return vec![OperationResult::ok(
-                            Operation::CreateUserLink {
-                                pack: pack.clone(),
-                                handler: handler.clone(),
-                                datastore_path: Default::default(),
-                                user_path: user_path.clone(),
-                            },
-                            format!(
-                                "[dry-run] would overwrite {} → {}",
-                                source.file_name().unwrap_or_default().to_string_lossy(),
-                                user_path.display()
-                            ),
-                        )];
-                    } else {
-                        return vec![OperationResult::fail(
-                            Operation::CreateUserLink {
-                                pack: pack.clone(),
-                                handler: handler.clone(),
-                                datastore_path: Default::default(),
-                                user_path: user_path.clone(),
-                            },
-                            format!(
-                                "conflict: {} already exists (use --force to overwrite)",
-                                user_path.display()
-                            ),
-                        )];
-                    }
-                }
-
-                vec![OperationResult::ok(
-                    Operation::CreateUserLink {
-                        pack: pack.clone(),
-                        handler: handler.clone(),
-                        datastore_path: Default::default(),
-                        user_path: user_path.clone(),
-                    },
-                    format!(
-                        "[dry-run] would link {} → {}",
-                        source.file_name().unwrap_or_default().to_string_lossy(),
-                        user_path.display()
-                    ),
-                )]
-            }
-
-            HandlerIntent::Stage {
-                pack,
-                handler,
-                source,
-            } => {
-                let mut results = vec![OperationResult::ok(
-                    Operation::CreateDataLink {
-                        pack: pack.clone(),
-                        handler: handler.clone(),
-                        source: source.clone(),
-                    },
-                    format!(
-                        "[dry-run] would stage: {}",
-                        source.file_name().unwrap_or_default().to_string_lossy()
-                    ),
-                )];
-
-                if handler == HANDLER_PATH && self.auto_chmod_exec {
-                    results.extend(self.report_non_executable(pack, source));
-                }
-
-                results
-            }
-
-            HandlerIntent::Run {
-                pack,
-                handler,
-                executable,
-                arguments,
-                sentinel,
-            } => {
-                let cmd_str = format!("{} {}", executable, arguments.join(" "));
-                vec![OperationResult::ok(
-                    Operation::RunCommand {
-                        pack: pack.clone(),
-                        handler: handler.clone(),
-                        executable: executable.clone(),
-                        arguments: arguments.clone(),
-                        sentinel: sentinel.clone(),
-                    },
-                    format!("[dry-run] would execute: {}", cmd_str.trim()),
-                )]
-            }
+            HandlerIntent::Link { .. } => self.simulate_link(intent),
+            HandlerIntent::Stage { .. } => self.simulate_stage(intent),
+            HandlerIntent::Run { .. } => self.simulate_run(intent),
         }
     }
-
-    /// Walk `user_path`'s ancestors. If any is a symlink whose single-hop
-    /// resolved target lives under `dotfiles_root` or `data_dir`, return
-    /// `(ancestor, resolved_target)`. Writing through such an ancestor
-    /// lands back inside the store and is always wrong — either it
-    /// clobbers a pack source or builds a pack↔data-dir cycle.
-    ///
-    /// The resolved target is lexically normalized before the prefix
-    /// comparison: relative symlinks like `~/.config/warp -> ../dotfiles/warp`
-    /// produce a joined path with `..` segments that would not naively
-    /// `starts_with(dotfiles_root)`.
-    fn ancestor_cycles_into_store(&self, user_path: &Path) -> Option<(PathBuf, PathBuf)> {
-        let dotfiles_root = self.paths.dotfiles_root();
-        let data_dir = self.paths.data_dir();
-        let mut current = user_path.parent()?;
-        loop {
-            if self.fs.is_symlink(current) {
-                if let Ok(raw_target) = self.fs.readlink(current) {
-                    let resolved = crate::equivalence::normalize_path(
-                        &crate::equivalence::resolve_symlink_target(current, &raw_target),
-                    );
-                    if resolved.starts_with(dotfiles_root) || resolved.starts_with(data_dir) {
-                        return Some((current.to_path_buf(), resolved));
-                    }
-                }
-            }
-            match current.parent() {
-                Some(p) if p != current => current = p,
-                _ => return None,
-            }
-        }
-    }
-}
-
-fn cycle_message(user_path: &Path, ancestor: &Path, target: &Path) -> String {
-    format!(
-        "cycle: {} is a symlink into the dodot store (-> {}); \
-         deploying {} through it would write back into the store. \
-         Remove or move {} and re-run.",
-        ancestor.display(),
-        target.display(),
-        user_path.display(),
-        ancestor.display(),
-    )
 }
 
 #[cfg(test)]
@@ -588,6 +125,7 @@ mod tests {
     use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
     use crate::paths::Pather;
     use crate::testing::TempEnvironment;
+    use std::path::Path;
     use std::sync::{Arc, Mutex};
 
     struct MockCommandRunner {
