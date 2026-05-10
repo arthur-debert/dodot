@@ -1,29 +1,41 @@
-dodot: Up and Running in 5 Minutes
+:: verified ::
+Getting started
 
-    dodot aims to give you the full benefit of a dotfile manager (centralized control, versioning, deployment, modularity) while minimizing its costs.
+    dodot is a dotfiles manager that adapts to you, rather than the other way around. You group config files into directories ("packs"); dodot reads filenames as conventions and decides what to do with each file — symlink it, source it from your shell, run it once, install brew formulae, all of it. There's no apply step, no datastore drift, no separate state from git: edits at either end of the symlink chain are live immediately.
 
-    - Minimal structure imposed on your dotfiles.
-    - No change to how you edit your configs.
-    - Changes are always live; there is no "apply" step.
-    - Git is the source of truth; no extra database or state files.
-    - Minimal setup or migration required.
-    - Three commands to know: `up`, `down`, `status`.
+    This doc walks you from "I have a dotfiles repo" to your first `dodot up` on a single pack. About five minutes if you have a repo already, ten if you're building one.
 
-    Prerequisites:
-        - Your dotfiles in a git repository
-        - Files organized in directories (or willing to organize them)
-        - A couple of minutes to try it
+    :: note :: Terminology — this doc uses [pack], [handler], [dotfiles root]. The full vocabulary is at [./glossary/].
 
-    How does dodot achieve this? The core principle is that the structure of your dotfiles is the configuration itself, as long as a few simple rules are followed.
+1. When you reach for this doc
 
-    - Organize your dotfiles in directories. The criterion is up to you: by application, usage, environment, whatever suits. These directories are "packs," and they are turned up or down as a unit.
-    - Inside each pack, dodot follows common naming conventions to decide what to do with each file.
+    - First time using dodot on this machine or this repo.
+    - You've installed dodot but haven't run it yet — what's the minimum to get a working pack deployed?
+    - You're walking a teammate through dodot and want a guided demo.
+    - You want to confirm your mental model before reading anything deeper.
 
-    :: note :: dodot automatically discovers every directory in your dotfiles root as a pack.
+    If your existing dotfiles still live in `$HOME` and `~/.config/`, see [./adopting.lex] for the migration path; this doc assumes you have (or will quickly create) a directory of files to deploy.
 
-    An example pack for git:
+2. Prerequisites
 
-    Pack structure and status:
+    - dodot installed (`brew install arthur-debert/tools/dodot`, or `cargo install dodot`).
+    - A directory you can use as your dotfiles root. A git repo is recommended — dodot won't enforce it, but git is the source of truth dodot expects.
+    - A few minutes.
+
+3. The mental model
+
+    Two ideas, end-to-end:
+
+    - *Packs.* Each top-level directory under your dotfiles root is a pack. The grouping criterion is up to you — by application, by environment, by usage pattern. Packs are turned up or down as a unit.
+    - *Filename conventions.* Inside a pack, filenames decide what dodot does with each file. `Brewfile` runs `brew bundle`. `*.sh` at pack root is sourced into your shell. `bin/` is added to `$PATH`. `install.sh` runs once. Everything else is symlinked under `~/.config/<pack>/`.
+
+    The convention is rooted in common usage patterns, so for most repos the default layout is the most natural one. When it doesn't fit, you override — either by renaming files or by setting overrides in `.dodot.toml`.
+
+    The full handler list is at [./handlers.lex]. The path-resolution rules are at [./paths.lex]. You don't need to read either to start.
+
+4. Walkthrough — your first pack
+
+    Imagine a `nvim` pack with this shape:
 
         nvim/
         +-- Brewfile    -> includes neovim, ripgrep, fd installs
@@ -32,91 +44,119 @@ dodot: Up and Running in 5 Minutes
         +-- init.lua    -> symlinked to ~/.config/nvim/init.lua
         +-- lua/        -> symlinked wholesale to ~/.config/nvim/lua
 
+    :: text ::
+
+    From your dotfiles root, ask dodot what it sees:
+
         $ cd ~/dotfiles
         $ dodot status nvim
 
         nvim
-            aliases.sh  ⚙  source by shell         pending
-            bin         +  add to PATH             pending
-            init.lua    ➞  ~/.config/nvim/init.lua pending
-            lua         ➞  ~/.config/nvim/lua      pending
-            Brewfile    ⚙  brew install            pending
-
-        Legend: ⚙ shell/brew config, + PATH addition, ➞ symlink
-        Status: pending (ready to deploy), deployed (active)
+            aliases.sh  ⚙ shell profile               pending
+            bin         + $PATH/bin                   pending
+            init.lua    ➞ ~/.config/nvim/init.lua     pending
+            lua         ➞ ~/.config/nvim/lua          pending
+            Brewfile    ⚙ brew install                pending
 
     :: shell ::
 
-    Notice how every symlinked pack-root entry defaults to `~/.config/nvim/` — the pack name namespaces symlinked config under XDG by default, matching how nvim itself reads its configuration. No need to write `nvim/nvim/init.lua` to land at the right place for those symlinked entries; dodot does the namespacing. (Non-symlink handlers — Brewfile, shell, path — work on their own conventions and don't deploy under that directory.)
+    `dodot status` shows both what dodot has already done and what it *would* do on the next `up`. This is your chance to sanity-check the conventions: does dodot's reading of each filename match what you expected? Notice how every symlinked pack-root entry lands under `~/.config/nvim/` — the pack name namespaces config under XDG by default, matching how nvim itself reads its configuration. No need to write `nvim/nvim/init.lua` to land at the right place; dodot does the namespacing.
 
-    `dodot status` shows both what dodot has done and what it _will_ do on the next `up`. This is your chance to sanity-check that the conventions dodot detected match what you expected. If they don't, rename the files or override the mapping in `.dodot.toml`.
+    Preview the actual deploy without making changes:
 
-    Customizing and deploying:
-
-        $ dodot config gen -o nvim/.dodot.toml
-        $ cat nvim/.dodot.toml
-        [mappings]
-        # path = "bin"
-        # install = ["install.sh", "install.bash", "install.zsh"]
-        # shell = ["*.sh", "*.bash", "*.zsh"]        # any shell-extension file at pack root
-        # homebrew = "Brewfile"
-        # ignore = []                                 # silent drop
-        # skip   = ["README.*", "LICENSE.*", ...]    # listed in status as `skipped`
-
-        # Preview what will happen without making changes
         $ dodot up nvim --dry-run
 
+    :: shell ::
+
+    Then deploy for real:
+
         $ dodot up nvim
-        ... homebrew:  nvim/Brewfile: installed
-        ... shell:     nvim/aliases.sh: sourced
-        ... symlink:   nvim/init.lua -> ~/.config/nvim/init.lua: deployed
 
+        Packs deployed.
         nvim
-            aliases.sh  ⚙  source by shell             deployed
-            bin         +  add to PATH                 deployed
-            init.lua    ➞  ~/.config/nvim/init.lua    deployed
-            lua         ➞  ~/.config/nvim/lua         deployed
-            Brewfile    ⚙  brew install                deployed
-
-        # Edit your config - changes are immediate
-        $ nvim ~/.config/nvim/init.lua  # or ~/dotfiles/nvim/init.lua - same file
+            init.lua    ➞ ~/.config/nvim/init.lua    deployed
+            lua         ➞ ~/.config/nvim/lua         deployed
+            aliases.sh  ⚙ shell profile               sourced
+            Brewfile    ⚙ brew install              installed
 
     :: shell ::
 
-    `dodot down git` reverses the deployment. All commands accept one or more pack names (`dodot up git nvim`) or operate on every pack when run without arguments.
+    Edit your config — changes are immediate:
 
-    By combining directory grouping into packs and filename conventions, dodot handles most setups with no configuration at all. When the conventions don't match your files, rename them or override via `.dodot.toml`.
+        $ nvim ~/.config/nvim/init.lua    # same file as ~/dotfiles/nvim/init.lua
 
-1. Quick Start
+    :: shell ::
 
-    - `cd ~/dotfiles` (or wherever your dotfiles live)
-    - `dodot status` to see what dodot will do
-    - Fine-tune by renaming files or adding a `.dodot.toml`
-    - `dodot up [pack]` to deploy (or `dodot up` for everything)
-    - `dodot down [pack]` to cleanly remove a pack
+    To reverse: `dodot down nvim` removes every dodot-owned artifact for the pack — symlinks, install sentinels, brew sentinels, staged shell init lines. The pack itself stays in your repo, untouched.
 
-2. Shell Integration
+5. The three commands
 
-    For the shell and path handlers to take effect, add one line to your shell rc:
+    Every dodot command accepts zero or more pack names. Without arguments it operates on every discovered pack; with arguments, only those.
 
-    Shell integration:
+        | Command       | Purpose                                                |
+        | `dodot status`| What dodot sees per pack. Read-only.                   |
+        | `dodot up`    | Deploy packs (symlinks, shell, installs).              |
+        | `dodot down`  | Remove every dodot-owned artifact for packs.           |
+    :: table align=ll ::
+
+    For the full set (init, adopt, fill, list, addignore, …), see [./commands.lex].
+
+6. Shell integration
+
+    For the `shell` and `path` handlers to take effect, add one line to your shell rc:
 
         eval "$(dodot init-sh)"
 
     :: shell ::
 
-    This is a one-time step per machine. The init script is regenerated on every `dodot up` and `dodot down`, so you never need to touch this line again.
+    Once per machine. The init script is regenerated by every `dodot up` and `dodot down`, so adding new packs surfaces in your next shell automatically. The full story (where to put it, what belongs above it, diagnosing slow shell startup) is at [./shell-integration.lex].
 
-    A small footnote on what belongs *above* this line, in raw shell rc: anything that has to exist before dodot itself can run. The two real cases are Homebrew's shell environment (the `eval "$(... brew shellenv)"` line — with whatever absolute path your install uses, typically `/opt/homebrew/bin/brew` on Apple Silicon and `/usr/local/bin/brew` on Intel — that puts `dodot` on `$PATH` in the first place) and OS-level prereqs that block any pack from succeeding (xcode-select, license acceptance). Everything else belongs in a pack. See [./handlers/execution-order.lex] for how packs are ordered relative to each other once dodot does take over.
+7. When the conventions don't fit
 
-3. What's Next
+    Two surfaces for overriding:
 
-    - `dodot tutorial` — interactive 10-minute walkthrough using your real dotfiles
-    - `dodot --help` — every command and flag (with examples and cross-references)
-    - `dodot help <command>` — detailed help for any command
-    - [./commands/up.lex], [./commands/down.lex], [./commands/status.lex] — the daily-driver commands
-    - [./commands.lex] — full command index
-    - [./configuration.lex] — the `.dodot.toml` schema
-    - [./templates.lex] — per-machine config via templates
-    - [./../reference/philosophy.lex] — why dodot is shaped the way it is
-    - [./../reference/terms-and-concepts.lex] — the shared vocabulary
+    - *Filename conventions.* Use `home.bashrc` to deploy at `~/.bashrc` instead of `~/.config/<pack>/bashrc`. Use `_xdg/foo/` to put a subtree under `~/.config/foo/` without your pack name in the path. The full set is at [./paths.lex] §4.
+    - *`.dodot.toml`.* A root config (`<dotfiles-root>/.dodot.toml`) applies to every pack; a pack config (`<pack>/.dodot.toml`) applies only to that pack. Generate a commented starter:
+
+        $ dodot config gen -o .dodot.toml
+
+      :: shell ::
+
+      The schema is at [./configuration.lex].
+
+    Two preferences, two surfaces — pick whichever feels cleaner for the case at hand. For path-related decisions specifically, see [./paths.lex] for the full menu of escape hatches.
+
+8. Watch out for
+
+    - *Open shells lag.* `dodot up` regenerates the shell init script, but already-running shells hold their old environment. Open a new shell or re-source your rc.
+    - *`dodot down` only sees discovered packs.* If you've added a `.dodotignore` marker to a pack, `down` won't reconcile it. See [./filters.lex] §3 for the safe sequence.
+    - *Pack-root files only get the convention treatment.* Nested files (e.g. `pack/scripts/foo.sh`) fall through to the symlink handler — they aren't auto-sourced. That keeps window-manager helpers and similar scripts from being pulled into shell init.
+    - *No apply step is the *whole* point.* Edits at the deployed location go through the symlink chain and land in your pack. Programs that file-watch (nvim with `autoread`, vscode) reload immediately; daemons usually need an explicit reload.
+
+9. What's next
+
+    Interactive walkthrough using your real dotfiles:
+
+        dodot tutorial
+
+    :: shell ::
+
+    Twelve steps, ten minutes, no toy examples. Nothing changes without an explicit yes.
+
+    The doc library, in roughly the order you'll need them:
+
+    - [./adopting.lex] — moving existing dotfiles from `$HOME` and `~/.config/` into packs.
+    - [./shell-integration.lex] — the `eval` line in detail.
+    - [./paths.lex] — where files end up at deploy time.
+    - [./handlers.lex] — index of all eight handlers.
+    - [./filters.lex] — keeping files out of dispatch.
+    - [./templates.lex] — per-host config via `*.tmpl` rendering.
+    - [./secrets.lex] — value injection and whole-file decryption.
+    - [./conditional-running.lex] — host-conditional deployment (gates).
+    - [./plists.lex] — macOS app preferences under git diff.
+    - [./configuration.lex] — `.dodot.toml` schema.
+    - [./commands.lex] — every command, with per-command pages.
+    - [./troubleshooting.lex] — symptom-first map for when something's not behaving.
+    - [./../reference/philosophy.lex] — why dodot is shaped the way it is.
+
+    `dodot --help` lists every command and flag with examples; `dodot help <command>` is the per-command deep dive.

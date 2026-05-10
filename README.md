@@ -1,24 +1,33 @@
 # dodot
 
-A dotfiles manager that uses symlinks for live editing. Your dotfiles repository IS your live configuration -- edit either the original or the symlinked file, changes apply immediately.
+A dotfiles manager designed to adapt to you, rather than the other way around.
 
-## Why dodot?
+- **Minimal structure.** Group files into directories ("packs"); special filenames map to special actions.
+- **No mapping required**, unless you want to override the conventions.
+- **No apply step, no database.** Symlinks mean edits are always live; git is the source of truth, the filesystem is the state.
+- **No tooling changes.** Edit your files however you already do; `git` owns source control end-to-end.
+- **Three commands cover daily use:** `status`, `up`, `down`.
+- **Correct path handling**, including the macOS-specific awkward bits (XDG vs. `~/.config`, Application Support, plists).
 
-- **No apply step.** Symlinks mean edits are always live.
-- **No database.** Git is the source of truth; the filesystem is the state.
-- **Minimal structure.** Organize your dotfiles in directories, name files by convention, done.
-- **Transparent.** `dodot status` shows what will happen before it does.
+While still featuring the advanced bits when you need them:
+
+- **Shell integration** for sourcing files and managing `$PATH`.
+- **OS-level provisioning** via `Brewfile` and `install.sh`.
+- **Templates** for per-host config (`.tmpl` / `.template`, Jinja2-style, rendered at deploy time).
+- **Secrets** injected from `pass`, 1Password (`op`), Bitwarden (`bw`), `sops`, `gpg`, `age`, the macOS Keychain, or freedesktop Secret Service — plus whole-file `.age` / `.gpg` decryption.
+- **Conditional deployment** gated by OS, architecture, or hostname.
+- **macOS plists** brought under normal `git diff` review via clean/smudge filters.
 
 ## Quick Start
 
 ```sh
 # Install (Homebrew)
-brew install arthur-debert/tap/dodot
+brew install arthur-debert/tools/dodot
 
-# Or from source
+# Or from crates.io
 cargo install dodot
 
-# Go to your dotfiles repo
+# Go to your dotfiles repo (or set $DOTFILES_ROOT)
 cd ~/dotfiles
 
 # See what dodot will do
@@ -34,6 +43,8 @@ eval "$(dodot init-sh)"
 # Remove deployments cleanly
 dodot down git
 ```
+
+First time on a repo? `dodot tutorial` walks you through deploying one pack interactively, using your real files, in about ten minutes — nothing changes without an explicit yes.
 
 ## How It Works
 
@@ -52,11 +63,11 @@ nvim/
 $ dodot status nvim
 
 nvim
-    aliases.sh  ⚙ shell profile             pending
-    bin         + $PATH/bin                  pending
-    init.lua    ➞ ~/.config/nvim/init.lua   pending
-    lua         ➞ ~/.config/nvim/lua        pending
-    Brewfile    ⚙ brew install               pending
+    aliases.sh  ⚙ shell profile               pending
+    bin         + $PATH/bin                   pending
+    init.lua    ➞ ~/.config/nvim/init.lua     pending
+    lua         ➞ ~/.config/nvim/lua          pending
+    Brewfile    ⚙ brew install                pending
 ```
 
 Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<name>` — the pack name namespaces config under XDG, matching the convention modern tools (nvim, helix, ghostty, kitty, …) follow. Files like `~/.bashrc` that legacy tools expect in `$HOME` go through `force_home` (auto-handled for canonical names) or the per-file `home.X` opt-in prefix.
@@ -68,10 +79,10 @@ $ dodot up nvim
 
 Packs deployed.
 nvim
-    init.lua    ➞ ~/.config/nvim/init.lua   deployed
-    lua         ➞ ~/.config/nvim/lua        deployed
-    aliases.sh  ⚙ shell profile              sourced
-    Brewfile    ⚙ brew install                installed
+    init.lua    ➞ ~/.config/nvim/init.lua    deployed
+    lua         ➞ ~/.config/nvim/lua         deployed
+    aliases.sh  ⚙ shell profile               sourced
+    Brewfile    ⚙ brew install              installed
 ```
 
 Edit your config -- changes are immediate:
@@ -87,9 +98,9 @@ dodot matches files to handlers by name convention:
 | Handler    | Matches                                     | Action                        |
 |------------|---------------------------------------------|-------------------------------|
 | **symlink**| Most files (default)                        | Symlink under `~/.config/<pack>/` |
-| **shell**  | `{aliases,profile,login,env}.{sh,bash,zsh}` | Sourced via shell init script |
+| **shell**  | `*.{sh,bash,zsh}` at pack root              | Sourced via shell init script |
 | **path**   | `bin/` directories                          | Added to `$PATH`              |
-| **homebrew** | `Brewfile`                                | `brew bundle install`         |
+| **homebrew** | `Brewfile`                                | `brew bundle install` (reruns when contents change) |
 | **install**| `install.sh`, `install.bash`, `install.zsh` | Run once (checksum-tracked)   |
 
 Symlink targets are resolved smartly:
@@ -164,26 +175,34 @@ Generate a starter config with `dodot config gen -o .dodot.toml`.
 
 ## Installation
 
-### Pre-built binaries
+### Homebrew (macOS, Linux)
 
-Download from [GitHub Releases](https://github.com/arthur-debert/dodot/releases) for macOS (ARM) and Linux (x86_64, ARM).
+```sh
+brew install arthur-debert/tools/dodot
+```
 
-### Cargo
+### crates.io
 
 ```sh
 cargo install dodot
 ```
 
-### From source
+### Pre-built binaries
 
-```sh
-git clone https://github.com/arthur-debert/dodot.git
-cd dodot
-cargo build --release
-# Binary at target/release/dodot
-```
+Download from [GitHub Releases](https://github.com/arthur-debert/dodot/releases):
 
-## Development
+- macOS (Apple Silicon): `dodot-aarch64-apple-darwin.tar.gz`
+- Linux x86_64: `dodot-x86_64-unknown-linux-gnu.tar.gz`
+- Linux ARM: `dodot-aarch64-unknown-linux-gnu.tar.gz`
+- Debian/Ubuntu: `dodot_<version>-1_amd64.deb`, `dodot_<version>-1_arm64.deb`
+
+## Learn More
+
+- `dodot tutorial` — interactive walkthrough on your real dotfiles
+- `dodot --help` and `dodot help <command>` — full CLI reference
+- [`docs/user/`](docs/user/) — getting started, command-by-command, handlers, templates, secrets, conditional running
+
+## Contributing
 
 ```sh
 # Run all checks (same as CI)
@@ -197,6 +216,8 @@ scripts/check-tests
 # Install pre-commit hook (requires lefthook: `brew install lefthook`)
 lefthook install
 ```
+
+Issues and PRs welcome at [github.com/arthur-debert/dodot](https://github.com/arthur-debert/dodot).
 
 ## License
 
