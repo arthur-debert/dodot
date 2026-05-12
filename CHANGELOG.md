@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-05-12
+
+
 ### Added
 
 - **Conditional running (gates)** — files, directories, and packs can
@@ -199,7 +202,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real chain state, so "deployed" actually means deployed. `_lib/` on
   non-macOS continues to surface only the planner warning, since
   those leaves produce zero intents.
-
 ## [4.1.0] - 2026-05-04
 
 
