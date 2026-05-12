@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User docs for the externals handler (PR 6 of stacked series)** —
+  New `docs/user/handlers/external.lex` covering the four entry
+  types (file / git-repo / archive / archive-file), the freshness
+  model per type, the datastore layout, drift detection, failure
+  posture, and the "live edits" section per the standard handler
+  doc shape. Verified against source.
+
 - **`dodot status --check-drift` for externals (PR 5 of stacked series)** —
   Opt-in flag that hashes each deployed external entry's content
   and compares against the configured signature, surfacing any
