@@ -794,6 +794,14 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         debug!("no cross-pack conflicts");
     }
 
+    // Opt-in drift detection for externals. Surfaced as warnings on
+    // the result so they appear in the same channel as conflict /
+    // cross-pack notes — no separate rendering path. Skipped silently
+    // when no externals.toml exists for a pack.
+    if ctx.check_drift {
+        warnings.extend(collect_drift_warnings(ctx)?);
+    }
+
     // Surface ignored packs by their display name, not the raw
     // on-disk directory — the prefix grammar must stay invisible to
     // the rendered "Ignored Packs" section just like every other
@@ -815,6 +823,66 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
     })
+}
+
+/// Run `--check-drift` over every pack with an `externals.toml` and
+/// emit a one-line warning per drifted entry. Entries reporting
+/// `NotImplemented` are also surfaced so users know the check
+/// couldn't speak to that type — silence would be misleading.
+fn collect_drift_warnings(ctx: &ExecutionContext) -> Result<Vec<String>> {
+    use crate::external::{detect_drift_for_pack, DriftKind};
+    use crate::handlers::externals::EXTERNALS_TOML;
+
+    let root_config = ctx.config_manager.root_config()?;
+    let mut out = Vec::new();
+    let packs::DiscoveredPacks { packs, .. } = packs::scan_packs(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        &root_config.pack.ignore,
+    )?;
+    let git_runner = crate::external::ShellGitRunner::new();
+
+    for pack in packs {
+        let toml_path = pack.path.join(EXTERNALS_TOML);
+        if !ctx.fs.exists(&toml_path) {
+            continue;
+        }
+        let bytes = match ctx.fs.read_file(&toml_path) {
+            Ok(b) => b,
+            Err(e) => {
+                out.push(format!(
+                    "{}: drift check skipped — cannot read externals.toml: {e}",
+                    pack.display_name
+                ));
+                continue;
+            }
+        };
+        let reports = detect_drift_for_pack(
+            &pack.display_name,
+            &bytes,
+            ctx.paths.as_ref(),
+            ctx.fs.as_ref(),
+            Some(&git_runner),
+        )?;
+        for r in reports {
+            match r.kind {
+                DriftKind::Clean => {}
+                DriftKind::Drifted => out.push(format!(
+                    "{} / {}: drift — {}",
+                    r.pack, r.entry_name, r.detail
+                )),
+                DriftKind::Missing => out.push(format!(
+                    "{} / {}: deployed copy missing — {}",
+                    r.pack, r.entry_name, r.detail
+                )),
+                DriftKind::NotImplemented => out.push(format!(
+                    "{} / {}: drift check not implemented ({})",
+                    r.pack, r.entry_name, r.detail
+                )),
+            }
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

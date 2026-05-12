@@ -68,6 +68,7 @@ pub(super) fn make_context(env: &TempEnvironment) -> ExecutionContext {
         no_provision: true, // skip install/homebrew in tests
         provision_rerun: false,
         force: false,
+        check_drift: false,
         view_mode: crate::commands::ViewMode::Full,
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,

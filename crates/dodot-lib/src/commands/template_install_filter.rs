@@ -334,6 +334,7 @@ mod tests {
             no_provision: true,
             provision_rerun: false,
             force: false,
+            check_drift: false,
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,

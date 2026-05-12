@@ -31,6 +31,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`dodot status --check-drift` for externals (PR 5 of stacked series)** —
+  Opt-in flag that hashes each deployed external entry's content
+  and compares against the configured signature, surfacing any
+  divergence as a warning on the status output.
+
+  - `file` entries — compute sha256 of the datastore copy; report
+    drift when it diverges from the configured `sha256`.
+  - `git-repo` entries — shell out to `git status --porcelain`
+    on the local clone; non-empty output indicates the working
+    tree diverged from HEAD.
+  - `archive` / `archive-file` — drift detection deferred to a
+    later release; surfaced as "not implemented" rather than
+    silently skipped (silence would suggest "clean").
+
+  Off by default because hashing every deployed external on every
+  `status` is wrong for big trees like `oh-my-zsh`. Drift is the
+  user-edit oracle, distinct from upstream-freshness which fires
+  automatically on every `up`.
+
 - **Externals handler: `archive` and `archive-file` types (PR 4 of stacked series)** —
   Two new spec variants in `externals.toml`:
   - `type = "archive"` — download an archive, sha256-verify, extract

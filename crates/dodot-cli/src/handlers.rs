@@ -128,7 +128,8 @@ pub fn status_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let mut ctx = build_readonly_ctx(matches)?;
+    ctx.check_drift = matches.get_flag("check-drift");
     let filter = pack_filter(matches);
     let result = commands::status::status(filter.as_deref(), &ctx)?;
     print_warnings(&result.warnings);
