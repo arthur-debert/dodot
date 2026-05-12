@@ -84,7 +84,7 @@ Alternatives — how dodot compares to the rest of the space
         - *More secret providers (adoption-driven).* dodot ships six providers covering the most-used ground (pass, op, bw, sops, keychain, secret-tool) plus age/gpg whole-file. AWS Secrets Manager, Azure Key Vault, LastPass, Dashlane, Doppler, Keeper, etc. would be additional implementations of the same provider trait; they materialize as user demand surfaces.
         - *Windows (intentional non-goal).* dodot is unix-first by design; macOS plists and XDG/Library path resolution sit at the center of the value proposition. Windows is not on the roadmap.
 
-        Once you discount the intentional non-goal and the adoption-driven item, **external files is the one structural capability dodot is missing**.
+        Once you discount the intentional non-goal and the adoption-driven item, **external files is the one structural capability from chezmoi's surface that dodot is missing**. (§12 collects the structural gaps across the whole alternatives space.)
 
     3.5. A note on `chezmoi diff` and `chezmoi merge`
 
@@ -505,19 +505,19 @@ Alternatives — how dodot compares to the rest of the space
 
     The residual gap list:
 
-        | Gap                                                          | Kind             | Where it appears in alternatives                       |
-        | External files (URL/git ref + periodic refresh)               | Structural       | chezmoi `.chezmoiexternal.toml`, dotbot-git plugin     |
-        | One-command bootstrap (installer chain + first-run hook)      | Structural       | yadm `clone`+`bootstrap`, dotbot vendored `./install`  |
-        | More secret providers (AWS/Azure/Doppler/Keeper/LastPass/...) | Adoption-driven  | chezmoi                                                |
-        | User-supplied template helpers / filters                      | Adoption-driven  | dotter (Rhai), chezmoi (sprig + many fns)              |
-        | Dynamic vars (shell command stdout as variable at render)     | Adoption-driven  | dotdrop `dynvariables`                                 |
-        | Per-machine local overlay file (gitignored)                   | Adoption-driven  | dotter `local.toml`                                    |
-        | Init-time prompts that write per-machine vars                 | Convenience      | chezmoi `promptStringOnce`                             |
-        | Symlink-of-children for directories                           | Enhancement      | dotdrop `link_children`                                |
-        | Backup the existing target before overwriting                 | Enhancement      | dotbot `backup: true`                                  |
-    :: table align=lll ::
+        | Gap                                                          | Kind             | Where it appears in alternatives                       | Tracked          |
+        | External files (URL/git ref + periodic refresh)               | Structural       | chezmoi `.chezmoiexternal.toml`, dotbot-git plugin     | issue #152       |
+        | One-command bootstrap (installer chain + first-run hook)      | Structural       | yadm `clone`+`bootstrap`, dotbot vendored `./install`  | issue #153       |
+        | More secret providers (AWS/Azure/Doppler/Keeper/LastPass/...) | Adoption-driven  | chezmoi                                                | —                |
+        | User-supplied template helpers / filters                      | Adoption-driven  | dotter (Rhai), chezmoi (sprig + many fns)              | —                |
+        | Dynamic vars (shell command stdout as variable at render)     | Adoption-driven  | dotdrop `dynvariables`                                 | —                |
+        | Per-machine local overlay file (gitignored)                   | Adoption-driven  | dotter `local.toml`                                    | —                |
+        | Init-time prompts that write per-machine vars                 | Convenience      | chezmoi `promptStringOnce`                             | —                |
+        | Symlink-of-children for directories                           | Enhancement      | dotdrop `link_children`                                | —                |
+        | Backup the existing target before overwriting                 | Enhancement      | dotbot `backup: true`                                  | —                |
+    :: table align=llll ::
 
-    Two of these — external files and one-command bootstrap — are *structural*: a real capability dodot doesn't have today, principle-compatible, with a clear use case driven by real user workflows. The rest will ship when demand surfaces or remain reasonable not-yet-built items.
+    Two of these — external files and one-command bootstrap — are *structural*: a real capability dodot doesn't have today, principle-compatible, with a clear use case driven by real user workflows. They are tracked as issues #152 and #153 respectively. The rest will ship when demand surfaces or remain reasonable not-yet-built items.
 
     12.1. What's *not* on this list and why
 
