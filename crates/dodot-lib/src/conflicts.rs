@@ -182,7 +182,7 @@ fn intent_source(intent: &HandlerIntent) -> PathBuf {
         // pseudo-path so conflict messaging stays uniform.
         HandlerIntent::Fetch { spec, name, .. } => match spec {
             crate::external::FetchSpec::File { url, .. } => PathBuf::from(url),
-            crate::external::FetchSpec::GitRepo { url } => PathBuf::from(url),
+            crate::external::FetchSpec::GitRepo { url, .. } => PathBuf::from(url),
             crate::external::FetchSpec::Unsupported => PathBuf::from(format!("<external:{name}>")),
         },
     }

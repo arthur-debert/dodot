@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Externals handler: `subpath`, `ref`, `commit` (PR 3 of stacked series)** —
+  `type = "git-repo"` now accepts three optional fields:
+  - `subpath = "themes"` — sparse-checkout pattern. Only that
+    subtree is materialized on disk, and the user-visible target
+    symlink points at it (not the whole clone).
+  - `ref = "v1.2.3"` — tracking reference (tag, branch, etc.).
+    Each `up` runs `git ls-remote <ref>` instead of `HEAD`;
+    refresh fires when that reference's SHA changes.
+  - `commit = "<full-sha>"` — frozen commit. Skips `ls-remote`
+    entirely; the local clone is compared against the configured
+    commit and only refreshes when the user edits the TOML.
+
+  `ref` and `commit` are mutually exclusive — parsing rejects an
+  entry that sets both. Git transport gains sparse-checkout cone
+  mode and `--branch <ref> --single-branch` when configured.
+
 - **Externals handler `type = "git-repo"` (PR 2 of stacked series)** —
   `externals.toml` now accepts `type = "git-repo"` entries. The
   executor shallow-clones (`--depth=1 --filter=blob:none`) into the

@@ -61,18 +61,39 @@ impl GitError {
 /// Each method is a porcelain-level verb: implementations shell out
 /// to `git` with the right flags. Tests mock this trait.
 pub trait GitRunner: Send + Sync {
-    /// `git ls-remote <url> HEAD` — return the upstream HEAD SHA
-    /// without fetching any objects. The cheap freshness oracle.
-    fn ls_remote_head(&self, url: &str) -> std::result::Result<String, GitError>;
+    /// `git ls-remote <url> <reference>` — return the upstream SHA
+    /// for a reference without fetching any objects. Use `"HEAD"`
+    /// for the default branch.
+    fn ls_remote(&self, url: &str, reference: &str) -> std::result::Result<String, GitError>;
 
-    /// `git clone --depth=1 --filter=blob:none <url> <dest>`.
+    /// `git clone --depth=1 --filter=blob:none [--branch <ref>] <url> <dest>`,
+    /// optionally followed by a sparse-checkout setup if `subpath` is
+    /// `Some(p)`:
+    /// ```text
+    /// git -C <dest> sparse-checkout init --cone
+    /// git -C <dest> sparse-checkout set <p>
+    /// ```
     /// Returns the cloned HEAD SHA.
-    fn shallow_clone(&self, url: &str, dest: &Path) -> std::result::Result<String, GitError>;
+    fn shallow_clone(
+        &self,
+        url: &str,
+        dest: &Path,
+        reference: Option<&str>,
+        subpath: Option<&str>,
+    ) -> std::result::Result<String, GitError>;
 
-    /// `git -C <repo> fetch --depth=1 origin HEAD` followed by
-    /// `git -C <repo> reset --hard FETCH_HEAD`. Returns the new
+    /// `git -C <repo> fetch --depth=1 origin <reference>` followed
+    /// by `git -C <repo> reset --hard FETCH_HEAD`. Returns the new
     /// HEAD SHA.
-    fn fetch_and_reset(&self, repo: &Path) -> std::result::Result<String, GitError>;
+    fn fetch_and_reset(
+        &self,
+        repo: &Path,
+        reference: &str,
+    ) -> std::result::Result<String, GitError>;
+
+    /// `git -C <repo> checkout <target>`. Used for commit pinning
+    /// when the local clone already has the object.
+    fn checkout(&self, repo: &Path, target: &str) -> std::result::Result<(), GitError>;
 
     /// `git -C <repo> rev-parse HEAD` — local HEAD SHA.
     fn local_head(&self, repo: &Path) -> std::result::Result<String, GitError>;
@@ -118,22 +139,41 @@ impl Default for ShellGitRunner {
 }
 
 impl GitRunner for ShellGitRunner {
-    fn ls_remote_head(&self, url: &str) -> std::result::Result<String, GitError> {
+    fn ls_remote(&self, url: &str, reference: &str) -> std::result::Result<String, GitError> {
         let stdout = Self::run(
             "ls-remote",
-            Command::new("git").args(["ls-remote", "--exit-code", url, "HEAD"]),
+            Command::new("git").args(["ls-remote", "--exit-code", url, reference]),
         )?;
-        // Output shape: `<sha>\tHEAD`. We want the first whitespace-
-        // delimited field on the first line.
-        let sha = stdout
+        // Output is one `<sha>\t<ref>` row per matching ref. For an
+        // annotated tag, `git ls-remote <tag>` returns two rows:
+        //   <tag-object-sha>     refs/tags/<tag>
+        //   <commit-sha>         refs/tags/<tag>^{}
+        // The dereferenced (`^{}`) row is the commit we actually want
+        // to track; the tag-object SHA changes whenever the tag's
+        // message/signer changes, which would cause spurious refresh
+        // loops. Prefer `^{}` when present, fall back to the first
+        // row otherwise.
+        let rows: Vec<(&str, &str)> = stdout
             .lines()
-            .next()
-            .and_then(|line| line.split_whitespace().next())
-            .map(str::to_string)
-            .ok_or_else(|| GitError::BadOutput {
+            .filter_map(|line| {
+                let mut parts = line.split_whitespace();
+                let sha = parts.next()?;
+                let refname = parts.next().unwrap_or("");
+                Some((sha, refname))
+            })
+            .collect();
+        if rows.is_empty() {
+            return Err(GitError::BadOutput {
                 operation: "ls-remote".into(),
-                detail: format!("no rows for HEAD on {url}"),
-            })?;
+                detail: format!("no rows for {reference} on {url}"),
+            });
+        }
+        let chosen = rows
+            .iter()
+            .find(|(_, refname)| refname.ends_with("^{}"))
+            .or_else(|| rows.first())
+            .expect("rows is non-empty");
+        let sha = chosen.0.to_string();
         if sha.len() < 7 {
             return Err(GitError::BadOutput {
                 operation: "ls-remote".into(),
@@ -143,26 +183,70 @@ impl GitRunner for ShellGitRunner {
         Ok(sha)
     }
 
-    fn shallow_clone(&self, url: &str, dest: &Path) -> std::result::Result<String, GitError> {
-        // Pass `dest` as an OsStr so non-UTF-8 paths survive verbatim
-        // — `to_string_lossy` would corrupt them, and Command accepts
-        // `&OsStr` natively anyway.
-        Self::run(
-            "clone",
-            Command::new("git")
-                .args(["clone", "--depth=1", "--filter=blob:none", url])
-                .arg(dest),
-        )?;
+    fn shallow_clone(
+        &self,
+        url: &str,
+        dest: &Path,
+        reference: Option<&str>,
+        subpath: Option<&str>,
+    ) -> std::result::Result<String, GitError> {
+        // Build the clone invocation. Non-path args go through `.args`
+        // as `&str`; `dest` is appended via `.arg(&Path)` so non-UTF-8
+        // paths survive verbatim (`to_string_lossy` would corrupt them).
+        let mut cmd = Command::new("git");
+        cmd.args(["clone", "--depth=1", "--filter=blob:none"]);
+        if let Some(r) = reference {
+            // --single-branch is implied by --depth=1, but be explicit.
+            cmd.args(["--branch", r, "--single-branch"]);
+        }
+        // `--no-checkout` only when a sparse pattern follows so we
+        // don't materialise the whole tree before narrowing it.
+        if subpath.is_some() {
+            cmd.arg("--no-checkout");
+        }
+        cmd.arg("--").arg(url).arg(dest);
+        Self::run("clone", &mut cmd)?;
+
+        if let Some(pattern) = subpath {
+            Self::run(
+                "sparse-checkout init",
+                Command::new("git")
+                    .arg("-C")
+                    .arg(dest)
+                    .args(["sparse-checkout", "init", "--cone"]),
+            )?;
+            // `--` keeps a pattern that starts with `-` (e.g.
+            // `-experimental`) from being interpreted as an option.
+            Self::run(
+                "sparse-checkout set",
+                Command::new("git").arg("-C").arg(dest).args([
+                    "sparse-checkout",
+                    "set",
+                    "--",
+                    pattern,
+                ]),
+            )?;
+            Self::run(
+                "checkout",
+                Command::new("git").arg("-C").arg(dest).args(["checkout"]),
+            )?;
+        }
         self.local_head(dest)
     }
 
-    fn fetch_and_reset(&self, repo: &Path) -> std::result::Result<String, GitError> {
+    fn fetch_and_reset(
+        &self,
+        repo: &Path,
+        reference: &str,
+    ) -> std::result::Result<String, GitError> {
         Self::run(
             "fetch",
-            Command::new("git")
-                .arg("-C")
-                .arg(repo)
-                .args(["fetch", "--depth=1", "origin", "HEAD"]),
+            Command::new("git").arg("-C").arg(repo).args([
+                "fetch",
+                "--depth=1",
+                "origin",
+                reference,
+            ]),
         )?;
         Self::run(
             "reset",
@@ -172,6 +256,17 @@ impl GitRunner for ShellGitRunner {
                 .args(["reset", "--hard", "FETCH_HEAD"]),
         )?;
         self.local_head(repo)
+    }
+
+    fn checkout(&self, repo: &Path, target: &str) -> std::result::Result<(), GitError> {
+        Self::run(
+            "checkout",
+            Command::new("git")
+                .arg("-C")
+                .arg(repo)
+                .args(["checkout", target]),
+        )?;
+        Ok(())
     }
 
     fn local_head(&self, repo: &Path) -> std::result::Result<String, GitError> {
@@ -252,9 +347,9 @@ impl MockGitRunner {
 
 #[cfg(any(test, feature = "test-utils"))]
 impl GitRunner for MockGitRunner {
-    fn ls_remote_head(&self, url: &str) -> std::result::Result<String, GitError> {
+    fn ls_remote(&self, url: &str, reference: &str) -> std::result::Result<String, GitError> {
         let mut g = self.inner.lock().unwrap();
-        g.calls.push(format!("ls-remote {url}"));
+        g.calls.push(format!("ls-remote {url} {reference}"));
         if g.ls_remote_offline {
             return Err(GitError::CommandFailed {
                 operation: "ls-remote".into(),
@@ -268,18 +363,40 @@ impl GitRunner for MockGitRunner {
         })
     }
 
-    fn shallow_clone(&self, url: &str, dest: &Path) -> std::result::Result<String, GitError> {
+    fn shallow_clone(
+        &self,
+        url: &str,
+        dest: &Path,
+        reference: Option<&str>,
+        subpath: Option<&str>,
+    ) -> std::result::Result<String, GitError> {
         let mut g = self.inner.lock().unwrap();
-        g.calls.push(format!("clone {url} -> {}", dest.display()));
-        // Write a small marker file so the executor's symlink leg has
-        // something to point at — mirrors what a real clone would
-        // produce on disk.
+        g.calls.push(format!(
+            "clone {url} ref={} subpath={} -> {}",
+            reference.unwrap_or("HEAD"),
+            subpath.unwrap_or("-"),
+            dest.display()
+        ));
         std::fs::create_dir_all(dest).map_err(|e| GitError::CommandFailed {
             operation: "clone".into(),
             exit_code: -1,
             stderr: e.to_string(),
         })?;
-        let marker = dest.join("README.md");
+        // When subpath is set, materialise the marker inside that
+        // subdir so symlink-into-subpath cases are exercised end-to-end.
+        let marker_dir = match subpath {
+            Some(p) => {
+                let d = dest.join(p);
+                std::fs::create_dir_all(&d).map_err(|e| GitError::CommandFailed {
+                    operation: "sparse-checkout".into(),
+                    exit_code: -1,
+                    stderr: e.to_string(),
+                })?;
+                d
+            }
+            None => dest.to_path_buf(),
+        };
+        let marker = marker_dir.join("README.md");
         std::fs::write(&marker, &g.clone_marker_content).map_err(|e| GitError::CommandFailed {
             operation: "clone".into(),
             exit_code: -1,
@@ -293,9 +410,14 @@ impl GitRunner for MockGitRunner {
         Ok(sha)
     }
 
-    fn fetch_and_reset(&self, repo: &Path) -> std::result::Result<String, GitError> {
+    fn fetch_and_reset(
+        &self,
+        repo: &Path,
+        reference: &str,
+    ) -> std::result::Result<String, GitError> {
         let mut g = self.inner.lock().unwrap();
-        g.calls.push(format!("fetch+reset {}", repo.display()));
+        g.calls
+            .push(format!("fetch+reset {} ref={reference}", repo.display()));
         if g.fetch_offline {
             return Err(GitError::CommandFailed {
                 operation: "fetch".into(),
@@ -315,6 +437,14 @@ impl GitRunner for MockGitRunner {
             .unwrap_or_else(|| "1111111111111111111111111111111111111111".into());
         g.local_sha = Some(sha.clone());
         Ok(sha)
+    }
+
+    fn checkout(&self, repo: &Path, target: &str) -> std::result::Result<(), GitError> {
+        let mut g = self.inner.lock().unwrap();
+        g.calls
+            .push(format!("checkout {} {target}", repo.display()));
+        g.local_sha = Some(target.into());
+        Ok(())
     }
 
     fn local_head(&self, _repo: &Path) -> std::result::Result<String, GitError> {
@@ -353,7 +483,7 @@ mod tests {
         let dest = tmp.path().join("clone");
         let mock = MockGitRunner::new("abc123def456", b"# hello\n");
         let sha = mock
-            .shallow_clone("https://example.com/repo.git", &dest)
+            .shallow_clone("https://example.com/repo.git", &dest, None, None)
             .unwrap();
         assert_eq!(sha, "abc123def456");
         assert!(dest.join("README.md").exists());
@@ -361,23 +491,48 @@ mod tests {
     }
 
     #[test]
+    fn mock_clone_subpath_places_marker_inside_subpath() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("clone");
+        let mock = MockGitRunner::new("abc", b"# theme\n");
+        mock.shallow_clone("https://x/r.git", &dest, None, Some("themes"))
+            .unwrap();
+        // Marker is inside the subpath, not at the repo root —
+        // confirms sparse-checkout was honoured by the mock.
+        assert!(dest.join("themes/README.md").exists());
+        assert!(!dest.join("README.md").exists());
+    }
+
+    #[test]
     fn mock_fetch_updates_marker_and_sha() {
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("clone");
         let mock = MockGitRunner::new("aaa", b"# v1\n");
-        mock.shallow_clone("https://x/r.git", &dest).unwrap();
+        mock.shallow_clone("https://x/r.git", &dest, None, None)
+            .unwrap();
         mock.set_upstream_sha("bbb");
-        let new_sha = mock.fetch_and_reset(&dest).unwrap();
+        let new_sha = mock.fetch_and_reset(&dest, "HEAD").unwrap();
         assert_eq!(new_sha, "bbb");
         let body = std::fs::read_to_string(dest.join("README.md")).unwrap();
         assert!(body.contains("# refreshed"));
     }
 
     #[test]
+    fn mock_checkout_updates_local_sha() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("clone");
+        let mock = MockGitRunner::new("abc", b"");
+        mock.shallow_clone("https://x/r.git", &dest, None, None)
+            .unwrap();
+        mock.checkout(&dest, "frozen-commit-sha").unwrap();
+        assert_eq!(mock.local_head(&dest).unwrap(), "frozen-commit-sha");
+    }
+
+    #[test]
     fn mock_offline_ls_remote() {
         let mock = MockGitRunner::new("aaa", b"");
         mock.set_ls_remote_offline(true);
-        let err = mock.ls_remote_head("https://x/r.git").unwrap_err();
+        let err = mock.ls_remote("https://x/r.git", "HEAD").unwrap_err();
         assert!(err.is_transient());
     }
 }

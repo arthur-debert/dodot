@@ -69,14 +69,39 @@ pub enum FetchSpec {
         sha256: String,
     },
 
-    /// A shallow git clone, tracking `HEAD` of the default branch.
+    /// A shallow git clone.
     ///
-    /// Freshness is upstream-driven: each `dodot up` runs a cheap
-    /// `git ls-remote HEAD`; the actual clone is only re-fetched
-    /// when the remote SHA differs from the local one. Sparse-tree
-    /// checkout (`subpath`) and pinned `ref` / `commit` arrive in
-    /// a follow-up PR; for now the whole repo's HEAD is cloned.
-    GitRepo { url: String },
+    /// Freshness rules depend on the pin configuration:
+    /// - **Unpinned** (no `ref`, no `commit`): `git ls-remote HEAD`
+    ///   on each `up`; refresh only when upstream HEAD moves.
+    /// - **`ref = "v1.2.3"`** (tag, branch, or any other reference):
+    ///   `git ls-remote <ref>` on each `up`; refresh when that
+    ///   reference's SHA changes. Tags don't normally move but the
+    ///   mechanism is uniform.
+    /// - **`commit = "abc1234..."`** (full SHA): no `ls-remote` at
+    ///   all; the local clone is compared against the configured
+    ///   commit and refreshed only when the user edits the TOML.
+    ///
+    /// `subpath = "themes"` triggers a sparse-tree fetch (only that
+    /// subdirectory is materialized). The user-visible target
+    /// symlink then points at the subpath inside the clone, not
+    /// the whole tree.
+    GitRepo {
+        url: String,
+        /// Sparse-checkout pattern (relative to the repo root). When
+        /// set, only that subtree is materialized on disk, and the
+        /// user-visible target symlink points at it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subpath: Option<String>,
+        /// Reference to track (tag, branch, etc.). `None` means HEAD.
+        /// Mutually exclusive with [`Self::GitRepo::commit`].
+        #[serde(default, rename = "ref", skip_serializing_if = "Option::is_none")]
+        git_ref: Option<String>,
+        /// Frozen commit SHA. Mutually exclusive with
+        /// [`Self::GitRepo::git_ref`]; skips upstream polling.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        commit: Option<String>,
+    },
 
     /// Catchall for type values dodot doesn't implement yet.
     #[serde(other)]
@@ -92,15 +117,92 @@ pub enum FetchSpec {
 /// they are used verbatim as datastore subdirectory names and sentinel
 /// filenames — letting `..` or `/` through here would create
 /// surprising nested layouts and confusing sentinel matches.
+///
+/// Cross-field invariants on `git-repo` entries are enforced here too,
+/// so the executor never has to second-guess a spec it received from
+/// the handler.
 pub fn parse_externals_toml(bytes: &[u8]) -> Result<ExternalsToml> {
     let text = std::str::from_utf8(bytes)
         .map_err(|e| DodotError::Other(format!("externals.toml is not valid UTF-8: {e}")))?;
     let parsed: BTreeMap<String, ExternalEntry> = toml::from_str(text)
         .map_err(|e| DodotError::Other(format!("externals.toml parse error: {e}")))?;
-    for name in parsed.keys() {
+    for (name, entry) in &parsed {
         validate_entry_name(name)?;
+        if let FetchSpec::GitRepo {
+            subpath,
+            git_ref,
+            commit,
+            ..
+        } = &entry.spec
+        {
+            if git_ref.is_some() && commit.is_some() {
+                return Err(DodotError::Other(format!(
+                    "externals.toml entry '{name}': `ref` and `commit` are mutually exclusive — pick one"
+                )));
+            }
+            if let Some(p) = subpath {
+                validate_subpath(name, p)?;
+            }
+            if let Some(c) = commit {
+                validate_commit_sha(name, c)?;
+            }
+        }
     }
     Ok(ExternalsToml { entries: parsed })
+}
+
+/// Reject `subpath` values that wouldn't be safe to join onto the
+/// clone root. We're more permissive than [`validate_entry_name`] —
+/// `subpath` is a real on-disk path inside the git tree, so internal
+/// slashes and most punctuation are fine. But absolute paths, `..`
+/// segments, and leading `-` (which git would treat as an option flag)
+/// are hard errors.
+fn validate_subpath(entry: &str, subpath: &str) -> Result<()> {
+    if subpath.is_empty() {
+        return Err(DodotError::Other(format!(
+            "externals.toml entry '{entry}': `subpath` must not be empty"
+        )));
+    }
+    if subpath.starts_with('/') || subpath.starts_with('\\') {
+        return Err(DodotError::Other(format!(
+            "externals.toml entry '{entry}': `subpath` must be relative, not {subpath:?}"
+        )));
+    }
+    if subpath.starts_with('-') {
+        return Err(DodotError::Other(format!(
+            "externals.toml entry '{entry}': `subpath` must not start with `-` (git would treat it as an option): {subpath:?}"
+        )));
+    }
+    // Reject `..` segments anywhere. Splitting on both `/` and `\`
+    // covers POSIX and Windows-style separators.
+    for segment in subpath.split(['/', '\\']) {
+        if segment == ".." {
+            return Err(DodotError::Other(format!(
+                "externals.toml entry '{entry}': `subpath` may not contain `..` segments: {subpath:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Reject obviously-malformed commit pins early so the executor's
+/// diagnostic budget stays focused on real failures. Accepts 40-char
+/// lowercase-or-mixed-case hex (the full sha1 form); short hashes are
+/// rejected because shallow git can't reliably resolve them, and
+/// they'd also make sentinel filenames ambiguous.
+fn validate_commit_sha(entry: &str, commit: &str) -> Result<()> {
+    if commit.len() != 40 {
+        return Err(DodotError::Other(format!(
+            "externals.toml entry '{entry}': `commit` must be a full 40-char SHA, got {} chars",
+            commit.len()
+        )));
+    }
+    if !commit.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(DodotError::Other(format!(
+            "externals.toml entry '{entry}': `commit` must be hex (a-f, 0-9), got {commit:?}"
+        )));
+    }
+    Ok(())
 }
 
 /// Reject entry names that wouldn't be safe as path or sentinel
@@ -237,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_git_repo_entry() {
+    fn parses_git_repo_entry_minimal() {
         let toml = r#"
             [omz]
             type   = "git-repo"
@@ -248,11 +350,149 @@ mod tests {
         let entry = parsed.entries.get("omz").unwrap();
         assert_eq!(entry.target, "~/.oh-my-zsh");
         match &entry.spec {
-            FetchSpec::GitRepo { url } => {
+            FetchSpec::GitRepo {
+                url,
+                subpath,
+                git_ref,
+                commit,
+            } => {
                 assert_eq!(url, "https://github.com/ohmyzsh/ohmyzsh.git");
+                assert!(subpath.is_none());
+                assert!(git_ref.is_none());
+                assert!(commit.is_none());
             }
             other => panic!("expected GitRepo spec, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_git_repo_entry_with_subpath_and_ref() {
+        let toml = r#"
+            [p10k]
+            type    = "git-repo"
+            url     = "https://github.com/romkatv/powerlevel10k.git"
+            target  = "~/.config/zsh/themes/p10k"
+            subpath = "themes"
+            ref     = "v1.20.0"
+        "#;
+        let parsed = parse_externals_toml(toml.as_bytes()).unwrap();
+        let entry = parsed.entries.get("p10k").unwrap();
+        match &entry.spec {
+            FetchSpec::GitRepo {
+                subpath,
+                git_ref,
+                commit,
+                ..
+            } => {
+                assert_eq!(subpath.as_deref(), Some("themes"));
+                assert_eq!(git_ref.as_deref(), Some("v1.20.0"));
+                assert!(commit.is_none());
+            }
+            other => panic!("expected GitRepo, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_git_repo_entry_with_commit_pin() {
+        let toml = r#"
+            [tpm]
+            type   = "git-repo"
+            url    = "https://github.com/tmux-plugins/tpm.git"
+            target = "~/.tmux/plugins/tpm"
+            commit = "3a8b3f4a5b8d1c2e3f4a5b6c7d8e9f0a1b2c3d4e"
+        "#;
+        let parsed = parse_externals_toml(toml.as_bytes()).unwrap();
+        let entry = parsed.entries.get("tpm").unwrap();
+        match &entry.spec {
+            FetchSpec::GitRepo { commit, .. } => {
+                assert_eq!(
+                    commit.as_deref(),
+                    Some("3a8b3f4a5b8d1c2e3f4a5b6c7d8e9f0a1b2c3d4e")
+                );
+            }
+            other => panic!("expected GitRepo, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_absolute_subpath() {
+        let toml = r#"
+            [bad]
+            type    = "git-repo"
+            url     = "https://example.com/x.git"
+            target  = "~/x"
+            subpath = "/etc"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        assert!(format!("{err}").contains("must be relative"));
+    }
+
+    #[test]
+    fn rejects_dotdot_in_subpath() {
+        let toml = r#"
+            [bad]
+            type    = "git-repo"
+            url     = "https://example.com/x.git"
+            target  = "~/x"
+            subpath = "themes/../../etc"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        assert!(format!("{err}").contains(".."));
+    }
+
+    #[test]
+    fn rejects_dash_prefixed_subpath() {
+        let toml = r#"
+            [bad]
+            type    = "git-repo"
+            url     = "https://example.com/x.git"
+            target  = "~/x"
+            subpath = "-experimental"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        assert!(format!("{err}").contains("must not start with `-`"));
+    }
+
+    #[test]
+    fn rejects_short_commit_sha() {
+        let toml = r#"
+            [bad]
+            type   = "git-repo"
+            url    = "https://example.com/x.git"
+            target = "~/x"
+            commit = "abc1234"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        assert!(format!("{err}").contains("full 40-char SHA"));
+    }
+
+    #[test]
+    fn rejects_non_hex_commit_sha() {
+        let toml = r#"
+            [bad]
+            type   = "git-repo"
+            url    = "https://example.com/x.git"
+            target = "~/x"
+            commit = "zzzzbeef1234567890abcdef1234567890abcdef"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        assert!(format!("{err}").contains("must be hex"));
+    }
+
+    #[test]
+    fn rejects_ref_and_commit_simultaneously() {
+        let toml = r#"
+            [conflicted]
+            type   = "git-repo"
+            url    = "https://example.com/x.git"
+            target = "~/x"
+            ref    = "v1"
+            commit = "abc1234"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("mutually exclusive"), "got: {msg}");
+        assert!(msg.contains("conflicted"), "got: {msg}");
     }
 
     #[test]
