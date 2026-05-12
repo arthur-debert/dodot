@@ -103,8 +103,16 @@ pub fn detect_cross_pack_conflicts(
 
     for (pack_name, intents) in pack_intents {
         for intent in intents {
-            // Symlink target conflicts
-            if let HandlerIntent::Link { user_path, .. } = intent {
+            // Symlink target conflicts (and externals — both produce a
+            // user-visible symlink, so two packs claiming the same
+            // `target` path is the same kind of collision regardless of
+            // which handler is involved).
+            let user_path = match intent {
+                HandlerIntent::Link { user_path, .. } => Some(user_path),
+                HandlerIntent::Fetch { user_path, .. } => Some(user_path),
+                _ => None,
+            };
+            if let Some(user_path) = user_path {
                 kinds.insert(user_path.clone(), ConflictKind::SymlinkTarget);
                 targets
                     .entry(user_path.clone())
@@ -170,6 +178,12 @@ fn intent_source(intent: &HandlerIntent) -> PathBuf {
         HandlerIntent::Link { source, .. } => source.clone(),
         HandlerIntent::Stage { source, .. } => source.clone(),
         HandlerIntent::Run { executable, .. } => PathBuf::from(executable),
+        // The "source" for an external is the URL — represent it as a
+        // pseudo-path so conflict messaging stays uniform.
+        HandlerIntent::Fetch { spec, name, .. } => match spec {
+            crate::external::FetchSpec::File { url, .. } => PathBuf::from(url),
+            crate::external::FetchSpec::Unsupported => PathBuf::from(format!("<external:{name}>")),
+        },
     }
 }
 
@@ -192,6 +206,19 @@ mod tests {
             pack: pack.into(),
             handler: handler.into(),
             source: PathBuf::from(source),
+        }
+    }
+
+    fn fetch(pack: &str, name: &str, url: &str, user_path: &str) -> HandlerIntent {
+        HandlerIntent::Fetch {
+            pack: pack.into(),
+            handler: "external".into(),
+            name: name.into(),
+            spec: crate::external::FetchSpec::File {
+                url: url.into(),
+                sha256: "deadbeef".into(),
+            },
+            user_path: PathBuf::from(user_path),
         }
     }
 
@@ -238,6 +265,74 @@ mod tests {
         let fs = dummy_fs();
         let conflicts = detect_cross_pack_conflicts(&[], fs.as_ref());
         assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn detects_link_fetch_conflict() {
+        // Pack A symlinks ~/.config/themes via the symlink handler;
+        // pack B fetches an external to the same path. Both produce
+        // a user-visible symlink at the same target — that's a
+        // pre-flight conflict the same way two Link intents would be.
+        let fs = dummy_fs();
+        let pack_intents = vec![
+            (
+                "themes-pack-a".into(),
+                vec![link(
+                    "themes-pack-a",
+                    "/dot/themes-pack-a/themes",
+                    "/home/.config/themes",
+                )],
+            ),
+            (
+                "themes-pack-b".into(),
+                vec![fetch(
+                    "themes-pack-b",
+                    "themes",
+                    "https://example.com/themes.tar.gz",
+                    "/home/.config/themes",
+                )],
+            ),
+        ];
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].kind, ConflictKind::SymlinkTarget);
+        assert_eq!(conflicts[0].target, PathBuf::from("/home/.config/themes"));
+        let handlers: Vec<&str> = conflicts[0]
+            .claimants
+            .iter()
+            .map(|c| c.handler.as_str())
+            .collect();
+        assert!(handlers.contains(&"symlink"));
+        assert!(handlers.contains(&"external"));
+    }
+
+    #[test]
+    fn detects_fetch_fetch_conflict() {
+        // Two packs declaring externals with the same target.
+        let fs = dummy_fs();
+        let pack_intents = vec![
+            (
+                "a".into(),
+                vec![fetch(
+                    "a",
+                    "shared",
+                    "https://a.example.com/x",
+                    "/home/.shared",
+                )],
+            ),
+            (
+                "b".into(),
+                vec![fetch(
+                    "b",
+                    "shared",
+                    "https://b.example.com/x",
+                    "/home/.shared",
+                )],
+            ),
+        ];
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].target, PathBuf::from("/home/.shared"));
     }
 
     #[test]

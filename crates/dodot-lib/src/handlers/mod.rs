@@ -10,6 +10,7 @@
 //! linking) but must not mutate anything — mutations are the executor's
 //! job. This keeps planning idempotent and safe to re-run.
 
+pub mod externals;
 pub mod filter;
 pub mod gate;
 pub mod homebrew;
@@ -72,6 +73,10 @@ pub enum ExecutionPhase {
     /// Claim files to drop or list-but-not-act-on (ignore, skip). No
     /// executable intent is produced.
     Filter,
+    /// Fetch external content (externals.toml). Runs before Provision
+    /// so install scripts and shell init can rely on fetched content
+    /// being in place at their target paths.
+    External,
     /// Install packages (homebrew).
     Provision,
     /// Run user setup scripts (install).
@@ -89,9 +94,14 @@ impl ExecutionPhase {
     ///
     /// Provision and Setup run user-authored code and are gated by
     /// sentinels; the rest are idempotent filesystem work.
+    ///
+    /// External is also sentinel-gated (fetch only when the upstream
+    /// signature differs from the recorded one) and must NOT be wiped
+    /// on every `up` — re-fetching gigabytes of cloned content every
+    /// run is unacceptable.
     pub fn category(self) -> HandlerCategory {
         match self {
-            Self::Provision | Self::Setup => HandlerCategory::CodeExecution,
+            Self::External | Self::Provision | Self::Setup => HandlerCategory::CodeExecution,
             Self::Filter | Self::PathExport | Self::ShellInit | Self::Link => {
                 HandlerCategory::Configuration
             }
@@ -286,6 +296,7 @@ pub const HANDLER_HOMEBREW: &str = "homebrew";
 pub const HANDLER_IGNORE: &str = "ignore";
 pub const HANDLER_SKIP: &str = "skip";
 pub const HANDLER_GATE: &str = "gate";
+pub const HANDLER_EXTERNAL: &str = "external";
 
 /// Names of all configuration-category handlers in the registry.
 ///
@@ -316,6 +327,10 @@ pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
     registry.insert(HANDLER_IGNORE.into(), Box::new(filter::IgnoreHandler));
     registry.insert(HANDLER_SKIP.into(), Box::new(filter::SkipHandler));
     registry.insert(HANDLER_GATE.into(), Box::new(gate::GateHandler));
+    registry.insert(
+        HANDLER_EXTERNAL.into(),
+        Box::new(externals::ExternalsHandler),
+    );
     registry.insert(HANDLER_SYMLINK.into(), Box::new(symlink::SymlinkHandler));
     registry.insert(HANDLER_SHELL.into(), Box::new(shell::ShellHandler));
     registry.insert(HANDLER_PATH.into(), Box::new(path::PathHandler));
@@ -379,7 +394,8 @@ mod tests {
 
     #[test]
     fn execution_phase_declaration_order_drives_ord() {
-        assert!(ExecutionPhase::Filter < ExecutionPhase::Provision);
+        assert!(ExecutionPhase::Filter < ExecutionPhase::External);
+        assert!(ExecutionPhase::External < ExecutionPhase::Provision);
         assert!(ExecutionPhase::Provision < ExecutionPhase::Setup);
         assert!(ExecutionPhase::Setup < ExecutionPhase::PathExport);
         assert!(ExecutionPhase::PathExport < ExecutionPhase::ShellInit);
@@ -391,6 +407,10 @@ mod tests {
         assert_eq!(
             ExecutionPhase::Filter.category(),
             HandlerCategory::Configuration
+        );
+        assert_eq!(
+            ExecutionPhase::External.category(),
+            HandlerCategory::CodeExecution
         );
         assert_eq!(
             ExecutionPhase::Provision.category(),
@@ -421,6 +441,7 @@ mod tests {
         assert_eq!(registry[HANDLER_IGNORE].phase(), ExecutionPhase::Filter);
         assert_eq!(registry[HANDLER_SKIP].phase(), ExecutionPhase::Filter);
         assert_eq!(registry[HANDLER_GATE].phase(), ExecutionPhase::Filter);
+        assert_eq!(registry[HANDLER_EXTERNAL].phase(), ExecutionPhase::External);
         assert_eq!(
             registry[HANDLER_HOMEBREW].phase(),
             ExecutionPhase::Provision

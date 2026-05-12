@@ -509,6 +509,15 @@ pub struct MappingsSection {
     #[config(default = "Brewfile")]
     pub homebrew: String,
 
+    /// Filename patterns for the externals handler.
+    ///
+    /// The file declares one TOML section per external resource (a
+    /// remote file, a git-repo, an archive). See the
+    /// [`externals`](crate::handlers::externals) handler for the
+    /// per-entry schema.
+    #[config(default = ["externals.toml"])]
+    pub externals: Vec<String>,
+
     /// Filename patterns to drop from handler processing entirely.
     /// Matches are silent: nothing surfaces in `dodot status`, mirroring
     /// `.gitignore`'s mental model. Defaults are empty; common build /
@@ -656,6 +665,20 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
             case_insensitive: false,
             options: HashMap::new(),
         });
+    }
+
+    // Externals handler — priority 20 so the precise `externals.toml`
+    // match wins over any user-overridden `*.toml`-ish shell glob.
+    for pattern in &mappings.externals {
+        if !pattern.is_empty() {
+            rules.push(Rule {
+                pattern: pattern.clone(),
+                handler: "external".into(),
+                priority: 20,
+                case_insensitive: false,
+                options: HashMap::new(),
+            });
+        }
     }
 
     // Ignore patterns: route to the `ignore` filter handler. Priority
@@ -859,6 +882,7 @@ mod tests {
         );
         assert_eq!(cfg.mappings.homebrew, "Brewfile");
         assert_eq!(cfg.mappings.shell, vec!["*.sh", "*.bash", "*.zsh"]);
+        assert_eq!(cfg.mappings.externals, vec!["externals.toml"]);
         assert!(cfg.mappings.ignore.is_empty());
         assert!(
             cfg.mappings.skip.iter().any(|p| p == "README"),
@@ -962,6 +986,7 @@ homebrew = "RootBrewfile"
             install: vec!["install.sh".into(), "install.zsh".into()],
             shell: vec!["aliases.sh".into(), "profile.sh".into()],
             homebrew: "Brewfile".into(),
+            externals: vec!["externals.toml".into()],
             ignore: vec!["*.tmp".into()],
             skip: vec![],
             gates: std::collections::HashMap::new(),
@@ -969,14 +994,15 @@ homebrew = "RootBrewfile"
 
         let rules = mappings_to_rules(&mappings);
 
-        // Should have: path, 2x install, 2x shell, homebrew, 1x ignore, catchall = 8
-        assert_eq!(rules.len(), 8, "rules: {rules:#?}");
+        // path + 2 install + 2 shell + homebrew + externals + ignore + catchall = 9
+        assert_eq!(rules.len(), 9, "rules: {rules:#?}");
 
         let handler_names: Vec<&str> = rules.iter().map(|r| r.handler.as_str()).collect();
         assert!(handler_names.contains(&"path"));
         assert!(handler_names.contains(&"install"));
         assert!(handler_names.contains(&"shell"));
         assert!(handler_names.contains(&"homebrew"));
+        assert!(handler_names.contains(&"external"));
         assert!(handler_names.contains(&"ignore"));
         assert!(handler_names.contains(&"symlink"));
 
@@ -1004,6 +1030,7 @@ homebrew = "RootBrewfile"
             install: vec!["install.sh".into()],
             shell: vec!["*.sh".into()],
             homebrew: String::new(),
+            externals: vec![],
             ignore: vec![],
             skip: vec![],
             gates: std::collections::HashMap::new(),
@@ -1028,6 +1055,7 @@ homebrew = "RootBrewfile"
             install: vec![],
             shell: vec![],
             homebrew: String::new(),
+            externals: vec![],
             ignore: vec![],
             skip: vec!["README".into(), "README.*".into(), "LICENSE".into()],
             gates: std::collections::HashMap::new(),

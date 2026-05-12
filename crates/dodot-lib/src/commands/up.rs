@@ -662,5 +662,8 @@ fn extract_op_info(
         crate::operations::Operation::CheckSentinel {
             handler, sentinel, ..
         } => (handler.clone(), sentinel.clone(), None),
+        crate::operations::Operation::FetchExternal {
+            handler, name, url, ..
+        } => (handler.clone(), format!("{name} ← {url}"), None),
     }
 }
