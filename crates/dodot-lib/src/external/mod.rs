@@ -20,7 +20,12 @@
 //! actual network work.
 
 mod fetch;
+mod git;
 mod spec;
 
 pub use fetch::{HttpFetchError, HttpFetcher, UreqFetcher};
+pub use git::{GitError, GitRunner, ShellGitRunner};
 pub use spec::{parse_externals_toml, ExternalEntry, ExternalsToml, FetchSpec};
+
+#[cfg(any(test, feature = "test-utils"))]
+pub use git::MockGitRunner;

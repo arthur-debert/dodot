@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Externals handler `type = "git-repo"` (PR 2 of stacked series)** —
+  `externals.toml` now accepts `type = "git-repo"` entries. The
+  executor shallow-clones (`--depth=1 --filter=blob:none`) into the
+  datastore on first run and uses `git ls-remote HEAD` as the
+  freshness oracle on subsequent runs: only when the upstream SHA
+  differs from the local clone's HEAD does dodot shell out to
+  `git fetch --depth=1` + `git reset --hard FETCH_HEAD`. Offline
+  is tolerated — `ls-remote` failing during a refresh leaves the
+  cached clone in place and surfaces a non-success result. The
+  `git` binary on PATH is required; missing-git is a hard error
+  (not transient). Sparse-tree fetch via `subpath` and
+  `ref` / `commit` pinning arrive in a follow-up PR.
+
 - **Externals handler (PR 1 of stacked series, file type only)** —
   packs can now declare remote resources in an `externals.toml` file
   at the pack root. Each section declares one entry; this PR

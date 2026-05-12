@@ -31,7 +31,7 @@ mod stage;
 use tracing::debug;
 
 use crate::datastore::DataStore;
-use crate::external::HttpFetcher;
+use crate::external::{GitRunner, HttpFetcher};
 use crate::fs::Fs;
 use crate::operations::{HandlerIntent, OperationResult};
 use crate::paths::Pather;
@@ -52,6 +52,9 @@ pub struct Executor<'a> {
     /// dispatcher errors loudly if it sees a Fetch intent without
     /// one. Production wiring sets this via [`Self::with_fetcher`].
     fetcher: Option<&'a dyn HttpFetcher>,
+    /// Git runner for `git-repo` externals. Same opt-in posture as
+    /// [`Self::fetcher`].
+    git: Option<&'a dyn GitRunner>,
 }
 
 impl<'a> Executor<'a> {
@@ -73,6 +76,7 @@ impl<'a> Executor<'a> {
             provision_rerun,
             auto_chmod_exec,
             fetcher: None,
+            git: None,
         }
     }
 
@@ -82,9 +86,21 @@ impl<'a> Executor<'a> {
         self
     }
 
+    /// Builder-style: install the git runner used by `git-repo`
+    /// externals.
+    pub fn with_git(mut self, git: &'a dyn GitRunner) -> Self {
+        self.git = Some(git);
+        self
+    }
+
     /// Accessor for the fetch dispatcher.
     pub(super) fn fetcher(&self) -> Option<&'a dyn HttpFetcher> {
         self.fetcher
+    }
+
+    /// Accessor for the fetch dispatcher (git side).
+    pub(super) fn git(&self) -> Option<&'a dyn GitRunner> {
+        self.git
     }
 
     /// Execute a list of handler intents, returning one result per

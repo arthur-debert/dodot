@@ -2,17 +2,23 @@
 //! create the user-visible symlink that exposes it.
 //!
 //! Sentinel posture mirrors the install handler: the entry's content
-//! signature (for `file`, the configured sha256) is the sentinel
-//! payload. Re-running `up` with the same sha256 is a no-op. Bumping
-//! the sha256 in `externals.toml` invalidates the old sentinel, so the
-//! file is re-fetched and re-verified.
+//! signature is the sentinel payload.
+//!
+//! - For `file`, the signature is the user-declared sha256 in
+//!   `externals.toml`. Re-running `up` with the same sha256 is a
+//!   no-op; bumping it invalidates the old sentinel.
+//! - For `git-repo`, the signature is the upstream HEAD SHA returned
+//!   by a cheap `git ls-remote`. If the remote SHA matches the local
+//!   clone's HEAD, the clone is left alone — even if `up` is run
+//!   many times in a session. If the remote has moved, the executor
+//!   shells out to `git fetch --depth=1 + reset --hard FETCH_HEAD`.
 //!
 //! Failure posture:
 //! - **Integrity failure** (sha256 mismatch) is fatal — we refuse to
 //!   write tampered content into the datastore.
 //! - **Network failure** is soft — if a cached copy is present we leave
 //!   it in place and report the failure as a non-success result; other
-//!   intents still execute.
+//!   intents still execute. This covers both HTTP and git transports.
 
 use std::path::Path;
 
@@ -42,10 +48,13 @@ impl<'a> Executor<'a> {
             FetchSpec::File { url, sha256 } => {
                 self.execute_fetch_file(pack, handler, name, url, sha256, user_path)
             }
+            FetchSpec::GitRepo { url } => {
+                self.execute_fetch_git_repo(pack, handler, name, url, user_path)
+            }
             FetchSpec::Unsupported => Ok(vec![OperationResult::fail(
                 fetch_op(pack, handler, name, "<unsupported>"),
                 format!(
-                    "external '{name}': unsupported type — only `type = \"file\"` is implemented in this release"
+                    "external '{name}': unsupported type — supported in this release: `file`, `git-repo`"
                 ),
             )]),
         }
@@ -77,6 +86,20 @@ impl<'a> Executor<'a> {
                         "[dry-run] would fetch {url} → {} (verify sha256={})",
                         user_path.display(),
                         short(sha256)
+                    )
+                };
+                vec![OperationResult::ok(fetch_op(pack, handler, name, url), msg)]
+            }
+            FetchSpec::GitRepo { url } => {
+                let datastore_path = self.paths.handler_data_dir(pack, handler).join(name);
+                let already = self.fs.exists(&datastore_path);
+                let msg = if already {
+                    format!("[dry-run] {name} would ls-remote {url} and refresh only if upstream differs")
+                } else {
+                    format!(
+                        "[dry-run] would clone {url} → {} → {}",
+                        datastore_path.display(),
+                        user_path.display()
                     )
                 };
                 vec![OperationResult::ok(fetch_op(pack, handler, name, url), msg)]
@@ -207,6 +230,223 @@ impl<'a> Executor<'a> {
             OperationResult::ok(
                 op(),
                 format!("{name}: fetched {} bytes from {url}", bytes.len()),
+            ),
+            OperationResult::ok(create_link, format!("{name} → {}", user_path.display())),
+        ])
+    }
+
+    /// Fetch one `type = "git-repo"` external.
+    ///
+    /// Upstream HEAD is the freshness oracle. Flow:
+    /// 1. Compute the datastore path: `<handler_data_dir>/<name>`.
+    /// 2. If the path doesn't exist → shallow-clone fresh.
+    /// 3. Otherwise → `git ls-remote HEAD` on the upstream URL. If
+    ///    it matches the local clone's HEAD, no-op. If it differs,
+    ///    fetch + reset --hard.
+    /// 4. Make sure the user-visible symlink target → datastore path.
+    ///
+    /// Network failures (ls-remote, fetch, even initial clone) are
+    /// soft: the cached clone (if any) stays put and the result
+    /// surfaces as a non-success — `up` continues with the rest of
+    /// the pack.
+    fn execute_fetch_git_repo(
+        &self,
+        pack: &str,
+        handler: &str,
+        name: &str,
+        url: &str,
+        user_path: &Path,
+    ) -> Result<Vec<OperationResult>> {
+        let op = || fetch_op(pack, handler, name, url);
+
+        let Some(git) = self.git() else {
+            return Ok(vec![OperationResult::fail(
+                op(),
+                format!(
+                    "external '{name}': executor has no git runner configured; call Executor::with_git() in production wiring"
+                ),
+            )]);
+        };
+
+        let datastore_path = self.paths.handler_data_dir(pack, handler).join(name);
+        let already_cloned = self.fs.exists(&datastore_path);
+
+        if !already_cloned {
+            // Fresh clone path. The datastore dir's parent must exist.
+            if let Some(parent) = datastore_path.parent() {
+                self.fs.mkdir_all(parent)?;
+            }
+            info!(pack, name, url, "shallow-cloning external");
+            let sha = match git.shallow_clone(url, &datastore_path) {
+                Ok(s) => s,
+                Err(err) => {
+                    warn!(pack, name, %err, "git clone failed");
+                    return Ok(vec![OperationResult::fail(
+                        op(),
+                        format!("{name}: clone failed: {err}"),
+                    )]);
+                }
+            };
+            return self.finish_git_repo(
+                pack,
+                handler,
+                name,
+                url,
+                &datastore_path,
+                user_path,
+                &sha,
+            );
+        }
+
+        // Existing clone path. We need the local HEAD regardless of
+        // whether ls-remote succeeds, so read it first — a corrupted
+        // local clone is a hard error that should surface even if
+        // upstream happens to be reachable.
+        let local = match git.local_head(&datastore_path) {
+            Ok(s) => s,
+            Err(err) => {
+                // The clone exists but git can't read it — corrupted
+                // state. Better to surface than to silently re-clone
+                // (which could mask a deeper problem).
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!(
+                        "{name}: existing clone at {} is unreadable: {err}",
+                        datastore_path.display()
+                    ),
+                )]);
+            }
+        };
+
+        // Cheap freshness check. Transient ls-remote failures don't
+        // abort the run, but they DO surface as non-success results —
+        // claiming "fresh" when we couldn't actually verify upstream
+        // would be misleading. The cached clone is already symlinked
+        // from a prior successful run; nothing more needed on disk.
+        let upstream = match git.ls_remote_head(url) {
+            Ok(s) => s,
+            Err(err) if err.is_transient() => {
+                warn!(pack, name, %err, "ls-remote failed (transient); using cached clone");
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!(
+                        "{name}: ls-remote failed ({err}); using cached clone at {}",
+                        short(&local)
+                    ),
+                )]);
+            }
+            Err(err) => {
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!("{name}: ls-remote failed: {err}"),
+                )]);
+            }
+        };
+
+        // From here on, upstream and local are both known SHAs.
+        let (final_sha, was_refreshed) = if upstream == self.force_refresh_target(&local) {
+            (local, false)
+        } else {
+            info!(
+                pack, name,
+                local = %short(&local),
+                remote = %short(&upstream),
+                "upstream moved; fetching + reset"
+            );
+            match git.fetch_and_reset(&datastore_path) {
+                Ok(s) => (s, true),
+                Err(err) if err.is_transient() => {
+                    warn!(pack, name, %err, "fetch+reset failed (transient); keeping cached");
+                    // Cached SHA stands; we tried to refresh but the
+                    // network blipped after ls-remote succeeded.
+                    return Ok(vec![OperationResult::fail(
+                        op(),
+                        format!(
+                            "{name}: fetch failed ({err}); cached clone at {} stays in place",
+                            short(&local)
+                        ),
+                    )]);
+                }
+                Err(err) => {
+                    return Ok(vec![OperationResult::fail(
+                        op(),
+                        format!("{name}: fetch failed: {err}"),
+                    )]);
+                }
+            }
+        };
+
+        // Refresh sentinel + symlink either way (idempotent).
+        let mut results = self.finish_git_repo(
+            pack,
+            handler,
+            name,
+            url,
+            &datastore_path,
+            user_path,
+            &final_sha,
+        )?;
+        if !was_refreshed && self.fetcher_message_overridable(&results) {
+            // Only rewrite the "fetched" message when we actually
+            // know upstream matches local — i.e. ls-remote succeeded
+            // and the SHAs lined up. The transient-failure path
+            // already returned above.
+            results[0] = OperationResult::ok(
+                op(),
+                format!("{name}: fresh ({} == upstream)", short(&final_sha)),
+            );
+        }
+        Ok(results)
+    }
+
+    /// Forced refresh shim: when `--force` is set we want to refresh
+    /// even if local == remote, so flip the comparison target to
+    /// guarantee a mismatch.
+    fn force_refresh_target(&self, local: &str) -> String {
+        if self.force {
+            format!("force-refresh-{local}")
+        } else {
+            local.to_string()
+        }
+    }
+
+    /// True when the first result is the "fetched bytes" message that
+    /// the caller can safely replace with a "fresh" message.
+    fn fetcher_message_overridable(&self, results: &[OperationResult]) -> bool {
+        results.first().is_some_and(|r| r.success)
+    }
+
+    /// Symlink + sentinel finalize for git-repo. Shared by initial
+    /// clone and refresh paths.
+    #[allow(clippy::too_many_arguments)]
+    fn finish_git_repo(
+        &self,
+        pack: &str,
+        handler: &str,
+        name: &str,
+        url: &str,
+        datastore_path: &Path,
+        user_path: &Path,
+        sha: &str,
+    ) -> Result<Vec<OperationResult>> {
+        self.create_external_user_link(datastore_path, user_path)?;
+        let sentinel = git_repo_sentinel(name, sha);
+        self.write_sentinel(pack, handler, &sentinel)?;
+
+        let create_link = Operation::CreateUserLink {
+            pack: pack.to_string(),
+            handler: handler.to_string(),
+            datastore_path: datastore_path.to_path_buf(),
+            user_path: user_path.to_path_buf(),
+        };
+        Ok(vec![
+            OperationResult::ok(
+                fetch_op(pack, handler, name, url),
+                format!(
+                    "{name}: HEAD={} at {}",
+                    short(sha),
+                    datastore_path.display()
+                ),
             ),
             OperationResult::ok(create_link, format!("{name} → {}", user_path.display())),
         ])
@@ -347,6 +587,14 @@ fn file_sentinel(name: &str, sha256: &str) -> String {
     format!("{name}-{}", short(sha256))
 }
 
+/// Sentinel filename for a `type = "git-repo"` entry. The SHA prefix
+/// is the upstream HEAD commit we deployed; bumping upstream changes
+/// the sentinel, so `dodot status` can tell at a glance which commit
+/// is live.
+fn git_repo_sentinel(name: &str, sha: &str) -> String {
+    format!("{name}-git-{}", short(sha))
+}
+
 /// Derive the on-disk filename inside the datastore subdir from the
 /// target path. Falls back to "content" when the target ends in `/`.
 fn filename_for_target(target: &Path) -> String {
@@ -394,6 +642,7 @@ mod tests {
     use crate::external::{FetchSpec, HttpFetchError, HttpFetcher};
     use crate::fs::Fs;
     use crate::operations::HandlerIntent;
+    use crate::paths::Pather;
     use crate::testing::TempEnvironment;
     use std::sync::Mutex;
 
@@ -815,5 +1064,230 @@ mod tests {
         assert!(fetcher.calls().is_empty());
         assert!(!env.fs.exists(&user_path));
         env.assert_no_handler_state("shared", "external");
+    }
+
+    // ── git-repo ───────────────────────────────────────────────
+
+    use crate::external::MockGitRunner;
+
+    fn git_intent(name: &str, url: &str, user_path: std::path::PathBuf) -> HandlerIntent {
+        HandlerIntent::Fetch {
+            pack: "frameworks".into(),
+            handler: "external".into(),
+            name: name.into(),
+            spec: FetchSpec::GitRepo { url: url.into() },
+            user_path,
+        }
+    }
+
+    #[test]
+    fn git_repo_fresh_clone_runs_once_then_idempotent() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let git = MockGitRunner::new("a".repeat(40).as_str(), b"# omz\n");
+        let user_path = env.home.join(".oh-my-zsh");
+        let intent = git_intent("omz", "https://x/omz.git", user_path.clone());
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_git(&git);
+
+        // First run: clone happens.
+        let first = executor.execute(vec![intent.clone()]).unwrap();
+        assert_eq!(first.len(), 2);
+        assert!(first.iter().all(|r| r.success), "{first:#?}");
+        assert!(
+            git.calls().iter().any(|c| c.starts_with("clone ")),
+            "{:?}",
+            git.calls()
+        );
+        assert!(env.fs.is_symlink(&user_path));
+
+        // Second run: clone exists, ls-remote matches local → no fetch.
+        let calls_before = git.calls().len();
+        let second = executor.execute(vec![intent]).unwrap();
+        assert!(second.iter().all(|r| r.success), "{second:#?}");
+        assert!(
+            second[0].message.contains("fresh"),
+            "msg: {}",
+            second[0].message
+        );
+        let calls_after = git.calls();
+        // The second run should add ls-remote + local_head, but no
+        // fetch / clone.
+        let added = &calls_after[calls_before..];
+        assert!(
+            added.iter().any(|c| c.starts_with("ls-remote ")),
+            "{added:?}"
+        );
+        assert!(added.iter().all(|c| !c.starts_with("clone ")), "{added:?}");
+        assert!(
+            added.iter().all(|c| !c.starts_with("fetch+reset ")),
+            "{added:?}"
+        );
+    }
+
+    #[test]
+    fn git_repo_refreshes_when_upstream_moves() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let git = MockGitRunner::new(&"a".repeat(40), b"v1");
+        let user_path = env.home.join(".oh-my-zsh");
+        let intent = git_intent("omz", "https://x/omz.git", user_path.clone());
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_git(&git);
+
+        // Initial clone.
+        executor.execute(vec![intent.clone()]).unwrap();
+
+        // Upstream moves; next run must fetch+reset.
+        git.set_upstream_sha(&"b".repeat(40));
+        let results = executor.execute(vec![intent]).unwrap();
+        assert!(results.iter().all(|r| r.success), "{results:#?}");
+        assert!(
+            git.calls().iter().any(|c| c.starts_with("fetch+reset ")),
+            "{:?}",
+            git.calls()
+        );
+        // The marker file should reflect the refresh.
+        let datastore_path = env
+            .paths
+            .handler_data_dir("frameworks", "external")
+            .join("omz");
+        let content = std::fs::read_to_string(datastore_path.join("README.md")).unwrap();
+        assert!(content.contains("# refreshed"), "got: {content:?}");
+    }
+
+    #[test]
+    fn git_repo_offline_ls_remote_surfaces_failure_keeps_clone() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let git = MockGitRunner::new(&"a".repeat(40), b"# omz\n");
+        let user_path = env.home.join(".oh-my-zsh");
+        let intent = git_intent("omz", "https://x/omz.git", user_path.clone());
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_git(&git);
+
+        // Initial clone succeeds.
+        executor.execute(vec![intent.clone()]).unwrap();
+
+        // Network goes down. ls-remote fails transiently; we must
+        // SURFACE that as a failed OperationResult (claiming "fresh"
+        // would lie about an upstream check we couldn't perform), but
+        // the cached clone and its symlink stay healthy.
+        git.set_ls_remote_offline(true);
+        let results = executor.execute(vec![intent]).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "{results:#?}");
+        assert!(
+            results[0].message.contains("ls-remote failed"),
+            "msg: {}",
+            results[0].message
+        );
+        assert!(
+            results[0].message.contains("cached clone"),
+            "msg: {}",
+            results[0].message
+        );
+        // Symlink still points at the clone — the previous successful
+        // run left it in place and we didn't disturb it.
+        assert!(env.fs.is_symlink(&user_path));
+    }
+
+    #[test]
+    fn git_repo_offline_fetch_after_upstream_move_soft_fails() {
+        // Exercise the post-ls-remote, mid-refresh failure path:
+        // upstream moved, ls-remote returned a new SHA, but fetch+reset
+        // hits a transient error. The cached clone (at the old SHA)
+        // stays in place and the result surfaces as non-success.
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let git = MockGitRunner::new(&"a".repeat(40), b"# omz\n");
+        let user_path = env.home.join(".oh-my-zsh");
+        let intent = git_intent("omz", "https://x/omz.git", user_path.clone());
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_git(&git);
+
+        // First run clones.
+        executor.execute(vec![intent.clone()]).unwrap();
+
+        // Move upstream; fetch fails transiently.
+        git.set_upstream_sha(&"b".repeat(40));
+        git.set_fetch_offline(true);
+        let results = executor.execute(vec![intent]).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(
+            results[0].message.contains("fetch failed") || results[0].message.contains("cached"),
+            "msg: {}",
+            results[0].message
+        );
+    }
+
+    #[test]
+    fn git_repo_dry_run_does_not_touch_filesystem() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let git = MockGitRunner::new(&"a".repeat(40), b"# omz\n");
+        let user_path = env.home.join(".oh-my-zsh");
+        let intent = git_intent("omz", "https://x/omz.git", user_path.clone());
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            true,
+            false,
+            false,
+            true,
+        )
+        .with_git(&git);
+
+        let results = executor.execute(vec![intent]).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert!(
+            results[0].message.contains("[dry-run]"),
+            "msg: {}",
+            results[0].message
+        );
+        // No clone calls, no symlink, no datastore tree.
+        assert!(git.calls().is_empty());
+        assert!(!env.fs.exists(&user_path));
+        env.assert_no_handler_state("frameworks", "external");
     }
 }
