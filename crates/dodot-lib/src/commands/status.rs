@@ -155,21 +155,35 @@ fn format_path_relative_to_home(path: &std::path::Path, home: &std::path::Path) 
 }
 
 /// Display name for a symlink intent — the file's pack-relative path
-/// when the source lives under the pack tree, falling back to the
-/// source basename for preprocessor outputs (which live in the
-/// datastore, outside the pack). Matches the `name` column the matches
-/// loop used to produce, just expanded per-leaf for escape-prefix dirs.
-fn intent_display_name(source: &std::path::Path, pack_path: &std::path::Path) -> String {
+/// when the source lives under the pack tree.
+///
+/// Preprocessor outputs live in `<data>/<pack>/preprocessed/<virtual>`
+/// (e.g. `subdir/config.toml` is the virtual path of
+/// `subdir/config.toml.tmpl`), so stripping that prefix recovers the
+/// user-meaningful `subdir/config.toml` — not just `config.toml`,
+/// which would collapse nested templates onto the same row and lose
+/// the subdirectory the user sees in their pack.
+///
+/// Final fallback is the source basename, only reached for sources
+/// that live neither under the pack nor under the preprocessed dir
+/// (no production path produces such intents today; the fallback is
+/// defensive).
+fn intent_display_name(
+    source: &std::path::Path,
+    pack_path: &std::path::Path,
+    preprocessed_dir: &std::path::Path,
+) -> String {
+    if let Ok(rel) = source.strip_prefix(pack_path) {
+        return rel.to_string_lossy().into_owned();
+    }
+    if let Ok(rel) = source.strip_prefix(preprocessed_dir) {
+        return rel.to_string_lossy().into_owned();
+    }
     source
-        .strip_prefix(pack_path)
-        .map(|r| r.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| {
-            source
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned()
-        })
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Verify symlink handler chain for a single file.
@@ -726,6 +740,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // on non-macOS yields zero intents (`Resolution::Skip`), so the
         // old explicit `_lib/`-suppress branch is no longer needed.
         let home = ctx.paths.home_dir();
+        let preprocessed_dir = ctx.paths.handler_data_dir(&pack.name, "preprocessed");
         for intent in &intents_for_pack {
             let HandlerIntent::Link {
                 source, user_path, ..
@@ -734,7 +749,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 continue;
             };
 
-            let name = intent_display_name(source, &pack.path);
+            let name = intent_display_name(source, &pack.path, &preprocessed_dir);
             let user_target_display = format_path_relative_to_home(user_path, home);
             let health = verify_symlink(source, user_path, &pack.name, ctx);
             let status_label = health.label(HANDLER_SYMLINK);
@@ -800,4 +815,52 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::intent_display_name;
+    use std::path::Path;
+
+    #[test]
+    fn intent_display_name_pack_relative_for_pack_file() {
+        let name = intent_display_name(
+            Path::new("/dot/iina/_app/foo/bar.conf"),
+            Path::new("/dot/iina"),
+            Path::new("/data/iina/preprocessed"),
+        );
+        assert_eq!(name, "_app/foo/bar.conf");
+    }
+
+    #[test]
+    fn intent_display_name_strips_preprocessed_prefix_for_rendered_files() {
+        // Defensive: if the preprocessor pipeline ever produces a
+        // rendered source under a subdir of the `preprocessed` dir
+        // (e.g. `subdir/config.toml` rendered from
+        // `subdir/config.toml.tmpl`), status must surface the
+        // user-meaningful virtual-relative path — not just the
+        // basename, which would collide with a pack-root file of the
+        // same name. Today the top-level scanner is depth-1 so no
+        // production path produces such sources, but the helper has to
+        // be correct in case that changes.
+        let name = intent_display_name(
+            Path::new("/data/iina/preprocessed/subdir/config.toml"),
+            Path::new("/dot/iina"),
+            Path::new("/data/iina/preprocessed"),
+        );
+        assert_eq!(name, "subdir/config.toml");
+    }
+
+    #[test]
+    fn intent_display_name_falls_back_to_basename_for_unrelated_paths() {
+        // Last-resort fallback for sources that live neither under
+        // the pack nor under the preprocessed dir. No production path
+        // produces such intents today; the fallback is purely defensive.
+        let name = intent_display_name(
+            Path::new("/elsewhere/foo.conf"),
+            Path::new("/dot/iina"),
+            Path::new("/data/iina/preprocessed"),
+        );
+        assert_eq!(name, "foo.conf");
+    }
 }
