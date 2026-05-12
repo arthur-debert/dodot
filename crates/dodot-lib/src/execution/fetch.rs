@@ -48,9 +48,21 @@ impl<'a> Executor<'a> {
             FetchSpec::File { url, sha256 } => {
                 self.execute_fetch_file(pack, handler, name, url, sha256, user_path)
             }
-            FetchSpec::GitRepo { url } => {
-                self.execute_fetch_git_repo(pack, handler, name, url, user_path)
-            }
+            FetchSpec::GitRepo {
+                url,
+                subpath,
+                git_ref,
+                commit,
+            } => self.execute_fetch_git_repo(
+                pack,
+                handler,
+                name,
+                url,
+                subpath.as_deref(),
+                git_ref.as_deref(),
+                commit.as_deref(),
+                user_path,
+            ),
             FetchSpec::Unsupported => Ok(vec![OperationResult::fail(
                 fetch_op(pack, handler, name, "<unsupported>"),
                 format!(
@@ -90,14 +102,36 @@ impl<'a> Executor<'a> {
                 };
                 vec![OperationResult::ok(fetch_op(pack, handler, name, url), msg)]
             }
-            FetchSpec::GitRepo { url } => {
+            FetchSpec::GitRepo {
+                url,
+                subpath,
+                git_ref,
+                commit,
+            } => {
                 let datastore_path = self.paths.handler_data_dir(pack, handler).join(name);
                 let already = self.fs.exists(&datastore_path);
+                let pin_label = match (git_ref.as_deref(), commit.as_deref()) {
+                    (Some(r), _) => format!(" @ ref={r}"),
+                    (_, Some(c)) => format!(" @ commit={}", short(c)),
+                    _ => String::new(),
+                };
+                let subpath_label = subpath
+                    .as_deref()
+                    .map(|p| format!(" subpath={p}"))
+                    .unwrap_or_default();
                 let msg = if already {
-                    format!("[dry-run] {name} would ls-remote {url} and refresh only if upstream differs")
+                    if commit.is_some() {
+                        format!(
+                            "[dry-run] {name} pinned to commit; refresh only when TOML changes{subpath_label}"
+                        )
+                    } else {
+                        format!(
+                            "[dry-run] {name} would ls-remote {url}{pin_label} and refresh only if upstream differs{subpath_label}"
+                        )
+                    }
                 } else {
                     format!(
-                        "[dry-run] would clone {url} → {} → {}",
+                        "[dry-run] would clone {url}{pin_label} → {}{subpath_label} → {}",
                         datastore_path.display(),
                         user_path.display()
                     )
@@ -237,24 +271,33 @@ impl<'a> Executor<'a> {
 
     /// Fetch one `type = "git-repo"` external.
     ///
-    /// Upstream HEAD is the freshness oracle. Flow:
-    /// 1. Compute the datastore path: `<handler_data_dir>/<name>`.
-    /// 2. If the path doesn't exist → shallow-clone fresh.
-    /// 3. Otherwise → `git ls-remote HEAD` on the upstream URL. If
-    ///    it matches the local clone's HEAD, no-op. If it differs,
-    ///    fetch + reset --hard.
-    /// 4. Make sure the user-visible symlink target → datastore path.
+    /// Freshness model:
+    /// - **Unpinned** (`git_ref = None`, `commit = None`):
+    ///   `git ls-remote HEAD`; refresh when upstream moves.
+    /// - **`ref = "v1"`**: `git ls-remote v1`; refresh when that
+    ///   reference's SHA changes (rare for tags, possible for
+    ///   branch refs).
+    /// - **`commit = "<sha>"`**: no ls-remote at all; check the
+    ///   local clone against the pinned SHA and refresh only if
+    ///   they differ (which happens when the user edits the TOML).
+    ///
+    /// `subpath` triggers sparse-checkout on the initial clone; the
+    /// user-visible symlink then targets that subpath inside the
+    /// clone.
     ///
     /// Network failures (ls-remote, fetch, even initial clone) are
     /// soft: the cached clone (if any) stays put and the result
-    /// surfaces as a non-success — `up` continues with the rest of
-    /// the pack.
+    /// surfaces as a non-success.
+    #[allow(clippy::too_many_arguments)]
     fn execute_fetch_git_repo(
         &self,
         pack: &str,
         handler: &str,
         name: &str,
         url: &str,
+        subpath: Option<&str>,
+        git_ref: Option<&str>,
+        commit: Option<&str>,
         user_path: &Path,
     ) -> Result<Vec<OperationResult>> {
         let op = || fetch_op(pack, handler, name, url);
@@ -268,16 +311,34 @@ impl<'a> Executor<'a> {
             )]);
         };
 
-        let datastore_path = self.paths.handler_data_dir(pack, handler).join(name);
-        let already_cloned = self.fs.exists(&datastore_path);
+        // The clone always lands at <handler_data_dir>/<name>/. When
+        // subpath is set, the user-visible symlink points one level
+        // deeper.
+        let clone_path = self.paths.handler_data_dir(pack, handler).join(name);
+        let already_cloned = self.fs.exists(&clone_path);
+        let symlink_target = match subpath {
+            Some(p) => clone_path.join(p),
+            None => clone_path.clone(),
+        };
+
+        // Reference we ask git about. `commit` pins skip ls-remote
+        // entirely; otherwise we use the configured ref or HEAD.
+        let tracking_ref = git_ref.unwrap_or("HEAD");
 
         if !already_cloned {
-            // Fresh clone path. The datastore dir's parent must exist.
-            if let Some(parent) = datastore_path.parent() {
+            // Fresh clone path.
+            if let Some(parent) = clone_path.parent() {
                 self.fs.mkdir_all(parent)?;
             }
-            info!(pack, name, url, "shallow-cloning external");
-            let sha = match git.shallow_clone(url, &datastore_path) {
+            info!(
+                pack,
+                name,
+                url,
+                ?git_ref,
+                ?subpath,
+                "shallow-cloning external"
+            );
+            let cloned_sha = match git.shallow_clone(url, &clone_path, git_ref, subpath) {
                 Ok(s) => s,
                 Err(err) => {
                     warn!(pack, name, %err, "git clone failed");
@@ -287,50 +348,142 @@ impl<'a> Executor<'a> {
                     )]);
                 }
             };
+            // Pinned to a specific commit: snap HEAD to that commit
+            // after the clone so the local SHA matches the pin.
+            //
+            // A shallow clone (--depth=1) only ships the tip object,
+            // so a non-tip commit won't be reachable yet — fetch it
+            // explicitly first, then check out.
+            let final_sha = if let Some(c) = commit {
+                if !cloned_sha.eq_ignore_ascii_case(c) {
+                    if let Err(err) = git.fetch_and_reset(&clone_path, c) {
+                        return Ok(vec![OperationResult::fail(
+                            op(),
+                            format!("{name}: fetch {} after clone failed: {err}", short(c)),
+                        )]);
+                    }
+                    if let Err(err) = git.checkout(&clone_path, c) {
+                        return Ok(vec![OperationResult::fail(
+                            op(),
+                            format!("{name}: checkout {} after clone failed: {err}", short(c)),
+                        )]);
+                    }
+                }
+                c.to_string()
+            } else {
+                cloned_sha
+            };
             return self.finish_git_repo(
                 pack,
                 handler,
                 name,
                 url,
-                &datastore_path,
+                &clone_path,
+                &symlink_target,
                 user_path,
-                &sha,
+                &final_sha,
             );
         }
 
-        // Existing clone path. We need the local HEAD regardless of
-        // whether ls-remote succeeds, so read it first — a corrupted
-        // local clone is a hard error that should surface even if
-        // upstream happens to be reachable.
-        let local = match git.local_head(&datastore_path) {
+        // Existing clone — read local first so a corrupted clone is
+        // surfaced as a hard failure regardless of whether upstream is
+        // reachable.
+        let local = match git.local_head(&clone_path) {
             Ok(s) => s,
             Err(err) => {
-                // The clone exists but git can't read it — corrupted
-                // state. Better to surface than to silently re-clone
-                // (which could mask a deeper problem).
                 return Ok(vec![OperationResult::fail(
                     op(),
                     format!(
                         "{name}: existing clone at {} is unreadable: {err}",
-                        datastore_path.display()
+                        clone_path.display()
                     ),
                 )]);
             }
         };
 
-        // Cheap freshness check. Transient ls-remote failures don't
-        // abort the run, but they DO surface as non-success results —
-        // claiming "fresh" when we couldn't actually verify upstream
-        // would be misleading. The cached clone is already symlinked
-        // from a prior successful run; nothing more needed on disk.
-        let upstream = match git.ls_remote_head(url) {
+        // Commit pin: compare local against the pin directly; no
+        // ls-remote needed since the spec pins a fixed SHA.
+        if let Some(c) = commit {
+            if local.eq_ignore_ascii_case(c) && !self.force {
+                return self
+                    .finish_git_repo(
+                        pack,
+                        handler,
+                        name,
+                        url,
+                        &clone_path,
+                        &symlink_target,
+                        user_path,
+                        &local,
+                    )
+                    .map(|mut results| {
+                        if let Some(r) = results.first_mut() {
+                            *r = OperationResult::ok(
+                                op(),
+                                format!("{name}: pinned to commit {}", short(c)),
+                            );
+                        }
+                        results
+                    });
+            }
+            // Pin moved or --force: fetch the pin, then checkout.
+            match git.fetch_and_reset(&clone_path, c) {
+                Ok(_) => {}
+                Err(err) if err.is_transient() => {
+                    return Ok(vec![OperationResult::fail(
+                        op(),
+                        format!(
+                            "{name}: fetch {} failed ({err}); cached clone at {} stays in place",
+                            short(c),
+                            short(&local)
+                        ),
+                    )]);
+                }
+                Err(err) => {
+                    return Ok(vec![OperationResult::fail(
+                        op(),
+                        format!("{name}: fetch {} failed: {err}", short(c)),
+                    )]);
+                }
+            }
+            // After fetch+reset, local HEAD should be at `c`. The
+            // explicit checkout is belt-and-braces in case the user
+            // pinned a non-tip commit and FETCH_HEAD landed on a
+            // different ref. Checkout failure is a hard fail rather
+            // than a warning — leaving the tree in a mismatched state
+            // would silently mislead `dodot status`.
+            if let Err(err) = git.checkout(&clone_path, c) {
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!("{name}: checkout {} after fetch failed: {err}", short(c)),
+                )]);
+            }
+            return self.finish_git_repo(
+                pack,
+                handler,
+                name,
+                url,
+                &clone_path,
+                &symlink_target,
+                user_path,
+                c,
+            );
+        }
+
+        // Unpinned or ref-pinned: ls-remote the tracking reference.
+        // Transient ls-remote failures don't abort the run, but they
+        // DO surface as non-success — claiming "fresh" when we
+        // couldn't actually verify upstream would mislead. The cached
+        // clone (already symlinked from the prior successful run)
+        // stays put.
+        let upstream = match git.ls_remote(url, tracking_ref) {
             Ok(s) => s,
             Err(err) if err.is_transient() => {
                 warn!(pack, name, %err, "ls-remote failed (transient); using cached clone");
                 return Ok(vec![OperationResult::fail(
                     op(),
                     format!(
-                        "{name}: ls-remote failed ({err}); using cached clone at {}",
+                        "{name}: ls-remote {tracking_ref} failed ({err}); using cached clone at {}",
                         short(&local)
                     ),
                 )]);
@@ -338,12 +491,12 @@ impl<'a> Executor<'a> {
             Err(err) => {
                 return Ok(vec![OperationResult::fail(
                     op(),
-                    format!("{name}: ls-remote failed: {err}"),
+                    format!("{name}: ls-remote {tracking_ref} failed: {err}"),
                 )]);
             }
         };
 
-        // From here on, upstream and local are both known SHAs.
+        // Both upstream and local are known SHAs from here on.
         let (final_sha, was_refreshed) = if upstream == self.force_refresh_target(&local) {
             (local, false)
         } else {
@@ -353,12 +506,10 @@ impl<'a> Executor<'a> {
                 remote = %short(&upstream),
                 "upstream moved; fetching + reset"
             );
-            match git.fetch_and_reset(&datastore_path) {
+            match git.fetch_and_reset(&clone_path, tracking_ref) {
                 Ok(s) => (s, true),
                 Err(err) if err.is_transient() => {
                     warn!(pack, name, %err, "fetch+reset failed (transient); keeping cached");
-                    // Cached SHA stands; we tried to refresh but the
-                    // network blipped after ls-remote succeeded.
                     return Ok(vec![OperationResult::fail(
                         op(),
                         format!(
@@ -376,20 +527,20 @@ impl<'a> Executor<'a> {
             }
         };
 
-        // Refresh sentinel + symlink either way (idempotent).
         let mut results = self.finish_git_repo(
             pack,
             handler,
             name,
             url,
-            &datastore_path,
+            &clone_path,
+            &symlink_target,
             user_path,
             &final_sha,
         )?;
         if !was_refreshed && self.fetcher_message_overridable(&results) {
-            // Only rewrite the "fetched" message when we actually
+            // Only rewrite to "fresh (== upstream)" when we actually
             // know upstream matches local — i.e. ls-remote succeeded
-            // and the SHAs lined up. The transient-failure path
+            // and the SHAs lined up. The transient-failure paths
             // already returned above.
             results[0] = OperationResult::ok(
                 op(),
@@ -418,6 +569,11 @@ impl<'a> Executor<'a> {
 
     /// Symlink + sentinel finalize for git-repo. Shared by initial
     /// clone and refresh paths.
+    ///
+    /// `clone_path` is the on-disk clone root (always
+    /// `<handler_data_dir>/<name>`); `symlink_target` is where the
+    /// user-visible symlink should point — equal to `clone_path` when
+    /// no subpath is configured, deeper otherwise.
     #[allow(clippy::too_many_arguments)]
     fn finish_git_repo(
         &self,
@@ -425,28 +581,25 @@ impl<'a> Executor<'a> {
         handler: &str,
         name: &str,
         url: &str,
-        datastore_path: &Path,
+        clone_path: &Path,
+        symlink_target: &Path,
         user_path: &Path,
         sha: &str,
     ) -> Result<Vec<OperationResult>> {
-        self.create_external_user_link(datastore_path, user_path)?;
+        self.create_external_user_link(symlink_target, user_path)?;
         let sentinel = git_repo_sentinel(name, sha);
         self.write_sentinel(pack, handler, &sentinel)?;
 
         let create_link = Operation::CreateUserLink {
             pack: pack.to_string(),
             handler: handler.to_string(),
-            datastore_path: datastore_path.to_path_buf(),
+            datastore_path: symlink_target.to_path_buf(),
             user_path: user_path.to_path_buf(),
         };
         Ok(vec![
             OperationResult::ok(
                 fetch_op(pack, handler, name, url),
-                format!(
-                    "{name}: HEAD={} at {}",
-                    short(sha),
-                    datastore_path.display()
-                ),
+                format!("{name}: HEAD={} at {}", short(sha), clone_path.display()),
             ),
             OperationResult::ok(create_link, format!("{name} → {}", user_path.display())),
         ])
@@ -1075,7 +1228,12 @@ mod tests {
             pack: "frameworks".into(),
             handler: "external".into(),
             name: name.into(),
-            spec: FetchSpec::GitRepo { url: url.into() },
+            spec: FetchSpec::GitRepo {
+                url: url.into(),
+                subpath: None,
+                git_ref: None,
+                commit: None,
+            },
             user_path,
         }
     }
@@ -1253,6 +1411,176 @@ mod tests {
         assert!(!results[0].success);
         assert!(
             results[0].message.contains("fetch failed") || results[0].message.contains("cached"),
+            "msg: {}",
+            results[0].message
+        );
+    }
+
+    fn git_intent_with(
+        name: &str,
+        url: &str,
+        subpath: Option<&str>,
+        git_ref: Option<&str>,
+        commit: Option<&str>,
+        user_path: std::path::PathBuf,
+    ) -> HandlerIntent {
+        HandlerIntent::Fetch {
+            pack: "frameworks".into(),
+            handler: "external".into(),
+            name: name.into(),
+            spec: FetchSpec::GitRepo {
+                url: url.into(),
+                subpath: subpath.map(String::from),
+                git_ref: git_ref.map(String::from),
+                commit: commit.map(String::from),
+            },
+            user_path,
+        }
+    }
+
+    #[test]
+    fn git_repo_subpath_targets_subdirectory() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let git = MockGitRunner::new(&"a".repeat(40), b"# themes\n");
+        let user_path = env.home.join(".config/zsh/themes/p10k");
+        let intent = git_intent_with(
+            "p10k",
+            "https://x/p10k.git",
+            Some("themes"),
+            None,
+            None,
+            user_path.clone(),
+        );
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_git(&git);
+
+        let results = executor.execute(vec![intent]).unwrap();
+        assert!(results.iter().all(|r| r.success), "{results:#?}");
+
+        // The symlink resolves through `themes/` inside the clone.
+        assert!(env.fs.is_symlink(&user_path));
+        let clone_root = env
+            .paths
+            .handler_data_dir("frameworks", "external")
+            .join("p10k");
+        let resolved = env.fs.readlink(&user_path).unwrap();
+        assert_eq!(resolved, clone_root.join("themes"));
+        // And the marker file (which the mock writes under subpath)
+        // is reachable through the symlink.
+        let content = env.fs.read_to_string(&user_path.join("README.md")).unwrap();
+        assert!(content.contains("# themes"));
+    }
+
+    #[test]
+    fn git_repo_ref_pin_uses_named_reference() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let git = MockGitRunner::new(&"a".repeat(40), b"# tagged\n");
+        let user_path = env.home.join(".oh-my-zsh");
+        let intent = git_intent_with(
+            "omz",
+            "https://x/omz.git",
+            None,
+            Some("v1.20.0"),
+            None,
+            user_path.clone(),
+        );
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_git(&git);
+
+        // First run clones --branch v1.20.0.
+        executor.execute(vec![intent.clone()]).unwrap();
+        assert!(
+            git.calls()
+                .iter()
+                .any(|c| c.contains("clone") && c.contains("ref=v1.20.0")),
+            "{:?}",
+            git.calls()
+        );
+
+        // Second run: ls-remote uses the configured ref, not HEAD.
+        let calls_before = git.calls().len();
+        executor.execute(vec![intent]).unwrap();
+        let new_calls = &git.calls()[calls_before..];
+        assert!(
+            new_calls
+                .iter()
+                .any(|c| c.contains("ls-remote") && c.ends_with(" v1.20.0")),
+            "{new_calls:?}"
+        );
+    }
+
+    #[test]
+    fn git_repo_commit_pin_skips_ls_remote_when_local_matches() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let commit = "deadbeef1234567890abcdef1234567890abcdef".to_string();
+        let git = MockGitRunner::new(&commit, b"# frozen\n");
+        let user_path = env.home.join(".oh-my-zsh");
+        let intent = git_intent_with(
+            "omz",
+            "https://x/omz.git",
+            None,
+            None,
+            Some(&commit),
+            user_path.clone(),
+        );
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_git(&git);
+
+        // First run clones. When the cloned tip already matches the
+        // pin (as the mock arranges via `MockGitRunner::new(&commit)`),
+        // the executor's commit-pin shortcut avoids an unnecessary
+        // checkout — confirm the clone happened.
+        executor.execute(vec![intent.clone()]).unwrap();
+        assert!(
+            git.calls().iter().any(|c| c.starts_with("clone ")),
+            "{:?}",
+            git.calls()
+        );
+
+        // Second run: local SHA matches pin → no ls-remote, no fetch.
+        let calls_before = git.calls().len();
+        let results = executor.execute(vec![intent]).unwrap();
+        let new_calls = &git.calls()[calls_before..];
+        assert!(
+            new_calls.iter().all(|c| !c.contains("ls-remote")),
+            "commit pin must not poll upstream: {new_calls:?}"
+        );
+        assert!(
+            new_calls.iter().all(|c| !c.contains("fetch+reset")),
+            "{new_calls:?}"
+        );
+        assert!(
+            results[0].message.contains("pinned to commit"),
             "msg: {}",
             results[0].message
         );
