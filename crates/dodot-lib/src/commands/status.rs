@@ -503,6 +503,11 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
     // Collect intents across all packs for conflict detection
     let mut pack_intents = Vec::new();
+    // Capture the active packs (post-filter, post-OS-gate) so the
+    // optional `--check-drift` pass at the end of status() respects
+    // the same scope and doesn't re-emit warnings for filtered or
+    // gated packs.
+    let mut active_packs: Vec<(String, String, std::path::PathBuf)> = Vec::new();
 
     for mut pack in all_packs {
         info!(pack = %pack.display_name, "checking pack status");
@@ -521,6 +526,11 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             ));
             continue;
         }
+        active_packs.push((
+            pack.name.clone(),
+            pack.display_name.clone(),
+            pack.path.clone(),
+        ));
         let rules = mappings_to_rules(&pack_config.mappings);
 
         let scanner = Scanner::new(ctx.fs.as_ref());
@@ -794,6 +804,16 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         debug!("no cross-pack conflicts");
     }
 
+    // Opt-in drift detection for externals. Surfaced as warnings on
+    // the result so they appear in the same channel as conflict /
+    // cross-pack notes — no separate rendering path. Scoped to the
+    // packs that survived `pack_filter` and the per-pack OS gate so
+    // `dodot status <pack> --check-drift` doesn't leak warnings
+    // for unrelated packs.
+    if ctx.check_drift {
+        warnings.extend(collect_drift_warnings(ctx, &active_packs)?);
+    }
+
     // Surface ignored packs by their display name, not the raw
     // on-disk directory — the prefix grammar must stay invisible to
     // the rendered "Ignored Packs" section just like every other
@@ -815,6 +835,72 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
     })
+}
+
+/// Run `--check-drift` over the supplied packs and emit a one-line
+/// warning per anomaly. `Clean` reports are dropped silently;
+/// everything else (drifted, missing, check-failed, not-implemented)
+/// surfaces so users know what the check could and couldn't see.
+///
+/// `active_packs` is `(on-disk name, display name, pack path)` so
+/// path resolution uses the on-disk name (datastore subdirs are
+/// keyed by it) while the warning text uses the display name (which
+/// is what the user typed / sees elsewhere). Mixing those up would
+/// look in the wrong datastore subtree for prefix-grammar packs.
+fn collect_drift_warnings(
+    ctx: &ExecutionContext,
+    active_packs: &[(String, String, std::path::PathBuf)],
+) -> Result<Vec<String>> {
+    use crate::external::{detect_drift_for_pack, DriftKind};
+    use crate::handlers::externals::EXTERNALS_TOML;
+
+    let mut out = Vec::new();
+    let git_runner = crate::external::ShellGitRunner::new();
+
+    for (on_disk_name, display_name, pack_path) in active_packs {
+        let toml_path = pack_path.join(EXTERNALS_TOML);
+        if !ctx.fs.exists(&toml_path) {
+            continue;
+        }
+        let bytes = match ctx.fs.read_file(&toml_path) {
+            Ok(b) => b,
+            Err(e) => {
+                out.push(format!(
+                    "{display_name}: drift check skipped — cannot read externals.toml: {e}"
+                ));
+                continue;
+            }
+        };
+        let reports = detect_drift_for_pack(
+            on_disk_name,
+            &bytes,
+            ctx.paths.as_ref(),
+            ctx.fs.as_ref(),
+            Some(&git_runner),
+        )?;
+        for r in reports {
+            match r.kind {
+                DriftKind::Clean => {}
+                DriftKind::Drifted => out.push(format!(
+                    "{display_name} / {}: drift — {}",
+                    r.entry_name, r.detail
+                )),
+                DriftKind::Missing => out.push(format!(
+                    "{display_name} / {}: deployed copy missing — {}",
+                    r.entry_name, r.detail
+                )),
+                DriftKind::CheckFailed => out.push(format!(
+                    "{display_name} / {}: drift check errored — {}",
+                    r.entry_name, r.detail
+                )),
+                DriftKind::NotImplemented => out.push(format!(
+                    "{display_name} / {}: drift check not implemented ({})",
+                    r.entry_name, r.detail
+                )),
+            }
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

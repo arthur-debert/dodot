@@ -39,6 +39,13 @@ pub struct ExecutionContext {
     pub no_provision: bool,
     pub provision_rerun: bool,
     pub force: bool,
+    /// Opt-in drift detection for externals. When true, `status`
+    /// hashes each deployed external entry's content and compares
+    /// against the configured signature, surfacing any divergence as
+    /// a warning. Default `false` because hashing every deployed
+    /// external on every `status` invocation is not the right default
+    /// for big trees (oh-my-zsh, etc.).
+    pub check_drift: bool,
     /// How pack-status output should render rows: `Full` keeps today's
     /// per-file listing, `Short` collapses each pack to one summary
     /// line. Consumed by every command that renders through the
@@ -126,6 +133,7 @@ impl ExecutionContext {
             no_provision: false,
             provision_rerun: false,
             force: false,
+            check_drift: false,
             view_mode: crate::commands::ViewMode::default(),
             group_mode: crate::commands::GroupMode::default(),
             verbose,

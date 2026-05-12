@@ -268,6 +268,7 @@ impl TutorialEnv {
             no_provision: false,
             provision_rerun: false,
             force: false,
+            check_drift: false,
             view_mode: ViewMode::Full,
             group_mode: GroupMode::Name,
             verbose: false,

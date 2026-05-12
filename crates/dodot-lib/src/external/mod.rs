@@ -20,11 +20,13 @@
 //! actual network work.
 
 mod archive;
+mod drift;
 mod fetch;
 mod git;
 mod spec;
 
 pub use archive::{read_all, read_member, ArchiveEntry, ArchiveError};
+pub use drift::{detect_drift_for_pack, DriftKind, DriftReport};
 pub use fetch::{HttpFetchError, HttpFetcher, UreqFetcher};
 pub use git::{GitError, GitRunner, ShellGitRunner};
 pub use spec::{parse_externals_toml, ArchiveFormat, ExternalEntry, ExternalsToml, FetchSpec};

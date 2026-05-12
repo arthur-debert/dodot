@@ -468,6 +468,12 @@ fn build_clap_command() -> ClapCommand {
                         .help("Pack names to show (all if omitted)")
                         .num_args(0..)
                         .action(ArgAction::Append),
+                )
+                .arg(
+                    Arg::new("check-drift")
+                        .long("check-drift")
+                        .help("Hash deployed externals and report any divergence from the configured signature (opt-in; can be slow for big trees)")
+                        .action(ArgAction::SetTrue),
                 ),
         )
         .subcommand(
