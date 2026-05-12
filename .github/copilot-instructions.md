@@ -11,10 +11,9 @@ This is a Rust project (CLI, library crate, or workspace).
   instead of `cargo test`). CI runs the same; if your suggestion doesn't
   pass, it won't merge — check `.github/workflows/` for the source of truth.
 - Never propose changes that leave tests failing.
-- Update the changelog's `## [Unreleased]` section in `CHANGELOG.md`
-  for user-visible changes. Don't create a separate
-  `CHANGELOG_UNRELEASED.md` file — the release pipeline reads
-  `## [Unreleased]` from `CHANGELOG.md` directly.
+- Update the changelog's `Unreleased` section for user-visible changes
+  (`CHANGELOG_UNRELEASED.md` if the project has one, otherwise the
+  `## [Unreleased]` section of `CHANGELOG.md`).
 
 ## Style and scope
 
