@@ -16,8 +16,8 @@ use crate::commands::{
 };
 use crate::config::mappings_to_rules;
 use crate::conflicts;
-use crate::handlers::symlink::resolve_target;
 use crate::handlers::{self, HANDLER_GATE, HANDLER_IGNORE, HANDLER_SKIP, HANDLER_SYMLINK};
+use crate::operations::HandlerIntent;
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::packs::{self};
 use crate::rules::Scanner;
@@ -141,15 +141,67 @@ fn describe_blocking_target(
     format!("{display} (existing {kind}) — `dodot up` will refuse without `--force`")
 }
 
+/// Render an absolute deploy path with `$HOME` collapsed to `~/…` for
+/// display. Mirrors the formatting used by the dry-run renderer in
+/// `commands::up::extract_op_info` so identical paths surface as
+/// identical strings whether they came from a planned intent or a
+/// completed operation.
+fn format_path_relative_to_home(path: &std::path::Path, home: &std::path::Path) -> String {
+    if let Ok(rel) = path.strip_prefix(home) {
+        format!("~/{}", rel.display())
+    } else {
+        path.display().to_string()
+    }
+}
+
+/// Display name for a symlink intent — the file's pack-relative path
+/// when the source lives under the pack tree.
+///
+/// Preprocessor outputs live in `<data>/<pack>/preprocessed/<virtual>`
+/// (e.g. `subdir/config.toml` is the virtual path of
+/// `subdir/config.toml.tmpl`), so stripping that prefix recovers the
+/// user-meaningful `subdir/config.toml` — not just `config.toml`,
+/// which would collapse nested templates onto the same row and lose
+/// the subdirectory the user sees in their pack.
+///
+/// Final fallback is the source basename, only reached for sources
+/// that live neither under the pack nor under the preprocessed dir
+/// (no production path produces such intents today; the fallback is
+/// defensive).
+fn intent_display_name(
+    source: &std::path::Path,
+    pack_path: &std::path::Path,
+    preprocessed_dir: &std::path::Path,
+) -> String {
+    if let Ok(rel) = source.strip_prefix(pack_path) {
+        return rel.to_string_lossy().into_owned();
+    }
+    if let Ok(rel) = source.strip_prefix(preprocessed_dir) {
+        return rel.to_string_lossy().into_owned();
+    }
+    source
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// Verify symlink handler chain for a single file.
 ///
+/// `user_target` is the resolved deploy path — provided by the caller
+/// (typically a [`HandlerIntent::Link`] from the planner). Status no
+/// longer re-derives it; doing so used to drift from the planner for
+/// escape-prefix dirs (`_home/`/`_xdg/`/`_app/`/`_lib/`), producing
+/// permanent "pending" rows for files the planner had successfully
+/// deployed under a *different* path. Source of truth lives in
+/// `resolve_target`, called once per intent in the planner.
+///
 /// Checks: data link exists → points to source → source exists →
-/// user link exists at resolve_target → points to data link.
+/// user link exists at `user_target` → points to data link.
 fn verify_symlink(
     source: &std::path::Path,
+    user_target: &std::path::Path,
     pack: &str,
-    rel_path: &str,
-    config: &crate::handlers::HandlerConfig,
     ctx: &ExecutionContext,
 ) -> Health {
     let filename = match source.file_name() {
@@ -182,13 +234,12 @@ fn verify_symlink(
         // #44: a non-symlink file whose content is byte-identical to the
         // source is also NOT a conflict — the executor will auto-replace
         // it without `--force`. Stay plain `pending` for that case.
-        let user_target = resolve_target(pack, rel_path, config, ctx.paths.as_ref());
-        if !ctx.fs.is_symlink(&user_target) && ctx.fs.exists(&user_target) {
-            if crate::equivalence::is_equivalent(&user_target, source, ctx.fs.as_ref()) {
+        if !ctx.fs.is_symlink(user_target) && ctx.fs.exists(user_target) {
+            if crate::equivalence::is_equivalent(user_target, source, ctx.fs.as_ref()) {
                 return Health::Pending;
             }
             let reason =
-                describe_blocking_target(&user_target, ctx.fs.as_ref(), ctx.paths.home_dir());
+                describe_blocking_target(user_target, ctx.fs.as_ref(), ctx.paths.home_dir());
             return Health::PendingConflict { reason };
         }
         return Health::Pending;
@@ -208,11 +259,9 @@ fn verify_symlink(
         return Health::Broken("broken: source file missing".into());
     }
 
-    // Step 4: Check user link at the currently-resolved target
-    let user_target = resolve_target(pack, rel_path, config, ctx.paths.as_ref());
-
-    if ctx.fs.is_symlink(&user_target) {
-        match ctx.fs.readlink(&user_target) {
+    // Step 4: Check user link at the intent's target
+    if ctx.fs.is_symlink(user_target) {
+        match ctx.fs.readlink(user_target) {
             Ok(link_target) if link_target == data_link => {
                 // Full chain verified
                 Health::Deployed
@@ -223,11 +272,11 @@ fn verify_symlink(
             }
             Err(_) => Health::Broken("broken: cannot read user link".into()),
         }
-    } else if ctx.fs.exists(&user_target) {
+    } else if ctx.fs.exists(user_target) {
         // Non-symlink file at target. If its content is byte-identical to
         // the source, `up` will auto-replace it (#44) — surface as Stale
         // (re-deploy fixes), not Broken. Otherwise it's a real conflict.
-        if crate::equivalence::is_equivalent(&user_target, source, ctx.fs.as_ref()) {
+        if crate::equivalence::is_equivalent(user_target, source, ctx.fs.as_ref()) {
             Health::Stale("stale: user link missing, re-deploy to fix".into())
         } else {
             Health::Broken("conflict: non-symlink file at target path".into())
@@ -558,26 +607,47 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             &pack_config.mappings.gates,
         )?;
 
-        // Collect intents for conflict detection. The first tuple
-        // element is the user-facing label that surfaces in any
-        // resulting `DisplayConflict.claimants` entry, so it tracks
-        // the pack's display name rather than its raw on-disk name.
-        // status is a Passive command — same §7.4 contract as the
-        // direct preprocess_pack call above.
-        match orchestration::plan_pack(&pack, ctx, crate::preprocessing::PreprocessMode::Passive) {
+        // Collect intents for conflict detection AND drive symlink
+        // rendering off the same intents the executor sees. Without
+        // this, status re-walked matches and re-resolved targets in
+        // parallel — and drifted for escape-prefix dirs (`_app/` etc.),
+        // since matches are top-level entries but the planner expands
+        // those per-leaf. Driving display off intents collapses the
+        // two paths into one and makes "render through status" actually
+        // truthful for every file the executor touched.
+        //
+        // The first tuple element is the user-facing label that
+        // surfaces in any resulting `DisplayConflict.claimants` entry,
+        // so it tracks the pack's display name rather than its raw
+        // on-disk name. status is a Passive command — same §7.4
+        // contract as the direct preprocess_pack call above.
+        let intents_for_pack: Vec<HandlerIntent> = match orchestration::plan_pack(
+            &pack,
+            ctx,
+            crate::preprocessing::PreprocessMode::Passive,
+        ) {
             Ok(plan) => {
                 warnings.extend(plan.warnings);
+                let intents = plan.intents.clone();
                 pack_intents.push((pack.display_name.clone(), plan.intents));
+                intents
             }
             Err(err) => {
                 warnings.push(format!(
                     "could not collect intents for pack '{}'; conflict detection may be incomplete: {}",
                     pack.display_name, err
                 ));
+                Vec::new()
             }
-        }
+        };
 
         let mut files = Vec::new();
+
+        // Pass 1: filter / non-deployable handlers (skip, gate) and the
+        // remaining deployable handlers that we still verify match-side
+        // (shell, path, install, homebrew). Symlink rows are emitted
+        // below, off the planner's intents, so they correctly expand
+        // escape-prefix dirs and never re-derive a target.
         for m in &matches {
             // The `ignore` filter handler claims files only to keep them
             // off the catchall and out of status. Drop them here so the
@@ -585,30 +655,12 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             if m.handler == HANDLER_IGNORE {
                 continue;
             }
-
-            let rel_str = m.relative_path.to_string_lossy().into_owned();
-
-            // Skip rows for `_lib/` entries on non-macOS. Two cases
-            // need to be handled:
-            //
-            // - `_lib/<rest>` files — the resolver returns
-            //   `Resolution::Skip` and the planner drops the intent.
-            // - the top-level `_lib` directory itself — its match
-            //   reaches status but `dir_intents` forces per-file mode
-            //   and every nested file resolves to Skip, so nothing
-            //   under the directory is ever deployed.
-            //
-            // Either way, rendering a "pending symlink" row alongside
-            // the planner's "skipping on this platform" warning would
-            // contradict the warning and mislead users.
-            if m.handler == HANDLER_SYMLINK
-                && !cfg!(target_os = "macos")
-                && (rel_str == "_lib" || rel_str.starts_with("_lib/"))
-            {
+            if m.handler == HANDLER_SYMLINK {
                 continue;
             }
 
-            // Per-file chain verification based on handler type
+            let rel_str = m.relative_path.to_string_lossy().into_owned();
+
             let health = match m.handler.as_str() {
                 h if h == HANDLER_SKIP => Health::Skipped,
                 h if h == HANDLER_GATE => {
@@ -637,9 +689,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                         actual,
                     }
                 }
-                "symlink" => {
-                    verify_symlink(&m.absolute_path, &pack.name, &rel_str, &pack.config, ctx)
-                }
                 "shell" | "path" => verify_staged(&m.absolute_path, &pack.name, &m.handler, ctx),
                 _ => {
                     // install, homebrew — use existing handler check_status
@@ -659,20 +708,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 }
             };
 
-            // Compute actual target path for symlink handler display
-            let user_target = if m.handler == HANDLER_SYMLINK {
-                let target = resolve_target(&pack.name, &rel_str, &pack.config, ctx.paths.as_ref());
-                let home = ctx.paths.home_dir();
-                let display = if let Ok(rel) = target.strip_prefix(home) {
-                    format!("~/{}", rel.display())
-                } else {
-                    target.display().to_string()
-                };
-                Some(display)
-            } else {
-                None
-            };
-
             let status_label = health.label(&m.handler);
             // For PendingConflict, allocate a command-wide note index and
             // stash the reason in the global notes list. The row keeps
@@ -688,10 +723,54 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             files.push(DisplayFile {
                 name: rel_str.clone(),
                 symbol: handler_symbol(&m.handler).into(),
-                description: handler_description(&m.handler, &rel_str, user_target.as_deref()),
+                description: handler_description(&m.handler, &rel_str, None),
                 status: health.style().into(),
                 status_label,
                 handler: m.handler.clone(),
+                note_ref,
+            });
+        }
+
+        // Pass 2: symlink rows from planner intents — one row per Link
+        // intent. For escape-prefix dirs (`_app/` etc.) the planner
+        // recurses per-leaf, so this produces N rows where the matches
+        // loop would have produced 1 wrongly-targeted row. For wholesale
+        // dirs (`nvim`) and plain top-level files the planner produces
+        // exactly one intent, matching the old per-match output. `_lib/`
+        // on non-macOS yields zero intents (`Resolution::Skip`), so the
+        // old explicit `_lib/`-suppress branch is no longer needed.
+        let home = ctx.paths.home_dir();
+        let preprocessed_dir = ctx.paths.handler_data_dir(&pack.name, "preprocessed");
+        for intent in &intents_for_pack {
+            let HandlerIntent::Link {
+                source, user_path, ..
+            } = intent
+            else {
+                continue;
+            };
+
+            let name = intent_display_name(source, &pack.path, &preprocessed_dir);
+            let user_target_display = format_path_relative_to_home(user_path, home);
+            let health = verify_symlink(source, user_path, &pack.name, ctx);
+            let status_label = health.label(HANDLER_SYMLINK);
+            let note_ref = health.footnote_reason().map(|reason| {
+                notes.push(DisplayNote {
+                    body: reason,
+                    hint: None,
+                });
+                notes.len() as u32
+            });
+            files.push(DisplayFile {
+                name: name.clone(),
+                symbol: handler_symbol(HANDLER_SYMLINK).into(),
+                description: handler_description(
+                    HANDLER_SYMLINK,
+                    &name,
+                    Some(&user_target_display),
+                ),
+                status: health.style().into(),
+                status_label,
+                handler: HANDLER_SYMLINK.into(),
                 note_ref,
             });
         }
@@ -736,4 +815,52 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::intent_display_name;
+    use std::path::Path;
+
+    #[test]
+    fn intent_display_name_pack_relative_for_pack_file() {
+        let name = intent_display_name(
+            Path::new("/dot/iina/_app/foo/bar.conf"),
+            Path::new("/dot/iina"),
+            Path::new("/data/iina/preprocessed"),
+        );
+        assert_eq!(name, "_app/foo/bar.conf");
+    }
+
+    #[test]
+    fn intent_display_name_strips_preprocessed_prefix_for_rendered_files() {
+        // Defensive: if the preprocessor pipeline ever produces a
+        // rendered source under a subdir of the `preprocessed` dir
+        // (e.g. `subdir/config.toml` rendered from
+        // `subdir/config.toml.tmpl`), status must surface the
+        // user-meaningful virtual-relative path — not just the
+        // basename, which would collide with a pack-root file of the
+        // same name. Today the top-level scanner is depth-1 so no
+        // production path produces such sources, but the helper has to
+        // be correct in case that changes.
+        let name = intent_display_name(
+            Path::new("/data/iina/preprocessed/subdir/config.toml"),
+            Path::new("/dot/iina"),
+            Path::new("/data/iina/preprocessed"),
+        );
+        assert_eq!(name, "subdir/config.toml");
+    }
+
+    #[test]
+    fn intent_display_name_falls_back_to_basename_for_unrelated_paths() {
+        // Last-resort fallback for sources that live neither under
+        // the pack nor under the preprocessed dir. No production path
+        // produces such intents today; the fallback is purely defensive.
+        let name = intent_display_name(
+            Path::new("/elsewhere/foo.conf"),
+            Path::new("/dot/iina"),
+            Path::new("/data/iina/preprocessed"),
+        );
+        assert_eq!(name, "foo.conf");
+    }
 }

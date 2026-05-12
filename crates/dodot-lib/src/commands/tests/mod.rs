@@ -295,6 +295,96 @@ fn status_lists_top_level_dirs_wholesale() {
     );
 }
 
+/// Regression: status must follow the planner's intent expansion for
+/// escape-prefix directories (`_home/`, `_xdg/`, `_app/`, `_lib/`).
+///
+/// Before this was fixed, status iterated raw scanner matches and
+/// rendered `_app` as a single row resolving to the default rule
+/// (`$XDG_CONFIG_HOME/<pack>/_app`) — a path the planner never deploys
+/// to. Because the data link for that bogus target never exists,
+/// verification reported "pending" indefinitely, even after a
+/// successful `up`. Meanwhile the real leaf files (deployed under
+/// `<app_support>/...` per the `_app/<rest>` rule) didn't appear in
+/// status output at all.
+///
+/// The fix has status drive its deployable rows from
+/// `orchestration::plan_pack` (the same intents the executor runs),
+/// not from raw matches. This test pins that contract end-to-end:
+/// after `up`, status must show the per-leaf row deployed at the
+/// app-support path — never an `_app` row pointing at
+/// `~/.config/<pack>/_app pending`.
+#[test]
+fn up_then_status_expands_app_escape_prefix_per_file() {
+    let env = TempEnvironment::builder()
+        .pack("iina")
+        .file("_app/com.colliderli.iina/input_conf/mine.conf", "# keys")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+
+    // up must deploy the leaf to the app-support path the planner's
+    // `_app/<rest>` rule resolves to.
+    commands::up::up(None, &ctx).unwrap();
+    let deployed_user_link = env
+        .app_support
+        .join("com.colliderli.iina/input_conf/mine.conf");
+    assert!(
+        env.fs.is_symlink(&deployed_user_link),
+        "up should have created the user link at {}",
+        deployed_user_link.display()
+    );
+
+    // status must render that deployment, not a bogus `_app` row.
+    let result = commands::status::status(None, &ctx).unwrap();
+    let pack = result
+        .packs
+        .iter()
+        .find(|p| p.name == "iina")
+        .expect("iina pack must appear in status");
+
+    // No row should claim the bogus default-rule target. If status
+    // emits an `_app` row at all, it must not pretend the deploy
+    // landed under `~/.config/iina/_app`.
+    let bogus_target_row = pack
+        .files
+        .iter()
+        .find(|f| f.handler == "symlink" && f.description.contains(".config/iina/_app"));
+    assert!(
+        bogus_target_row.is_none(),
+        "status must not surface the default-rule `_app` target; \
+         escape-prefix dirs expand per-file. got: {:?}",
+        pack.files
+            .iter()
+            .map(|f| (&f.name, &f.description, &f.status))
+            .collect::<Vec<_>>()
+    );
+
+    // The leaf file must appear as a deployed symlink row, with the
+    // target pointing somewhere under the app-support root.
+    let leaf = pack
+        .files
+        .iter()
+        .find(|f| {
+            f.handler == "symlink"
+                && f.description
+                    .contains("com.colliderli.iina/input_conf/mine.conf")
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a deployed leaf row for the `_app/.../mine.conf` file; got: {:?}",
+                pack.files
+                    .iter()
+                    .map(|f| (&f.name, &f.description, &f.status))
+                    .collect::<Vec<_>>()
+            )
+        });
+    assert_eq!(
+        leaf.status, "deployed",
+        "leaf row must be deployed after up; row: {leaf:?}"
+    );
+}
+
 // ── up ──────────────────────────────────────────────────────
 
 #[test]
