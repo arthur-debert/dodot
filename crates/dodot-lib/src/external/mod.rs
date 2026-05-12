@@ -19,13 +19,15 @@
 //! executor consumes intents and calls a `HttpFetcher` to do the
 //! actual network work.
 
+mod archive;
 mod fetch;
 mod git;
 mod spec;
 
+pub use archive::{read_all, read_member, ArchiveEntry, ArchiveError};
 pub use fetch::{HttpFetchError, HttpFetcher, UreqFetcher};
 pub use git::{GitError, GitRunner, ShellGitRunner};
-pub use spec::{parse_externals_toml, ExternalEntry, ExternalsToml, FetchSpec};
+pub use spec::{parse_externals_toml, ArchiveFormat, ExternalEntry, ExternalsToml, FetchSpec};
 
 #[cfg(any(test, feature = "test-utils"))]
 pub use git::MockGitRunner;

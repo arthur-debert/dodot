@@ -103,9 +103,67 @@ pub enum FetchSpec {
         commit: Option<String>,
     },
 
+    /// A downloaded archive, extracted whole into the datastore. The
+    /// user-visible symlink target points at the extracted tree.
+    Archive {
+        url: String,
+        /// Required content hash of the archive bytes (mandatory for
+        /// the same reason as [`Self::File::sha256`] — an unpinned
+        /// archive has no integrity story).
+        sha256: String,
+        /// Optional explicit format. When omitted, the format is
+        /// inferred from the URL's filename: `.tar.gz` / `.tgz` →
+        /// tar+gzip; `.zip` → zip. Anything else requires this
+        /// field.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        format: Option<ArchiveFormat>,
+    },
+
+    /// A single entry extracted from a downloaded archive.
+    ///
+    /// Use this when the archive contains many files but the user
+    /// wants only one deployed to the target.
+    ArchiveFile {
+        url: String,
+        sha256: String,
+        /// Path of the archive member to extract, relative to the
+        /// archive root (e.g. `"powerlevel10k-master/powerlevel10k.zsh-theme"`).
+        member: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        format: Option<ArchiveFormat>,
+    },
+
     /// Catchall for type values dodot doesn't implement yet.
     #[serde(other)]
     Unsupported,
+}
+
+/// Supported archive formats. Both can be deflate-compressed (gzip
+/// for tar, deflate for zip).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArchiveFormat {
+    TarGz,
+    Zip,
+}
+
+impl ArchiveFormat {
+    /// Infer the archive format from a URL's filename. Returns
+    /// `None` when no suffix matches a supported format — caller
+    /// should ask for an explicit `format` field in that case.
+    pub fn infer_from_url(url: &str) -> Option<Self> {
+        // Drop query / fragment so URLs like `…/foo.zip?token=…`
+        // still match.
+        let stem = url.split(['?', '#']).next().unwrap_or(url);
+        let stem_lower = stem.to_ascii_lowercase();
+        if stem_lower.ends_with(".tar.gz") || stem_lower.ends_with(".tgz") {
+            Some(Self::TarGz)
+        } else if stem_lower.ends_with(".zip") {
+            Some(Self::Zip)
+        } else {
+            None
+        }
+    }
 }
 
 /// Parse the bytes of an `externals.toml` file.

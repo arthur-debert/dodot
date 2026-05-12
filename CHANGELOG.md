@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Externals handler: `archive` and `archive-file` types (PR 4 of stacked series)** —
+  Two new spec variants in `externals.toml`:
+  - `type = "archive"` — download an archive, sha256-verify, extract
+    the whole tree into the datastore. The user-visible target
+    symlink points at the extracted directory.
+  - `type = "archive-file"` — same fetch + verify path, but only
+    one named member is extracted. The target symlink points at
+    the single extracted file.
+
+  Supported formats: gzipped tar (`.tar.gz` / `.tgz`) and zip
+  (`.zip`). Format is inferred from the URL filename; pass
+  `format = "tar-gz"` or `format = "zip"` explicitly for URLs
+  without a recognized suffix. Archive entries with unsafe paths
+  (absolute, `..` components) are rejected at extraction time.
+  `zip = "2"` added as a dependency for zip support.
+
 - **Externals handler: `subpath`, `ref`, `commit` (PR 3 of stacked series)** —
   `type = "git-repo"` now accepts three optional fields:
   - `subpath = "themes"` — sparse-checkout pattern. Only that
