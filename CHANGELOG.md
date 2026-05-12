@@ -8,18 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!--
   ⚠️  PUT UNRELEASED CHANGES UNDER `## [Unreleased]` BELOW — NOT IN A
   SEPARATE FILE. The release pipeline
-  (`arthur-debert/release/.github/workflows/rust-cli.yml@v1`) reads
-  this section directly: it copies the bullets into the GitHub release
-  notes and rewrites the heading to `## [<version>] - <date>` at
-  release time. If `[Unreleased]` is empty, the release job fails with
-  "CHANGELOG section [Unreleased] is missing or empty in CHANGELOG.md"
-  (see `roll-changelog.sh`).
+  (`arthur-debert/release/.github/workflows/rust-cli.yml@v1`, which
+  shells out to `roll-changelog.sh` in that repo — not in this one)
+  reads this section directly: it copies the bullets into the GitHub
+  release notes and rewrites the heading to `## [<version>] - <date>`
+  at release time. If `[Unreleased]` is empty, the release job fails
+  with "CHANGELOG section [Unreleased] is missing or empty in
+  CHANGELOG.md" and aborts before tagging.
 
   Use level-3 subsections (`### Added`, `### Changed`, `### Deprecated`,
   `### Removed`, `### Fixed`, `### Security`) so they nest cleanly
   under the rewritten version heading. The historical
-  `CHANGELOG_UNRELEASED.md` staging file was removed — see entry
-  for 4.1.0 below.
+  `CHANGELOG_UNRELEASED.md` staging file (deprecated in 4.1.0 when
+  the release pipeline migrated, but not actually removed until this
+  cycle) is gone.
 -->
 
 ## [Unreleased]
