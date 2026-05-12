@@ -221,6 +221,7 @@ pub fn execute_intents(
     );
     let auto_chmod = ctx.config_manager.root_config()?.path.auto_chmod_exec;
     let fetcher = crate::external::UreqFetcher::new();
+    let git = crate::external::ShellGitRunner::new();
     let executor = Executor::new(
         ctx.datastore.as_ref(),
         ctx.fs.as_ref(),
@@ -230,7 +231,8 @@ pub fn execute_intents(
         ctx.provision_rerun,
         auto_chmod,
     )
-    .with_fetcher(&fetcher);
+    .with_fetcher(&fetcher)
+    .with_git(&git);
     executor.execute(intents)
 }
 
