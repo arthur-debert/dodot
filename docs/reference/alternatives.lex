@@ -68,10 +68,23 @@ Alternatives — how dodot compares to the rest of the space
 
     3.4. Things chezmoi can do that dodot doesn't
 
-        - External files pinned by URL or git ref (`.chezmoiexternal.toml`).
-        - More built-in secret providers (AWS/Azure/Keeper/LastPass/Dashlane/Doppler/etc.).
-        - Per-machine answers prompted interactively at `chezmoi init` and stored as template data.
-        - Cross-platform Windows support is more mature.
+        Worth separating these by what kind of difference they are. Not every item on a "X can do Y, dodot can't" list is the same shape: some are structural gaps in dodot, some are intentional non-goals, some are mechanically easy to add as adoption grows, and some are convenience verbs over capability dodot already has.
+
+            | Item                                                 | Kind                  |
+            | External files pinned by URL or git ref              | Structural gap        |
+            | Per-machine answers prompted at `chezmoi init`       | Convenience / UX      |
+            | AWS/Azure/Keeper/LastPass/Dashlane/Doppler providers | Adoption-driven       |
+            | Cross-platform Windows support                       | Intentional non-goal  |
+        :: table align=ll ::
+
+        Walking each:
+
+        - *External files (structural).* chezmoi's `.chezmoiexternal.toml` declares resources that should exist on disk but are sourced from upstream — `type = "git-repo"` for oh-my-zsh, `type = "archive"` for a Nerd Font zip, `type = "file"` for a single URL'd file, `type = "archive-file"` for one file inside an archive. Each entry has a `refreshPeriod` so `chezmoi apply` re-checks upstream on a cadence. dodot has no analog. A dodot user covers the same need today with an `install.sh` that does `git clone && git pull` (content-hashed, but doesn't periodically refresh on its own) or a git submodule (manual `--remote` updates) or a Brewfile entry (when upstream ships through brew). The gap is real; adding it would mean a new handler with new failure modes (network, untrusted upstream, hash pinning), so the design cost is non-zero even if the implementation is small.
+        - *Init-time prompts (convenience).* `chezmoi init` runs `.chezmoi.toml.tmpl` and prompts for any `promptStringOnce` calls, writing the answers to `~/.config/chezmoi/chezmoi.toml`. dodot already has the underlying mechanism — per-machine template vars under `[preprocessor.template.vars]` — but no interactive verb that asks for them on first run. Strictly a missing UX shortcut, not a capability gap.
+        - *More secret providers (adoption-driven).* dodot ships six providers covering the most-used ground (pass, op, bw, sops, keychain, secret-tool) plus age/gpg whole-file. AWS Secrets Manager, Azure Key Vault, LastPass, Dashlane, Doppler, Keeper, etc. would be additional implementations of the same provider trait; they materialize as user demand surfaces.
+        - *Windows (intentional non-goal).* dodot is unix-first by design; macOS plists and XDG/Library path resolution sit at the center of the value proposition. Windows is not on the roadmap.
+
+        Once you discount the intentional non-goal and the adoption-driven item, **external files is the one structural capability dodot is missing**.
 
     3.5. A note on `chezmoi diff` and `chezmoi merge`
 
@@ -263,10 +276,19 @@ Alternatives — how dodot compares to the rest of the space
 
     7.4. Things Home Manager can do that dodot doesn't
 
-        - True reproducibility: a `flake.lock` plus your `home.nix` reproduces byte-identical environment on another machine.
-        - Atomic rollback to a prior generation in one command.
-        - Package installation _unified_ with config in one declarative tree (no separate Brewfile concept; `home.packages` is the manifest).
-        - First-class typed schemas per program (`programs.git.signing.key`, `programs.neovim.plugins`, etc.) — discoverable, composable, version-controlled.
+        Three of these four are intentional non-goals for dodot — features that would require accepting the Nix tax (a 6-GB package manager, a workflow shift away from hand-edited config files, deployed files that become read-only store symlinks). The remaining one is a structural choice with a small workaround.
+
+            | Item                                       | Kind                              |
+            | Byte-identical reproducibility (flake.lock) | Intentional non-goal             |
+            | Atomic rollback to a prior generation       | Intentional non-goal             |
+            | Typed per-program schemas                   | Intentional non-goal             |
+            | Unified package install (`home.packages`)   | Architectural difference         |
+        :: table align=ll ::
+
+        - *Reproducibility (intentional non-goal).* A pinned `flake.lock` plus `home.nix` reproduces the same environment on another machine, byte for byte. dodot offers reproducibility-by-convention (your dotfiles repo + a stable system) but not byte-identical guarantees — that property requires content-addressed package storage, which requires Nix. [./philosophy.lex] §7 ("no central orchestration") and the broader anti-DSL stance imply dodot won't go there.
+        - *Atomic rollback (intentional non-goal).* `home-manager switch --rollback` reverses to the previous generation in one command. dodot's philosophy §7 explicitly takes the other side: "git keeps history of your configs; that is the history you want." Adding generation-based rollback would mean dodot owning a history of past deployments, which is exactly the bespoke-state-representation the design rules out.
+        - *Typed per-program schemas (intentional non-goal).* `programs.git.signing.key = "...";` is type-checked, discoverable in the module registry, and composable across hosts. The trade-off: you author the schema's Nix surface, not the program's native config language; coverage is wide but lags upstream features. dodot reads existing files in their native formats and stays out of the schema-wrapping business — same posture as "no DSL" in philosophy §2.
+        - *Unified package install (architectural difference).* `home.packages = [ ... ];` lives in the same declarative tree as everything else; there's no separate Brewfile concept. dodot keeps the boundaries between handlers crisp: `Brewfile` → homebrew handler, `install.sh` → install handler. The result is two manifests instead of one, but each speaks its native language (Brewfile syntax for brew, shell for one-shot setup) rather than going through a unified Nix expression. This is a different design choice rather than a capability gap; the surface area on dodot's side is the same, just split.
 
     7.5. Migration cost
 
@@ -309,9 +331,13 @@ Alternatives — how dodot compares to the rest of the space
 
     8.4. Things dotter can do that dodot doesn't
 
-        - Custom helpers in Rhai scripting embedded in Handlebars templates.
-        - Per-machine target path overrides — useful when the same `init.vim` lives at different paths on Linux vs Windows.
-        - Sub-Stow positioning: dotter explicitly markets itself as "a Stow that does templating."
+            | Item                                                  | Kind                     |
+            | Custom Handlebars helpers in Rhai                      | Adoption-driven          |
+            | Per-machine target path overrides (`local.toml`)       | Adoption-driven          |
+        :: table align=ll ::
+
+        - *Custom helpers (adoption-driven).* dotter lets you write `name = "path/to/script.rhai"` under `[helpers]` and call the function from a Handlebars template. dodot's MiniJinja templates ship a built-in filter set and don't accept user-supplied helpers; adding a hook for it is a small extension, not a structural change.
+        - *Per-machine target overrides (adoption-driven).* dotter's `local.toml` is gitignored and overrides target paths per host (useful when `init.vim` lives at different paths on Linux vs Windows). dodot's `[symlink.targets]` is the equivalent surface but lives in committed config; per-machine overrides today go through template-rendered config or hostname-gated alternate files. A gitignored local-overlay file (a kind of `.dodot.local.toml`) would close this cleanly.
 
     8.5. Migration cost
 
@@ -354,11 +380,17 @@ Alternatives — how dodot compares to the rest of the space
 
     9.4. Things dotdrop can do that dodot doesn't
 
-        - True multi-profile-per-machine (`-p` switching).
-        - Profile inheritance (`include` chains).
-        - Dynamic variables: `dynvariables` whose values come from shell commands evaluated at render time.
-        - Symlink _of children_ (`link_children`) so an entry can manage a directory while leaving siblings alone.
-        - Cross-profile composition with imports and `:optional` markers.
+            | Item                                                 | Kind                  |
+            | Multi-profile-per-machine (`-p` switching)            | Intentional non-goal  |
+            | Profile inheritance + cross-profile composition       | Intentional non-goal  |
+            | Dynamic vars (`dynvariables` from shell commands)     | Adoption-driven       |
+            | Symlink-of-children (`link_children`)                 | Possible enhancement  |
+        :: table align=ll ::
+
+        - *Multi-profile (intentional non-goal).* dotdrop's `-p work` / `-p home` switching is its strongest feature for users who want different configurations on the same machine. dodot is explicitly single-config-per-machine — [./philosophy.lex] §7: "no profiles. One configuration per machine. For work-vs-home, use separate packs and enable different subsets." The hostname-based gate is the deliberate stopping point.
+        - *Profile inheritance / composition (intentional non-goal).* Falls out of the same decision. Without profiles as a first-class concept, `include` chains and cross-profile composition have nothing to compose.
+        - *Dynamic variables (adoption-driven).* dotdrop's `dynvariables` execute a shell command at render time and capture stdout as the variable value. dodot has `env.X` lookups in templates (resolved at `dodot up` time) but not arbitrary shell-command-as-value. Could be added as a new template function (`shell("date +%Y")` or similar) without disturbing other principles; just hasn't been needed yet.
+        - *link_children (possible enhancement).* dotdrop's `link_children` symlinks each child of a directory independently, so the parent stays a real directory shared with non-managed siblings. dodot today links whole directories wholesale when the pack supplies a directory; per-child linking would be a small extension to the symlink handler.
 
     9.5. Migration cost
 
