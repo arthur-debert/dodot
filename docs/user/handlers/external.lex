@@ -23,7 +23,7 @@ Deploys content that isn't authored by you but comes from upstream and should be
     - `archive` — a downloaded archive, extracted whole.
     - `archive-file` — one named member extracted from an archive.
 
-    Every entry needs `target = "~/..."` — the path under `$HOME` where the deployed copy should appear. The deployed copy is always a symlink into the datastore; the source of truth lives in `externals.toml` and the upstream URL.
+    Every entry needs a `target` — the path where the deployed copy should appear. `~/...` is the typical form and `~` expands to `$HOME`, but absolute paths (`/etc/foo`, `/usr/local/share/...`) are accepted too. The deployed copy is always a symlink into the datastore; the source of truth lives in `externals.toml` and the upstream URL.
 
 3. type = "file"
 
@@ -132,24 +132,30 @@ Deploys content that isn't authored by you but comes from upstream and should be
 
 7. Datastore layout
 
-    All externals land under one per-pack directory:
+    All externals land under one per-pack directory inside dodot's XDG data dir:
 
-        ~/.local/share/dodot/packs/<pack>/external/
+        $XDG_DATA_HOME/dodot/packs/<pack>/external/
             <entry-name>/         # the fetched content
             <entry-name>-...      # sentinel files
 
+    :: text ::
+
+    `$XDG_DATA_HOME` defaults to `~/.local/share`, so on a stock setup the path resolves to `~/.local/share/dodot/packs/<pack>/external/`. If you've set `XDG_DATA_HOME` to something else, that takes precedence.
+
     For a `file` entry, `<entry-name>/<basename>` is the single fetched file. For a `git-repo` entry, `<entry-name>/` is the cloned tree. For `archive`, `<entry-name>/` is the extracted tree. For `archive-file`, `<entry-name>/<basename-of-member>` is the single extracted file.
 
-    The deployed target under `$HOME` is a symlink into this tree.
+    The deployed target is a symlink into this tree.
 
 8. Status output
 
-    Each external entry surfaces in `dodot status` like any other handler row. The sentinel filename encodes the content signature, so the status reader can see at a glance which version is live:
+    `dodot status` shows one coarse row per pack that has an `externals.toml`: deployed or pending. Per-entry detail — which entries have drifted, which couldn't be checked, which need a refresh — surfaces through `--check-drift` (next section) and through the sentinel filenames in the datastore, which encode the content signature:
 
     - `file`: `<entry-name>-<sha-prefix>`
     - `git-repo`: `<entry-name>-git-<sha-prefix>`
     - `archive`: `<entry-name>-archive-<sha-prefix>`
     - `archive-file`: `<entry-name>-archive-<sha-prefix>-<member-hash>`
+
+    `dodot probe show-data-dir` (or just listing the datastore directly) is the fastest way to read those off if you need to confirm which version is live for a specific entry.
 
 9. Drift detection (--check-drift)
 
