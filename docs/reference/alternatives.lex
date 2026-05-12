@@ -232,9 +232,43 @@ Alternatives — how dodot compares to the rest of the space
 
     6.4. Things dotbot can do that dodot doesn't
 
-        - The vendored-submodule pattern means the dotfiles repo is fully self-contained; clone and `./install` works without installing anything system-wide. dodot is a binary you install.
-        - A YAML manifest is sometimes the right thing — explicit, ordered, easy to grep for "what does this repo deploy."
-        - A wide plugin ecosystem of small focused tools you can mix.
+        Three meaningfully different things, all flowing from dotbot's "explicit-config-first" stance: the YAML manifest IS the contract, every dotfile and every action is declared in it, and a wide plugin ecosystem fills the gaps that the core doesn't address.
+
+        6.4.1. Self-bootstrap on a new machine
+
+            Vendored as a git submodule plus a committed `install` shim, dotbot needs no system-wide install — `git clone <repo> && cd <repo> && ./install` is enough on any machine with Python on `$PATH`. Python is almost always present, so in practice the new-machine bootstrap is one command. dodot is a Rust binary that has to be installed first (`brew install`, `cargo install`, `.deb`, etc.) before it can do anything. Once installed, the difference disappears; the advantage is only in the "fresh machine, no privileged install, just clone and go" case.
+
+        6.4.2. Explicit low-level deploy operations
+
+            Because the YAML manifest names each deploy op directly, dotbot can express knobs dodot has no convention slot for:
+
+                | Capability                                                        | Where in dotbot          |
+                | Hardlink instead of symlink                                       | `type: hardlink`         |
+                | Backup the existing target before overwriting                     | `backup: true`           |
+                | Write a relative symlink path instead of absolute                 | `relative: true`         |
+                | Resolve target through existing symlinks before linking           | `canonicalize: true`     |
+                | Batch-link with glob + exclude patterns                           | `glob`/`exclude` on `link:` |
+                | Explicit "ensure this empty directory exists"                     | `create:` directive       |
+                | Garbage-collect dead symlinks under a path                        | `clean:` directive        |
+                | Inline shell command with per-call stdin/stdout/stderr knobs     | `shell:` directive        |
+            :: table align=ll ::
+
+            None of these have a dodot analog because dodot's convention dispatch doesn't have filenames that mean "hardlink" or "backup-on-overwrite." The dotbot user gets that expressive surface; the dodot user trades it for not having to maintain the manifest in the first place. Neither is strictly more powerful — they answer different questions.
+
+        6.4.3. Plugin ecosystem
+
+            The dotbot wiki lists ~80 community plugins. The ones that show up in real-world repos cluster into four buckets, and the bucket map is illuminating: each cluster closes a gap dotbot's core leaves open. dodot's first-class handler set (homebrew, install, shell, path, template, secret, plist) covers roughly the same ground built in.
+
+                | Bucket                | Plugins                                                          | dodot equivalent          |
+                | Package managers      | dotbot-brew, dotbot-apt, dotbot-yum, dotbot-dnf, dotbot-yay,    | homebrew handler          |
+                |                       | dotbot-paru, dotbot-pacaur, dotbot-pip                          | + install handler         |
+                | Templating            | dotbot-template (Jinja2), dotbot-tera, dotbot-jsonnet           | built-in template handler |
+                | Secrets               | dotbot-age, dotbot-sops, dotbot-gitcrypt                        | built-in age/gpg + 6 providers |
+                | Misc                  | dotbot-git (external repos), dotbot-vscode, dotbot-crontab,     | install.sh handler         |
+                |                       | dotbot-firefox, dotbot-conditional / dotbot-if                  | gates / conditional        |
+            :: table align=ll ::
+
+            The pattern: dotbot's "core + plugins" decomposition is roughly the same surface as dodot's "core + handlers," but with the plugins published separately by different authors with different maintenance posture, and the wiring up to the user. dotbot-git is the closest analog to chezmoi's external files (and dodot's structural gap from §3.4).
 
     6.5. Migration cost
 
