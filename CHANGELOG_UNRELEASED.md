@@ -159,3 +159,15 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
   latter to `--out`; short `-o` is preserved, so `dodot config gen
   -o .dodot.toml` keeps working and `--out` replaces `--output` as
   the long form.
+- `dodot status` (and the post-`up` render that runs through it) now
+  drives symlink rows off the planner's `HandlerIntent::Link` list
+  instead of re-walking scanner matches and re-resolving targets.
+  Previously, escape-prefix dirs (`_home/`, `_xdg/`, `_app/`, `_lib/`)
+  surfaced as a single bogus row pointing at the default-rule path
+  (e.g. `iina/_app ➞ ~/.config/iina/_app pending`) — even immediately
+  after a successful `up` that had correctly deployed leaf files to
+  the prefix-resolved target (`~/Library/Application Support/...` for
+  `_app/`). Status now expands the prefix per-leaf and reflects the
+  real chain state, so "deployed" actually means deployed. `_lib/` on
+  non-macOS continues to surface only the planner warning, since
+  those leaves produce zero intents.
