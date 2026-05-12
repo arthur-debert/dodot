@@ -97,6 +97,11 @@ pub trait GitRunner: Send + Sync {
 
     /// `git -C <repo> rev-parse HEAD` — local HEAD SHA.
     fn local_head(&self, repo: &Path) -> std::result::Result<String, GitError>;
+
+    /// `git -C <repo> status --porcelain`. Empty output means the
+    /// working tree is clean; any non-empty body means the tree
+    /// diverged from HEAD. Used by drift detection.
+    fn status_porcelain(&self, repo: &Path) -> std::result::Result<String, GitError>;
 }
 
 /// Production `git` runner: actually shells out.
@@ -278,6 +283,16 @@ impl GitRunner for ShellGitRunner {
                 .args(["rev-parse", "HEAD"]),
         )
     }
+
+    fn status_porcelain(&self, repo: &Path) -> std::result::Result<String, GitError> {
+        Self::run(
+            "status",
+            Command::new("git")
+                .arg("-C")
+                .arg(repo)
+                .args(["status", "--porcelain"]),
+        )
+    }
 }
 
 /// Mock GitRunner for tests. Records call sites and returns canned
@@ -300,6 +315,10 @@ struct MockGitInner {
     pub ls_remote_offline: bool,
     /// Whether fetch_and_reset should fail.
     pub fetch_offline: bool,
+    /// Canned `git status --porcelain` output. Empty = clean.
+    /// Used by drift-detection tests so they don't have to drive
+    /// real git invocations.
+    pub status_porcelain: String,
     pub calls: Vec<String>,
     /// Per-clone marker file written into the destination so tests
     /// can confirm the executor actually "produced" a clone tree.
@@ -315,10 +334,19 @@ impl MockGitRunner {
                 local_sha: None,
                 ls_remote_offline: false,
                 fetch_offline: false,
+                status_porcelain: String::new(),
                 calls: Vec::new(),
                 clone_marker_content: clone_marker.to_vec(),
             }),
         }
+    }
+
+    /// Plant canned `git status --porcelain` output so drift tests
+    /// can simulate modified / clean working trees without driving
+    /// real git.
+    pub fn set_status_porcelain(&self, output: &str) {
+        let mut g = self.inner.lock().unwrap();
+        g.status_porcelain = output.into();
     }
 
     /// Replace the upstream SHA — used to simulate a remote update
@@ -454,6 +482,12 @@ impl GitRunner for MockGitRunner {
             operation: "rev-parse".into(),
             detail: "mock has no local sha (clone wasn't called)".into(),
         })
+    }
+
+    fn status_porcelain(&self, repo: &Path) -> std::result::Result<String, GitError> {
+        let mut g = self.inner.lock().unwrap();
+        g.calls.push(format!("status {}", repo.display()));
+        Ok(g.status_porcelain.clone())
     }
 }
 

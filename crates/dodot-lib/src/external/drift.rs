@@ -46,8 +46,14 @@ pub enum DriftKind {
     /// Surfaced explicitly so the user knows the absence of a
     /// Drifted row is not the same as "definitely clean."
     NotImplemented,
-    /// Couldn't read deployed state at all (deleted by user, etc.).
+    /// The deployed copy is gone (user deleted the file/clone).
     Missing,
+    /// We tried to assess drift but the check itself errored —
+    /// e.g. `git status --porcelain` failed because the runner
+    /// said `git` isn't on PATH, or a tarball became unreadable.
+    /// Distinct from `Missing` (which means the artifact is gone)
+    /// and from `NotImplemented` (which means we never tried).
+    CheckFailed,
 }
 
 impl DriftReport {
@@ -77,7 +83,7 @@ pub fn detect_drift_for_pack(
         let datastore_entry = handler_dir.join(&name);
         let report = match &entry.spec {
             FetchSpec::File { sha256, .. } => {
-                check_file_drift(pack, &name, &datastore_entry, sha256, fs)
+                check_file_drift(pack, &name, &datastore_entry, sha256, &entry.target, fs)
             }
             FetchSpec::GitRepo { .. } => match git {
                 Some(g) => check_git_drift(pack, &name, &datastore_entry, g, fs),
@@ -106,30 +112,47 @@ pub fn detect_drift_for_pack(
     Ok(reports)
 }
 
+/// Derive the datastore basename for a `type = "file"` entry from its
+/// `target = "~/..."` field. Mirrors `filename_for_target` in
+/// `crate::execution::fetch` so the check looks at the exact path the
+/// executor wrote — picking the first file in the entry directory is
+/// nondeterministic when stale siblings linger.
+fn target_basename(target: &str) -> String {
+    std::path::Path::new(target)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "content".into())
+}
+
 fn check_file_drift(
     pack: &str,
     name: &str,
     datastore_entry_dir: &std::path::Path,
     expected_sha256: &str,
+    target: &str,
     fs: &dyn Fs,
 ) -> DriftReport {
-    // The file lives at `<entry-dir>/<basename>`. We don't know the
-    // basename without reading the dir.
-    let Some(file_path) = first_file_in_dir(datastore_entry_dir, fs) else {
+    // The file lives at `<entry-dir>/<basename-of-target>`. Resolve
+    // the exact path the executor would have written rather than
+    // scanning the dir (which can hold stale siblings and produce a
+    // nondeterministic answer).
+    let basename = target_basename(target);
+    let file_path: PathBuf = datastore_entry_dir.join(&basename);
+    if !fs.exists(&file_path) {
         return DriftReport {
             pack: pack.into(),
             entry_name: name.into(),
             kind: DriftKind::Missing,
-            detail: "no deployed file in datastore".into(),
+            detail: format!("no deployed file at {}", file_path.display()),
         };
-    };
+    }
     let bytes = match fs.read_file(&file_path) {
         Ok(b) => b,
         Err(e) => {
             return DriftReport {
                 pack: pack.into(),
                 entry_name: name.into(),
-                kind: DriftKind::Missing,
+                kind: DriftKind::CheckFailed,
                 detail: format!("cannot read {}: {e}", file_path.display()),
             };
         }
@@ -171,10 +194,11 @@ fn check_git_drift(
             detail: format!("clone missing at {}", clone_path.display()),
         };
     }
-    // Use `git status --porcelain` as the drift oracle. We expose
-    // that on the GitRunner trait indirectly via the helper below
-    // so the trait stays narrow.
-    match git_porcelain(git, clone_path) {
+    // `git status --porcelain` is the drift oracle. We route through
+    // the GitRunner trait so tests can mock it and so missing-git
+    // errors flow through the same classification as the rest of the
+    // git path.
+    match git.status_porcelain(clone_path) {
         Ok(out) if out.is_empty() => DriftReport {
             pack: pack.into(),
             entry_name: name.into(),
@@ -190,45 +214,10 @@ fn check_git_drift(
         Err(e) => DriftReport {
             pack: pack.into(),
             entry_name: name.into(),
-            kind: DriftKind::Missing,
+            kind: DriftKind::CheckFailed,
             detail: format!("git status failed: {e}"),
         },
     }
-}
-
-/// Shell-out helper that bypasses the `GitRunner` trait's narrow
-/// porcelain-verb surface. Drift is the only thing dodot does that
-/// needs `git status --porcelain`, so we keep it co-located here
-/// rather than bloating the trait with another method that exists
-/// only for this PR.
-fn git_porcelain(_git: &dyn GitRunner, repo: &std::path::Path) -> Result<String> {
-    use std::process::Command;
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["status", "--porcelain"])
-        .output()
-        .map_err(|e| crate::DodotError::Other(format!("git status failed: {e}")))?;
-    if !output.status.success() {
-        return Err(crate::DodotError::Other(format!(
-            "git status exited {}: {}",
-            output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn first_file_in_dir(dir: &std::path::Path, fs: &dyn Fs) -> Option<PathBuf> {
-    if !fs.exists(dir) {
-        return None;
-    }
-    let entries = fs.read_dir(dir).ok()?;
-    entries
-        .into_iter()
-        .filter(|e| e.is_file)
-        .map(|e| dir.join(e.name))
-        .next()
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
@@ -247,7 +236,6 @@ fn short(sha: &str) -> String {
 mod tests {
     use super::*;
     use crate::testing::TempEnvironment;
-    use std::path::Path;
 
     fn write_datastore_file(
         env: &TempEnvironment,
@@ -267,12 +255,14 @@ mod tests {
     }
 
     fn file_externals_toml(name: &str, sha256: &str) -> String {
+        // Target basename matches `name` so the deployed file the
+        // tests write at `<entry>/<name>` is what drift inspects.
         format!(
             r#"
 [{name}]
 type   = "file"
 url    = "https://example.com/x"
-target = "~/x"
+target = "~/{name}"
 sha256 = "{sha256}"
 "#
         )
@@ -317,6 +307,32 @@ sha256 = "{sha256}"
     }
 
     #[test]
+    fn file_drift_ignores_stale_siblings_in_entry_dir() {
+        // A previous deploy left a sibling file in the entry dir
+        // (target rename, manual cleanup gone wrong). Drift must
+        // inspect the entry whose basename matches the *current*
+        // target — not whichever file happens to come first in the
+        // directory listing.
+        let env = TempEnvironment::builder().build();
+        let body = b"current content";
+        let sha = hex_sha256(body);
+        // Sibling that would lexically sort first and previously
+        // confused the check.
+        write_datastore_file(&env, "p", "x", "0-old-name", b"stale");
+        write_datastore_file(&env, "p", "x", "x", body);
+        let toml = file_externals_toml("x", &sha);
+        let reports = detect_drift_for_pack(
+            "p",
+            toml.as_bytes(),
+            env.paths.as_ref(),
+            env.fs.as_ref(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(reports[0].kind, DriftKind::Clean);
+    }
+
+    #[test]
     fn missing_deployed_file_reports_missing() {
         let env = TempEnvironment::builder().build();
         let toml = file_externals_toml("x", "deadbeef");
@@ -353,6 +369,51 @@ sha256 = "abc"
     }
 
     #[test]
+    fn git_drift_uses_runner_status_porcelain() {
+        // Drive drift detection through the trait — confirms the
+        // mock runner is actually consulted and that drift kind
+        // tracks porcelain output.
+        let env = TempEnvironment::builder().build();
+        let mock = crate::external::MockGitRunner::new(&"a".repeat(40), b"");
+        // Fake the clone directory existing.
+        let clone_dir = env
+            .paths
+            .handler_data_dir("p", crate::handlers::HANDLER_EXTERNAL)
+            .join("omz");
+        env.fs.mkdir_all(&clone_dir).unwrap();
+
+        let toml = r#"
+[omz]
+type   = "git-repo"
+url    = "https://x/omz.git"
+target = "~/.oh-my-zsh"
+"#;
+
+        mock.set_status_porcelain("");
+        let reports = detect_drift_for_pack(
+            "p",
+            toml.as_bytes(),
+            env.paths.as_ref(),
+            env.fs.as_ref(),
+            Some(&mock),
+        )
+        .unwrap();
+        assert_eq!(reports[0].kind, DriftKind::Clean);
+
+        mock.set_status_porcelain(" M themes/agnoster.zsh-theme\n");
+        let reports = detect_drift_for_pack(
+            "p",
+            toml.as_bytes(),
+            env.paths.as_ref(),
+            env.fs.as_ref(),
+            Some(&mock),
+        )
+        .unwrap();
+        assert_eq!(reports[0].kind, DriftKind::Drifted);
+        assert!(reports[0].detail.contains("1 modified"));
+    }
+
+    #[test]
     fn report_is_drifted_helper_only_true_for_drifted_kind() {
         let r = DriftReport {
             pack: "p".into(),
@@ -367,9 +428,4 @@ sha256 = "abc"
         };
         assert!(!r.is_drifted());
     }
-
-    // Silence unused-import warning when git_porcelain isn't exercised
-    // by tests (it shells out to real git).
-    #[allow(dead_code)]
-    fn _unused(_p: &Path) {}
 }
