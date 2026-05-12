@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Internal: `RunOnceCommand` trait + generic `RunOnceHandler<C>` in `crates/dodot-lib/src/handlers/run_once.rs`, the shared shape for the `install` / `homebrew` / forthcoming `nix` handlers (#169, PR A). Pure addition — not yet wired into the registry; existing handlers are unchanged. Subsequent PRs retrofit the existing handlers (PR B) and flip the run-once policy from auto-rerun-on-change to notify-don't-rerun (PR C).
+
 ## [4.1.1] - 2026-05-12
 
 
