@@ -120,15 +120,6 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 continue;
             }
 
-            self.cmd.validate(self.fs, &m.absolute_path)?;
-
-            // Sentinel hashing prefers in-memory rendered bytes when
-            // they're available (preprocessor-produced files); falls
-            // back to a disk read for plain on-disk files. The
-            // in-memory path is what lets `dodot status` and `up
-            // --dry-run` compute correct sentinels for templated
-            // files without writing the rendered file to disk.
-            //
             // First-time-pack passive case: a templated file with no
             // baseline yet lands here as a placeholder match (no
             // bytes, no file on disk). We can't compute a sentinel
@@ -137,21 +128,36 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
             // status / dry-run will report the file as pending via
             // the symlink chain instead, and the next real `dodot
             // up` plans the Run intent normally. See issue #121.
+            //
+            // This skip runs *before* validation: a placeholder has
+            // no content for a validator to inspect, and we shouldn't
+            // surface a validation error for a file that may not
+            // exist yet in any meaningful sense.
+            let has_rendered = m.rendered_bytes.is_some();
+            let has_disk = self.fs.exists(&m.absolute_path);
+            if !has_rendered && !has_disk {
+                tracing::debug!(
+                    pack = %m.pack,
+                    file = %m.absolute_path.display(),
+                    handler = self.cmd.handler_name(),
+                    "skipping run-once intent — no rendered bytes and no on-disk file \
+                     (first-time-pack passive placeholder)"
+                );
+                continue;
+            }
+
+            // We have content. Validate first, then hash.
+            self.cmd.validate(self.fs, &m.absolute_path)?;
+
+            // Sentinel hashing prefers in-memory rendered bytes when
+            // they're available (preprocessor-produced files); falls
+            // back to a disk read for plain on-disk files. The
+            // in-memory path is what lets `dodot status` and `up
+            // --dry-run` compute correct sentinels for templated
+            // files without writing the rendered file to disk.
             let checksum = match m.rendered_bytes.as_deref() {
                 Some(bytes) => file_checksum_bytes(bytes),
-                None => match self.fs.exists(&m.absolute_path) {
-                    true => file_checksum(self.fs, &m.absolute_path)?,
-                    false => {
-                        tracing::debug!(
-                            pack = %m.pack,
-                            file = %m.absolute_path.display(),
-                            handler = self.cmd.handler_name(),
-                            "skipping run-once intent — no rendered bytes and no on-disk file \
-                             (first-time-pack passive placeholder)"
-                        );
-                        continue;
-                    }
-                },
+                None => file_checksum(self.fs, &m.absolute_path)?,
             };
 
             let filename = m
@@ -204,7 +210,11 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
 /// Returns the first 8 bytes of the SHA-256 hash as 16 hex chars —
 /// unique enough for sentinel-name disambiguation, short enough to
 /// keep on-disk paths readable.
-pub fn file_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
+///
+/// Internal helper used by [`RunOnceHandler`] and (in PR B) by the
+/// retrofitted `install` / `homebrew` handlers. Crate-scoped to keep
+/// it out of dodot-lib's public API surface.
+pub(crate) fn file_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
     let mut reader = fs.open_read(path)?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 8192];
@@ -225,7 +235,7 @@ pub fn file_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
 /// Same digest format as [`file_checksum`], but over an in-memory
 /// byte slice — used when the rendered content is available without
 /// a disk read.
-pub fn file_checksum_bytes(bytes: &[u8]) -> String {
+pub(crate) fn file_checksum_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let hash = hasher.finalize();
@@ -467,6 +477,32 @@ mod tests {
             }
             other => panic!("expected Run, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn validate_does_not_fire_on_placeholder_match() {
+        // A validator that always errors must NOT be called for a
+        // first-time-pack passive placeholder (no rendered bytes, no
+        // on-disk file). Regression test for Copilot review on #170 —
+        // the earlier draft validated before checking for content.
+        let env = TempEnvironment::builder().build();
+        let cmd = FakeCommand {
+            validate_fails: true,
+            ..FakeCommand::new("fake")
+        };
+        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
+
+        let ghost = env.dotfiles_root.join("ghost/install.sh"); // never written
+        let matches = vec![make_match("ghost", "install.sh", ghost, None)];
+        let intents = handler
+            .to_intents(
+                &matches,
+                &HandlerConfig::default(),
+                &pather(&env),
+                env.fs.as_ref(),
+            )
+            .expect("placeholder match should skip cleanly without invoking validate");
+        assert!(intents.is_empty());
     }
 
     #[test]
