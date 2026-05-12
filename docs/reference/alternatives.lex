@@ -14,7 +14,7 @@ Alternatives — how dodot compares to the rest of the space
         | source-state managers    | chezmoi, dotdrop                 | source ≠ deployed; an `apply` step renders/copies     |
         | git-tree-over-$HOME      | yadm                             | $HOME itself is the working tree of a bare git repo   |
         | declarative reproducible | Home Manager (Nix)               | rewrite config as Nix; user files become store links  |
-    :: table align=ll ::
+    :: table align=lll ::
 
     dodot is its own row. It's a symlink manager that also handles the things-symlinks-can't-do (shell sourcing, PATH, install scripts, Brewfiles, plists) without crossing into source-state or declarative territory. The data layer ([./data-layer.lex]) is the trick that lets it do this: a "live receipt" double-link so the filesystem _is_ the state, without a database and without an apply step that has to be re-run after edits.
 
@@ -266,7 +266,7 @@ Alternatives — how dodot compares to the rest of the space
                 | Secrets               | dotbot-age, dotbot-sops, dotbot-gitcrypt                        | built-in age/gpg + 6 providers |
                 | Misc                  | dotbot-git (external repos), dotbot-vscode, dotbot-crontab,     | install.sh handler         |
                 |                       | dotbot-firefox, dotbot-conditional / dotbot-if                  | gates / conditional        |
-            :: table align=ll ::
+            :: table align=lll ::
 
             The pattern: dotbot's "core + plugins" decomposition is roughly the same surface as dodot's "core + handlers," but with the plugins published separately by different authors with different maintenance posture, and the wiring up to the user. dotbot-git is the closest analog to chezmoi's external files (and dodot's structural gap from §3.4).
 
@@ -432,7 +432,7 @@ Alternatives — how dodot compares to the rest of the space
 
         Off dodot: trivial.
 
-10. Summary table
+10. Summary tables
 
     Rows are features; columns are tools. "yes" means the tool supports the feature out of the box. Annotations explain conditions.
 
@@ -444,7 +444,7 @@ Alternatives — how dodot compares to the rest of the space
         | Zero-config for conventional dotfiles                  | yes                                    | no (rename to `dot_X`)                 | yes                           | no (mirror tree)              | no (YAML entries)             | no (Nix module)                    | no (TOML entries)              | no (YAML entries) / yes via import |
         | Filename remap required                                | no                                     | yes (`dot_`, `private_`, …)            | no                            | no                            | no                            | no (Nix attr)                      | no                             | no                            |
         | Source files keep their normal contents (no markup)    | yes (except `.tmpl`)                   | yes (except `.tmpl`)                   | yes (except alt suffix files) | yes                           | yes                           | no (Nix language)                  | yes (except `{{`-bearing)      | yes (except templated)        |
-    :: table align=ll ::
+    :: table align=lllllllll ::
 
     10.2. Source-control posture
 
@@ -452,7 +452,7 @@ Alternatives — how dodot compares to the rest of the space
         | Plain `git` works alongside the tool   | yes                | yes                  | yes (with --git-dir flags)      | yes               | yes              | yes                | yes              | yes                |
         | Tool wraps git commands                | no                 | optional (auto-commit) | yes (primary surface)         | no                | no               | no                 | no               | no                 |
         | Tool offers its own diff/status verbs  | no                 | yes                  | passthrough only                | no                | no               | yes (generations)  | no               | yes (`compare`)    |
-    :: table align=ll ::
+    :: table align=lllllllll ::
 
     10.3. Features (built-in)
 
@@ -469,7 +469,7 @@ Alternatives — how dodot compares to the rest of the space
         | macOS plist diff/review                | yes (clean/smudge filters)     | no (modify-script pattern)       | no                                  | no        | no                           | nix-darwin (sibling project)       | no                           | no                                   |
         | Adopt existing files                   | yes (`dodot adopt`)            | yes (`chezmoi add`)              | trivial (already in $HOME)          | yes (`--adopt`, but inverted) | no (manual)         | no                                 | no                           | yes (`dotdrop import`)               |
         | External files (URL / git ref)         | no                             | yes (`chezmoiexternal`)          | no                                  | no        | plugin (`dotbot-git`)        | yes (`fetchurl` / `fetchFromGitHub`) | no                         | partial (config imports)             |
-    :: table align=ll ::
+    :: table align=lllllllll ::
 
     10.4. Cognitive load & portability
 
@@ -479,7 +479,7 @@ Alternatives — how dodot compares to the rest of the space
         | Runtime dependency                     | rust binary (~5MB)     | go binary            | bash + git                    | perl                | python                   | nix (multi-GB)                     | rust binary        | python + libmagic + diff |
         | Migration off the tool                 | `dodot down` + delete repo dir | un-rename `dot_` + edits stick | nothing (already in place) | `stow -D` or `rm`   | delete submodule         | `cp -L` every symlink first        | `dotter undeploy`  | `dotdrop uninstall`  |
         | Files dangling if tool uninstalled     | no (link directly to repo) | no (real files)  | n/a (real files)              | no (real symlinks)  | no                       | YES (point into `/nix/store`)      | no                 | no                   |
-    :: table align=ll ::
+    :: table align=lllllllll ::
 
 11. The shape of the choice
 
