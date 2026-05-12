@@ -492,3 +492,51 @@ Alternatives — how dodot compares to the rest of the space
     - If you want explicit YAML/TOML manifests that read like a deployment script: dotbot, dotter, or dotdrop. dotdrop has the strongest profile story; dotbot is the most minimal; dotter sits between.
 
     dodot's distinguishing claim, restated: the principles in §2 hold _all the way through_ the advanced surface. Templates, secrets, plists, conditional running, install scripts — all integrated without an apply step, without git wrapping, without a renamed source tree, without a database, and without growing the command set past three for routine use.
+
+12. Holding dodot's principles constant: what's actually missing
+
+    §11 is the positive selection guide ("which tool for which need"). This section answers the inverse: aggregating every "X can do this, dodot can't" item from the per-tool sections, then filtering out the ones that conflict with dodot's principles (§2) or are intentional non-goals (§13), what's the residual list? These are the items where dodot could grow without violating its own contract.
+
+    Each row carries a *kind* tag explaining what it would take to close:
+
+    - *Structural gap* — real capability missing, would need a new handler or mechanism. Principle-compatible.
+    - *Adoption-driven* — mechanical, ships when user demand surfaces (mostly: more providers, more functions).
+    - *Convenience / UX* — a verb over a capability dodot already has.
+
+    The residual gap list:
+
+        | Gap                                                          | Kind             | Where it appears in alternatives                       |
+        | External files (URL/git ref + periodic refresh)               | Structural       | chezmoi `.chezmoiexternal.toml`, dotbot-git plugin     |
+        | One-command bootstrap (installer chain + first-run hook)      | Structural       | yadm `clone`+`bootstrap`, dotbot vendored `./install`  |
+        | More secret providers (AWS/Azure/Doppler/Keeper/LastPass/...) | Adoption-driven  | chezmoi                                                |
+        | User-supplied template helpers / filters                      | Adoption-driven  | dotter (Rhai), chezmoi (sprig + many fns)              |
+        | Dynamic vars (shell command stdout as variable at render)     | Adoption-driven  | dotdrop `dynvariables`                                 |
+        | Per-machine local overlay file (gitignored)                   | Adoption-driven  | dotter `local.toml`                                    |
+        | Init-time prompts that write per-machine vars                 | Convenience      | chezmoi `promptStringOnce`                             |
+        | Symlink-of-children for directories                           | Enhancement      | dotdrop `link_children`                                |
+        | Backup the existing target before overwriting                 | Enhancement      | dotbot `backup: true`                                  |
+    :: table align=lll ::
+
+    Two of these — external files and one-command bootstrap — are *structural*: a real capability dodot doesn't have today, principle-compatible, with a clear use case driven by real user workflows. The rest will ship when demand surfaces or remain reasonable not-yet-built items.
+
+    12.1. What's *not* on this list and why
+
+        The per-tool sections also surfaced features that are *intentionally* absent from dodot. They're not gaps; they're consequences of dodot's principles or of design choices dodot deliberately rejected. They live in §13.
+
+13. When dodot isn't for you
+
+    The other side of the coin. If the features below are central to your workflow, dodot is the wrong tool. These items _can't_ close inside dodot without changing what dodot is.
+
+        | Need                                                         | Better tool       | Why dodot can't                                                     |
+        | Files at canonical paths, no symlinks anywhere                | yadm              | Data layer ([./data-layer.lex]) is the double-link; symlinks are load-bearing, not incidental. |
+        | Byte-identical reproducibility (lockfile-grade)              | Home Manager      | Requires content-addressed package store; Nix tax. Philosophy §2 + §7. |
+        | Atomic rollback to a prior deployment in one command         | Home Manager      | Philosophy §7: "git keeps history of your configs; that is the history you want." |
+        | Typed per-program schemas (write Nix instead of dotfiles)    | Home Manager      | Philosophy §2: anti-DSL. dodot reads the program's native config in its native syntax. |
+        | Multiple profiles switchable on the same machine             | dotdrop           | Philosophy §7: single-configuration-per-machine.                    |
+        | Windows support                                              | chezmoi           | Unix-first by design; macOS plists + XDG/Library path resolution sit at the center. |
+        | Plugin ecosystem (add capabilities without core changes)     | dotbot            | Design choice: first-class handlers in core, consistent quality, single security surface. |
+    :: table align=lll ::
+
+    Worth noting where the boundary is for some of these. dodot's "no profiles" stance still accommodates "different machines do different things" through hostname/OS gates and pack subsets; what it refuses is "two distinct deploy intents on the same host, switched at command time." dodot's "no rollback" stance still lets you `git checkout` a prior commit and re-`up`; what it refuses is owning a separate deployment history. dodot's "no plugins" stance is about the core surface, not about *extending the conventions* — you can add a custom handler today by overriding mappings in `.dodot.toml`; what dodot refuses is loading user code at runtime through a plugin loader.
+
+    The framing for both §12 and §13: features that *could* live inside dodot's principles go in §12 and might get built; features that *would require* changing dodot's principles go in §13 and are pointers to where to go instead. The doc's job is to make that boundary legible so users can self-select.
