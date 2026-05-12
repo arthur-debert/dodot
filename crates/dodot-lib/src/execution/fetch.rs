@@ -298,21 +298,10 @@ impl<'a> Executor<'a> {
             );
         }
 
-        // Existing clone path. Cheap freshness check first.
-        let upstream = match git.ls_remote_head(url) {
-            Ok(s) => Some(s),
-            Err(err) if err.is_transient() => {
-                warn!(pack, name, %err, "ls-remote failed (transient); using cached clone");
-                None
-            }
-            Err(err) => {
-                return Ok(vec![OperationResult::fail(
-                    op(),
-                    format!("{name}: ls-remote failed: {err}"),
-                )]);
-            }
-        };
-
+        // Existing clone path. We need the local HEAD regardless of
+        // whether ls-remote succeeds, so read it first — a corrupted
+        // local clone is a hard error that should surface even if
+        // upstream happens to be reachable.
         let local = match git.local_head(&datastore_path) {
             Ok(s) => s,
             Err(err) => {
@@ -329,39 +318,60 @@ impl<'a> Executor<'a> {
             }
         };
 
-        // If we couldn't reach upstream, keep the cached copy and
-        // report success-ish (it's still deployed). If upstream is
-        // reachable and matches local, no-op. Otherwise refresh.
-        let (final_sha, was_refreshed) = match upstream {
-            None => (local, false),
-            Some(remote) if remote == self.force_refresh_target(&local) => (remote, false),
-            Some(remote) => {
-                info!(
-                    pack, name,
-                    local = %short(&local),
-                    remote = %short(&remote),
-                    "upstream moved; fetching + reset"
-                );
-                match git.fetch_and_reset(&datastore_path) {
-                    Ok(s) => (s, true),
-                    Err(err) if err.is_transient() => {
-                        warn!(pack, name, %err, "fetch+reset failed (transient); keeping cached");
-                        // Cached SHA stands; we tried to refresh but
-                        // the network blipped.
-                        return Ok(vec![OperationResult::fail(
-                            op(),
-                            format!(
-                                "{name}: fetch failed ({err}); cached clone at {} stays in place",
-                                short(&local)
-                            ),
-                        )]);
-                    }
-                    Err(err) => {
-                        return Ok(vec![OperationResult::fail(
-                            op(),
-                            format!("{name}: fetch failed: {err}"),
-                        )]);
-                    }
+        // Cheap freshness check. Transient ls-remote failures don't
+        // abort the run, but they DO surface as non-success results —
+        // claiming "fresh" when we couldn't actually verify upstream
+        // would be misleading. The cached clone is already symlinked
+        // from a prior successful run; nothing more needed on disk.
+        let upstream = match git.ls_remote_head(url) {
+            Ok(s) => s,
+            Err(err) if err.is_transient() => {
+                warn!(pack, name, %err, "ls-remote failed (transient); using cached clone");
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!(
+                        "{name}: ls-remote failed ({err}); using cached clone at {}",
+                        short(&local)
+                    ),
+                )]);
+            }
+            Err(err) => {
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!("{name}: ls-remote failed: {err}"),
+                )]);
+            }
+        };
+
+        // From here on, upstream and local are both known SHAs.
+        let (final_sha, was_refreshed) = if upstream == self.force_refresh_target(&local) {
+            (local, false)
+        } else {
+            info!(
+                pack, name,
+                local = %short(&local),
+                remote = %short(&upstream),
+                "upstream moved; fetching + reset"
+            );
+            match git.fetch_and_reset(&datastore_path) {
+                Ok(s) => (s, true),
+                Err(err) if err.is_transient() => {
+                    warn!(pack, name, %err, "fetch+reset failed (transient); keeping cached");
+                    // Cached SHA stands; we tried to refresh but the
+                    // network blipped after ls-remote succeeded.
+                    return Ok(vec![OperationResult::fail(
+                        op(),
+                        format!(
+                            "{name}: fetch failed ({err}); cached clone at {} stays in place",
+                            short(&local)
+                        ),
+                    )]);
+                }
+                Err(err) => {
+                    return Ok(vec![OperationResult::fail(
+                        op(),
+                        format!("{name}: fetch failed: {err}"),
+                    )]);
                 }
             }
         };
@@ -377,8 +387,10 @@ impl<'a> Executor<'a> {
             &final_sha,
         )?;
         if !was_refreshed && self.fetcher_message_overridable(&results) {
-            // Replace the "fetched" message with a "fresh" one — the
-            // wire was tickled (ls-remote), but no bytes moved.
+            // Only rewrite the "fetched" message when we actually
+            // know upstream matches local — i.e. ls-remote succeeded
+            // and the SHAs lined up. The transient-failure path
+            // already returned above.
             results[0] = OperationResult::ok(
                 op(),
                 format!("{name}: fresh ({} == upstream)", short(&final_sha)),
@@ -1163,7 +1175,7 @@ mod tests {
     }
 
     #[test]
-    fn git_repo_offline_ls_remote_uses_cached_clone() {
+    fn git_repo_offline_ls_remote_surfaces_failure_keeps_clone() {
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
         let git = MockGitRunner::new(&"a".repeat(40), b"# omz\n");
@@ -1184,36 +1196,38 @@ mod tests {
         // Initial clone succeeds.
         executor.execute(vec![intent.clone()]).unwrap();
 
-        // Now the network is down; ls-remote fails, executor must
-        // keep the cached clone in place rather than abort.
+        // Network goes down. ls-remote fails transiently; we must
+        // SURFACE that as a failed OperationResult (claiming "fresh"
+        // would lie about an upstream check we couldn't perform), but
+        // the cached clone and its symlink stay healthy.
         git.set_ls_remote_offline(true);
         let results = executor.execute(vec![intent]).unwrap();
-        assert!(results.iter().all(|r| r.success), "{results:#?}");
-        // No fetch was attempted because the freshness check failed.
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "{results:#?}");
         assert!(
-            results[0].message.contains("fresh") || results[0].message.contains("HEAD="),
+            results[0].message.contains("ls-remote failed"),
             "msg: {}",
             results[0].message
         );
-        // Symlink still points at the clone.
+        assert!(
+            results[0].message.contains("cached clone"),
+            "msg: {}",
+            results[0].message
+        );
+        // Symlink still points at the clone — the previous successful
+        // run left it in place and we didn't disturb it.
         assert!(env.fs.is_symlink(&user_path));
     }
 
     #[test]
-    fn git_repo_offline_initial_clone_soft_fails() {
+    fn git_repo_offline_fetch_after_upstream_move_soft_fails() {
+        // Exercise the post-ls-remote, mid-refresh failure path:
+        // upstream moved, ls-remote returned a new SHA, but fetch+reset
+        // hits a transient error. The cached clone (at the old SHA)
+        // stays in place and the result surfaces as non-success.
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
         let git = MockGitRunner::new(&"a".repeat(40), b"# omz\n");
-        // Force the initial clone to fail (no real network anyway, but
-        // we trigger the same code path by making local_head fail
-        // after clone — clone returns the sha, so use ls-remote-style
-        // offline before clone happens).
-        // Trick: the executor doesn't call ls-remote for the
-        // first-time path, so we instead trigger a clone failure by
-        // having the mock signal offline through a different lever.
-        // Since MockGitRunner.shallow_clone doesn't honour an offline
-        // flag, we exercise the second-run path's `fetch_offline`
-        // setting after an initial successful clone.
         let user_path = env.home.join(".oh-my-zsh");
         let intent = git_intent("omz", "https://x/omz.git", user_path.clone());
 

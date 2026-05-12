@@ -87,9 +87,19 @@ impl ShellGitRunner {
     }
 
     fn run(operation: &str, cmd: &mut Command) -> std::result::Result<String, GitError> {
-        let output = cmd
-            .output()
-            .map_err(|e| GitError::NotFound(e.to_string()))?;
+        let output = cmd.output().map_err(|e| match e.kind() {
+            // Only "no such binary" gets the NotFound diagnostic —
+            // permission-denied, ENOMEM, etc. shouldn't masquerade as
+            // "user has to install git". Map those to CommandFailed
+            // with the kernel's reason so `is_transient()` can still
+            // route them through the soft-fail path.
+            std::io::ErrorKind::NotFound => GitError::NotFound(e.to_string()),
+            _ => GitError::CommandFailed {
+                operation: operation.to_string(),
+                exit_code: -1,
+                stderr: format!("spawn failed: {e}"),
+            },
+        })?;
         if !output.status.success() {
             return Err(GitError::CommandFailed {
                 operation: operation.to_string(),
@@ -134,15 +144,14 @@ impl GitRunner for ShellGitRunner {
     }
 
     fn shallow_clone(&self, url: &str, dest: &Path) -> std::result::Result<String, GitError> {
+        // Pass `dest` as an OsStr so non-UTF-8 paths survive verbatim
+        // — `to_string_lossy` would corrupt them, and Command accepts
+        // `&OsStr` natively anyway.
         Self::run(
             "clone",
-            Command::new("git").args([
-                "clone",
-                "--depth=1",
-                "--filter=blob:none",
-                url,
-                &dest.to_string_lossy(),
-            ]),
+            Command::new("git")
+                .args(["clone", "--depth=1", "--filter=blob:none", url])
+                .arg(dest),
         )?;
         self.local_head(dest)
     }
