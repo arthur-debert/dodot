@@ -71,10 +71,22 @@ Alternatives — how dodot compares to the rest of the space
         - External files pinned by URL or git ref (`.chezmoiexternal.toml`).
         - More built-in secret providers (AWS/Azure/Keeper/LastPass/Dashlane/Doppler/etc.).
         - Per-machine answers prompted interactively at `chezmoi init` and stored as template data.
-        - Diff/merge of pending changes through the tool itself (`chezmoi diff`, `chezmoi merge`).
         - Cross-platform Windows support is more mature.
 
-    3.5. Migration cost off each tool
+    3.5. A note on `chezmoi diff` and `chezmoi merge`
+
+        `chezmoi diff` and `chezmoi merge` exist because chezmoi has an apply step: the source (`dot_zshrc.tmpl`) and the deployed (`~/.zshrc`) are different objects that drift the moment either side is edited, and git can only see the source. The chezmoi verbs are how the user asks "what would `apply` do?" and "reconcile my deployed edits into source." They are consequences of the apply-step model, not capability beyond what dodot offers.
+
+        In dodot, divergence is structurally impossible for plain symlinked files — source and deployed are the same bytes. The only files where divergence *can* happen are preprocessed (`.tmpl`, `.age`, `.gpg`, plists), and dodot already covers that case via the git-augmentation stack ([./../user/commands/git-augmentation.lex]):
+
+        - `dodot transform status` reports the synced/diverged matrix per cached preprocessed file (the `chezmoi diff` equivalent for the only files where it's relevant).
+        - The template clean filter (`dodot template install-filter`) makes `git diff` show deployed-side template edits as if they were source-side, so vanilla `git diff` does the job at single-file granularity.
+        - The pre-commit hook (`dodot transform install-hook`) runs `transform check --strict` automatically — either reverse-merging deployed-side edits into source or failing the commit with conflict markers. That's the `chezmoi merge` equivalent.
+        - The Tier-2 shell alias (`dodot git-install-alias`) makes `git status` always reflect current truth without a manual `dodot refresh`.
+
+        What a dodot user with the extensions installed *does* lose from chezmoi's verbs is ergonomic, not structural: chezmoi's `merge` can launch a configured three-way merge tool (vimdiff/meld/...) on `source ↔ destination ↔ target`, where dodot writes inline `dodot-conflict` markers into the source for you to resolve in your editor. Same outcome, different UI.
+
+    3.6. Migration cost off each tool
 
         Off chezmoi: tractable. Deployed files are regular files (default mode), so they keep working. You undo the `dot_` rename of source files by hand or with a one-time script. The Go template syntax stays put unless you replace it.
 
