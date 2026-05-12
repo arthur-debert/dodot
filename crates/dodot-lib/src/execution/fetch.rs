@@ -20,14 +20,24 @@
 //!   it in place and report the failure as a non-success result; other
 //!   intents still execute. This covers both HTTP and git transports.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use tracing::{debug, info, warn};
 
-use crate::external::FetchSpec;
+use crate::external::{ArchiveEntry, FetchSpec};
 use crate::operations::{HandlerIntent, Operation, OperationResult};
 use crate::Result;
+
+/// Parsed archive contents, held in memory between successful parse
+/// and (potentially destructive) cleanup of the prior extraction.
+enum ArchiveExtracted {
+    /// `type = "archive-file"`: a single member extracted by name.
+    Single(ArchiveEntry),
+    /// `type = "archive"`: the whole archive's entry tree.
+    Tree(HashMap<PathBuf, ArchiveEntry>),
+}
 
 use super::Executor;
 
@@ -419,12 +429,28 @@ impl<'a> Executor<'a> {
             )]);
         }
 
-        // Wipe any previous extraction for this entry so a refresh
-        // doesn't leave stale files behind. `remove_state` removes
-        // the whole handler dir which is too aggressive — we want
-        // just `<name>/`. The datastore doesn't expose a per-subdir
-        // remove, so do it via Fs against the resolved path.
+        // Parse + validate the archive BEFORE touching the previous
+        // extraction on disk — a corrupt download or an unsafe path
+        // must not destroy the cached copy that's already deployed.
         let entry_root = self.paths.handler_data_dir(pack, handler).join(name);
+        let archive_parse = if let Some(m) = member {
+            match crate::external::read_member(&bytes, format, m) {
+                Ok(e) => ArchiveExtracted::Single(e),
+                Err(err) => {
+                    return Ok(vec![OperationResult::fail(op(), format!("{name}: {err}"))]);
+                }
+            }
+        } else {
+            match crate::external::read_all(&bytes, format) {
+                Ok(es) => ArchiveExtracted::Tree(es),
+                Err(err) => {
+                    return Ok(vec![OperationResult::fail(op(), format!("{name}: {err}"))]);
+                }
+            }
+        };
+
+        // Now safe to wipe the previous extraction. We only get here
+        // once we've already parsed the new archive successfully.
         if self.fs.exists(&entry_root) {
             // For archive-file we wrote a single file; for archive we
             // wrote a directory tree. Handle both.
@@ -435,60 +461,48 @@ impl<'a> Executor<'a> {
             }
         }
 
-        // Extract.
-        let (symlink_target, ops) = if let Some(m) = member {
-            let entry = match crate::external::read_member(&bytes, format, m) {
-                Ok(e) => e,
-                Err(err) => {
-                    return Ok(vec![OperationResult::fail(op(), format!("{name}: {err}"))]);
-                }
-            };
-            // Land the single file at `<name>/<basename-of-member>`.
-            // basename so users get a stable path inside the
-            // datastore even when the archive uses a deep member.
-            let basename = std::path::Path::new(m)
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "content".into());
-            let rel = format!("{name}/{basename}");
-            let dst = self
-                .datastore
-                .write_rendered_file(pack, handler, &rel, &entry.bytes)?;
-            (
-                dst.clone(),
-                vec![format!(
-                    "{name}: extracted `{m}` ({} bytes)",
-                    entry.bytes.len()
-                )],
-            )
-        } else {
-            let entries = match crate::external::read_all(&bytes, format) {
-                Ok(e) => e,
-                Err(err) => {
-                    return Ok(vec![OperationResult::fail(op(), format!("{name}: {err}"))]);
-                }
-            };
-            let mut written = 0usize;
-            for (rel_path, entry) in &entries {
-                let rel_str = rel_path.to_string_lossy();
-                let rel_full = format!("{name}/{rel_str}");
-                if entry.is_dir {
-                    self.datastore
-                        .write_rendered_dir(pack, handler, &rel_full)?;
-                } else {
-                    self.datastore
-                        .write_rendered_file(pack, handler, &rel_full, &entry.bytes)?;
-                    written += 1;
-                }
+        let (symlink_target, ops) = match archive_parse {
+            ArchiveExtracted::Single(entry) => {
+                let m = member.expect("Single variant only produced for member fetches");
+                // Land the single file at `<name>/<basename-of-member>`.
+                // basename so users get a stable path inside the
+                // datastore even when the archive uses a deep member.
+                let basename = std::path::Path::new(m)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "content".into());
+                let rel = format!("{name}/{basename}");
+                let dst = self.write_archive_entry(pack, handler, &rel, &entry)?;
+                (
+                    dst,
+                    vec![format!(
+                        "{name}: extracted `{m}` ({} bytes)",
+                        entry.bytes.len()
+                    )],
+                )
             }
-            (
-                entry_root.clone(),
-                vec![format!(
-                    "{name}: extracted {} files into {}",
-                    written,
-                    entry_root.display()
-                )],
-            )
+            ArchiveExtracted::Tree(entries) => {
+                let mut written = 0usize;
+                for (rel_path, entry) in &entries {
+                    let rel_str = rel_path.to_string_lossy();
+                    let rel_full = format!("{name}/{rel_str}");
+                    if entry.is_dir {
+                        self.datastore
+                            .write_rendered_dir(pack, handler, &rel_full)?;
+                    } else {
+                        self.write_archive_entry(pack, handler, &rel_full, entry)?;
+                        written += 1;
+                    }
+                }
+                (
+                    entry_root.clone(),
+                    vec![format!(
+                        "{name}: extracted {} files into {}",
+                        written,
+                        entry_root.display()
+                    )],
+                )
+            }
         };
 
         // User-visible symlink.
@@ -510,6 +524,28 @@ impl<'a> Executor<'a> {
             format!("{name} → {}", user_path.display()),
         ));
         Ok(results)
+    }
+
+    /// Write one archive entry to the datastore, preserving the
+    /// archive's mode bits when present so executable files stay
+    /// executable after `up`. Falls back to `write_rendered_file`
+    /// (umask-default mode) when the entry didn't carry a mode.
+    fn write_archive_entry(
+        &self,
+        pack: &str,
+        handler: &str,
+        rel: &str,
+        entry: &crate::external::ArchiveEntry,
+    ) -> Result<std::path::PathBuf> {
+        match entry.mode {
+            Some(mode) if mode != 0 => {
+                self.datastore
+                    .write_rendered_file_with_mode(pack, handler, rel, &entry.bytes, mode)
+            }
+            _ => self
+                .datastore
+                .write_rendered_file(pack, handler, rel, &entry.bytes),
+        }
     }
 
     /// Fetch one `type = "git-repo"` external.

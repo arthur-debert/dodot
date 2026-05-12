@@ -40,12 +40,18 @@ pub struct ArchiveEntry {
     pub mode: Option<u32>,
 }
 
-/// Extract all entries from an archive into memory, keyed by their
-/// relative path. Skips directory entries (they're recreated on write).
+/// Extract every entry from an archive into memory, keyed by relative
+/// path. Both regular files and directory markers are returned (callers
+/// distinguish via [`ArchiveEntry::is_dir`]) so explicit empty
+/// directories survive the round-trip.
 ///
 /// Paths are validated: absolute paths and `..` components are
 /// rejected with [`ArchiveError::UnsafePath`] so a malicious archive
-/// can never escape the datastore subdir.
+/// can never escape the datastore subdir. Tar entries that are
+/// neither regular files nor directories (symlinks, hardlinks,
+/// devices, FIFOs, …) are rejected explicitly — dodot does not yet
+/// have a defensible posture for materialising them, so silently
+/// turning them into empty files would be a footgun.
 pub fn read_all(
     bytes: &[u8],
     format: ArchiveFormat,
@@ -57,16 +63,20 @@ pub fn read_all(
 }
 
 /// Extract a single named entry from an archive into memory.
+///
+/// Streams through the archive and returns the first matching entry
+/// without buffering the rest — handy for `type = "archive-file"`
+/// against multi-GB release tarballs.
 pub fn read_member(
     bytes: &[u8],
     format: ArchiveFormat,
     member: &str,
 ) -> Result<ArchiveEntry, ArchiveError> {
     let target = std::path::Path::new(member);
-    let all = read_all(bytes, format)?;
-    all.into_iter()
-        .find_map(|(p, e)| (p == target).then_some(e))
-        .ok_or_else(|| ArchiveError::MissingMember(member.to_string()))
+    match format {
+        ArchiveFormat::TarGz => read_tar_gz_one(bytes, target),
+        ArchiveFormat::Zip => read_zip_one(bytes, target),
+    }
 }
 
 fn read_tar_gz(bytes: &[u8]) -> Result<HashMap<PathBuf, ArchiveEntry>, ArchiveError> {
@@ -77,32 +87,75 @@ fn read_tar_gz(bytes: &[u8]) -> Result<HashMap<PathBuf, ArchiveEntry>, ArchiveEr
         .entries()
         .map_err(|e| ArchiveError::Read(e.to_string()))?
     {
-        let mut entry = entry.map_err(|e| ArchiveError::Read(e.to_string()))?;
-        let raw_path = entry
-            .path()
-            .map_err(|e| ArchiveError::Read(e.to_string()))?
-            .into_owned();
-        let safe = validate_safe_archive_path(&raw_path)?;
-        let header = entry.header();
-        let mode = header.mode().ok();
-        let is_dir = header.entry_type().is_dir();
-        let mut buf = Vec::new();
-        if !is_dir {
-            entry
-                .read_to_end(&mut buf)
-                .map_err(|e| ArchiveError::Read(e.to_string()))?;
+        let entry = entry.map_err(|e| ArchiveError::Read(e.to_string()))?;
+        if let Some(parsed) = read_tar_entry(entry)? {
+            out.insert(parsed.path.clone(), parsed);
         }
-        out.insert(
-            safe.clone(),
-            ArchiveEntry {
-                path: safe,
-                is_dir,
-                bytes: buf,
-                mode,
-            },
-        );
     }
     Ok(out)
+}
+
+fn read_tar_gz_one(bytes: &[u8], member: &std::path::Path) -> Result<ArchiveEntry, ArchiveError> {
+    let gz = flate2::read::GzDecoder::new(Cursor::new(bytes));
+    let mut archive = tar::Archive::new(gz);
+    for entry in archive
+        .entries()
+        .map_err(|e| ArchiveError::Read(e.to_string()))?
+    {
+        let entry = entry.map_err(|e| ArchiveError::Read(e.to_string()))?;
+        if let Some(parsed) = read_tar_entry(entry)? {
+            if parsed.path == member {
+                return Ok(parsed);
+            }
+        }
+    }
+    Err(ArchiveError::MissingMember(member.display().to_string()))
+}
+
+/// Parse one tar entry into an [`ArchiveEntry`].
+///
+/// Returns `Ok(None)` when the entry should be silently skipped (root
+/// `./` placeholder). Returns `Err(UnsafePath)` for entries whose
+/// type is not supported (symlinks, hardlinks, device nodes, etc.) —
+/// we don't have a defensible materialisation story for those and
+/// silently dropping the body would mislead callers.
+fn read_tar_entry<R: std::io::Read>(
+    mut entry: tar::Entry<'_, R>,
+) -> Result<Option<ArchiveEntry>, ArchiveError> {
+    let raw_path = entry
+        .path()
+        .map_err(|e| ArchiveError::Read(e.to_string()))?
+        .into_owned();
+    let safe = match validate_safe_archive_path(&raw_path)? {
+        Some(p) => p,
+        None => return Ok(None), // pure `./` root placeholder
+    };
+    let header_entry_type = entry.header().entry_type();
+    let mode = entry.header().mode().ok();
+    let is_dir = header_entry_type.is_dir();
+    let is_regular = header_entry_type.is_file();
+    if !is_dir && !is_regular {
+        // Symlinks, hardlinks, fifos, char/block devices, sparse, etc.
+        // Reject explicitly so the caller can surface a clear error
+        // rather than silently materialising an empty file.
+        return Err(ArchiveError::UnsafePath(format!(
+            "unsupported tar entry type {:?} at {}",
+            header_entry_type,
+            raw_path.display()
+        )));
+    }
+    let mut buf = Vec::new();
+    if !is_dir {
+        entry
+            .read_to_end(&mut buf)
+            .map_err(|e| ArchiveError::Read(e.to_string()))?;
+    }
+    Ok(Some(ArchiveEntry {
+        path: safe,
+        is_dir,
+        bytes: buf,
+        mode,
+    }))
 }
 
 fn read_zip(bytes: &[u8]) -> Result<HashMap<PathBuf, ArchiveEntry>, ArchiveError> {
@@ -110,46 +163,72 @@ fn read_zip(bytes: &[u8]) -> Result<HashMap<PathBuf, ArchiveEntry>, ArchiveError
         zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| ArchiveError::Read(e.to_string()))?;
     let mut out: HashMap<PathBuf, ArchiveEntry> = HashMap::new();
     for i in 0..archive.len() {
-        let mut file = archive
-            .by_index(i)
-            .map_err(|e| ArchiveError::Read(e.to_string()))?;
-        // ZipArchive's `enclosed_name()` rejects paths that would
-        // escape the extraction root (absolute, `..` segments). It
-        // returns `None` in those cases — we treat that as an unsafe
-        // entry rather than silently dropping.
-        let raw_path = file
-            .enclosed_name()
-            .ok_or_else(|| ArchiveError::UnsafePath(file.name().to_string()))?;
-        let safe = validate_safe_archive_path(&raw_path)?;
-        let is_dir = file.is_dir();
-        // `unix_mode()` returns the full st_mode with file-type bits;
-        // mask to the permission portion so callers see a familiar
-        // 0o755 / 0o644 rather than 0o100644.
-        let mode = file.unix_mode().map(|m| m & 0o7777);
-        let mut buf = Vec::new();
-        if !is_dir {
-            file.read_to_end(&mut buf)
-                .map_err(|e| ArchiveError::Read(e.to_string()))?;
+        if let Some(parsed) = read_zip_index(&mut archive, i)? {
+            out.insert(parsed.path.clone(), parsed);
         }
-        out.insert(
-            safe.clone(),
-            ArchiveEntry {
-                path: safe,
-                is_dir,
-                bytes: buf,
-                mode,
-            },
-        );
     }
     Ok(out)
 }
 
-/// Reject archive paths that would escape the extraction root.
+fn read_zip_one(bytes: &[u8], member: &std::path::Path) -> Result<ArchiveEntry, ArchiveError> {
+    let mut archive =
+        zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| ArchiveError::Read(e.to_string()))?;
+    for i in 0..archive.len() {
+        if let Some(parsed) = read_zip_index(&mut archive, i)? {
+            if parsed.path == member {
+                return Ok(parsed);
+            }
+        }
+    }
+    Err(ArchiveError::MissingMember(member.display().to_string()))
+}
+
+fn read_zip_index(
+    archive: &mut zip::ZipArchive<Cursor<&[u8]>>,
+    index: usize,
+) -> Result<Option<ArchiveEntry>, ArchiveError> {
+    let mut file = archive
+        .by_index(index)
+        .map_err(|e| ArchiveError::Read(e.to_string()))?;
+    // ZipArchive's `enclosed_name()` rejects paths that would escape
+    // the extraction root (absolute, `..` segments). It returns
+    // `None` in those cases — we treat that as an unsafe entry
+    // rather than silently dropping.
+    let raw_path = file
+        .enclosed_name()
+        .ok_or_else(|| ArchiveError::UnsafePath(file.name().to_string()))?;
+    let safe = match validate_safe_archive_path(&raw_path)? {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+    let is_dir = file.is_dir();
+    // `unix_mode()` returns the full st_mode with file-type bits;
+    // mask to the permission portion so callers see a familiar
+    // 0o755 / 0o644 rather than 0o100644.
+    let mode = file.unix_mode().map(|m| m & 0o7777);
+    let mut buf = Vec::new();
+    if !is_dir {
+        file.read_to_end(&mut buf)
+            .map_err(|e| ArchiveError::Read(e.to_string()))?;
+    }
+    Ok(Some(ArchiveEntry {
+        path: safe,
+        is_dir,
+        bytes: buf,
+        mode,
+    }))
+}
+
+/// Validate an archive-entry path against the rules that keep
+/// extraction inside the datastore subdir.
 ///
-/// Returns the normalized relative path on success. Mirrors the
-/// `validate_safe_relative` helper in `datastore::filesystem` but
-/// scoped to archive contents (which can carry weirder shapes).
-fn validate_safe_archive_path(raw: &std::path::Path) -> Result<PathBuf, ArchiveError> {
+/// - `Ok(Some(path))` — safe relative path, materialise this entry.
+/// - `Ok(None)` — entry resolves to the archive root (e.g. a bare
+///   `./` placeholder). Skip it silently; tarballs produced by GNU
+///   `tar` often start with such a row.
+/// - `Err(UnsafePath)` — the entry has an absolute path, a `..`
+///   segment, or a Windows-style prefix. Refuse the whole archive.
+fn validate_safe_archive_path(raw: &std::path::Path) -> Result<Option<PathBuf>, ArchiveError> {
     use std::path::Component;
     let mut cleaned = PathBuf::new();
     for component in raw.components() {
@@ -164,11 +243,10 @@ fn validate_safe_archive_path(raw: &std::path::Path) -> Result<PathBuf, ArchiveE
         }
     }
     if cleaned.as_os_str().is_empty() {
-        // An archive entry that resolves to an empty path (e.g. just
-        // `./`) is the archive root; skip it cleanly.
-        return Err(ArchiveError::UnsafePath(raw.display().to_string()));
+        Ok(None)
+    } else {
+        Ok(Some(cleaned))
     }
-    Ok(cleaned)
 }
 
 #[cfg(test)]
@@ -273,6 +351,44 @@ mod tests {
                 "expected UnsafePath for {p:?}, got {err:?}"
             );
         }
+    }
+
+    #[test]
+    fn root_placeholder_returns_none_not_err() {
+        // A bare `./` entry (common in tarballs produced by GNU tar)
+        // resolves to an empty cleaned path. The validator returns
+        // `Ok(None)` so the reader can skip it silently — earlier
+        // behaviour was `Err(UnsafePath)`, which would have failed
+        // every otherwise-valid tarball with a root placeholder.
+        let result = validate_safe_archive_path(std::path::Path::new("./")).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn tar_symlink_entries_are_rejected() {
+        // Build a tar that contains a symlink entry — should be
+        // refused so we don't silently extract an empty file.
+        let mut tar_buf: Vec<u8> = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_buf);
+            let mut header = tar::Header::new_gnu();
+            header.set_path("link").unwrap();
+            header.set_size(0);
+            header.set_mode(0o644);
+            header.set_entry_type(tar::EntryType::Symlink);
+            header.set_link_name("target").unwrap();
+            header.set_cksum();
+            builder.append(&header, std::io::empty()).unwrap();
+            builder.finish().unwrap();
+        }
+        let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+        gz.write_all(&tar_buf).unwrap();
+        let bytes = gz.finish().unwrap();
+        let err = read_all(&bytes, ArchiveFormat::TarGz).unwrap_err();
+        assert!(
+            matches!(err, ArchiveError::UnsafePath(ref m) if m.contains("Symlink")),
+            "expected UnsafePath about Symlink, got {err:?}"
+        );
     }
 
     #[test]
