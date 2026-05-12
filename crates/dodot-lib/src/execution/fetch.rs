@@ -63,10 +63,32 @@ impl<'a> Executor<'a> {
                 commit.as_deref(),
                 user_path,
             ),
+            FetchSpec::Archive {
+                url,
+                sha256,
+                format,
+            } => self.execute_fetch_archive(
+                pack, handler, name, url, sha256, *format, None, user_path,
+            ),
+            FetchSpec::ArchiveFile {
+                url,
+                sha256,
+                member,
+                format,
+            } => self.execute_fetch_archive(
+                pack,
+                handler,
+                name,
+                url,
+                sha256,
+                *format,
+                Some(member.as_str()),
+                user_path,
+            ),
             FetchSpec::Unsupported => Ok(vec![OperationResult::fail(
                 fetch_op(pack, handler, name, "<unsupported>"),
                 format!(
-                    "external '{name}': unsupported type — supported in this release: `file`, `git-repo`"
+                    "external '{name}': unsupported type — supported in this release: `file`, `git-repo`, `archive`, `archive-file`"
                 ),
             )]),
         }
@@ -133,6 +155,45 @@ impl<'a> Executor<'a> {
                     format!(
                         "[dry-run] would clone {url}{pin_label} → {}{subpath_label} → {}",
                         datastore_path.display(),
+                        user_path.display()
+                    )
+                };
+                vec![OperationResult::ok(fetch_op(pack, handler, name, url), msg)]
+            }
+            FetchSpec::Archive { url, sha256, .. } => {
+                let sentinel = archive_sentinel(name, sha256, None);
+                let already = self
+                    .datastore
+                    .has_sentinel(pack, handler, &sentinel)
+                    .unwrap_or(false);
+                let msg = if already {
+                    format!("[dry-run] {name} fresh (archive sha256 matches)")
+                } else {
+                    format!(
+                        "[dry-run] would download {url}, verify sha256={}, extract → {}",
+                        short(sha256),
+                        user_path.display()
+                    )
+                };
+                vec![OperationResult::ok(fetch_op(pack, handler, name, url), msg)]
+            }
+            FetchSpec::ArchiveFile {
+                url,
+                sha256,
+                member,
+                ..
+            } => {
+                let sentinel = archive_sentinel(name, sha256, Some(member));
+                let already = self
+                    .datastore
+                    .has_sentinel(pack, handler, &sentinel)
+                    .unwrap_or(false);
+                let msg = if already {
+                    format!("[dry-run] {name} fresh (archive sha256 + member matches)")
+                } else {
+                    format!(
+                        "[dry-run] would download {url}, verify sha256={}, extract `{member}` → {}",
+                        short(sha256),
                         user_path.display()
                     )
                 };
@@ -267,6 +328,188 @@ impl<'a> Executor<'a> {
             ),
             OperationResult::ok(create_link, format!("{name} → {}", user_path.display())),
         ])
+    }
+
+    /// Fetch + extract a `type = "archive"` (whole tree) or
+    /// `type = "archive-file"` (single entry) external.
+    ///
+    /// When `member` is `None`, the whole archive is materialised
+    /// under `<handler_data_dir>/<name>/` and the user-visible
+    /// symlink points at that directory. When `member = Some(p)`,
+    /// only that entry is written, at `<handler_data_dir>/<name>/<basename>`,
+    /// and the symlink points at the single file.
+    ///
+    /// Sentinel: `<name>-archive-<sha-prefix>[-<member-hash>]`. The
+    /// sha256 is the archive's hash (already declared by the user);
+    /// for archive-file we mix in a short hash of the member path so
+    /// changing `member = ...` in the TOML re-extracts.
+    #[allow(clippy::too_many_arguments)]
+    fn execute_fetch_archive(
+        &self,
+        pack: &str,
+        handler: &str,
+        name: &str,
+        url: &str,
+        expected_sha256: &str,
+        format: Option<crate::external::ArchiveFormat>,
+        member: Option<&str>,
+        user_path: &Path,
+    ) -> Result<Vec<OperationResult>> {
+        let op = || fetch_op(pack, handler, name, url);
+        let sentinel = archive_sentinel(name, expected_sha256, member);
+
+        if !self.force && self.datastore.has_sentinel(pack, handler, &sentinel)? {
+            debug!(pack, name, "archive sentinel matches; skipping fetch");
+            return Ok(vec![OperationResult::ok(
+                op(),
+                format!("{name}: fresh (archive sha256 matches)"),
+            )]);
+        }
+
+        // Resolve format: explicit field wins; otherwise infer from
+        // the URL filename.
+        let format = match format.or_else(|| crate::external::ArchiveFormat::infer_from_url(url)) {
+            Some(f) => f,
+            None => {
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!(
+                        "{name}: archive format could not be inferred from URL {url}; set `format` explicitly"
+                    ),
+                )]);
+            }
+        };
+
+        let Some(fetcher) = self.fetcher() else {
+            return Ok(vec![OperationResult::fail(
+                op(),
+                format!(
+                    "external '{name}': executor has no HTTP fetcher configured; call Executor::with_fetcher() in production wiring"
+                ),
+            )]);
+        };
+
+        info!(pack, name, url, ?format, ?member, "downloading archive");
+        let bytes = match fetcher.fetch(url) {
+            Ok(b) => b,
+            Err(err) if err.is_transient() => {
+                warn!(pack, name, %err, "archive fetch failed (transient)");
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!("{name}: fetch failed ({err}); leaving cached copy in place"),
+                )]);
+            }
+            Err(err) => {
+                return Ok(vec![OperationResult::fail(
+                    op(),
+                    format!("{name}: fetch failed: {err}"),
+                )]);
+            }
+        };
+
+        let actual = sha256_hex(&bytes);
+        if !sha256_matches(expected_sha256, &actual) {
+            return Ok(vec![OperationResult::fail(
+                op(),
+                format!(
+                    "{name}: sha256 mismatch (configured {}, actual {}); refusing to extract",
+                    short(expected_sha256),
+                    short(&actual)
+                ),
+            )]);
+        }
+
+        // Wipe any previous extraction for this entry so a refresh
+        // doesn't leave stale files behind. `remove_state` removes
+        // the whole handler dir which is too aggressive — we want
+        // just `<name>/`. The datastore doesn't expose a per-subdir
+        // remove, so do it via Fs against the resolved path.
+        let entry_root = self.paths.handler_data_dir(pack, handler).join(name);
+        if self.fs.exists(&entry_root) {
+            // For archive-file we wrote a single file; for archive we
+            // wrote a directory tree. Handle both.
+            if self.fs.is_dir(&entry_root) {
+                self.fs.remove_dir_all(&entry_root)?;
+            } else {
+                self.fs.remove_file(&entry_root)?;
+            }
+        }
+
+        // Extract.
+        let (symlink_target, ops) = if let Some(m) = member {
+            let entry = match crate::external::read_member(&bytes, format, m) {
+                Ok(e) => e,
+                Err(err) => {
+                    return Ok(vec![OperationResult::fail(op(), format!("{name}: {err}"))]);
+                }
+            };
+            // Land the single file at `<name>/<basename-of-member>`.
+            // basename so users get a stable path inside the
+            // datastore even when the archive uses a deep member.
+            let basename = std::path::Path::new(m)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "content".into());
+            let rel = format!("{name}/{basename}");
+            let dst = self
+                .datastore
+                .write_rendered_file(pack, handler, &rel, &entry.bytes)?;
+            (
+                dst.clone(),
+                vec![format!(
+                    "{name}: extracted `{m}` ({} bytes)",
+                    entry.bytes.len()
+                )],
+            )
+        } else {
+            let entries = match crate::external::read_all(&bytes, format) {
+                Ok(e) => e,
+                Err(err) => {
+                    return Ok(vec![OperationResult::fail(op(), format!("{name}: {err}"))]);
+                }
+            };
+            let mut written = 0usize;
+            for (rel_path, entry) in &entries {
+                let rel_str = rel_path.to_string_lossy();
+                let rel_full = format!("{name}/{rel_str}");
+                if entry.is_dir {
+                    self.datastore
+                        .write_rendered_dir(pack, handler, &rel_full)?;
+                } else {
+                    self.datastore
+                        .write_rendered_file(pack, handler, &rel_full, &entry.bytes)?;
+                    written += 1;
+                }
+            }
+            (
+                entry_root.clone(),
+                vec![format!(
+                    "{name}: extracted {} files into {}",
+                    written,
+                    entry_root.display()
+                )],
+            )
+        };
+
+        // User-visible symlink.
+        self.create_external_user_link(&symlink_target, user_path)?;
+        self.write_sentinel(pack, handler, &sentinel)?;
+
+        let create_link = Operation::CreateUserLink {
+            pack: pack.to_string(),
+            handler: handler.to_string(),
+            datastore_path: symlink_target.clone(),
+            user_path: user_path.to_path_buf(),
+        };
+        let mut results = Vec::new();
+        for msg in ops {
+            results.push(OperationResult::ok(op(), msg));
+        }
+        results.push(OperationResult::ok(
+            create_link,
+            format!("{name} → {}", user_path.display()),
+        ));
+        Ok(results)
     }
 
     /// Fetch one `type = "git-repo"` external.
@@ -746,6 +989,22 @@ fn file_sentinel(name: &str, sha256: &str) -> String {
 /// is live.
 fn git_repo_sentinel(name: &str, sha: &str) -> String {
     format!("{name}-git-{}", short(sha))
+}
+
+/// Sentinel filename for `archive` / `archive-file` entries.
+///
+/// The archive sha256 prefix is the primary key. For archive-file we
+/// also mix in a short hash of the member path so changing the
+/// `member` field in the TOML (without changing the archive itself)
+/// still invalidates the sentinel.
+fn archive_sentinel(name: &str, sha256: &str, member: Option<&str>) -> String {
+    match member {
+        Some(m) => {
+            let member_hash = sha256_hex(m.as_bytes());
+            format!("{name}-archive-{}-{}", short(sha256), short(&member_hash))
+        }
+        None => format!("{name}-archive-{}", short(sha256)),
+    }
 }
 
 /// Derive the on-disk filename inside the datastore subdir from the
@@ -1617,5 +1876,293 @@ mod tests {
         assert!(git.calls().is_empty());
         assert!(!env.fs.exists(&user_path));
         env.assert_no_handler_state("frameworks", "external");
+    }
+
+    // ── archive / archive-file ─────────────────────────────────
+
+    fn make_tar_gz_two_files() -> Vec<u8> {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+
+        let mut tar_buf: Vec<u8> = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_buf);
+
+            let mut header = tar::Header::new_gnu();
+            let body = b"# alpha theme\n";
+            header.set_path("themes/alpha.zsh").unwrap();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append(&header, &body[..]).unwrap();
+
+            let mut header = tar::Header::new_gnu();
+            let body = b"#!/bin/sh\necho setup\n";
+            header.set_path("scripts/setup.sh").unwrap();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder.append(&header, &body[..]).unwrap();
+            builder.finish().unwrap();
+        }
+        let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+        gz.write_all(&tar_buf).unwrap();
+        gz.finish().unwrap()
+    }
+
+    fn archive_intent(
+        name: &str,
+        url: &str,
+        sha256: String,
+        user_path: std::path::PathBuf,
+    ) -> HandlerIntent {
+        HandlerIntent::Fetch {
+            pack: "themes".into(),
+            handler: "external".into(),
+            name: name.into(),
+            spec: FetchSpec::Archive {
+                url: url.into(),
+                sha256,
+                format: None,
+            },
+            user_path,
+        }
+    }
+
+    fn archive_file_intent(
+        name: &str,
+        url: &str,
+        sha256: String,
+        member: &str,
+        user_path: std::path::PathBuf,
+    ) -> HandlerIntent {
+        HandlerIntent::Fetch {
+            pack: "themes".into(),
+            handler: "external".into(),
+            name: name.into(),
+            spec: FetchSpec::ArchiveFile {
+                url: url.into(),
+                sha256,
+                member: member.into(),
+                format: None,
+            },
+            user_path,
+        }
+    }
+
+    #[test]
+    fn archive_full_extracts_tree_and_symlinks() {
+        let bytes = make_tar_gz_two_files();
+        let sha = super::sha256_hex(&bytes);
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let fetcher = MockFetcher::new().with("https://x/p10k.tar.gz", &bytes);
+        let user_path = env.home.join(".config/themes/p10k");
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_fetcher(&fetcher);
+
+        let results = executor
+            .execute(vec![archive_intent(
+                "p10k",
+                "https://x/p10k.tar.gz",
+                sha,
+                user_path.clone(),
+            )])
+            .unwrap();
+        assert!(results.iter().all(|r| r.success), "{results:#?}");
+        assert!(env.fs.is_symlink(&user_path));
+        // Two files materialised under the entry dir.
+        let theme = user_path.join("themes/alpha.zsh");
+        let script = user_path.join("scripts/setup.sh");
+        assert!(env.fs.exists(&theme));
+        assert!(env.fs.exists(&script));
+        assert_eq!(env.fs.read_to_string(&theme).unwrap(), "# alpha theme\n");
+    }
+
+    #[test]
+    fn archive_idempotent_via_sentinel() {
+        let bytes = make_tar_gz_two_files();
+        let sha = super::sha256_hex(&bytes);
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let fetcher = MockFetcher::new().with("https://x/p10k.tar.gz", &bytes);
+        let user_path = env.home.join(".config/themes/p10k");
+        let intent = archive_intent("p10k", "https://x/p10k.tar.gz", sha.clone(), user_path);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_fetcher(&fetcher);
+
+        executor.execute(vec![intent.clone()]).unwrap();
+        // Second run: mock only had one canned response, so a second
+        // fetch attempt would fail. Sentinel must prevent the fetch.
+        let second = executor.execute(vec![intent]).unwrap();
+        assert!(second.iter().all(|r| r.success), "{second:#?}");
+        assert!(
+            second[0].message.contains("fresh"),
+            "msg: {}",
+            second[0].message
+        );
+    }
+
+    #[test]
+    fn archive_sha256_mismatch_refuses_to_extract() {
+        let bytes = make_tar_gz_two_files();
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let fetcher = MockFetcher::new().with("https://x/p10k.tar.gz", &bytes);
+        let user_path = env.home.join(".config/themes/p10k");
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_fetcher(&fetcher);
+
+        let results = executor
+            .execute(vec![archive_intent(
+                "p10k",
+                "https://x/p10k.tar.gz",
+                "wrong".repeat(13), // 65 chars
+                user_path.clone(),
+            )])
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(
+            results[0].message.contains("sha256 mismatch"),
+            "msg: {}",
+            results[0].message
+        );
+        assert!(!env.fs.exists(&user_path));
+    }
+
+    #[test]
+    fn archive_file_extracts_single_member() {
+        let bytes = make_tar_gz_two_files();
+        let sha = super::sha256_hex(&bytes);
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let fetcher = MockFetcher::new().with("https://x/p10k.tar.gz", &bytes);
+        let user_path = env.home.join("setup.sh");
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_fetcher(&fetcher);
+
+        let results = executor
+            .execute(vec![archive_file_intent(
+                "setup",
+                "https://x/p10k.tar.gz",
+                sha,
+                "scripts/setup.sh",
+                user_path.clone(),
+            )])
+            .unwrap();
+        assert!(results.iter().all(|r| r.success), "{results:#?}");
+        assert!(env.fs.is_symlink(&user_path));
+        // The deployed file's content matches the archive member.
+        assert_eq!(
+            env.fs.read_to_string(&user_path).unwrap(),
+            "#!/bin/sh\necho setup\n"
+        );
+    }
+
+    #[test]
+    fn archive_file_missing_member_fails_clearly() {
+        let bytes = make_tar_gz_two_files();
+        let sha = super::sha256_hex(&bytes);
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let fetcher = MockFetcher::new().with("https://x/p10k.tar.gz", &bytes);
+        let user_path = env.home.join("doesnt-matter");
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_fetcher(&fetcher);
+
+        let results = executor
+            .execute(vec![archive_file_intent(
+                "missing",
+                "https://x/p10k.tar.gz",
+                sha,
+                "no/such/path.sh",
+                user_path,
+            )])
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(
+            results[0].message.contains("does not contain member"),
+            "msg: {}",
+            results[0].message
+        );
+    }
+
+    #[test]
+    fn archive_unknown_format_url_fails_helpfully() {
+        let bytes = b"some-bytes".to_vec();
+        let sha = super::sha256_hex(&bytes);
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let fetcher = MockFetcher::new().with("https://x/no-extension", &bytes);
+        let user_path = env.home.join("x");
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        )
+        .with_fetcher(&fetcher);
+
+        let results = executor
+            .execute(vec![archive_intent(
+                "weird",
+                "https://x/no-extension",
+                sha,
+                user_path,
+            )])
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(
+            results[0].message.contains("format could not be inferred"),
+            "msg: {}",
+            results[0].message
+        );
     }
 }

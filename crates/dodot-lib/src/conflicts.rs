@@ -183,6 +183,8 @@ fn intent_source(intent: &HandlerIntent) -> PathBuf {
         HandlerIntent::Fetch { spec, name, .. } => match spec {
             crate::external::FetchSpec::File { url, .. } => PathBuf::from(url),
             crate::external::FetchSpec::GitRepo { url, .. } => PathBuf::from(url),
+            crate::external::FetchSpec::Archive { url, .. } => PathBuf::from(url),
+            crate::external::FetchSpec::ArchiveFile { url, .. } => PathBuf::from(url),
             crate::external::FetchSpec::Unsupported => PathBuf::from(format!("<external:{name}>")),
         },
     }
