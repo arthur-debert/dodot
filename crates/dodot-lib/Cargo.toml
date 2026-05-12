@@ -24,6 +24,7 @@ tempfile = { version = "3", optional = true }
 thiserror = "2"
 toml = "0.8"
 tracing = "0.1"
+ureq = { version = "2", default-features = false, features = ["tls"] }
 zeroize = "1"
 
 [dev-dependencies]

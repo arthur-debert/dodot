@@ -5,6 +5,7 @@ pub mod datastore;
 pub mod equivalence;
 pub mod error;
 pub mod execution;
+pub mod external;
 pub mod fs;
 pub mod gates;
 pub mod handlers;

@@ -170,6 +170,15 @@ fn intent_source(intent: &HandlerIntent) -> PathBuf {
         HandlerIntent::Link { source, .. } => source.clone(),
         HandlerIntent::Stage { source, .. } => source.clone(),
         HandlerIntent::Run { executable, .. } => PathBuf::from(executable),
+        // The "source" for an external is the URL — represent it as a
+        // pseudo-path so conflict messaging stays uniform. Externals
+        // don't currently participate in cross-pack conflict detection
+        // (each entry's target is independent and configured by the
+        // user), so this string is only ever shown in diagnostics.
+        HandlerIntent::Fetch { spec, name, .. } => match spec {
+            crate::external::FetchSpec::File { url, .. } => PathBuf::from(url),
+            crate::external::FetchSpec::Unsupported => PathBuf::from(format!("<external:{name}>")),
+        },
     }
 }
 

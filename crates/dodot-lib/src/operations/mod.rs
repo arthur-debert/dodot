@@ -44,6 +44,18 @@ pub enum Operation {
         handler: String,
         sentinel: String,
     },
+
+    /// Fetch an external resource into the datastore.
+    /// The user-visible symlink is produced as a separate
+    /// `CreateUserLink` operation by the same intent.
+    FetchExternal {
+        pack: String,
+        handler: String,
+        /// Entry name from `externals.toml` section header.
+        name: String,
+        /// Origin URL (or `file://` for local testing).
+        url: String,
+    },
 }
 
 impl Operation {
@@ -52,7 +64,8 @@ impl Operation {
             Self::CreateDataLink { pack, .. }
             | Self::CreateUserLink { pack, .. }
             | Self::RunCommand { pack, .. }
-            | Self::CheckSentinel { pack, .. } => pack,
+            | Self::CheckSentinel { pack, .. }
+            | Self::FetchExternal { pack, .. } => pack,
         }
     }
 
@@ -61,7 +74,8 @@ impl Operation {
             Self::CreateDataLink { handler, .. }
             | Self::CreateUserLink { handler, .. }
             | Self::RunCommand { handler, .. }
-            | Self::CheckSentinel { handler, .. } => handler,
+            | Self::CheckSentinel { handler, .. }
+            | Self::FetchExternal { handler, .. } => handler,
         }
     }
 
@@ -72,6 +86,7 @@ impl Operation {
             Self::CreateUserLink { .. } => "CreateUserLink",
             Self::RunCommand { .. } => "RunCommand",
             Self::CheckSentinel { .. } => "CheckSentinel",
+            Self::FetchExternal { .. } => "FetchExternal",
         }
     }
 }
@@ -112,12 +127,28 @@ pub enum HandlerIntent {
         arguments: Vec<String>,
         sentinel: String,
     },
+
+    /// Externals handler: fetch a resource into the datastore, then
+    /// link it to a user-visible target. Sentinel-gated; the executor
+    /// no-ops when the content signature already matches.
+    Fetch {
+        pack: String,
+        handler: String,
+        /// Entry name from `externals.toml` (used for datastore subdir).
+        name: String,
+        spec: crate::external::FetchSpec,
+        /// User-visible target path (`target = "~/.config/foo"`, already resolved).
+        user_path: PathBuf,
+    },
 }
 
 impl HandlerIntent {
     pub fn pack(&self) -> &str {
         match self {
-            Self::Link { pack, .. } | Self::Stage { pack, .. } | Self::Run { pack, .. } => pack,
+            Self::Link { pack, .. }
+            | Self::Stage { pack, .. }
+            | Self::Run { pack, .. }
+            | Self::Fetch { pack, .. } => pack,
         }
     }
 
@@ -125,7 +156,8 @@ impl HandlerIntent {
         match self {
             Self::Link { handler, .. }
             | Self::Stage { handler, .. }
-            | Self::Run { handler, .. } => handler,
+            | Self::Run { handler, .. }
+            | Self::Fetch { handler, .. } => handler,
         }
     }
 }

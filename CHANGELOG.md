@@ -28,6 +28,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Externals handler (PR 1 of stacked series, file type only)** —
+  packs can now declare remote resources in an `externals.toml` file
+  at the pack root. Each section declares one entry; this PR
+  implements `type = "file"` with mandatory `sha256` content pinning.
+  Fetched bytes land in the datastore under
+  `<data_dir>/packs/<pack>/external/<name>/<filename>` and a
+  user-visible symlink is created at the configured `target`.
+  Sentinel-gated: re-running `dodot up` with an unchanged sha256 is a
+  no-op; bumping the sha256 in the TOML invalidates the old sentinel
+  and triggers a re-fetch. Transient network failures soft-fail and
+  leave any cached copy in place; integrity (sha256) mismatches are
+  hard failures that refuse to write. New `ExecutionPhase::External`
+  slot runs between `Filter` and `Provision`. `git-repo`, `archive`,
+  and `archive-file` types parse but report "unsupported" — they land
+  in subsequent PRs of the series. Closes part of #152.
+
 - **Conditional running (gates)** — files, directories, and packs can
   be gated against host facts (OS, arch, hostname, username) so the
   same dotfiles repo deploys differently on different machines without

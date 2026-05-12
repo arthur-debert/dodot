@@ -23,6 +23,7 @@
 //! `$PATH`, it just won't be directly runnable until the user fixes
 //! permissions manually.
 
+mod fetch;
 mod link;
 mod run;
 mod stage;
@@ -30,6 +31,7 @@ mod stage;
 use tracing::debug;
 
 use crate::datastore::DataStore;
+use crate::external::HttpFetcher;
 use crate::fs::Fs;
 use crate::operations::{HandlerIntent, OperationResult};
 use crate::paths::Pather;
@@ -44,6 +46,12 @@ pub struct Executor<'a> {
     force: bool,
     provision_rerun: bool,
     auto_chmod_exec: bool,
+    /// HTTP-ish fetcher used for `HandlerIntent::Fetch`. Optional so
+    /// the 20+ test sites that don't exercise externals can keep
+    /// constructing `Executor::new(...)` unchanged; the fetch
+    /// dispatcher errors loudly if it sees a Fetch intent without
+    /// one. Production wiring sets this via [`Self::with_fetcher`].
+    fetcher: Option<&'a dyn HttpFetcher>,
 }
 
 impl<'a> Executor<'a> {
@@ -64,7 +72,19 @@ impl<'a> Executor<'a> {
             force,
             provision_rerun,
             auto_chmod_exec,
+            fetcher: None,
         }
+    }
+
+    /// Builder-style: install the HTTP fetcher used by Fetch intents.
+    pub fn with_fetcher(mut self, fetcher: &'a dyn HttpFetcher) -> Self {
+        self.fetcher = Some(fetcher);
+        self
+    }
+
+    /// Accessor for the fetch dispatcher.
+    pub(super) fn fetcher(&self) -> Option<&'a dyn HttpFetcher> {
+        self.fetcher
     }
 
     /// Execute a list of handler intents, returning one result per
@@ -106,6 +126,7 @@ impl<'a> Executor<'a> {
             HandlerIntent::Link { .. } => self.execute_link(intent),
             HandlerIntent::Stage { .. } => self.execute_stage(intent),
             HandlerIntent::Run { .. } => self.execute_run(intent),
+            HandlerIntent::Fetch { .. } => self.execute_fetch(intent),
         }
     }
 
@@ -115,6 +136,7 @@ impl<'a> Executor<'a> {
             HandlerIntent::Link { .. } => self.simulate_link(intent),
             HandlerIntent::Stage { .. } => self.simulate_stage(intent),
             HandlerIntent::Run { .. } => self.simulate_run(intent),
+            HandlerIntent::Fetch { .. } => self.simulate_fetch(intent),
         }
     }
 }

@@ -220,6 +220,7 @@ pub fn execute_intents(
         "executing intents"
     );
     let auto_chmod = ctx.config_manager.root_config()?.path.auto_chmod_exec;
+    let fetcher = crate::external::UreqFetcher::new();
     let executor = Executor::new(
         ctx.datastore.as_ref(),
         ctx.fs.as_ref(),
@@ -228,7 +229,8 @@ pub fn execute_intents(
         ctx.force,
         ctx.provision_rerun,
         auto_chmod,
-    );
+    )
+    .with_fetcher(&fetcher);
     executor.execute(intents)
 }
 
