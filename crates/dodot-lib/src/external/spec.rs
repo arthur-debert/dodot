@@ -15,9 +15,13 @@
 //! sha256 = "..."
 //! ```
 //!
-//! For PR 1 only `type = "file"` is implemented; the other variants
-//! parse as [`FetchSpec::Unsupported`] with the requested type
-//! preserved so the handler can emit a clean diagnostic.
+//! For PR 1 only `type = "file"` is implemented; any other `type`
+//! value parses to [`FetchSpec::Unsupported`]. The original type
+//! string is not retained — `#[serde(other)]` does not carry it over
+//! — so the handler's diagnostic surfaces the entry name and a
+//! generic "unsupported type" message rather than echoing back
+//! what the user wrote. Subsequent PRs add the real variants
+//! (`git-repo`, `archive`, `archive-file`).
 
 use std::collections::BTreeMap;
 
@@ -75,12 +79,52 @@ pub enum FetchSpec {
 ///
 /// Returns a `DodotError::Other` on malformed TOML; callers attach the
 /// pack name for context.
+///
+/// Entry names are validated against a safe-identifier charset because
+/// they are used verbatim as datastore subdirectory names and sentinel
+/// filenames — letting `..` or `/` through here would create
+/// surprising nested layouts and confusing sentinel matches.
 pub fn parse_externals_toml(bytes: &[u8]) -> Result<ExternalsToml> {
     let text = std::str::from_utf8(bytes)
         .map_err(|e| DodotError::Other(format!("externals.toml is not valid UTF-8: {e}")))?;
     let parsed: BTreeMap<String, ExternalEntry> = toml::from_str(text)
         .map_err(|e| DodotError::Other(format!("externals.toml parse error: {e}")))?;
+    for name in parsed.keys() {
+        validate_entry_name(name)?;
+    }
     Ok(ExternalsToml { entries: parsed })
+}
+
+/// Reject entry names that wouldn't be safe as path or sentinel
+/// components. Allowed: ASCII letters/digits, plus `-`, `_`, and
+/// internal `.` (but not pure `.` or `..`). Everything else — including
+/// `/`, `\`, spaces, leading dot, control characters — is a hard error.
+fn validate_entry_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Err(DodotError::Other(
+            "externals.toml entry name must not be empty".into(),
+        ));
+    }
+    if name == "." || name == ".." {
+        return Err(DodotError::Other(format!(
+            "externals.toml entry name {name:?} is reserved"
+        )));
+    }
+    if name.starts_with('.') {
+        return Err(DodotError::Other(format!(
+            "externals.toml entry name {name:?} must not start with a dot"
+        )));
+    }
+    for ch in name.chars() {
+        let ok = ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.');
+        if !ok {
+            return Err(DodotError::Other(format!(
+                "externals.toml entry name {name:?} contains invalid character {ch:?}; \
+                 allowed: ASCII letters, digits, `-`, `_`, `.`"
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -127,6 +171,61 @@ mod tests {
         let parsed = parse_externals_toml(toml.as_bytes()).unwrap();
         let names: Vec<&str> = parsed.entries.keys().map(String::as_str).collect();
         assert_eq!(names, vec!["alpha", "zeta"]);
+    }
+
+    #[test]
+    fn rejects_entry_names_with_path_separator() {
+        let toml = r#"
+            ["bad/name"]
+            type   = "file"
+            url    = "https://example.com/x"
+            target = "~/x"
+            sha256 = "00"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("invalid character"), "got: {msg}");
+    }
+
+    #[test]
+    fn rejects_dotdot_entry_name() {
+        let toml = r#"
+            [".."]
+            type   = "file"
+            url    = "https://example.com/x"
+            target = "~/x"
+            sha256 = "00"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        assert!(format!("{err}").contains("reserved"));
+    }
+
+    #[test]
+    fn rejects_dot_prefixed_entry_name() {
+        let toml = r#"
+            [".hidden"]
+            type   = "file"
+            url    = "https://example.com/x"
+            target = "~/x"
+            sha256 = "00"
+        "#;
+        let err = parse_externals_toml(toml.as_bytes()).unwrap_err();
+        assert!(format!("{err}").contains("must not start with a dot"));
+    }
+
+    #[test]
+    fn accepts_internal_dots_dashes_underscores() {
+        // TOML treats bare `[a.b]` as nested tables, so use a quoted
+        // section header to land a literal dot in the key.
+        let toml = r#"
+            ["shared.aliases-v2_main"]
+            type   = "file"
+            url    = "https://example.com/x"
+            target = "~/x"
+            sha256 = "00"
+        "#;
+        let parsed = parse_externals_toml(toml.as_bytes()).unwrap();
+        assert!(parsed.entries.contains_key("shared.aliases-v2_main"));
     }
 
     #[test]

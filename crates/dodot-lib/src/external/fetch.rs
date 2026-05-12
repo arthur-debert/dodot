@@ -46,11 +46,32 @@ pub trait HttpFetcher: Send + Sync {
 /// `file://` support exists so the test suite can drive the executor
 /// end-to-end without standing up an HTTP server; it's also useful for
 /// users who want to pull from a local mirror.
-pub struct UreqFetcher;
+///
+/// Timeouts: the underlying agent is configured with explicit
+/// connect / read / overall-call deadlines so a stalled remote can't
+/// hang `dodot up` indefinitely. On a plane or behind a dead
+/// captive-portal these fail predictably and the executor's
+/// soft-fail path takes over (cached content stays in place).
+pub struct UreqFetcher {
+    agent: ureq::Agent,
+}
 
 impl UreqFetcher {
     pub fn new() -> Self {
-        Self
+        // Picked to favour failing-fast over edge cases:
+        // - 5 s to open a TCP/TLS connection (DNS + handshake).
+        // - 20 s on a single read (servers that dribble bytes).
+        // - 60 s total wall-clock cap on the whole call (last-resort).
+        // Externals are typically small files / small clones, so
+        // these aren't tight enough to bite real-world fetches but
+        // they're tight enough to keep `up` snappy when the network
+        // is unreachable.
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(5))
+            .timeout_read(std::time::Duration::from_secs(20))
+            .timeout(std::time::Duration::from_secs(60))
+            .build();
+        Self { agent }
     }
 }
 
@@ -76,7 +97,7 @@ impl HttpFetcher for UreqFetcher {
             )));
         }
 
-        match ureq::get(url).call() {
+        match self.agent.get(url).call() {
             Ok(resp) => {
                 let mut reader = resp.into_reader();
                 let mut bytes = Vec::new();
