@@ -15,13 +15,12 @@
 //! sha256 = "..."
 //! ```
 //!
-//! For PR 1 only `type = "file"` is implemented; any other `type`
-//! value parses to [`FetchSpec::Unsupported`]. The original type
-//! string is not retained — `#[serde(other)]` does not carry it over
-//! — so the handler's diagnostic surfaces the entry name and a
-//! generic "unsupported type" message rather than echoing back
-//! what the user wrote. Subsequent PRs add the real variants
-//! (`git-repo`, `archive`, `archive-file`).
+//! `file` and `git-repo` are implemented; any other `type` value
+//! parses to [`FetchSpec::Unsupported`]. The original type string is
+//! not retained — `#[serde(other)]` does not carry it over — so the
+//! handler's diagnostic surfaces the entry name and a generic
+//! "unsupported type" message rather than echoing back what the user
+//! wrote. Subsequent PRs add `archive` / `archive-file`.
 
 use std::collections::BTreeMap;
 
@@ -54,10 +53,10 @@ pub struct ExternalEntry {
 
 /// The fetch recipe for one external entry.
 ///
-/// Tagged externally by the `type` field per TOML convention. Future
-/// PRs add `git-repo`, `archive`, `archive-file` variants — until they
-/// land, those parse into [`FetchSpec::Unsupported`] so the handler
-/// can surface "not yet implemented" without choking the whole pack.
+/// Tagged externally by the `type` field per TOML convention.
+/// `archive` and `archive-file` arrive in a later PR — until then,
+/// those parse into [`FetchSpec::Unsupported`] so the handler can
+/// surface "not yet implemented" without choking the whole pack.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum FetchSpec {
@@ -69,6 +68,15 @@ pub enum FetchSpec {
         /// without one is the same posture Home Manager takes.
         sha256: String,
     },
+
+    /// A shallow git clone, tracking `HEAD` of the default branch.
+    ///
+    /// Freshness is upstream-driven: each `dodot up` runs a cheap
+    /// `git ls-remote HEAD`; the actual clone is only re-fetched
+    /// when the remote SHA differs from the local one. Sparse-tree
+    /// checkout (`subpath`) and pinned `ref` / `commit` arrive in
+    /// a follow-up PR; for now the whole repo's HEAD is cloned.
+    GitRepo { url: String },
 
     /// Catchall for type values dodot doesn't implement yet.
     #[serde(other)]
@@ -229,15 +237,34 @@ mod tests {
     }
 
     #[test]
-    fn unknown_type_becomes_unsupported() {
+    fn parses_git_repo_entry() {
         let toml = r#"
             [omz]
-            type = "git-repo"
-            url = "https://github.com/ohmyzsh/ohmyzsh.git"
+            type   = "git-repo"
+            url    = "https://github.com/ohmyzsh/ohmyzsh.git"
             target = "~/.oh-my-zsh"
         "#;
         let parsed = parse_externals_toml(toml.as_bytes()).unwrap();
         let entry = parsed.entries.get("omz").unwrap();
+        assert_eq!(entry.target, "~/.oh-my-zsh");
+        match &entry.spec {
+            FetchSpec::GitRepo { url } => {
+                assert_eq!(url, "https://github.com/ohmyzsh/ohmyzsh.git");
+            }
+            other => panic!("expected GitRepo spec, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_type_becomes_unsupported() {
+        let toml = r#"
+            [bogus]
+            type = "this-will-never-exist"
+            url = "https://example.com"
+            target = "~/x"
+        "#;
+        let parsed = parse_externals_toml(toml.as_bytes()).unwrap();
+        let entry = parsed.entries.get("bogus").unwrap();
         assert!(matches!(entry.spec, FetchSpec::Unsupported));
     }
 
