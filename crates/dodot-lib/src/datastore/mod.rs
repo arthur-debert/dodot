@@ -110,7 +110,11 @@ pub trait DataStore: Send + Sync {
     ///   was at the time of that last run.
     ///
     /// Tie-break for multiple non-matching sentinels: most recently
-    /// modified wins.
+    /// completed run wins, as recorded by the `completed|<unix-ts>`
+    /// payload [`run_and_record`](DataStore::run_and_record) writes
+    /// to each sentinel. Sentinels whose payload doesn't parse fall
+    /// to the bottom; ties on timestamp break by lexical order on
+    /// the sentinel filename for determinism.
     fn did_run(
         &self,
         pack: &str,

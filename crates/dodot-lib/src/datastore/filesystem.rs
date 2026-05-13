@@ -25,6 +25,18 @@ pub(crate) const SNAPSHOT_SUFFIX: &str = ".snapshot";
 /// `-`" (filenames may contain hyphens).
 const HASH_LEN: usize = 16;
 
+/// Parse the unix timestamp recorded in a sentinel file's content.
+///
+/// `run_and_record` writes `completed|<unix-secs>` to each sentinel.
+/// Returns `Some(ts)` when the content has that shape, `None` for
+/// any other content (older sentinel formats, manually-edited files,
+/// truncated reads). Callers in `did_run` use this to order
+/// multiple non-matching sentinels by recency for tie-break.
+fn parse_completed_timestamp(content: &str) -> Option<u64> {
+    let payload = content.trim_end().strip_prefix("completed|")?;
+    payload.parse::<u64>().ok()
+}
+
 /// Parse a sentinel filename into its `(filename, hash)` parts.
 ///
 /// Returns `None` for any name that doesn't end in `-<16 lowercase
@@ -319,7 +331,7 @@ impl DataStore for FilesystemDataStore {
         // Collect every sentinel for this filename (each shaped
         // `<filename>-<16 hex chars>`). Snapshot siblings end in
         // `.snapshot` and are filtered out by `extract_sentinel_hash`.
-        let mut matches: Vec<(String, String)> = self
+        let matches: Vec<(String, String)> = self
             .fs
             .read_dir(&handler_dir)?
             .into_iter()
@@ -339,12 +351,30 @@ impl DataStore for FilesystemDataStore {
             return Ok(DidRunStatus::RanCurrent);
         }
 
-        // Lexically last sentinel wins the tie-break for which "prior
-        // hash" to surface. Stable across runs without needing mtime
-        // access through the Fs trait; the exact choice is mostly
-        // cosmetic (users see "ran older version" either way).
-        matches.sort_by(|a, b| a.0.cmp(&b.0));
-        let (prior_sentinel_name, prior_hash) = matches.pop().expect("non-empty checked above");
+        // For tie-break between multiple non-matching sentinels, pick
+        // the sentinel with the most recent `completed|<unix-ts>`
+        // payload (written by `run_and_record`). This is the closest
+        // signal we have to "most recent prior run" without needing
+        // mtime access through the Fs trait. Sentinels whose payload
+        // doesn't parse fall to the bottom of the ranking (timestamp
+        // 0); ties on timestamp break by lexical order on the
+        // sentinel filename for determinism.
+        let prior = matches
+            .into_iter()
+            .map(|(name, hash)| {
+                let path = handler_dir.join(&name);
+                let ts = self
+                    .fs
+                    .read_to_string(&path)
+                    .ok()
+                    .as_deref()
+                    .and_then(parse_completed_timestamp)
+                    .unwrap_or(0);
+                (name, hash, ts)
+            })
+            .max_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)))
+            .expect("non-empty checked above");
+        let (prior_sentinel_name, prior_hash, _) = prior;
 
         let snapshot_path = handler_dir.join(format!("{prior_sentinel_name}{SNAPSHOT_SUFFIX}"));
         let previous_snapshot = if self.fs.exists(&snapshot_path) {
@@ -1265,35 +1295,93 @@ mod tests {
     }
 
     #[test]
-    fn did_run_picks_lexically_last_for_tie_break() {
+    fn did_run_picks_most_recent_timestamp_for_tie_break() {
+        // Two non-matching sentinels: the one with the newer
+        // `completed|<ts>` payload wins, even when its hash sorts
+        // earlier lexically. This is the recent-run-wins property
+        // that ties the "ran older version" diff display to the
+        // actual most-recent prior run.
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
 
         let sentinel_dir = env.paths.handler_data_dir("vim", "install");
         env.fs.mkdir_all(&sentinel_dir).unwrap();
-        // Two non-matching sentinels for the same filename — last lex wins.
+
+        // Older run, hash sorts LATER lexically.
+        env.fs
+            .write_file(
+                &sentinel_dir.join("install.sh-ffffffffffffffff"),
+                b"completed|100",
+            )
+            .unwrap();
+        // Newer run, hash sorts EARLIER lexically.
         env.fs
             .write_file(
                 &sentinel_dir.join("install.sh-1111111111111111"),
-                b"completed|10",
-            )
-            .unwrap();
-        env.fs
-            .write_file(
-                &sentinel_dir.join("install.sh-2222222222222222"),
-                b"completed|20",
+                b"completed|900",
             )
             .unwrap();
 
         let status = ds
-            .did_run("vim", "install", "install.sh", "3333333333333333")
+            .did_run("vim", "install", "install.sh", "0000000000000000")
             .unwrap();
         match status {
             DidRunStatus::RanDifferent { previous_hash, .. } => {
-                assert_eq!(previous_hash, "2222222222222222");
+                // Recent (`|900`) should win over lex-last (`ffff…`).
+                assert_eq!(previous_hash, "1111111111111111");
             }
             other => panic!("expected RanDifferent, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn did_run_unparseable_timestamp_falls_to_bottom() {
+        // A sentinel with a malformed payload still classifies as a
+        // prior run, but loses the tie-break to any parseable one.
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let sentinel_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        env.fs
+            .write_file(
+                &sentinel_dir.join("install.sh-aaaaaaaaaaaaaaaa"),
+                b"garbage|not-a-number",
+            )
+            .unwrap();
+        env.fs
+            .write_file(
+                &sentinel_dir.join("install.sh-bbbbbbbbbbbbbbbb"),
+                b"completed|5",
+            )
+            .unwrap();
+
+        let status = ds
+            .did_run("vim", "install", "install.sh", "0000000000000000")
+            .unwrap();
+        match status {
+            DidRunStatus::RanDifferent { previous_hash, .. } => {
+                assert_eq!(previous_hash, "bbbbbbbbbbbbbbbb");
+            }
+            other => panic!("expected RanDifferent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_completed_timestamp_extracts_unix_seconds() {
+        assert_eq!(
+            parse_completed_timestamp("completed|1700000000"),
+            Some(1700000000)
+        );
+        assert_eq!(parse_completed_timestamp("completed|0"), Some(0));
+        assert_eq!(
+            parse_completed_timestamp("completed|1700000000\n"),
+            Some(1700000000)
+        );
+        assert_eq!(parse_completed_timestamp("completed|"), None);
+        assert_eq!(parse_completed_timestamp("completed|not-a-number"), None);
+        assert_eq!(parse_completed_timestamp("running|12345"), None);
+        assert_eq!(parse_completed_timestamp(""), None);
     }
 
     #[test]

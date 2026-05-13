@@ -191,19 +191,40 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
         datastore: &dyn DataStore,
     ) -> Result<HandlerStatus> {
         let checksum = file_checksum(self.fs, file)?;
-        let filename = file.file_name().unwrap_or_default().to_string_lossy();
-        let sentinel = format!("{filename}-{checksum}");
-        let has_sentinel = datastore.has_sentinel(pack, self.cmd.handler_name(), &sentinel)?;
+        let filename = file
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+
+        let status = datastore.did_run(pack, self.cmd.handler_name(), &filename, &checksum)?;
+
+        // Map the three-way did_run result to the binary
+        // deployed/not-deployed status with a descriptive message.
+        // `RanDifferent` is marked deployed=true (the script HAS run,
+        // just not for the current content) so callers that filter by
+        // `deployed` don't miss the entry; the message disambiguates
+        // current-version vs. older-version. This is the surface that
+        // `dodot status` and `dodot up`'s post-execute rendering both
+        // read from, so the "ran older version" notice reaches the
+        // user even though it bypasses the OperationResult flow.
+        let (deployed, message) = match status {
+            crate::datastore::DidRunStatus::NeverRan => (false, self.cmd.status_pending().into()),
+            crate::datastore::DidRunStatus::RanCurrent => (true, self.cmd.status_deployed().into()),
+            crate::datastore::DidRunStatus::RanDifferent { .. } => (
+                true,
+                format!(
+                    "{} (older version — run `dodot up --force` to apply current)",
+                    self.cmd.status_deployed()
+                ),
+            ),
+        };
 
         Ok(HandlerStatus {
             file: file.to_string_lossy().into_owned(),
             handler: self.cmd.handler_name().into(),
-            deployed: has_sentinel,
-            message: if has_sentinel {
-                self.cmd.status_deployed().into()
-            } else {
-                self.cmd.status_pending().into()
-            },
+            deployed,
+            message,
         })
     }
 }
@@ -645,6 +666,47 @@ mod tests {
         assert!(status.deployed);
         assert_eq!(status.message, "all set");
         assert_eq!(status.handler, "fake");
+    }
+
+    #[test]
+    fn check_status_reports_older_version_when_hash_differs() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("setup.sh", "new content")
+            .done()
+            .build();
+        let abs = env.dotfiles_root.join("vim/setup.sh");
+
+        // Pre-create a sentinel for a different hash → did_run
+        // returns RanDifferent → check_status reports "older version".
+        let sentinel_dir = env.paths.handler_data_dir("vim", "fake");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        env.fs
+            .write_file(
+                &sentinel_dir.join("setup.sh-aaaaaaaaaaaaaaaa"),
+                b"completed|100",
+            )
+            .unwrap();
+
+        let datastore = make_datastore(&env);
+        let cmd = FakeCommand {
+            deployed_msg: "ran",
+            ..FakeCommand::new("fake")
+        };
+        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
+
+        let status = handler.check_status(&abs, "vim", &datastore).unwrap();
+        assert!(status.deployed, "older version still counts as deployed");
+        assert!(
+            status.message.contains("older version"),
+            "message should flag older version, got: {}",
+            status.message
+        );
+        assert!(
+            status.message.contains("--force"),
+            "message should mention --force, got: {}",
+            status.message
+        );
     }
 
     #[test]
