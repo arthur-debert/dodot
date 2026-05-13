@@ -1,30 +1,25 @@
-//! Homebrew handler — runs `brew bundle` with sentinel tracking.
+//! Homebrew handler — runs `brew bundle` with checksum-based sentinel
+//! tracking, via the shared [`crate::handlers::run_once`] machinery.
+//!
+//! The bulk of the behavior lives in
+//! [`crate::handlers::run_once::RunOnceHandler`]. This module supplies
+//! the [`BrewfileCommand`] specialization: program name (`brew`) and
+//! argument shape (`bundle --file <path>`).
 
-use std::io::Read;
 use std::path::Path;
 
-use sha2::{Digest, Sha256};
+use crate::handlers::run_once::RunOnceCommand;
+use crate::handlers::{ExecutionPhase, HANDLER_HOMEBREW};
 
-use crate::datastore::DataStore;
-use crate::fs::Fs;
-use crate::handlers::{ExecutionPhase, Handler, HandlerConfig, HandlerStatus, HANDLER_HOMEBREW};
-use crate::operations::HandlerIntent;
-use crate::paths::Pather;
-use crate::rules::RuleMatch;
-use crate::Result;
+/// [`RunOnceCommand`] for the `homebrew` handler.
+///
+/// Invokes `brew bundle --file <abs path>`. No pre-flight validation —
+/// `brew` itself surfaces parse errors clearly when the Brewfile is
+/// malformed.
+pub struct BrewfileCommand;
 
-pub struct HomebrewHandler<'a> {
-    fs: &'a dyn Fs,
-}
-
-impl<'a> HomebrewHandler<'a> {
-    pub fn new(fs: &'a dyn Fs) -> Self {
-        Self { fs }
-    }
-}
-
-impl Handler for HomebrewHandler<'_> {
-    fn name(&self) -> &str {
+impl RunOnceCommand for BrewfileCommand {
+    fn handler_name(&self) -> &str {
         HANDLER_HOMEBREW
     }
 
@@ -32,110 +27,102 @@ impl Handler for HomebrewHandler<'_> {
         ExecutionPhase::Provision
     }
 
-    fn to_intents(
-        &self,
-        matches: &[RuleMatch],
-        _config: &HandlerConfig,
-        _paths: &dyn Pather,
-        _fs: &dyn Fs,
-    ) -> Result<Vec<HandlerIntent>> {
-        let mut intents = Vec::new();
+    fn command_for(&self, path: &Path) -> (String, Vec<String>) {
+        (
+            "brew".to_string(),
+            vec![
+                "bundle".into(),
+                "--file".into(),
+                path.to_string_lossy().into_owned(),
+            ],
+        )
+    }
 
-        for m in matches {
-            if m.is_dir {
-                continue;
-            }
+    fn status_deployed(&self) -> &str {
+        "brew packages installed"
+    }
 
-            // Same in-memory-first sentinel pattern as the install
-            // handler, including the first-time-pack passive
-            // placeholder case (no bytes, no on-disk file → skip
-            // intent generation). See install.rs and issue #121.
-            let checksum = match m.rendered_bytes.as_deref() {
-                Some(bytes) => brewfile_checksum_bytes(bytes),
-                None => match self.fs.exists(&m.absolute_path) {
-                    true => brewfile_checksum(self.fs, &m.absolute_path)?,
-                    false => {
-                        tracing::debug!(
-                            pack = %m.pack,
-                            file = %m.absolute_path.display(),
-                            "skipping homebrew intent — no rendered bytes and no on-disk file \
-                             (first-time-pack passive placeholder)"
-                        );
-                        continue;
-                    }
-                },
-            };
-            let filename = m
-                .relative_path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
-            let sentinel = format!("{filename}-{checksum}");
+    fn status_pending(&self) -> &str {
+        "brew packages not installed"
+    }
+}
 
-            intents.push(HandlerIntent::Run {
-                pack: m.pack.clone(),
-                handler: HANDLER_HOMEBREW.into(),
-                executable: "brew".into(),
-                arguments: vec![
-                    "bundle".into(),
-                    "--file".into(),
-                    m.absolute_path.to_string_lossy().into_owned(),
-                ],
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fs::Fs;
+    use crate::handlers::run_once::RunOnceHandler;
+    use crate::handlers::{Handler, HandlerConfig};
+    use crate::operations::HandlerIntent;
+    use crate::rules::RuleMatch;
+    use crate::testing::TempEnvironment;
+    use std::collections::HashMap;
+
+    #[test]
+    fn brewfile_command_identity() {
+        assert_eq!(BrewfileCommand.handler_name(), HANDLER_HOMEBREW);
+        assert_eq!(BrewfileCommand.phase(), ExecutionPhase::Provision);
+        assert_eq!(BrewfileCommand.status_deployed(), "brew packages installed");
+        assert_eq!(
+            BrewfileCommand.status_pending(),
+            "brew packages not installed"
+        );
+    }
+
+    #[test]
+    fn brewfile_command_emits_run_intent_with_expected_shape() {
+        let env = TempEnvironment::builder()
+            .pack("dev")
+            .file("Brewfile", "brew \"ripgrep\"")
+            .done()
+            .build();
+
+        let handler = RunOnceHandler::new(env.fs.as_ref(), BrewfileCommand);
+        let matches = vec![RuleMatch {
+            relative_path: "Brewfile".into(),
+            absolute_path: env.dotfiles_root.join("dev/Brewfile"),
+            pack: "dev".into(),
+            handler: "homebrew".into(),
+            is_dir: false,
+            options: HashMap::new(),
+            preprocessor_source: None,
+            rendered_bytes: None,
+        }];
+
+        let pather = crate::paths::XdgPather::builder()
+            .home(&env.home)
+            .dotfiles_root(&env.dotfiles_root)
+            .build()
+            .unwrap();
+
+        let intents = handler
+            .to_intents(
+                &matches,
+                &HandlerConfig::default(),
+                &pather,
+                env.fs.as_ref() as &dyn Fs,
+            )
+            .unwrap();
+
+        assert_eq!(intents.len(), 1);
+        match &intents[0] {
+            HandlerIntent::Run {
+                pack,
+                handler: h,
+                executable,
+                arguments,
                 sentinel,
-            });
+            } => {
+                assert_eq!(pack, "dev");
+                assert_eq!(h, HANDLER_HOMEBREW);
+                assert_eq!(executable, "brew");
+                assert_eq!(arguments[0], "bundle");
+                assert_eq!(arguments[1], "--file");
+                assert!(arguments[2].ends_with("Brewfile"));
+                assert!(sentinel.starts_with("Brewfile-"));
+                assert_eq!(sentinel.len(), "Brewfile-".len() + 16);
+            }
+            other => panic!("expected Run, got {other:?}"),
         }
-
-        Ok(intents)
     }
-
-    fn check_status(
-        &self,
-        file: &Path,
-        pack: &str,
-        datastore: &dyn DataStore,
-    ) -> Result<HandlerStatus> {
-        let checksum = brewfile_checksum(self.fs, file)?;
-        let filename = file.file_name().unwrap_or_default().to_string_lossy();
-        let sentinel = format!("{filename}-{checksum}");
-        let has_sentinel = datastore.has_sentinel(pack, HANDLER_HOMEBREW, &sentinel)?;
-
-        Ok(HandlerStatus {
-            file: file.to_string_lossy().into_owned(),
-            handler: HANDLER_HOMEBREW.into(),
-            deployed: has_sentinel,
-            message: if has_sentinel {
-                "brew packages installed".into()
-            } else {
-                "brew packages not installed".into()
-            },
-        })
-    }
-}
-
-fn brewfile_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
-    let mut reader = fs.open_read(path)?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 8192];
-    loop {
-        let n = reader.read(&mut buf).map_err(|e| crate::DodotError::Fs {
-            path: path.to_path_buf(),
-            source: e,
-        })?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    let hash = hasher.finalize();
-    Ok(hash[..8].iter().map(|b| format!("{b:02x}")).collect())
-}
-
-/// Same digest format as [`brewfile_checksum`], but over an in-memory
-/// byte slice — used when the rendered Brewfile is available without
-/// a disk read (Passive mode).
-fn brewfile_checksum_bytes(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let hash = hasher.finalize();
-    hash[..8].iter().map(|b| format!("{b:02x}")).collect()
 }

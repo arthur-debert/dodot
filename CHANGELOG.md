@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Internal: `RunOnceCommand` trait + generic `RunOnceHandler<C>` in `crates/dodot-lib/src/handlers/run_once.rs`, the shared shape for the `install` / `homebrew` / forthcoming `nix` handlers (#169, PR A). Pure addition — not yet wired into the registry; existing handlers are unchanged. Subsequent PRs retrofit the existing handlers (PR B) and flip the run-once policy from auto-rerun-on-change to notify-don't-rerun (PR C).
 
+### Changed
+
+- Internal: `install` and `homebrew` handlers are now built on top of `RunOnceHandler<C>` via `InstallCommand` / `BrewfileCommand` specializations (#169, PR B). Duplicated checksum helpers consolidated in the shared module. **No user-visible behavior change** — sentinel format, auto-run-on-change semantics, and all observable behavior are preserved exactly; this PR is the foundation that lets PR C flip the run-once policy with one set of changes instead of three.
+
 ## [4.1.1] - 2026-05-12
 
 
