@@ -321,8 +321,8 @@ pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
 /// Create the default handler registry.
 ///
 /// Returns a map from handler name to handler instance. The `fs`
-/// reference is needed by install and homebrew handlers for checksum
-/// computation.
+/// reference is needed by the run-once handlers (install, homebrew)
+/// for checksum computation.
 pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
     let mut registry: HashMap<String, Box<dyn Handler>> = HashMap::new();
     registry.insert(HANDLER_IGNORE.into(), Box::new(filter::IgnoreHandler));
@@ -337,11 +337,11 @@ pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
     registry.insert(HANDLER_PATH.into(), Box::new(path::PathHandler));
     registry.insert(
         HANDLER_INSTALL.into(),
-        Box::new(install::InstallHandler::new(fs)),
+        Box::new(run_once::RunOnceHandler::new(fs, install::InstallCommand)),
     );
     registry.insert(
         HANDLER_HOMEBREW.into(),
-        Box::new(homebrew::HomebrewHandler::new(fs)),
+        Box::new(run_once::RunOnceHandler::new(fs, homebrew::BrewfileCommand)),
     );
     validate_registry(&registry);
     registry
