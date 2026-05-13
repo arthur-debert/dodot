@@ -16,6 +16,7 @@ pub mod gate;
 pub mod homebrew;
 pub mod install;
 pub mod path;
+pub mod run_once;
 pub mod shell;
 pub mod symlink;
 
