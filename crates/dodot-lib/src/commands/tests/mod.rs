@@ -1165,7 +1165,11 @@ fn up_preserves_install_sentinel_when_source_persists() {
     commands::up::up(None, &ctx).unwrap();
 
     let install_dir = env.paths.handler_data_dir("setup", "install");
-    let sentinels_before = env.list_dir_names(&install_dir);
+    let sentinels_before: Vec<_> = env
+        .list_dir_names(&install_dir)
+        .into_iter()
+        .filter(|n| !n.ends_with(".snapshot"))
+        .collect();
     assert_eq!(
         sentinels_before.len(),
         1,
@@ -1176,7 +1180,11 @@ fn up_preserves_install_sentinel_when_source_persists() {
     // Re-run up with no source change. The sentinel must persist —
     // wiping it would force the script to re-execute every time.
     commands::up::up(None, &ctx).unwrap();
-    let sentinels_after = env.list_dir_names(&install_dir);
+    let sentinels_after: Vec<_> = env
+        .list_dir_names(&install_dir)
+        .into_iter()
+        .filter(|n| !n.ends_with(".snapshot"))
+        .collect();
     assert_eq!(
         sentinels_after,
         vec![original],
@@ -1197,7 +1205,11 @@ fn up_preserves_install_sentinel_when_source_deleted() {
 
     commands::up::up(None, &ctx).unwrap();
     let install_dir = env.paths.handler_data_dir("setup", "install");
-    let sentinels_before = env.list_dir_names(&install_dir);
+    let sentinels_before: Vec<_> = env
+        .list_dir_names(&install_dir)
+        .into_iter()
+        .filter(|n| !n.ends_with(".snapshot"))
+        .collect();
     assert_eq!(sentinels_before.len(), 1);
 
     // Source vanishes — but the sentinel still records that *some*
@@ -1209,7 +1221,11 @@ fn up_preserves_install_sentinel_when_source_deleted() {
         .unwrap();
     commands::up::up(None, &ctx).unwrap();
 
-    let sentinels_after = env.list_dir_names(&install_dir);
+    let sentinels_after: Vec<_> = env
+        .list_dir_names(&install_dir)
+        .into_iter()
+        .filter(|n| !n.ends_with(".snapshot"))
+        .collect();
     assert_eq!(
         sentinels_after, sentinels_before,
         "deleting an install source must not wipe its sentinel"

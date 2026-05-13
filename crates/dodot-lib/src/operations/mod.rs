@@ -119,13 +119,28 @@ pub enum HandlerIntent {
         source: PathBuf,
     },
 
-    /// Install/homebrew handlers: run a command with sentinel tracking.
+    /// Run-once handlers (install / homebrew / nix): execute a
+    /// command on a file, recording the run via a sentinel keyed by
+    /// the file's content hash. The executor uses
+    /// [`DataStore::did_run`](crate::datastore::DataStore::did_run)
+    /// to drive the three-way policy: run on first encounter, skip
+    /// silently when the recorded hash matches, surface a
+    /// "ran older version" notice when it doesn't (#169).
+    ///
+    /// `filename` is the basename of the run-once file (e.g.
+    /// `install.sh`, `Brewfile`, `packages.nix`) — used by `did_run`
+    /// to find all sentinels for the same file across content
+    /// revisions. `content_hash` is the 16-char hex digest of the
+    /// current file contents, also embedded as the suffix of
+    /// `sentinel`.
     Run {
         pack: String,
         handler: String,
         executable: String,
         arguments: Vec<String>,
         sentinel: String,
+        filename: String,
+        content_hash: String,
     },
 
     /// Externals handler: fetch a resource into the datastore, then

@@ -1,10 +1,55 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use crate::datastore::{CommandRunner, DataStore};
+use crate::datastore::{CommandRunner, DataStore, DidRunStatus};
 use crate::fs::Fs;
 use crate::paths::Pather;
 use crate::{DodotError, Result};
+
+/// Suffix used on the sibling file that snapshots the run-once script
+/// content at the time it was last successfully executed.
+///
+/// Layout: alongside each sentinel `<filename>-<hash>`, the snapshot
+/// lives at `<filename>-<hash>.snapshot`. Old sentinels predating
+/// PR C of #169 have no sibling — [`DataStore::did_run`] surfaces
+/// `previous_snapshot: None` in that case so callers can show the
+/// "ran older version" state without diff details.
+pub(crate) const SNAPSHOT_SUFFIX: &str = ".snapshot";
+
+/// Length of the hex hash suffix used in sentinel names.
+///
+/// Sentinels are named `<filename>-<hash>` where `<hash>` is the
+/// first 8 bytes of a SHA-256 in lowercase hex — exactly 16 chars.
+/// [`extract_sentinel_hash`] uses this to split a candidate sentinel
+/// name into filename and hash without committing to "split on last
+/// `-`" (filenames may contain hyphens).
+const HASH_LEN: usize = 16;
+
+/// Parse a sentinel filename into its `(filename, hash)` parts.
+///
+/// Returns `None` for any name that doesn't end in `-<16 lowercase
+/// hex chars>` — including the `.snapshot` sibling files, which
+/// have a different suffix shape.
+fn extract_sentinel_hash(sentinel_name: &str) -> Option<(&str, &str)> {
+    if sentinel_name.len() < HASH_LEN + 1 {
+        return None;
+    }
+    let split_at = sentinel_name.len() - HASH_LEN - 1;
+    let (head, tail) = sentinel_name.split_at(split_at);
+    let mut chars = tail.chars();
+    if chars.next() != Some('-') {
+        return None;
+    }
+    let hash = &tail[1..];
+    if hash.len() != HASH_LEN
+        || !hash
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+    {
+        return None;
+    }
+    Some((head, hash))
+}
 
 /// Validate that `raw` is a safe relative path to be used under `base`.
 ///
@@ -213,12 +258,105 @@ impl DataStore for FilesystemDataStore {
             .unwrap_or_default()
             .as_secs();
         let content = format!("completed|{timestamp}");
-        self.fs.write_file(&sentinel_path, content.as_bytes())
+        self.fs.write_file(&sentinel_path, content.as_bytes())?;
+
+        // Snapshot the file we just ran so that a future `did_run`
+        // can return its previous content for diff display when the
+        // current file's hash differs (notify-don't-rerun, #169 PR
+        // C). The path of the file ran is the last argument by
+        // convention — same as the header-block read above. Snapshot
+        // writes are best-effort: if the read or write fails, log
+        // and move on. The sentinel itself is already recorded, so
+        // the user's run state is correct; only the diff capability
+        // is lost.
+        if let Some(path_str) = script_path.as_deref() {
+            let snapshot_path = sentinel_dir.join(format!("{sentinel}{SNAPSHOT_SUFFIX}"));
+            match self.fs.read_file(Path::new(path_str)) {
+                Ok(bytes) => {
+                    if let Err(e) = self.fs.write_file(&snapshot_path, &bytes) {
+                        tracing::warn!(
+                            pack,
+                            handler,
+                            sentinel,
+                            error = %e,
+                            "snapshot write failed (best-effort; sentinel still recorded)"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        pack,
+                        handler,
+                        sentinel,
+                        path = path_str,
+                        error = %e,
+                        "snapshot source read failed (best-effort; sentinel still recorded)"
+                    );
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn has_sentinel(&self, pack: &str, handler: &str, sentinel: &str) -> Result<bool> {
         let sentinel_path = self.paths.handler_data_dir(pack, handler).join(sentinel);
         Ok(self.fs.exists(&sentinel_path))
+    }
+
+    fn did_run(
+        &self,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+        current_hash: &str,
+    ) -> Result<DidRunStatus> {
+        let handler_dir = self.paths.handler_data_dir(pack, handler);
+        if !self.fs.exists(&handler_dir) {
+            return Ok(DidRunStatus::NeverRan);
+        }
+
+        // Collect every sentinel for this filename (each shaped
+        // `<filename>-<16 hex chars>`). Snapshot siblings end in
+        // `.snapshot` and are filtered out by `extract_sentinel_hash`.
+        let mut matches: Vec<(String, String)> = self
+            .fs
+            .read_dir(&handler_dir)?
+            .into_iter()
+            .filter(|e| e.is_file)
+            .filter_map(|e| {
+                let (fname, hash) = extract_sentinel_hash(&e.name)?;
+                (fname == filename).then(|| (e.name.clone(), hash.to_string()))
+            })
+            .collect();
+
+        if matches.is_empty() {
+            return Ok(DidRunStatus::NeverRan);
+        }
+
+        // RanCurrent if any sentinel records the current hash.
+        if matches.iter().any(|(_, h)| h == current_hash) {
+            return Ok(DidRunStatus::RanCurrent);
+        }
+
+        // Lexically last sentinel wins the tie-break for which "prior
+        // hash" to surface. Stable across runs without needing mtime
+        // access through the Fs trait; the exact choice is mostly
+        // cosmetic (users see "ran older version" either way).
+        matches.sort_by(|a, b| a.0.cmp(&b.0));
+        let (prior_sentinel_name, prior_hash) = matches.pop().expect("non-empty checked above");
+
+        let snapshot_path = handler_dir.join(format!("{prior_sentinel_name}{SNAPSHOT_SUFFIX}"));
+        let previous_snapshot = if self.fs.exists(&snapshot_path) {
+            self.fs.read_file(&snapshot_path).ok()
+        } else {
+            None
+        };
+
+        Ok(DidRunStatus::RanDifferent {
+            previous_hash: prior_hash,
+            previous_snapshot,
+        })
     }
 
     fn remove_state(&self, pack: &str, handler: &str) -> Result<()> {
@@ -964,6 +1102,259 @@ mod tests {
             "path should contain nested structure: {}",
             path.display()
         );
+    }
+
+    // ── did_run + snapshots ─────────────────────────────────────
+
+    #[test]
+    fn extract_sentinel_hash_parses_canonical_form() {
+        // 16 lowercase hex chars after the last `-`.
+        assert_eq!(
+            extract_sentinel_hash("install.sh-abcdef0123456789"),
+            Some(("install.sh", "abcdef0123456789"))
+        );
+        // Filenames with hyphens still parse — boundary is fixed-width hash.
+        assert_eq!(
+            extract_sentinel_hash("my-install-script.sh-0123456789abcdef"),
+            Some(("my-install-script.sh", "0123456789abcdef"))
+        );
+    }
+
+    #[test]
+    fn extract_sentinel_hash_rejects_non_sentinels() {
+        // No dash.
+        assert_eq!(extract_sentinel_hash("install.sh"), None);
+        // Hash too short.
+        assert_eq!(extract_sentinel_hash("install.sh-abc"), None);
+        // Hash has uppercase (we expect lowercase).
+        assert_eq!(extract_sentinel_hash("install.sh-ABCDEF0123456789"), None);
+        // Snapshot sibling files — the suffix is ".snapshot", not 16 hex chars.
+        assert_eq!(
+            extract_sentinel_hash("install.sh-abcdef0123456789.snapshot"),
+            None
+        );
+        // Hash contains non-hex.
+        assert_eq!(extract_sentinel_hash("install.sh-abcdef012345xyz9"), None);
+    }
+
+    #[test]
+    fn did_run_never_ran_when_no_state() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+        let status = ds
+            .did_run("vim", "install", "install.sh", "abcdef0123456789")
+            .unwrap();
+        assert_eq!(status, DidRunStatus::NeverRan);
+    }
+
+    #[test]
+    fn did_run_returns_current_when_hash_matches() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        ds.run_and_record(
+            "vim",
+            "install",
+            "echo",
+            &["hi".into()],
+            "install.sh-abcdef0123456789",
+            false,
+        )
+        .unwrap();
+
+        let status = ds
+            .did_run("vim", "install", "install.sh", "abcdef0123456789")
+            .unwrap();
+        assert_eq!(status, DidRunStatus::RanCurrent);
+    }
+
+    #[test]
+    fn did_run_returns_different_when_only_other_hash_present() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("install.sh", "old content")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        // Run with one hash, then ask about a different one.
+        ds.run_and_record(
+            "vim",
+            "install",
+            "echo",
+            &[env
+                .dotfiles_root
+                .join("vim/install.sh")
+                .to_string_lossy()
+                .into()],
+            "install.sh-aaaaaaaaaaaaaaaa",
+            false,
+        )
+        .unwrap();
+
+        let status = ds
+            .did_run("vim", "install", "install.sh", "bbbbbbbbbbbbbbbb")
+            .unwrap();
+        match status {
+            DidRunStatus::RanDifferent {
+                previous_hash,
+                previous_snapshot,
+            } => {
+                assert_eq!(previous_hash, "aaaaaaaaaaaaaaaa");
+                // run_and_record wrote a snapshot sibling; we should
+                // get the bytes back.
+                assert_eq!(previous_snapshot, Some(b"old content".to_vec()));
+            }
+            other => panic!("expected RanDifferent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn did_run_different_without_snapshot_returns_none() {
+        // Pre-PR-C sentinel: no .snapshot sibling. did_run should
+        // still classify as RanDifferent but with previous_snapshot=None.
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let sentinel_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        env.fs
+            .write_file(
+                &sentinel_dir.join("install.sh-aaaaaaaaaaaaaaaa"),
+                b"completed|12345",
+            )
+            .unwrap();
+        // No .snapshot file written — simulates pre-upgrade state.
+
+        let status = ds
+            .did_run("vim", "install", "install.sh", "bbbbbbbbbbbbbbbb")
+            .unwrap();
+        match status {
+            DidRunStatus::RanDifferent {
+                previous_hash,
+                previous_snapshot,
+            } => {
+                assert_eq!(previous_hash, "aaaaaaaaaaaaaaaa");
+                assert_eq!(previous_snapshot, None);
+            }
+            other => panic!("expected RanDifferent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn did_run_ignores_other_filenames_in_same_handler_dir() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let sentinel_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        // Sentinel for a *different* filename.
+        env.fs
+            .write_file(
+                &sentinel_dir.join("install.bash-aaaaaaaaaaaaaaaa"),
+                b"completed|12345",
+            )
+            .unwrap();
+
+        // Asking about install.sh should return NeverRan — the bash one
+        // doesn't count.
+        let status = ds
+            .did_run("vim", "install", "install.sh", "bbbbbbbbbbbbbbbb")
+            .unwrap();
+        assert_eq!(status, DidRunStatus::NeverRan);
+    }
+
+    #[test]
+    fn did_run_picks_lexically_last_for_tie_break() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let sentinel_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        // Two non-matching sentinels for the same filename — last lex wins.
+        env.fs
+            .write_file(
+                &sentinel_dir.join("install.sh-1111111111111111"),
+                b"completed|10",
+            )
+            .unwrap();
+        env.fs
+            .write_file(
+                &sentinel_dir.join("install.sh-2222222222222222"),
+                b"completed|20",
+            )
+            .unwrap();
+
+        let status = ds
+            .did_run("vim", "install", "install.sh", "3333333333333333")
+            .unwrap();
+        match status {
+            DidRunStatus::RanDifferent { previous_hash, .. } => {
+                assert_eq!(previous_hash, "2222222222222222");
+            }
+            other => panic!("expected RanDifferent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn run_and_record_writes_snapshot_sibling() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("install.sh", "#!/bin/sh\necho hello")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        let abs = env.dotfiles_root.join("vim/install.sh");
+        ds.run_and_record(
+            "vim",
+            "install",
+            "bash",
+            &["--".into(), abs.to_string_lossy().into()],
+            "install.sh-abcdef0123456789",
+            false,
+        )
+        .unwrap();
+
+        let snapshot_path = env
+            .paths
+            .handler_data_dir("vim", "install")
+            .join("install.sh-abcdef0123456789.snapshot");
+        assert!(env.fs.exists(&snapshot_path), "snapshot sibling missing");
+        assert_eq!(
+            env.fs.read_to_string(&snapshot_path).unwrap(),
+            "#!/bin/sh\necho hello"
+        );
+    }
+
+    #[test]
+    fn run_and_record_snapshot_failure_does_not_fail_run() {
+        // If the script path can't be read, the sentinel still records
+        // and run_and_record succeeds — snapshot is best-effort.
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let ghost = env.dotfiles_root.join("vim/missing.sh");
+        ds.run_and_record(
+            "vim",
+            "install",
+            "echo",
+            &["--".into(), ghost.to_string_lossy().into()],
+            "missing.sh-abcdef0123456789",
+            false,
+        )
+        .unwrap();
+
+        // Sentinel exists.
+        assert!(ds
+            .has_sentinel("vim", "install", "missing.sh-abcdef0123456789")
+            .unwrap());
+        // Snapshot does not.
+        let snapshot_path = env
+            .paths
+            .handler_data_dir("vim", "install")
+            .join("missing.sh-abcdef0123456789.snapshot");
+        assert!(!env.fs.exists(&snapshot_path));
     }
 
     // ── Object safety ───────────────────────────────────────────

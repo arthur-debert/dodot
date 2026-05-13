@@ -112,6 +112,8 @@ mod tests {
                 executable,
                 arguments,
                 sentinel,
+                filename,
+                content_hash,
             } => {
                 assert_eq!(pack, "dev");
                 assert_eq!(h, HANDLER_HOMEBREW);
@@ -121,6 +123,9 @@ mod tests {
                 assert!(arguments[2].ends_with("Brewfile"));
                 assert!(sentinel.starts_with("Brewfile-"));
                 assert_eq!(sentinel.len(), "Brewfile-".len() + 16);
+                assert_eq!(filename, "Brewfile");
+                assert_eq!(content_hash.len(), 16);
+                assert_eq!(*sentinel, format!("{filename}-{content_hash}"));
             }
             other => panic!("expected Run, got {other:?}"),
         }

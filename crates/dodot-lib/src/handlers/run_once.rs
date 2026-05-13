@@ -164,7 +164,8 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 .relative_path
                 .file_name()
                 .unwrap_or_default()
-                .to_string_lossy();
+                .to_string_lossy()
+                .into_owned();
             let sentinel = format!("{filename}-{checksum}");
 
             let (executable, arguments) = self.cmd.command_for(&m.absolute_path);
@@ -175,6 +176,8 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 executable,
                 arguments,
                 sentinel,
+                filename,
+                content_hash: checksum,
             });
         }
 
@@ -403,6 +406,8 @@ mod tests {
                 executable,
                 arguments,
                 sentinel,
+                filename,
+                content_hash,
             } => {
                 assert_eq!(pack, "vim");
                 assert_eq!(h, "fake");
@@ -413,6 +418,9 @@ mod tests {
                 // Sentinel shape: "<filename>-<16 hex chars>".
                 assert!(sentinel.starts_with("setup.sh-"));
                 assert_eq!(sentinel.len(), "setup.sh-".len() + 16);
+                assert_eq!(filename, "setup.sh");
+                assert_eq!(content_hash.len(), 16);
+                assert_eq!(*sentinel, format!("{filename}-{content_hash}"));
             }
             other => panic!("expected Run, got {other:?}"),
         }
