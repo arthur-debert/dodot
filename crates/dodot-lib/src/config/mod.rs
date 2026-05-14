@@ -509,6 +509,15 @@ pub struct MappingsSection {
     #[config(default = "Brewfile")]
     pub homebrew: String,
 
+    /// Filename pattern for the Nix handler's per-pack manifest.
+    ///
+    /// Matched at pack root. The file is a Nix expression evaluating
+    /// to a list of derivations, a bare derivation, or an attribute
+    /// set of derivations — see the `nix` handler reference for the
+    /// supported shapes.
+    #[config(default = "packages.nix")]
+    pub nix: String,
+
     /// Filename patterns for the externals handler.
     ///
     /// The file declares one TOML section per external resource (a
@@ -661,6 +670,20 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
         rules.push(Rule {
             pattern: mappings.homebrew.clone(),
             handler: "homebrew".into(),
+            priority: 10,
+            case_insensitive: false,
+            options: HashMap::new(),
+        });
+    }
+
+    // Nix handler — same shape as homebrew (pack-root manifest,
+    // priority 10). The default `packages.nix` is precise enough that
+    // priority 10 doesn't collide with anything in the default
+    // ruleset.
+    if !mappings.nix.is_empty() {
+        rules.push(Rule {
+            pattern: mappings.nix.clone(),
+            handler: "nix".into(),
             priority: 10,
             case_insensitive: false,
             options: HashMap::new(),
@@ -881,6 +904,7 @@ mod tests {
             vec!["install.sh", "install.bash", "install.zsh"]
         );
         assert_eq!(cfg.mappings.homebrew, "Brewfile");
+        assert_eq!(cfg.mappings.nix, "packages.nix");
         assert_eq!(cfg.mappings.shell, vec!["*.sh", "*.bash", "*.zsh"]);
         assert_eq!(cfg.mappings.externals, vec!["externals.toml"]);
         assert!(cfg.mappings.ignore.is_empty());
@@ -986,6 +1010,7 @@ homebrew = "RootBrewfile"
             install: vec!["install.sh".into(), "install.zsh".into()],
             shell: vec!["aliases.sh".into(), "profile.sh".into()],
             homebrew: "Brewfile".into(),
+            nix: "packages.nix".into(),
             externals: vec!["externals.toml".into()],
             ignore: vec!["*.tmp".into()],
             skip: vec![],
@@ -994,14 +1019,15 @@ homebrew = "RootBrewfile"
 
         let rules = mappings_to_rules(&mappings);
 
-        // path + 2 install + 2 shell + homebrew + externals + ignore + catchall = 9
-        assert_eq!(rules.len(), 9, "rules: {rules:#?}");
+        // path + 2 install + 2 shell + homebrew + nix + externals + ignore + catchall = 10
+        assert_eq!(rules.len(), 10, "rules: {rules:#?}");
 
         let handler_names: Vec<&str> = rules.iter().map(|r| r.handler.as_str()).collect();
         assert!(handler_names.contains(&"path"));
         assert!(handler_names.contains(&"install"));
         assert!(handler_names.contains(&"shell"));
         assert!(handler_names.contains(&"homebrew"));
+        assert!(handler_names.contains(&"nix"));
         assert!(handler_names.contains(&"external"));
         assert!(handler_names.contains(&"ignore"));
         assert!(handler_names.contains(&"symlink"));
@@ -1030,6 +1056,7 @@ homebrew = "RootBrewfile"
             install: vec!["install.sh".into()],
             shell: vec!["*.sh".into()],
             homebrew: String::new(),
+            nix: String::new(),
             externals: vec![],
             ignore: vec![],
             skip: vec![],
@@ -1055,6 +1082,7 @@ homebrew = "RootBrewfile"
             install: vec![],
             shell: vec![],
             homebrew: String::new(),
+            nix: String::new(),
             externals: vec![],
             ignore: vec![],
             skip: vec!["README".into(), "README.*".into(), "LICENSE".into()],

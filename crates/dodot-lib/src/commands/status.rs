@@ -640,7 +640,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         });
     }
 
-    let registry = handlers::create_registry(ctx.fs.as_ref());
+    let registry = handlers::create_registry(ctx.fs.as_ref(), ctx.command_runner.as_ref());
     let host = ctx.host_facts.as_ref();
     let mut display_packs = Vec::new();
     let mut notes: Vec<DisplayNote> = Vec::new();

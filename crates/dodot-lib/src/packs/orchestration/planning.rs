@@ -399,7 +399,7 @@ fn plan_pack_inner(
     let groups = rules::group_by_handler(&matches);
 
     // Build handler registry (drives the phase-based execution order).
-    let registry = handlers::create_registry(ctx.fs.as_ref());
+    let registry = handlers::create_registry(ctx.fs.as_ref(), ctx.command_runner.as_ref());
     let order = rules::handler_execution_order(&groups, &registry);
     debug!(pack = %pack.name, handlers = ?order, "handler execution order");
 
