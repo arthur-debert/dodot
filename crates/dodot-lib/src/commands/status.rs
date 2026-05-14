@@ -416,7 +416,7 @@ fn run_once_health(
     };
     let current_hash = match file_checksum(ctx.fs.as_ref(), file) {
         Ok(h) => h,
-        Err(_) => return Health::Pending,
+        Err(e) => return Health::Broken(format!("broken: cannot hash source file: {e}")),
     };
 
     let messages = run_once_status_messages(handler);
@@ -425,7 +425,7 @@ fn run_once_health(
         .did_run(pack, handler, &filename, &current_hash)
     {
         Ok(s) => s,
-        Err(_) => return Health::Pending,
+        Err(e) => return Health::Broken(format!("broken: datastore error: {e}")),
     };
 
     match status {
@@ -498,8 +498,8 @@ fn line_summary(prev: &[u8], cur: &[u8]) -> String {
 /// `--- <file> (previous run)` / `+++ <file> (current)` headers,
 /// ready to drop into the templated output.
 fn unified_diff(filename: &str, prev: &[u8], cur: &[u8]) -> String {
-    let prev_s = String::from_utf8_lossy(prev).into_owned();
-    let cur_s = String::from_utf8_lossy(cur).into_owned();
+    let prev_s = String::from_utf8_lossy(prev);
+    let cur_s = String::from_utf8_lossy(cur);
     let mut opts = diffy::DiffOptions::default();
     opts.set_original_filename(format!("{filename} (previous run)"))
         .set_modified_filename(format!("{filename} (current)"));
