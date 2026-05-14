@@ -24,14 +24,36 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
 3. Sentinels
 
-    On success, dodot writes a sentinel file `<filename>-<checksum>` into the datastore — for example `install.sh-a1b2c3d4e5f6a7b8`. The checksum is the first 8 bytes (16 hex chars) of a SHA-256 of the source script's bytes. The next `dodot up` skips the script if its sentinel exists. Edit the source and the checksum changes, the sentinel name changes, and the script re-runs automatically.
+    On success, dodot writes a sentinel file `<filename>-<checksum>` into the datastore — for example `install.sh-a1b2c3d4e5f6a7b8`. The checksum is the first 8 bytes (16 hex chars) of a SHA-256 of the source script's bytes. Alongside it dodot also writes a sibling file `<filename>-<checksum>.snapshot` containing the script bytes as they were at the time of that run, so a future `dodot status` can show what changed.
 
-    Two flags override the gating:
+    Three flags interact with the gating:
 
     - `--no-provision` — skip both install and homebrew handlers entirely on this run.
     - `--provision-rerun` — force them to re-run even when sentinels exist. Useful when you want to re-execute without changing the source.
+    - `--force` — same effect as `--provision-rerun` for run-once handlers; the canonical "apply pending content edits" escape hatch.
 
-4. Output
+4. Editing an install script after it ran (the three states)
+
+    When you edit `install.sh` after a successful run, dodot does **not** re-run it automatically. Re-running arbitrary user code on every content edit is a surprising default; the conservative posture is to *notify* and let you decide.
+
+    `dodot up` and `dodot status` report one of three states for each install file:
+
+    - **`never run`** — no sentinel exists for this file. `dodot up` will run it on the next invocation.
+    - **`installed`** — a sentinel exists for the *current* content hash. The script has run, and the source hasn't changed since. `dodot up` is a no-op.
+    - **`older version (N lines added, M removed)`** — a sentinel exists, but for a *different* content hash. The script ran successfully against an earlier version of the file, and you've edited the source since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --force` (or `dodot up --provision-rerun`).
+
+    For sentinels written before the snapshot convention was introduced, the third state shows `older version (no diff data)` — the run state is still tracked, but dodot has no record of the prior content to summarize what changed.
+
+    To inspect the actual diff before deciding to `--force`:
+
+        dodot status --diff           # all packs
+        dodot status nvim --diff      # one pack
+
+    For each `older version` entry, `--diff` prints a unified diff between the snapshot (the bytes that were last successfully run) and the current source.
+
+    Snapshots live alongside sentinels in the handler data dir: `<datastore>/packs/<pack>/install/<filename>-<hash>.snapshot`. They are plain files; if you want to manage state directly, removing the sentinel + snapshot pair flips the file back to `never run`.
+
+5. Output
 
     `dodot up` keeps install-script output quiet by default. Three things are surfaced live:
 
@@ -56,7 +78,7 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
     The convention is tool-agnostic — `# status:` lines are just shell comments when the script is run by hand outside dodot.
 
-5. Configuration
+6. Configuration
 
     Under `[mappings]`:
 
@@ -67,8 +89,8 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
     `install` is list-only, even for a single script — the single-string form does not parse. There's no dedicated `[install]` section.
 
-6. Live edits
+7. Live edits
 
-    The install handler is gated. Edits to the source script change its content hash, which changes its sentinel name, so the next `dodot up` re-runs the script. Leave the source untouched and `up` is a no-op for that script — the existing sentinel matches.
+    Edits to the source script change its content hash. dodot detects the change but **does not re-run the script automatically** — instead `dodot status` reports `older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --force` (or `--provision-rerun`). See section 4 for the full three-state model and `--diff` workflow.
 
     Removing a source script from the pack stops dodot from running it, but does not roll back side-effects from prior runs — dodot has no history of what the script did. Cleanup of side-effects is on the script author. Adding a new source script picks it up on the next `dodot up`.

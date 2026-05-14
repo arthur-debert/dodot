@@ -474,6 +474,12 @@ fn build_clap_command() -> ClapCommand {
                         .long("check-drift")
                         .help("Hash deployed externals and report any divergence from the configured signature (opt-in; can be slow for big trees)")
                         .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("diff")
+                        .long("diff")
+                        .help("For run-once files reporting `older version`, show the unified diff between the previously-run snapshot and the current source")
+                        .action(ArgAction::SetTrue),
                 ),
         )
         .subcommand(

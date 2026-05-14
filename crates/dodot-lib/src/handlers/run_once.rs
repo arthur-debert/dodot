@@ -10,11 +10,40 @@
 //! [`RunOnceCommand`] trait, with [`RunOnceHandler`] handling the
 //! rest.
 //!
-//! This is PR A of the work tracked in #169. Subsequent PRs retrofit
-//! the existing `install` and `homebrew` handlers onto this shape
-//! (PR B), then flip the run-once policy to notify-don't-rerun on
-//! content change (PR C). For PR A, this module is **pure addition**:
-//! it exists, is unit-tested, and is not yet wired into the registry.
+//! # Three-state run-once semantics (#169 PR C / PR D)
+//!
+//! Run-once handlers consult [`DataStore::did_run`](crate::datastore::DataStore::did_run)
+//! to classify a matched file into one of three states:
+//!
+//! 1. [`NeverRan`](crate::datastore::DidRunStatus::NeverRan) — no
+//!    sentinel exists; emit a [`HandlerIntent::Run`] for the file.
+//! 2. [`RanCurrent`](crate::datastore::DidRunStatus::RanCurrent) — a
+//!    sentinel exists whose recorded hash matches the current
+//!    content; skip silently.
+//! 3. [`RanDifferent`](crate::datastore::DidRunStatus::RanDifferent) — a
+//!    sentinel exists but for a *different* content hash; skip with
+//!    notice. The user opts in to re-running via `dodot up --force`
+//!    (the existing `provision_rerun` flag).
+//!
+//! `dodot status` renders this three-way result as `pending` /
+//! `deployed` / `older version (N lines added, M removed)` rows; the
+//! `--diff` flag dumps the underlying snapshot-vs-current unified
+//! diff for the third state.
+//!
+//! # Snapshots
+//!
+//! [`DataStore::run_and_record`](crate::datastore::DataStore::run_and_record)
+//! writes a `<sentinel>.snapshot` sibling capturing the script's bytes
+//! at the moment of a successful run. Snapshots are the data behind
+//! the `(N+ M-)` summary in status and the body of
+//! `dodot status --diff`. Sentinels predating the convention
+//! (pre-#169 PR C) have no snapshot — those rows surface as `older
+//! version (no diff data)` and are excluded from `--diff` output.
+//!
+//! Snapshots live at
+//! `<datastore>/packs/<pack>/<handler>/<filename>-<hash>.snapshot`;
+//! users who want to manage state directly can delete the sentinel +
+//! snapshot pair to roll a file back to `never ran`.
 
 use std::io::Read;
 use std::path::Path;
@@ -34,8 +63,11 @@ use crate::Result;
 /// Implementations declare the handler's identity (name, phase) and
 /// how a matched file becomes a command invocation. They may
 /// optionally provide a pre-flight check ([`Self::validate`]) and
-/// customize status messages. Everything else is shared via
-/// [`RunOnceHandler`].
+/// customize status messages for the three-state run-once model
+/// described at the module level — `pending` /
+/// `deployed` / `ran older version`. Everything else (hashing,
+/// sentinel construction, `did_run` lookup, intent emission) is
+/// shared via [`RunOnceHandler`].
 pub trait RunOnceCommand: Send + Sync {
     /// Unique handler name (e.g. `"install"`, `"homebrew"`, `"nix"`).
     fn handler_name(&self) -> &str;
@@ -72,6 +104,22 @@ pub trait RunOnceCommand: Send + Sync {
     /// Default: `"never ran"`.
     fn status_pending(&self) -> &str {
         "never ran"
+    }
+
+    /// Human-readable status message when a sentinel exists but for
+    /// a *different* content hash — the file has been edited since
+    /// the last successful run, but the conservative
+    /// notify-don't-rerun policy (#169 PR C) leaves the prior state
+    /// in place until the user opts in via `--force`.
+    ///
+    /// Default: `"older version"`. Overridden per-handler for
+    /// readability — e.g. `"older version (brew packages)"` for
+    /// homebrew. `dodot status` further annotates this label with a
+    /// `(N lines added, M removed)` summary when a snapshot of the
+    /// previously-run content is available, or with `(no diff data)`
+    /// for sentinels written before snapshots were introduced.
+    fn status_ran_different(&self) -> &str {
+        "older version"
     }
 }
 
@@ -226,6 +274,51 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
             deployed,
             message,
         })
+    }
+}
+
+/// Canonical run-state copy for a [`RunOnceCommand`] — used by
+/// `dodot status` to render the three-state row label without
+/// needing a `Box<dyn Handler>` registered with the right `Fs`.
+pub struct RunOnceStatusMessages {
+    /// Label when no sentinel exists (`DidRunStatus::NeverRan`).
+    pub pending: String,
+    /// Label when a sentinel matches the current content
+    /// (`DidRunStatus::RanCurrent`).
+    pub deployed: String,
+    /// Label when a sentinel exists for a *different* content hash
+    /// (`DidRunStatus::RanDifferent`).
+    pub ran_different: String,
+}
+
+/// Snapshot the three trait-defined messages off a concrete
+/// [`RunOnceCommand`] into owned strings so callers don't have to
+/// keep the command instance alive to read them.
+pub fn status_messages_for<C: RunOnceCommand>(cmd: &C) -> RunOnceStatusMessages {
+    RunOnceStatusMessages {
+        pending: cmd.status_pending().to_string(),
+        deployed: cmd.status_deployed().to_string(),
+        ran_different: cmd.status_ran_different().to_string(),
+    }
+}
+
+/// Look up the canonical run-state copy for a built-in run-once
+/// handler by name. `dodot status` consults this so it can render
+/// the three-state row label per handler without instantiating a
+/// `RunOnceHandler<C>` against the right `Fs`. Unknown handler names
+/// fall back to the trait defaults.
+pub fn run_once_status_messages(handler: &str) -> RunOnceStatusMessages {
+    use crate::handlers::{HANDLER_HOMEBREW, HANDLER_INSTALL};
+    if handler == HANDLER_INSTALL {
+        return status_messages_for(&crate::handlers::install::InstallCommand);
+    }
+    if handler == HANDLER_HOMEBREW {
+        return status_messages_for(&crate::handlers::homebrew::BrewfileCommand);
+    }
+    RunOnceStatusMessages {
+        pending: "never ran".into(),
+        deployed: "ran".into(),
+        ran_different: "older version".into(),
     }
 }
 

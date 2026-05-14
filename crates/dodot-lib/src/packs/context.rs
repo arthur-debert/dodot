@@ -46,6 +46,13 @@ pub struct ExecutionContext {
     /// external on every `status` invocation is not the right default
     /// for big trees (oh-my-zsh, etc.).
     pub check_drift: bool,
+    /// Opt-in unified-diff display for run-once handlers. When true,
+    /// `status` populates [`PackStatusResult::diffs`](crate::commands::PackStatusResult)
+    /// for any `install` / `homebrew` row whose recorded sentinel hash
+    /// no longer matches the current source AND whose snapshot sibling
+    /// is on disk. Default `false`; surfaced via the `--diff` flag on
+    /// `dodot status`.
+    pub show_diff: bool,
     /// How pack-status output should render rows: `Full` keeps today's
     /// per-file listing, `Short` collapses each pack to one summary
     /// line. Consumed by every command that renders through the
@@ -134,6 +141,7 @@ impl ExecutionContext {
             provision_rerun: false,
             force: false,
             check_drift: false,
+            show_diff: false,
             view_mode: crate::commands::ViewMode::default(),
             group_mode: crate::commands::GroupMode::default(),
             verbose,

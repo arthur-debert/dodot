@@ -163,6 +163,7 @@ mod tests {
             provision_rerun: false,
             force: false,
             check_drift: false,
+            show_diff: false,
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
