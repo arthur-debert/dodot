@@ -12,11 +12,38 @@ use std::path::{Path, PathBuf};
 
 use crate::Result;
 
+/// Three-way result of [`DataStore::did_run`] — whether a file has
+/// been run by a handler, and if so, whether the recorded run matches
+/// the current file content.
+///
+/// Mirrors the spec in #169: run-once handlers consult this to decide
+/// between *first-time-run* (NeverRan → execute), *already up to
+/// date* (RanCurrent → skip silently), and *file edited since last
+/// run* (RanDifferent → skip with notice, user runs `--force` to
+/// apply).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DidRunStatus {
+    /// No sentinel exists for this filename in this pack/handler.
+    NeverRan,
+    /// A sentinel matching the current file's content hash exists.
+    RanCurrent,
+    /// A sentinel exists for a *different* content hash — the file
+    /// has changed since the last successful run. `previous_hash` is
+    /// the hex hash recorded in the existing sentinel; if the
+    /// `<sentinel>.snapshot` sibling file exists (created on or after
+    /// PR C of #169) its raw bytes are returned in `previous_snapshot`
+    /// so callers can render a diff.
+    RanDifferent {
+        previous_hash: String,
+        previous_snapshot: Option<Vec<u8>>,
+    },
+}
+
 /// Dodot's storage interface.
 ///
 /// State is represented entirely by symlinks and sentinel files in the
-/// filesystem — no database, no lock files. The 8 methods break into
-/// three groups:
+/// filesystem — no database, no lock files. Methods break into three
+/// groups:
 ///
 /// **Mutations** — modify state:
 /// - [`create_data_link`](DataStore::create_data_link)
@@ -26,6 +53,8 @@ use crate::Result;
 ///
 /// **Queries** — read state:
 /// - [`has_sentinel`](DataStore::has_sentinel)
+/// - [`did_run`](DataStore::did_run) — three-way classification used
+///   by the run-once handlers
 /// - [`has_handler_state`](DataStore::has_handler_state)
 /// - [`list_pack_handlers`](DataStore::list_pack_handlers)
 /// - [`list_handler_sentinels`](DataStore::list_handler_sentinels)
@@ -66,6 +95,33 @@ pub trait DataStore: Send + Sync {
 
     /// Checks whether a sentinel exists for this pack/handler.
     fn has_sentinel(&self, pack: &str, handler: &str, sentinel: &str) -> Result<bool>;
+
+    /// Three-way "has this file been run, and is it current?" lookup
+    /// used by the run-once handlers (`install`, `homebrew`, `nix`).
+    ///
+    /// Lists sentinel files in the handler data dir matching
+    /// `<filename>-<16 hex chars>` (regardless of which hash), then:
+    ///
+    /// - Empty result → [`DidRunStatus::NeverRan`].
+    /// - Any sentinel name's hash matches `current_hash` →
+    ///   [`DidRunStatus::RanCurrent`].
+    /// - Otherwise → [`DidRunStatus::RanDifferent`] with the prior
+    ///   hash and (when available) the snapshot of the file as it
+    ///   was at the time of that last run.
+    ///
+    /// Tie-break for multiple non-matching sentinels: most recently
+    /// completed run wins, as recorded by the `completed|<unix-ts>`
+    /// payload [`run_and_record`](DataStore::run_and_record) writes
+    /// to each sentinel. Sentinels whose payload doesn't parse fall
+    /// to the bottom; ties on timestamp break by lexical order on
+    /// the sentinel filename for determinism.
+    fn did_run(
+        &self,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+        current_hash: &str,
+    ) -> Result<DidRunStatus>;
 
     /// Removes all state for a pack/handler pair.
     ///

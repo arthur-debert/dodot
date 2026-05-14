@@ -28,11 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Internal: `RunOnceCommand` trait + generic `RunOnceHandler<C>` in `crates/dodot-lib/src/handlers/run_once.rs`, the shared shape behind the `install` / `homebrew` / forthcoming `nix` handlers (#169, PR A). The shared body owns checksum, sentinel, intent emission, and status lookup; per-handler specialization (program name, argument shape, optional pre-flight validation, status copy) is a small trait surface. A subsequent PR (PR C) will flip the run-once policy from auto-rerun-on-change to notify-don't-rerun, touching the shared body once instead of each handler separately.
+- Internal: `RunOnceCommand` trait + generic `RunOnceHandler<C>` in `crates/dodot-lib/src/handlers/run_once.rs`, the shared shape behind the `install` / `homebrew` / forthcoming `nix` handlers (#169, PR A). The shared body owns checksum, sentinel, intent emission, and status lookup; per-handler specialization (program name, argument shape, optional pre-flight validation, status copy) is a small trait surface.
+- `DataStore::did_run` query: three-way result (`NeverRan` / `RanCurrent` / `RanDifferent`) reporting whether a run-once file has been run by a handler and whether the recorded content hash matches the current file (#169, PR C). Implementations also write a `<sentinel>.snapshot` sibling capturing the file content as it was at the time of a successful run, enabling future diff display in `dodot status`.
 
 ### Changed
 
-- Internal: `install` and `homebrew` handlers are now built on top of `RunOnceHandler<C>` via `InstallCommand` / `BrewfileCommand` specializations (#169, PR B). Duplicated checksum helpers consolidated in the shared module. **No user-visible behavior change** — sentinel format, auto-run-on-change semantics, and all observable behavior are preserved exactly.
+- **Behavior change for `install.sh` and `Brewfile` (#169, PR C):** when these files change after a successful run, `dodot up` no longer auto-reruns them. Instead, `dodot up` reports `ran older version of <file> — run \`dodot up --force\` to apply current` and leaves the prior state untouched. Run-once semantics are now strictly *opt-in re-execution* — the dodot user, not the file's mtime, decides when to re-run consequential scripts. To apply the new content, pass `--force` to `dodot up`. Manual `brew uninstall` of packages a `Brewfile` still lists likewise stays sticky: the sentinel records "we ran with this content" and dodot considers the work done until the file changes or `--force` is passed.
+- Internal: `install` and `homebrew` handlers are now built on top of `RunOnceHandler<C>` via `InstallCommand` / `BrewfileCommand` specializations (#169, PR B). Duplicated checksum helpers consolidated in the shared module. Aside from the policy flip in PR C, no other observable behavior changed in the retrofit.
 
 ## [4.1.1] - 2026-05-12
 

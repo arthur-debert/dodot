@@ -349,7 +349,9 @@ mod tests {
                     handler: "install".into(),
                     executable: "echo".into(),
                     arguments: vec!["hi".into()],
-                    sentinel: "s1".into(),
+                    sentinel: "install.sh-aaaaaaaaaaaaaaaa".into(),
+                    filename: "install.sh".into(),
+                    content_hash: "aaaaaaaaaaaaaaaa".into(),
                 }],
             ),
             (
@@ -359,7 +361,9 @@ mod tests {
                     handler: "install".into(),
                     executable: "echo".into(),
                     arguments: vec!["hi".into()],
-                    sentinel: "s1".into(),
+                    sentinel: "install.sh-bbbbbbbbbbbbbbbb".into(),
+                    filename: "install.sh".into(),
+                    content_hash: "bbbbbbbbbbbbbbbb".into(),
                 }],
             ),
         ];
