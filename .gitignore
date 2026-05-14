@@ -16,7 +16,8 @@ seer-editor-wasm/pkg/
 .padz/
 temp-images/
 .vscode/
-.claude
+.claude/*
+!.claude/skills/
 docs/research
 
 # Python bytecode cache (CI / scripts under .github/ may invoke pythons)
