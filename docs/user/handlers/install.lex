@@ -29,8 +29,8 @@ Runs your source install script once on this host, tracked by a content-hashed s
     Three flags interact with the gating:
 
     - `--no-provision` — skip both install and homebrew handlers entirely on this run.
-    - `--provision-rerun` — force them to re-run even when sentinels exist. Useful when you want to re-execute without changing the source.
-    - `--force` — same effect as `--provision-rerun` for run-once handlers; the canonical "apply pending content edits" escape hatch.
+    - `--provision-rerun` — the canonical "apply pending content edits" escape hatch for run-once handlers. Re-executes install / homebrew even when a sentinel exists. Use it after editing `install.sh` or `Brewfile` to opt back into running the new content.
+    - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does **not** trigger run-once re-execution.
 
 4. Editing an install script after it ran (the three states)
 
@@ -40,11 +40,11 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
     - **`never run`** — no sentinel exists for this file. `dodot up` will run it on the next invocation.
     - **`installed`** — a sentinel exists for the *current* content hash. The script has run, and the source hasn't changed since. `dodot up` is a no-op.
-    - **`older version (N lines added, M removed)`** — a sentinel exists, but for a *different* content hash. The script ran successfully against an earlier version of the file, and you've edited the source since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --force` (or `dodot up --provision-rerun`).
+    - **`older version (N lines added, M removed)`** — a sentinel exists, but for a *different* content hash. The script ran successfully against an earlier version of the file, and you've edited the source since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --provision-rerun`.
 
     For sentinels written before the snapshot convention was introduced, the third state shows `older version (no diff data)` — the run state is still tracked, but dodot has no record of the prior content to summarize what changed.
 
-    To inspect the actual diff before deciding to `--force`:
+    To inspect the actual diff before deciding to re-run:
 
         dodot status --diff           # all packs
         dodot status nvim --diff      # one pack
@@ -91,6 +91,6 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
 7. Live edits
 
-    Edits to the source script change its content hash. dodot detects the change but **does not re-run the script automatically** — instead `dodot status` reports `older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --force` (or `--provision-rerun`). See section 4 for the full three-state model and `--diff` workflow.
+    Edits to the source script change its content hash. dodot detects the change but **does not re-run the script automatically** — instead `dodot status` reports `older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 4 for the full three-state model and `--diff` workflow.
 
     Removing a source script from the pack stops dodot from running it, but does not roll back side-effects from prior runs — dodot has no history of what the script did. Cleanup of side-effects is on the script author. Adding a new source script picks it up on the next `dodot up`.

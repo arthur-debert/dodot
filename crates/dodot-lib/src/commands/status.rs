@@ -52,9 +52,10 @@ enum Health {
     /// for a *different* content hash than the file currently has on
     /// disk. The script has not been re-run automatically — the
     /// notify-don't-rerun policy (#169 PR C) leaves the prior state in
-    /// place until the user passes `--force`. `label` is the short
-    /// status-column text (carries the per-handler "older version"
-    /// copy plus a `(N+ M-)` line summary when a snapshot is on disk).
+    /// place until the user passes `--provision-rerun`. `label` is the
+    /// short status-column text (carries the per-handler "older
+    /// version" copy plus a `(N+ M-)` line summary when a snapshot is
+    /// on disk).
     RanOlderVersion { label: String },
     /// File matched the `mappings.skip` list (README, LICENSE, …).
     /// No handler runs on it, but it surfaces in status so users can see
@@ -83,11 +84,11 @@ impl Health {
             Health::Stale(_) => "stale",
             // "ran older version" rolls up to the same bucket as
             // `Stale`: the script HAS run, but the source has moved on
-            // and a `--force` (or a manual `dodot up --force`) is
-            // needed to bring the system back in sync. Sharing the
-            // style with stale keeps the pack-level summary
-            // ("pending") sensible: any pack with an older-version
-            // entry is one user action away from being current.
+            // and a `dodot up --provision-rerun` is needed to bring
+            // the system back in sync. Sharing the style with stale
+            // keeps the pack-level summary ("pending") sensible: any
+            // pack with an older-version entry is one user action away
+            // from being current.
             Health::RanOlderVersion { .. } => "stale",
             Health::Skipped => "skipped",
             Health::Gated { .. } => "skipped",
@@ -101,16 +102,14 @@ impl Health {
                 "symlink" => "pending".into(),
                 "shell" => "not sourced".into(),
                 "path" => "not in PATH".into(),
-                "install" => "never run".into(),
-                "homebrew" => "not installed".into(),
+                "install" | "homebrew" => run_once_status_messages(handler).pending,
                 _ => "pending".into(),
             },
             Health::Deployed => match handler {
                 "symlink" => "deployed".into(),
                 "shell" => "sourced".into(),
                 "path" => "in PATH".into(),
-                "install" => "installed".into(),
-                "homebrew" => "installed".into(),
+                "install" | "homebrew" => run_once_status_messages(handler).deployed,
                 _ => "deployed".into(),
             },
             Health::DeployedWithError { label, .. } => label.clone(),

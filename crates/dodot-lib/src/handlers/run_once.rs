@@ -22,8 +22,10 @@
 //!    content; skip silently.
 //! 3. [`RanDifferent`](crate::datastore::DidRunStatus::RanDifferent) — a
 //!    sentinel exists but for a *different* content hash; skip with
-//!    notice. The user opts in to re-running via `dodot up --force`
-//!    (the existing `provision_rerun` flag).
+//!    notice. The user opts in to re-running via
+//!    `dodot up --provision-rerun` (the existing `provision_rerun`
+//!    flag — distinct from `--force`, which only overwrites
+//!    pre-existing files at symlink target paths).
 //!
 //! `dodot status` renders this three-way result as `pending` /
 //! `deployed` / `older version (N lines added, M removed)` rows; the
@@ -110,10 +112,10 @@ pub trait RunOnceCommand: Send + Sync {
     /// a *different* content hash — the file has been edited since
     /// the last successful run, but the conservative
     /// notify-don't-rerun policy (#169 PR C) leaves the prior state
-    /// in place until the user opts in via `--force`.
+    /// in place until the user opts in via `--provision-rerun`.
     ///
     /// Default: `"older version"`. Overridden per-handler for
-    /// readability — e.g. `"older version (brew packages)"` for
+    /// readability — e.g. `"brew packages older version"` for
     /// homebrew. `dodot status` further annotates this label with a
     /// `(N lines added, M removed)` summary when a snapshot of the
     /// previously-run content is available, or with `(no diff data)`
@@ -262,7 +264,7 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
             crate::datastore::DidRunStatus::RanDifferent { .. } => (
                 true,
                 format!(
-                    "{} (older version — run `dodot up --force` to apply current)",
+                    "{} (older version — run `dodot up --provision-rerun` to apply current)",
                     self.cmd.status_deployed()
                 ),
             ),
@@ -796,8 +798,8 @@ mod tests {
             status.message
         );
         assert!(
-            status.message.contains("--force"),
-            "message should mention --force, got: {}",
+            status.message.contains("--provision-rerun"),
+            "message should mention --provision-rerun, got: {}",
             status.message
         );
     }

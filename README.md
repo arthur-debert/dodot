@@ -100,8 +100,8 @@ dodot matches files to handlers by name convention:
 | **symlink**| Most files (default)                        | Symlink under `~/.config/<pack>/` |
 | **shell**  | `*.{sh,bash,zsh}` at pack root              | Sourced via shell init script |
 | **path**   | `bin/` directories                          | Added to `$PATH`              |
-| **homebrew** | `Brewfile`                                | `brew bundle install`; edits report `older version`, apply with `dodot up --force` |
-| **install**| `install.sh`, `install.bash`, `install.zsh` | Run once (checksum-tracked); edits report `older version`, apply with `dodot up --force` |
+| **homebrew** | `Brewfile`                                | `brew bundle install`; edits report `older version`, apply with `dodot up --provision-rerun` |
+| **install**| `install.sh`, `install.bash`, `install.zsh` | Run once (checksum-tracked); edits report `older version`, apply with `dodot up --provision-rerun` |
 
 Symlink targets are resolved smartly:
 - Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<rel_path>` (e.g. `nvim/init.lua` → `~/.config/nvim/init.lua`, `warp/themes/` → `~/.config/warp/themes/`)
