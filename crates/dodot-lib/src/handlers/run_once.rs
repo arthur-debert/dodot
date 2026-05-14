@@ -52,7 +52,7 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use crate::datastore::DataStore;
+use crate::datastore::{CommandRunner, DataStore};
 use crate::fs::Fs;
 use crate::handlers::{ExecutionPhase, Handler, HandlerConfig, HandlerStatus};
 use crate::operations::HandlerIntent;
@@ -87,11 +87,14 @@ pub trait RunOnceCommand: Send + Sync {
     /// the matched file and propagates the error. The default
     /// implementation passes any file through unchanged.
     ///
-    /// Note: the current signature is filesystem-only. Handlers that
-    /// need subprocess access for validation (e.g. invoking `nix
-    /// eval` to check manifest shape) will need a richer mechanism;
-    /// see #169 for the design discussion.
-    fn validate(&self, _fs: &dyn Fs, _path: &Path) -> Result<()> {
+    /// Implementations receive both `fs` (for reading the matched
+    /// file's bytes without re-entering the executor) and `runner`
+    /// (for shelling out to a tool that can validate the file's shape
+    /// natively — e.g. `nix eval --apply` for `packages.nix`). The
+    /// runner is the same `CommandRunner` the executor uses for the
+    /// install path, so a validator's subprocess output is captured
+    /// the same way as the eventual install command's.
+    fn validate(&self, _fs: &dyn Fs, _runner: &dyn CommandRunner, _path: &Path) -> Result<()> {
         Ok(())
     }
 
@@ -127,18 +130,24 @@ pub trait RunOnceCommand: Send + Sync {
 
 /// The shared body for run-once handlers.
 ///
-/// Holds a borrow of [`Fs`] and an instance of some
+/// Holds borrows of [`Fs`] + [`CommandRunner`] and an instance of some
 /// [`RunOnceCommand`]. Implements [`Handler`] by routing per-handler
 /// concerns to the command and keeping the shared logic — checksum,
 /// sentinel, intent construction, status lookup — in one place.
+///
+/// The runner is passed straight through to
+/// [`RunOnceCommand::validate`] at intent-production time so
+/// validators like Nix's `nix eval --apply` shape check can shell out
+/// without owning their own runner.
 pub struct RunOnceHandler<'a, C: RunOnceCommand> {
     fs: &'a dyn Fs,
+    runner: &'a dyn CommandRunner,
     cmd: C,
 }
 
 impl<'a, C: RunOnceCommand> RunOnceHandler<'a, C> {
-    pub fn new(fs: &'a dyn Fs, cmd: C) -> Self {
-        Self { fs, cmd }
+    pub fn new(fs: &'a dyn Fs, runner: &'a dyn CommandRunner, cmd: C) -> Self {
+        Self { fs, runner, cmd }
     }
 
     /// Access the underlying command (useful in tests).
@@ -197,7 +206,7 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
             }
 
             // We have content. Validate first, then hash.
-            self.cmd.validate(self.fs, &m.absolute_path)?;
+            self.cmd.validate(self.fs, self.runner, &m.absolute_path)?;
 
             // Sentinel hashing prefers in-memory rendered bytes when
             // they're available (preprocessor-produced files); falls
@@ -430,7 +439,7 @@ mod tests {
             args.push(path.to_string_lossy().into_owned());
             (self.executable.clone(), args)
         }
-        fn validate(&self, _fs: &dyn Fs, path: &Path) -> Result<()> {
+        fn validate(&self, _fs: &dyn Fs, _runner: &dyn CommandRunner, path: &Path) -> Result<()> {
             if self.validate_fails {
                 Err(crate::DodotError::Fs {
                     path: path.to_path_buf(),
@@ -479,6 +488,7 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let handler = RunOnceHandler::new(
             env.fs.as_ref(),
+            &NoopRunner,
             FakeCommand {
                 phase: ExecutionPhase::Provision,
                 ..FakeCommand::new("widget")
@@ -501,7 +511,7 @@ mod tests {
             args_template: vec!["--".into()],
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
 
         let abs = env.dotfiles_root.join("vim/setup.sh");
         let matches = vec![make_match("vim", "setup.sh", abs.clone(), None)];
@@ -551,7 +561,7 @@ mod tests {
             .build();
         let abs = env.dotfiles_root.join("vim/setup.sh");
 
-        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
 
         let rendered = b"rendered content".to_vec();
         let expected_checksum = file_checksum_bytes(&rendered);
@@ -582,7 +592,7 @@ mod tests {
             .build();
         let abs = env.dotfiles_root.join("vim/setup.sh");
 
-        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
 
         let expected_checksum = file_checksum(env.fs.as_ref(), &abs).unwrap();
         let matches = vec![make_match("vim", "setup.sh", abs, None)];
@@ -614,7 +624,7 @@ mod tests {
             validate_fails: true,
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
 
         let ghost = env.dotfiles_root.join("ghost/install.sh"); // never written
         let matches = vec![make_match("ghost", "install.sh", ghost, None)];
@@ -634,7 +644,7 @@ mod tests {
         // No rendered_bytes, file doesn't exist on disk → skip (no
         // intent), don't error.
         let env = TempEnvironment::builder().build();
-        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
 
         let ghost = env.dotfiles_root.join("ghost/install.sh"); // never written
         let matches = vec![make_match("ghost", "install.sh", ghost, None)];
@@ -663,7 +673,7 @@ mod tests {
             validate_fails: true,
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
 
         let matches = vec![make_match("vim", "setup.sh", abs, None)];
         let result = handler.to_intents(
@@ -685,7 +695,7 @@ mod tests {
             .file("scripts/run", "x")
             .done()
             .build();
-        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
 
         let dir_match = RuleMatch {
             is_dir: true,
@@ -715,7 +725,7 @@ mod tests {
             .file("b.sh", "beta")
             .done()
             .build();
-        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
 
         let matches = vec![
             make_match("vim", "a.sh", env.dotfiles_root.join("vim/a.sh"), None),
@@ -755,7 +765,7 @@ mod tests {
             deployed_msg: "all set",
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
 
         let status = handler.check_status(&abs, "vim", &datastore).unwrap();
         assert!(status.deployed);
@@ -788,7 +798,7 @@ mod tests {
             deployed_msg: "ran",
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
 
         let status = handler.check_status(&abs, "vim", &datastore).unwrap();
         assert!(status.deployed, "older version still counts as deployed");
@@ -818,7 +828,7 @@ mod tests {
             pending_msg: "needs attention",
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
 
         let status = handler.check_status(&abs, "vim", &datastore).unwrap();
         assert!(!status.deployed);

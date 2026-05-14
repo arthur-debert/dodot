@@ -15,6 +15,7 @@ pub mod filter;
 pub mod gate;
 pub mod homebrew;
 pub mod install;
+pub mod nix;
 pub mod path;
 pub mod run_once;
 pub mod shell;
@@ -294,6 +295,7 @@ pub const HANDLER_SHELL: &str = "shell";
 pub const HANDLER_PATH: &str = "path";
 pub const HANDLER_INSTALL: &str = "install";
 pub const HANDLER_HOMEBREW: &str = "homebrew";
+pub const HANDLER_NIX: &str = "nix";
 pub const HANDLER_IGNORE: &str = "ignore";
 pub const HANDLER_SKIP: &str = "skip";
 pub const HANDLER_GATE: &str = "gate";
@@ -311,7 +313,14 @@ pub const HANDLER_EXTERNAL: &str = "external";
 /// across re-runs of `up` so install scripts and `brew bundle` aren't
 /// re-executed every time.
 pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
-    create_registry(fs)
+    // This walk only reads `Handler::category()`, never invokes
+    // `to_intents` (which would need a real subprocess runner for the
+    // run-once handlers' pre-flight validators). A noop runner is
+    // therefore sufficient — the run-once handlers are only inspected,
+    // not exercised.
+    let runner = crate::datastore::NoopCommandRunner;
+    let registry = create_registry(fs, &runner);
+    registry
         .iter()
         .filter(|(_, h)| h.category() == HandlerCategory::Configuration)
         .map(|(name, _)| name.clone())
@@ -321,9 +330,15 @@ pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
 /// Create the default handler registry.
 ///
 /// Returns a map from handler name to handler instance. The `fs`
-/// reference is needed by the run-once handlers (install, homebrew)
-/// for checksum computation.
-pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
+/// reference is needed by the run-once handlers (install, homebrew,
+/// nix) for checksum computation; `runner` is threaded into the
+/// run-once handlers so per-command pre-flight validators (e.g.
+/// `nix eval --apply` shape checking on `packages.nix`) can shell
+/// out at intent-production time.
+pub fn create_registry<'a>(
+    fs: &'a dyn Fs,
+    runner: &'a dyn crate::datastore::CommandRunner,
+) -> HashMap<String, Box<dyn Handler + 'a>> {
     let mut registry: HashMap<String, Box<dyn Handler>> = HashMap::new();
     registry.insert(HANDLER_IGNORE.into(), Box::new(filter::IgnoreHandler));
     registry.insert(HANDLER_SKIP.into(), Box::new(filter::SkipHandler));
@@ -337,11 +352,23 @@ pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
     registry.insert(HANDLER_PATH.into(), Box::new(path::PathHandler));
     registry.insert(
         HANDLER_INSTALL.into(),
-        Box::new(run_once::RunOnceHandler::new(fs, install::InstallCommand)),
+        Box::new(run_once::RunOnceHandler::new(
+            fs,
+            runner,
+            install::InstallCommand,
+        )),
     );
     registry.insert(
         HANDLER_HOMEBREW.into(),
-        Box::new(run_once::RunOnceHandler::new(fs, homebrew::BrewfileCommand)),
+        Box::new(run_once::RunOnceHandler::new(
+            fs,
+            runner,
+            homebrew::BrewfileCommand,
+        )),
+    );
+    registry.insert(
+        HANDLER_NIX.into(),
+        Box::new(run_once::RunOnceHandler::new(fs, runner, nix::NixCommand)),
     );
     validate_registry(&registry);
     registry
@@ -438,7 +465,7 @@ mod tests {
     #[test]
     fn builtin_handler_phases() {
         let fs = crate::fs::OsFs::new();
-        let registry = create_registry(&fs);
+        let registry = create_registry(&fs, &crate::datastore::NoopCommandRunner);
         assert_eq!(registry[HANDLER_IGNORE].phase(), ExecutionPhase::Filter);
         assert_eq!(registry[HANDLER_SKIP].phase(), ExecutionPhase::Filter);
         assert_eq!(registry[HANDLER_GATE].phase(), ExecutionPhase::Filter);
@@ -476,7 +503,7 @@ mod tests {
     #[test]
     fn default_registry_has_exactly_one_exclusive_catchall() {
         let fs = crate::fs::OsFs::new();
-        let registry = create_registry(&fs);
+        let registry = create_registry(&fs, &crate::datastore::NoopCommandRunner);
         let exclusive_catchalls: Vec<&str> = registry
             .values()
             .filter(|h| {
@@ -523,7 +550,7 @@ mod tests {
             }
         }
         let fs = crate::fs::OsFs::new();
-        let mut registry = create_registry(&fs);
+        let mut registry = create_registry(&fs, &crate::datastore::NoopCommandRunner);
         registry.insert("fake".into(), Box::new(FakeCatchall));
         validate_registry(&registry);
     }

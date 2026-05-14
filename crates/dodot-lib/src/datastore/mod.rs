@@ -221,6 +221,27 @@ pub trait CommandRunner: Send + Sync {
     }
 }
 
+/// [`CommandRunner`] that succeeds without spawning anything.
+///
+/// Useful for callsites that need a `CommandRunner` for type reasons
+/// but never actually invoke commands: status-only registry walks,
+/// handler-name enumeration, and tests that exercise non-subprocess
+/// code paths. A `run()` call returns `exit_code: 0` with empty
+/// stdout/stderr — the same shape `MockCommandRunner` returns by
+/// default, minus the call-recording.
+#[derive(Debug, Default)]
+pub struct NoopCommandRunner;
+
+impl CommandRunner for NoopCommandRunner {
+    fn run(&self, _executable: &str, _arguments: &[String]) -> Result<CommandOutput> {
+        Ok(CommandOutput {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        })
+    }
+}
+
 /// Output from a command execution.
 #[derive(Debug, Clone)]
 pub struct CommandOutput {

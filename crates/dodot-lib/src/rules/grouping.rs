@@ -99,7 +99,7 @@ mod tests {
         groups.insert("path".into(), vec![]);
 
         let fs = crate::fs::OsFs::new();
-        let registry = crate::handlers::create_registry(&fs);
+        let registry = crate::handlers::create_registry(&fs, &crate::datastore::NoopCommandRunner);
         let order = handler_execution_order(&groups, &registry);
 
         // Exact order matches ExecutionPhase declaration:
@@ -119,7 +119,7 @@ mod tests {
         groups.insert("homebrew".into(), vec![]);
 
         let fs = crate::fs::OsFs::new();
-        let registry = crate::handlers::create_registry(&fs);
+        let registry = crate::handlers::create_registry(&fs, &crate::datastore::NoopCommandRunner);
         let order = handler_execution_order(&groups, &registry);
 
         // Known handlers keep phase order; unknown lands at the end.
