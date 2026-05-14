@@ -1,11 +1,11 @@
 ---
 name: pr-review-respond
-description: "Reply to and resolve PR review comments using only the `gh` CLI — no local helper scripts required. Use when processing Copilot or human review feedback on a PR in Claude Code Cloud, CI agents, or any environment without ~/h/release/bin scripts on $PATH. Triggered by: 'address review comments', 'resolve review threads', 'reply to Copilot', or any iteration on PR review feedback."
+description: "Reply to and resolve PR review comments using `gh` + `jq` — no other local helper scripts required. Use when processing Copilot or human review feedback on a PR in Claude Code Cloud, CI agents, or any environment without ~/h/release/bin scripts on $PATH. Triggered by: 'address review comments', 'resolve review threads', 'reply to Copilot', or any iteration on PR review feedback."
 ---
 
 # pr-review-respond
 
-Read, reply to, and resolve PR review comments using only `gh` and `jq`. Self-contained — no dependency on the `gh-*` helper scripts in `~/h/release/bin/` (those aren't available in Claude Code Cloud sessions or any environment that hasn't sourced the dotfiles).
+Read, reply to, and resolve PR review comments using `gh` and `jq`. Self-contained — no dependency on the `gh-*` helper scripts in `~/h/release/bin/` (those aren't available in Claude Code Cloud sessions or any environment that hasn't sourced the dotfiles). Required deps: authenticated `gh` CLI and `jq`.
 
 ## When to use
 
@@ -17,10 +17,10 @@ If you're working locally with the helper scripts available, the broader `gh-pr-
 
 ## The three primitives
 
-All commands assume you're inside the PR's repo. Set up once:
+All commands assume you're inside the PR's repo. Set up once (replace `123` with the PR number — don't paste `<pr-number>` literally, the shell parses `<` as redirection):
 
 ```sh
-PR=<pr-number>
+PR=123
 OWNER=$(gh repo view --json owner -q .owner.login)
 REPO=$(gh repo view --json name -q .name)
 ```
@@ -56,14 +56,16 @@ gh api graphql -F owner="$OWNER" -F name="$REPO" -F pr="$PR" -f query='
                path: .path,
                line: (.line // .originalLine),
                firstCommentId: .comments.nodes[0].databaseId,
-               author: .comments.nodes[0].author.login,
-               body: .comments.nodes[0].body }]'
+               comments: [.comments.nodes[] | { author: .author.login, body: .body }] }]'
 ```
 
 The output gives you everything needed to triage and act:
 - `threadId` — the `PRRT_*` GraphQL ID to pass to `resolveReviewThread` (step 3).
-- `firstCommentId` — the numeric REST `databaseId` to POST replies against (step 2).
-- `path`, `line`, `author`, `body` — for triage.
+- `firstCommentId` — the numeric REST `databaseId` to POST replies against (step 2). Always the root comment, even when the thread has follow-up replies.
+- `comments[]` — full thread history in order, so you see the latest reviewer comment plus any earlier replies. The newest comment (`comments[-1]`) usually carries the most current request.
+- `path`, `line` — for triage.
+
+Note: this fetches the first 100 review threads (GraphQL caps `first` at 100). PRs with more than 100 threads are extremely rare here; if you ever hit one, paginate with `pageInfo.endCursor`.
 
 ### 2. Reply to a comment
 
@@ -71,16 +73,15 @@ The output gives you everything needed to triage and act:
 COMMENT_ID=<firstCommentId from step 1>
 
 gh api "repos/$OWNER/$REPO/pulls/$PR/comments/$COMMENT_ID/replies" \
-  -X POST -f body="$(cat <<'EOF'
+  -X POST -f body=@- <<'EOF'
 Reply markdown here. Multiple lines fine.
 
 For rationale-style pushbacks, end with a searchable line so future passes can find it:
 Recording for future review passes: don't ask us to <X>.
 EOF
-)"
 ```
 
-Heredoc keeps quoting predictable for multi-line bodies. An empty body errors out.
+`-f body=@-` reads the field from stdin, so the heredoc body can contain any characters (double quotes, backticks, dollar signs, code blocks) without shell-quoting hazards. An empty body errors out. The endpoint **does** include `pull_number` in the path — that's the documented form for replies, even though comment IDs are repo-unique.
 
 ### 3. Resolve the thread
 
@@ -111,7 +112,7 @@ For each unresolved thread, pick one:
 - "Per-repo customize the multi-repo template." The template is intentionally generic — pointing at only what's local defeats its purpose.
 - "Match fallback flags exactly to CI." The fallback is a generic approximation; CI is the source of truth and varies per project.
 
-**C) Cosmetic nit in already-merged style → skip.** Don't reply. Only push back if the same nit recurs across PRs — then generally, in copilot-instructions.md.
+**C) Cosmetic nit in already-merged style → resolve without replying.** The thread is closed because the codebase has settled on a different convention; an empty reply isn't useful, but leaving the thread "Unresolved" pollutes the next pass. Only push back (and leave open until you've replied) if the same nit recurs across PRs — at that point, encode the project convention in `copilot-instructions.md` so it stops being raised.
 
 Healthy end state: only genuinely contested threads (and the original review summary, which isn't itself a thread) remain unresolved.
 
