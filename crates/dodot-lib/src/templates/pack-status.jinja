@@ -40,4 +40,8 @@
 [conflict-hint]Common fixes: give them unique names, override the destination in the pack's config,[/conflict-hint]
 [conflict-hint]or ignore the pack entirely. See `dodot config --help` for the last option.[/conflict-hint]
 [conflict-hint]`dodot up` won't run while conflicts exist.[/conflict-hint]
-{% endif %}
+{% endif %}{% if diffs %}
+[header]Diffs (run-once files with edits since last run):[/header]
+{% for d in diffs %}
+[pack-name]{{ d.pack }} / {{ d.file }}[/pack-name]
+{{ d.body }}{% endfor %}{% endif %}

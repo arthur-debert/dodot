@@ -11,12 +11,17 @@
 use tracing::{debug, info};
 
 use crate::commands::{
-    handler_description, handler_symbol, DisplayConflict, DisplayFile, DisplayNote, DisplayPack,
-    PackStatusResult,
+    handler_description, handler_symbol, DisplayConflict, DisplayDiff, DisplayFile, DisplayNote,
+    DisplayPack, PackStatusResult,
 };
 use crate::config::mappings_to_rules;
 use crate::conflicts;
-use crate::handlers::{self, HANDLER_GATE, HANDLER_IGNORE, HANDLER_SKIP, HANDLER_SYMLINK};
+use crate::datastore::DidRunStatus;
+use crate::handlers::run_once::{file_checksum, run_once_status_messages};
+use crate::handlers::{
+    self, HANDLER_GATE, HANDLER_HOMEBREW, HANDLER_IGNORE, HANDLER_INSTALL, HANDLER_SKIP,
+    HANDLER_SYMLINK,
+};
 use crate::operations::HandlerIntent;
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::packs::{self};
@@ -43,6 +48,15 @@ enum Health {
     /// Data link exists and is healthy, but the user link is not at the
     /// path that current config would produce. A re-deploy would move it.
     Stale(String),
+    /// Run-once handler (install / homebrew) recorded a successful run
+    /// for a *different* content hash than the file currently has on
+    /// disk. The script has not been re-run automatically — the
+    /// notify-don't-rerun policy (#169 PR C) leaves the prior state in
+    /// place until the user passes `--provision-rerun`. `label` is the
+    /// short status-column text (carries the per-handler "older
+    /// version" copy plus a `(N+ M-)` line summary when a snapshot is
+    /// on disk).
+    RanOlderVersion { label: String },
     /// File matched the `mappings.skip` list (README, LICENSE, …).
     /// No handler runs on it, but it surfaces in status so users can see
     /// the rule applied rather than wondering why the file is "missing."
@@ -68,6 +82,14 @@ impl Health {
             Health::DeployedWithError { .. } => "broken",
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
+            // "ran older version" rolls up to the same bucket as
+            // `Stale`: the script HAS run, but the source has moved on
+            // and a `dodot up --provision-rerun` is needed to bring
+            // the system back in sync. Sharing the style with stale
+            // keeps the pack-level summary ("pending") sensible: any
+            // pack with an older-version entry is one user action away
+            // from being current.
+            Health::RanOlderVersion { .. } => "stale",
             Health::Skipped => "skipped",
             Health::Gated { .. } => "skipped",
         }
@@ -80,21 +102,20 @@ impl Health {
                 "symlink" => "pending".into(),
                 "shell" => "not sourced".into(),
                 "path" => "not in PATH".into(),
-                "install" => "never run".into(),
-                "homebrew" => "not installed".into(),
+                "install" | "homebrew" => run_once_status_messages(handler).pending,
                 _ => "pending".into(),
             },
             Health::Deployed => match handler {
                 "symlink" => "deployed".into(),
                 "shell" => "sourced".into(),
                 "path" => "in PATH".into(),
-                "install" => "installed".into(),
-                "homebrew" => "installed".into(),
+                "install" | "homebrew" => run_once_status_messages(handler).deployed,
                 _ => "deployed".into(),
             },
             Health::DeployedWithError { label, .. } => label.clone(),
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
+            Health::RanOlderVersion { label } => label.clone(),
             Health::Skipped => "skipped".into(),
             Health::Gated { label, .. } => format!("gated out ({label})"),
         }
@@ -360,6 +381,130 @@ fn verify_staged(
     Health::Deployed
 }
 
+/// Classify a run-once handler row (install / homebrew) by consulting
+/// the datastore's three-way [`DidRunStatus`] for the file.
+///
+/// On `RanDifferent`, `out_diffs` accumulates a unified-diff entry for
+/// the row when `show_diff` is set AND the previous-run snapshot is on
+/// disk. `out_diffs` is left untouched for the other two states and
+/// for sentinels predating the snapshot convention.
+///
+/// `display_name` is the pack name used in the diff payload (display
+/// name, not on-disk name) so the JSON / text output mirrors the rest
+/// of the status row.
+fn run_once_health(
+    file: &std::path::Path,
+    pack: &str,
+    display_name: &str,
+    handler: &str,
+    ctx: &ExecutionContext,
+    show_diff: bool,
+    out_diffs: &mut Vec<DisplayDiff>,
+) -> Health {
+    // Source missing entirely: surface the same "broken" state used by
+    // the symlink/staged paths so the row doesn't claim a state we
+    // can't verify. The handler would skip the file at intent time
+    // anyway (see `RunOnceHandler::to_intents`), but status looks at
+    // matches, not intents.
+    if !ctx.fs.exists(file) {
+        return Health::Broken("broken: source file missing".into());
+    }
+    let filename = match file.file_name() {
+        Some(f) => f.to_string_lossy().into_owned(),
+        None => return Health::Pending,
+    };
+    let current_hash = match file_checksum(ctx.fs.as_ref(), file) {
+        Ok(h) => h,
+        Err(e) => return Health::Broken(format!("broken: cannot hash source file: {e}")),
+    };
+
+    let messages = run_once_status_messages(handler);
+    let status = match ctx
+        .datastore
+        .did_run(pack, handler, &filename, &current_hash)
+    {
+        Ok(s) => s,
+        Err(e) => return Health::Broken(format!("broken: datastore error: {e}")),
+    };
+
+    match status {
+        DidRunStatus::NeverRan => Health::Pending,
+        DidRunStatus::RanCurrent => Health::Deployed,
+        DidRunStatus::RanDifferent {
+            previous_snapshot, ..
+        } => {
+            // Pull the current source bytes for both the line summary
+            // and the (optional) full diff. A read error here drops us
+            // back to the no-snapshot label rather than failing the
+            // whole status command — diff is an enhancement, not a
+            // hard requirement.
+            let current_bytes = ctx.fs.read_file(file).ok();
+            let label = match (previous_snapshot.as_deref(), current_bytes.as_deref()) {
+                (Some(prev), Some(cur)) => {
+                    let summary = line_summary(prev, cur);
+                    if show_diff {
+                        out_diffs.push(DisplayDiff {
+                            pack: display_name.to_string(),
+                            file: filename.clone(),
+                            handler: handler.to_string(),
+                            body: unified_diff(&filename, prev, cur),
+                        });
+                    }
+                    format!("{} ({})", messages.ran_different, summary)
+                }
+                _ => {
+                    // No snapshot on disk — sentinel predates the
+                    // snapshot convention (#169 PR C). Render the
+                    // state without a line summary so the user knows
+                    // a re-run is pending but not what changed.
+                    format!("{} (no diff data)", messages.ran_different)
+                }
+            };
+            Health::RanOlderVersion { label }
+        }
+    }
+}
+
+/// `(N lines added, M lines removed)` summary for a `RanDifferent`
+/// row. Counts unified-diff `+` / `-` bodies (excluding the two
+/// header lines) so the result matches what a user would see in `diff
+/// -u` output. UTF-8 is assumed; non-UTF-8 inputs render via lossy
+/// decode for the diff itself but don't affect the line counts (the
+/// raw byte slices are decoded with `from_utf8_lossy`).
+fn line_summary(prev: &[u8], cur: &[u8]) -> String {
+    let prev_s = String::from_utf8_lossy(prev);
+    let cur_s = String::from_utf8_lossy(cur);
+    let patch = diffy::create_patch(&prev_s, &cur_s);
+    let mut added = 0usize;
+    let mut removed = 0usize;
+    for hunk in patch.hunks() {
+        for line in hunk.lines() {
+            match line {
+                diffy::Line::Insert(_) => added += 1,
+                diffy::Line::Delete(_) => removed += 1,
+                diffy::Line::Context(_) => {}
+            }
+        }
+    }
+    format!(
+        "{added} {} added, {removed} removed",
+        if added == 1 { "line" } else { "lines" },
+    )
+}
+
+/// Build the unified-diff body for a `RanOlderVersion` row whose
+/// snapshot is on disk. The returned string is a complete patch with
+/// `--- <file> (previous run)` / `+++ <file> (current)` headers,
+/// ready to drop into the templated output.
+fn unified_diff(filename: &str, prev: &[u8], cur: &[u8]) -> String {
+    let prev_s = String::from_utf8_lossy(prev);
+    let cur_s = String::from_utf8_lossy(cur);
+    let mut opts = diffy::DiffOptions::default();
+    opts.set_original_filename(format!("{filename} (previous run)"))
+        .set_modified_filename(format!("{filename} (current)"));
+    opts.create_patch(&prev_s, &cur_s).to_string()
+}
+
 /// How many recent shell-init profiles to scan for runtime failures.
 /// Five is enough to catch the "fails sometimes" case without making
 /// status I/O-heavy; users who want deeper history reach for
@@ -500,6 +645,11 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     let mut display_packs = Vec::new();
     let mut notes: Vec<DisplayNote> = Vec::new();
     let mut inactive_packs: Vec<String> = Vec::new();
+    // Accumulator for unified diffs of `RanOlderVersion` rows. Always
+    // constructed (even when `--diff` is off) so the run-once branch
+    // can take a `&mut` without conditional plumbing; only mutated
+    // when `ctx.show_diff` is true and the row's snapshot is on disk.
+    let mut diffs: Vec<DisplayDiff> = Vec::new();
 
     // Collect intents across all packs for conflict detection
     let mut pack_intents = Vec::new();
@@ -700,8 +850,20 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     }
                 }
                 "shell" | "path" => verify_staged(&m.absolute_path, &pack.name, &m.handler, ctx),
+                h if h == HANDLER_INSTALL || h == HANDLER_HOMEBREW => run_once_health(
+                    &m.absolute_path,
+                    &pack.name,
+                    &pack.display_name,
+                    &m.handler,
+                    ctx,
+                    ctx.show_diff,
+                    &mut diffs,
+                ),
                 _ => {
-                    // install, homebrew — use existing handler check_status
+                    // Future run-once handlers without dedicated routing
+                    // (or any other Provision/Setup handler) fall back
+                    // to the binary deployed/pending classification via
+                    // the registry.
                     let handler = registry.get(m.handler.as_str());
                     let deployed = handler
                         .and_then(|h| {
@@ -834,6 +996,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         inactive_packs,
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
+        diffs,
     })
 }
 
@@ -905,7 +1068,7 @@ fn collect_drift_warnings(
 
 #[cfg(test)]
 mod tests {
-    use super::intent_display_name;
+    use super::{intent_display_name, line_summary, unified_diff};
     use std::path::Path;
 
     #[test]
@@ -948,5 +1111,272 @@ mod tests {
             Path::new("/data/iina/preprocessed"),
         );
         assert_eq!(name, "foo.conf");
+    }
+
+    #[test]
+    fn line_summary_counts_added_and_removed_lines() {
+        // diffy collapses unchanged lines into Context entries, which
+        // line_summary ignores; only Insert/Delete are counted.
+        let prev = "alpha\nbeta\ngamma\n";
+        let cur = "alpha\nbeta-prime\ngamma\ndelta\n";
+        let summary = line_summary(prev.as_bytes(), cur.as_bytes());
+        assert_eq!(summary, "2 lines added, 1 removed");
+    }
+
+    #[test]
+    fn line_summary_singular_for_one_added() {
+        // Singular `line` when exactly one was added — small UX
+        // touch so the row reads cleanly in the common single-edit case.
+        let prev = "alpha\nbeta\n";
+        let cur = "alpha\nbeta\ngamma\n";
+        let summary = line_summary(prev.as_bytes(), cur.as_bytes());
+        assert_eq!(summary, "1 line added, 0 removed");
+    }
+
+    #[test]
+    fn line_summary_zero_when_inputs_match() {
+        // Identical content yields a no-op patch with no Insert/Delete.
+        let s = "echo hi\n";
+        let summary = line_summary(s.as_bytes(), s.as_bytes());
+        assert_eq!(summary, "0 lines added, 0 removed");
+    }
+
+    #[test]
+    fn unified_diff_carries_per_run_filename_decorations() {
+        let prev = "echo old\n";
+        let cur = "echo new\n";
+        let body = unified_diff("install.sh", prev.as_bytes(), cur.as_bytes());
+        assert!(
+            body.contains("--- install.sh (previous run)"),
+            "expected previous-run header in diff, got: {body}"
+        );
+        assert!(
+            body.contains("+++ install.sh (current)"),
+            "expected current header in diff, got: {body}"
+        );
+        assert!(
+            body.contains("-echo old"),
+            "expected removed line in diff, got: {body}"
+        );
+        assert!(
+            body.contains("+echo new"),
+            "expected added line in diff, got: {body}"
+        );
+    }
+
+    // ── run_once_health (three-state for install / homebrew) ──
+
+    use super::{run_once_health, Health};
+    use crate::commands::DisplayDiff;
+    use crate::fs::Fs;
+    use crate::handlers::HANDLER_INSTALL;
+    use crate::packs::orchestration::ExecutionContext;
+    use crate::paths::Pather;
+    use crate::testing::TempEnvironment;
+
+    fn ctx_for(env: &TempEnvironment) -> ExecutionContext {
+        use crate::config::ConfigManager;
+        use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+        use crate::Result;
+        use std::sync::Arc;
+        struct NoopRunner;
+        impl CommandRunner for NoopRunner {
+            fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
+                Ok(CommandOutput {
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                })
+            }
+        }
+        let runner: Arc<dyn CommandRunner> = Arc::new(NoopRunner);
+        let datastore = Arc::new(FilesystemDataStore::new(
+            env.fs.clone(),
+            env.paths.clone(),
+            runner.clone(),
+        ));
+        let config_manager =
+            Arc::new(ConfigManager::new(&env.dotfiles_root).expect("test config manager"));
+        ExecutionContext {
+            fs: env.fs.clone(),
+            datastore,
+            paths: env.paths.clone(),
+            config_manager,
+            syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+            command_runner: runner,
+            dry_run: false,
+            no_provision: true,
+            provision_rerun: false,
+            force: false,
+            check_drift: false,
+            show_diff: false,
+            view_mode: crate::commands::ViewMode::Full,
+            group_mode: crate::commands::GroupMode::Name,
+            verbose: false,
+            host_facts: Arc::new(crate::gates::HostFacts::detect()),
+        }
+    }
+
+    #[test]
+    fn run_once_health_pending_when_no_sentinel() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("install.sh", "echo hi")
+            .done()
+            .build();
+        let ctx = ctx_for(&env);
+        let abs = env.dotfiles_root.join("vim/install.sh");
+        let mut diffs = Vec::new();
+        let h = run_once_health(&abs, "vim", "vim", HANDLER_INSTALL, &ctx, false, &mut diffs);
+        assert!(matches!(h, Health::Pending));
+        assert!(diffs.is_empty());
+    }
+
+    #[test]
+    fn run_once_health_deployed_when_current_hash_matches() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("install.sh", "echo hi")
+            .done()
+            .build();
+        let ctx = ctx_for(&env);
+        let abs = env.dotfiles_root.join("vim/install.sh");
+        // Pre-create a sentinel for the *current* hash so did_run
+        // returns RanCurrent.
+        let checksum = crate::handlers::run_once::file_checksum(env.fs.as_ref(), &abs).unwrap();
+        let dir = env.paths.handler_data_dir("vim", HANDLER_INSTALL);
+        env.fs.mkdir_all(&dir).unwrap();
+        env.fs
+            .write_file(
+                &dir.join(format!("install.sh-{checksum}")),
+                b"completed|100",
+            )
+            .unwrap();
+        let mut diffs = Vec::new();
+        let h = run_once_health(&abs, "vim", "vim", HANDLER_INSTALL, &ctx, false, &mut diffs);
+        assert!(matches!(h, Health::Deployed));
+        assert!(diffs.is_empty());
+    }
+
+    #[test]
+    fn run_once_health_older_version_carries_line_summary_when_snapshot_present() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("install.sh", "echo new\necho line2\n")
+            .done()
+            .build();
+        let ctx = ctx_for(&env);
+        let abs = env.dotfiles_root.join("vim/install.sh");
+
+        // Previous-run sentinel for a different hash, plus its
+        // snapshot sibling — exactly what `run_and_record` writes.
+        let dir = env.paths.handler_data_dir("vim", HANDLER_INSTALL);
+        env.fs.mkdir_all(&dir).unwrap();
+        env.fs
+            .write_file(&dir.join("install.sh-aaaaaaaaaaaaaaaa"), b"completed|100")
+            .unwrap();
+        env.fs
+            .write_file(
+                &dir.join("install.sh-aaaaaaaaaaaaaaaa.snapshot"),
+                b"echo old\n",
+            )
+            .unwrap();
+
+        let mut diffs = Vec::new();
+        let h = run_once_health(&abs, "vim", "vim", HANDLER_INSTALL, &ctx, false, &mut diffs);
+        match h {
+            Health::RanOlderVersion { label } => {
+                assert!(
+                    label.contains("older version"),
+                    "label should mention older version, got: {label}"
+                );
+                assert!(
+                    label.contains("lines added") && label.contains("removed"),
+                    "label should contain a (N+ M-) summary, got: {label}"
+                );
+            }
+            _ => panic!("expected RanOlderVersion"),
+        }
+        // show_diff was false → no diff rows emitted.
+        assert!(diffs.is_empty());
+    }
+
+    #[test]
+    fn run_once_health_older_version_no_snapshot_falls_back_to_label_only() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("install.sh", "echo new\n")
+            .done()
+            .build();
+        let ctx = ctx_for(&env);
+        let abs = env.dotfiles_root.join("vim/install.sh");
+
+        // Pre-snapshot-era sentinel: no .snapshot sibling.
+        let dir = env.paths.handler_data_dir("vim", HANDLER_INSTALL);
+        env.fs.mkdir_all(&dir).unwrap();
+        env.fs
+            .write_file(&dir.join("install.sh-aaaaaaaaaaaaaaaa"), b"completed|100")
+            .unwrap();
+
+        let mut diffs = Vec::new();
+        let h = run_once_health(&abs, "vim", "vim", HANDLER_INSTALL, &ctx, true, &mut diffs);
+        match h {
+            Health::RanOlderVersion { label } => {
+                assert!(
+                    label.contains("older version") && label.contains("no diff data"),
+                    "label should mention `no diff data`, got: {label}"
+                );
+            }
+            _ => panic!("expected RanOlderVersion"),
+        }
+        // Even with show_diff=true, no snapshot ⇒ no diff payload.
+        assert!(
+            diffs.is_empty(),
+            "no snapshot should yield no diff entry, got {} entries",
+            diffs.len()
+        );
+    }
+
+    #[test]
+    fn run_once_health_show_diff_emits_diff_payload_when_snapshot_present() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("install.sh", "echo new\n")
+            .done()
+            .build();
+        let ctx = ctx_for(&env);
+        let abs = env.dotfiles_root.join("vim/install.sh");
+
+        let dir = env.paths.handler_data_dir("vim", HANDLER_INSTALL);
+        env.fs.mkdir_all(&dir).unwrap();
+        env.fs
+            .write_file(&dir.join("install.sh-aaaaaaaaaaaaaaaa"), b"completed|100")
+            .unwrap();
+        env.fs
+            .write_file(
+                &dir.join("install.sh-aaaaaaaaaaaaaaaa.snapshot"),
+                b"echo old\n",
+            )
+            .unwrap();
+
+        let mut diffs: Vec<DisplayDiff> = Vec::new();
+        let _h = run_once_health(
+            &abs,
+            "vim",
+            "vim-display",
+            HANDLER_INSTALL,
+            &ctx,
+            true,
+            &mut diffs,
+        );
+        assert_eq!(diffs.len(), 1, "expected exactly one diff entry");
+        let d = &diffs[0];
+        assert_eq!(d.pack, "vim-display");
+        assert_eq!(d.file, "install.sh");
+        assert_eq!(d.handler, HANDLER_INSTALL);
+        assert!(d.body.contains("install.sh (previous run)"));
+        assert!(d.body.contains("install.sh (current)"));
+        assert!(d.body.contains("-echo old"));
+        assert!(d.body.contains("+echo new"));
     }
 }

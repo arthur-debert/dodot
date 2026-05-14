@@ -45,6 +45,10 @@ impl RunOnceCommand for BrewfileCommand {
     fn status_pending(&self) -> &str {
         "brew packages not installed"
     }
+
+    fn status_ran_different(&self) -> &str {
+        "brew packages older version"
+    }
 }
 
 #[cfg(test)]

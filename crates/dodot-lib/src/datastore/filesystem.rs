@@ -10,10 +10,16 @@ use crate::{DodotError, Result};
 /// content at the time it was last successfully executed.
 ///
 /// Layout: alongside each sentinel `<filename>-<hash>`, the snapshot
-/// lives at `<filename>-<hash>.snapshot`. Old sentinels predating
-/// PR C of #169 have no sibling — [`DataStore::did_run`] surfaces
-/// `previous_snapshot: None` in that case so callers can show the
-/// "ran older version" state without diff details.
+/// lives at `<filename>-<hash>.snapshot` in the same handler data dir
+/// (`<datastore>/packs/<pack>/<handler>/`). Snapshots are plain
+/// regular files — users who want to manage run-once state by hand
+/// can delete the sentinel + snapshot pair to roll a file back to
+/// `NeverRan`.
+///
+/// Old sentinels predating PR C of #169 have no sibling — `did_run`
+/// surfaces `previous_snapshot: None` in that case so `dodot status`
+/// can render the `ran older version` state without diff details
+/// (and `dodot status --diff` can omit the entry from its output).
 pub(crate) const SNAPSHOT_SUFFIX: &str = ".snapshot";
 
 /// Length of the hex hash suffix used in sentinel names.

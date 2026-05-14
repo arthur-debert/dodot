@@ -107,6 +107,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         inactive_packs: Vec::new(),
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
+        diffs: Vec::new(),
     })
 }
 

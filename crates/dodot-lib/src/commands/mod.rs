@@ -257,6 +257,29 @@ fn pack_relative_source(source: &std::path::Path, pack: &str) -> String {
     format!("{pack}/{fname}")
 }
 
+/// A unified-diff payload for a single run-once file whose recorded
+/// content hash diverges from the current source. Emitted only by
+/// `dodot status --diff` for run-once handlers (`install`, `homebrew`)
+/// when a snapshot of the previously-run content is on disk; old
+/// sentinels predating the snapshot convention have no diff and never
+/// appear here.
+#[derive(Debug, Clone, Serialize)]
+pub struct DisplayDiff {
+    /// Pack the file belongs to (display name).
+    pub pack: String,
+    /// File name (typically `install.sh` / `Brewfile`).
+    pub file: String,
+    /// Handler that owns this file (`install`, `homebrew`, …) — useful
+    /// for JSON consumers that want to filter/group.
+    pub handler: String,
+    /// Unified-diff body, ready for direct display. Includes the
+    /// `--- old` / `+++ new` headers and any `@@ … @@` hunks. May be
+    /// empty if snapshot and current content are byte-identical (which
+    /// is unusual but possible when only metadata changed and the
+    /// diffing tool collapses).
+    pub body: String,
+}
+
 /// Result type for commands that display pack status
 /// (status, up, down).
 #[derive(Debug, Clone, Serialize)]
@@ -297,6 +320,14 @@ pub struct PackStatusResult {
     /// `"status"` groups packs under Ignored / Deployed / Pending /
     /// Error banners.
     pub group_mode: String,
+    /// Unified diffs for run-once files whose recorded content hash
+    /// no longer matches the source on disk. Populated only when the
+    /// caller passes `--diff` to `dodot status` and the relevant
+    /// sentinel has a `<sentinel>.snapshot` sibling on disk. Empty in
+    /// every other case (including the common `--diff` invocation
+    /// against packs with no `ran older version` entries).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub diffs: Vec<DisplayDiff>,
 }
 
 /// View style for pack-status output.

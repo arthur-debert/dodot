@@ -130,6 +130,7 @@ pub fn status_handler(
 ) -> HandlerResult<commands::PackStatusResult> {
     let mut ctx = build_readonly_ctx(matches)?;
     ctx.check_drift = matches.get_flag("check-drift");
+    ctx.show_diff = matches.get_flag("diff");
     let filter = pack_filter(matches);
     let result = commands::status::status(filter.as_deref(), &ctx)?;
     print_warnings(&result.warnings);

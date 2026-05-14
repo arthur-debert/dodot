@@ -60,6 +60,10 @@ impl RunOnceCommand for InstallCommand {
     fn status_pending(&self) -> &str {
         "never run"
     }
+
+    fn status_ran_different(&self) -> &str {
+        "older version"
+    }
 }
 
 /// Pick the interpreter for an install script based on its extension.
