@@ -70,6 +70,33 @@ use crate::Result;
 /// `deployed` / `ran older version`. Everything else (hashing,
 /// sentinel construction, `did_run` lookup, intent emission) is
 /// shared via [`RunOnceHandler`].
+///
+/// # Lifecycle invariant
+///
+/// Every `RunOnceCommand` implementation shares an **identical
+/// has-run / which-version-has-run / will-run lifecycle**. The
+/// shared [`RunOnceHandler`] consults
+/// [`DataStore::did_run`](crate::datastore::DataStore::did_run) and
+/// renders the three states (`NeverRan` / `RanCurrent` /
+/// `RanDifferent`) the same way for every command. Permitted
+/// specializations are limited to:
+///
+/// - the executable + arguments to run ([`Self::command_for`]),
+/// - status-message copy ([`Self::status_pending`] etc.),
+/// - **environmental** pre-flight checks ([`Self::validate`]) —
+///   things that fail consistently per-environment (tool present,
+///   file readable), not per-content.
+///
+/// **Per-content gatekeeping at planning time is explicitly out
+/// of scope.** Content errors (malformed manifest, syntax error,
+/// unsupported shape) must surface at apply time, the same way a
+/// broken `Brewfile` errors out of `brew bundle` or a broken
+/// `install.sh` errors out of `bash`. A validator that rejects
+/// per content breaks the lifecycle invariant: a previously-run
+/// file the user later edits into a broken state would fail
+/// planning here instead of reaching the `RanDifferent`
+/// "older version" notice the run-once policy promises. That
+/// asymmetry across commands is the bug, not the feature.
 pub trait RunOnceCommand: Send + Sync {
     /// Unique handler name (e.g. `"install"`, `"homebrew"`, `"nix"`).
     fn handler_name(&self) -> &str;
@@ -83,17 +110,27 @@ pub trait RunOnceCommand: Send + Sync {
 
     /// Optional pre-flight check. Default: no-op.
     ///
-    /// Returning `Err` from this method aborts intent generation for
-    /// the matched file and propagates the error. The default
-    /// implementation passes any file through unchanged.
+    /// **Scope: environmental, not content.** See the
+    /// "Lifecycle invariant" section in the trait docs — a
+    /// validator that fails per-content (e.g. file-syntax check,
+    /// manifest-shape rejection) breaks the shared `did_run`
+    /// lifecycle by failing planning for a file the run-once
+    /// policy says should surface as `older version`. Use
+    /// `validate` only for environment-level prerequisites that
+    /// fail consistently regardless of the file's current
+    /// contents.
+    ///
+    /// Returning `Err` aborts intent generation for the matched
+    /// file and propagates the error. The default implementation
+    /// passes any file through unchanged.
     ///
     /// Implementations receive both `fs` (for reading the matched
     /// file's bytes without re-entering the executor) and `runner`
-    /// (for shelling out to a tool that can validate the file's shape
-    /// natively — e.g. `nix eval --apply` for `packages.nix`). The
-    /// runner is the same `CommandRunner` the executor uses for the
-    /// install path, so a validator's subprocess output is captured
-    /// the same way as the eventual install command's.
+    /// (for shelling out to verify the tool is invokable —
+    /// e.g. `nix --version`, `brew --version`). The runner is the
+    /// same `CommandRunner` the executor uses for the install
+    /// path, so a validator's subprocess output is captured the
+    /// same way as the eventual install command's.
     fn validate(&self, _fs: &dyn Fs, _runner: &dyn CommandRunner, _path: &Path) -> Result<()> {
         Ok(())
     }
@@ -136,9 +173,10 @@ pub trait RunOnceCommand: Send + Sync {
 /// sentinel, intent construction, status lookup — in one place.
 ///
 /// The runner is passed straight through to
-/// [`RunOnceCommand::validate`] at intent-production time so
-/// validators like Nix's `nix eval --apply` shape check can shell out
-/// without owning their own runner.
+/// [`RunOnceCommand::validate`] at intent-production time so an
+/// environmental pre-flight (e.g. verifying the tool is on PATH
+/// via `<tool> --version`) can shell out without owning its own
+/// runner.
 pub struct RunOnceHandler<'a, C: RunOnceCommand> {
     fs: &'a dyn Fs,
     runner: &'a dyn CommandRunner,

@@ -15,7 +15,10 @@ use crate::handlers::{ExecutionPhase, HANDLER_HOMEBREW};
 ///
 /// Invokes `brew bundle --file <abs path>`. No pre-flight validation —
 /// `brew` itself surfaces parse errors clearly when the Brewfile is
-/// malformed.
+/// malformed. This matches the
+/// [`RunOnceCommand`](crate::handlers::run_once::RunOnceCommand)
+/// lifecycle invariant: content errors surface at apply time, not at
+/// planning time.
 pub struct BrewfileCommand;
 
 impl RunOnceCommand for BrewfileCommand {

@@ -1,5 +1,5 @@
-//! Nix handler — runs `nix profile install --file <packages.nix>`
-//! once per content hash, via the shared
+//! Nix handler — runs `nix profile install` against a wrapped
+//! `packages.nix` once per content hash, via the shared
 //! [`crate::handlers::run_once`] machinery.
 //!
 //! The handler is the Linux counterpart to the existing Brewfile
@@ -14,76 +14,72 @@
 //!
 //! # Manifest shape
 //!
-//! `packages.nix` must evaluate to one of three forms (per
-//! `docs/proposals/nix.lex` §5.2):
+//! `packages.nix` evaluates to one of:
 //!
-//! - *List of derivations.* The canonical form.
-//! - *Bare derivation.* Common case for a one-tool pack.
-//! - *Attribute set of derivations.* Useful when a pack wants named
-//!   attrs for tooling outside dodot.
+//! - *List of derivations* — the canonical form.
+//! - *Bare derivation* — common case for a one-tool pack.
+//! - *Attribute set of derivations* — useful when a pack wants
+//!   named attrs for tooling outside dodot.
 //!
-//! All three require the `{ pkgs ? import <nixpkgs> {} }:` function
-//! wrapper with a default argument — that is what lets
-//! `nix profile install --file <path>` work without dodot injecting
-//! anything: Nix auto-applies functions with defaulted arguments at
-//! evaluation time and resolves `pkgs` from the user's `NIX_PATH`.
-//! A bare list literal with no function wrapper has no `pkgs` in
-//! scope and fails to evaluate.
+//! All three are recommended to use the `{ pkgs ? import <nixpkgs>
+//! {} }:` function wrapper with a default argument so the manifest
+//! is self-contained and can resolve `pkgs` from the user's
+//! `NIX_PATH`.
 //!
-//! # Pre-flight shape validation
+//! # Shape-agnostic install
 //!
-//! Before emitting a `Run` intent, [`NixCommand::validate`] invokes
-//! `nix eval --file <path> --json --apply` with a small Nix
-//! expression that classifies the manifest. Because `nix eval --file`
-//! does *not* auto-apply functions (unlike `nix profile install
-//! --file`), the probe expression first invokes the manifest's outer
-//! function with `{}` when it sees one — that resolves the canonical
-//! `{ pkgs ? import <nixpkgs> {} }: ...` wrapper to whichever shape
-//! the body actually produces.
+//! Unlike `nix profile install --file <path>`, which requires a
+//! `'.*'` selector for attribute-set manifests and bare-form for
+//! lists / derivations, the handler invokes `nix profile install`
+//! with a single shape-normalizing **wrapper expression** — see
+//! [`WRAPPER_EXPR_TEMPLATE`]. The wrapper imports the manifest,
+//! applies the outer function with defaults if present, and
+//! collapses list / derivation / attribute-set shapes to a single
+//! list of derivations Nix can install in one form.
 //!
-//! v1 accepted shapes:
-//!
-//! - **`list`** → installed via `nix profile install --file <path>`.
-//! - **`drv`** → installed via `nix profile install --file <path>`.
-//! - **`set`** → *rejected in v1.* `nix profile install` against an
-//!   attribute-set manifest requires an explicit `'.*'` selector
-//!   argument, which means the install command shape depends on the
-//!   probe result. Threading that per-shape dispatch through
-//!   `command_for` is intentionally deferred to a later PR; for now,
-//!   `validate` returns an error pointing the user at the
-//!   `with pkgs; [ ... ]` list-literal form that is the spec's
-//!   canonical shape anyway.
-//! - **`unsupported`** (anything else — string, number, function that
-//!   doesn't apply with defaults, etc.) → rejected with a manifest
-//!   shape error.
-//!
-//! Delegating shape detection to Nix itself keeps dodot out of the
-//! business of writing its own Nix parser.
+//! That keeps the install command identical for every manifest
+//! shape and removes any need for dodot to classify the manifest
+//! at planning time. Malformed content (syntax errors, unsupported
+//! shapes, missing `pkgs`) surfaces at apply time as a `nix`-side
+//! error, the same way a broken `Brewfile` surfaces a
+//! `brew bundle` error — see the *Lifecycle invariant* section of
+//! [`RunOnceCommand`](crate::handlers::run_once::RunOnceCommand)
+//! for why dodot deliberately avoids planning-time content
+//! validation for run-once handlers.
 
 use std::path::Path;
 
-use crate::datastore::CommandRunner;
-use crate::fs::Fs;
 use crate::handlers::run_once::RunOnceCommand;
 use crate::handlers::{ExecutionPhase, HANDLER_NIX};
-use crate::{DodotError, Result};
 
-/// The Nix expression used to classify `packages.nix` into one of the
-/// supported shapes. Returned as a JSON string by `nix eval --apply`.
+/// Shape-normalizing Nix wrapper expression. `@PATH@` is replaced
+/// at command-build time with the absolute path to `packages.nix`,
+/// quoted as a Nix string literal so paths with hyphens, dots, or
+/// spaces are unambiguous.
 ///
-/// The expression is function-aware: the canonical manifest form is
-/// `{ pkgs ? import <nixpkgs> {} }: ...`, and `nix eval --file <path>`
-/// does *not* auto-apply functions (unlike `nix profile install
-/// --file`). Without the `if builtins.isFunction f then f {} else f`
-/// step, every recommended manifest would classify as `unsupported`.
-const SHAPE_PROBE_EXPR: &str = r#"f:
-  let
-    x = if builtins.isFunction f then f {} else f;
-  in
-  if builtins.isList x then "list"
-  else if builtins.isAttrs x && (x.type or "") == "derivation" then "drv"
-  else if builtins.isAttrs x then "set"
-  else "unsupported""#;
+/// The wrapper:
+///
+/// 1. `import`s the manifest.
+/// 2. Applies the outer function with `{}` when present (this is
+///    what makes `{ pkgs ? import <nixpkgs> {} }: ...` resolve
+///    without dodot threading any argument).
+/// 3. Collapses the resulting value to a list of derivations —
+///    a list passes through unchanged; a bare derivation is
+///    wrapped into a one-element list; an attribute set is
+///    flattened via `builtins.attrValues`.
+/// 4. Throws a clear error for any other shape.
+///
+/// `nix profile install --expr <expr>` against this expression
+/// installs the resulting list directly with no selector. Same
+/// command for every accepted shape.
+const WRAPPER_EXPR_TEMPLATE: &str = r#"let
+  raw = import @PATH@;
+  m = if builtins.isFunction raw then raw {} else raw;
+in
+  if builtins.isList m then m
+  else if builtins.isAttrs m && (m.type or null) == "derivation" then [ m ]
+  else if builtins.isAttrs m then builtins.attrValues m
+  else throw "packages.nix at @PATH@ evaluates to an unsupported shape (must be a list of derivations, a bare derivation, or an attribute set of derivations)""#;
 
 /// Defensive `--extra-experimental-features` argument passed on every
 /// `nix` invocation. The flag is a no-op when the features are
@@ -92,36 +88,16 @@ const SHAPE_PROBE_EXPR: &str = r#"f:
 const EXTRA_FEATURES_FLAG: &str = "--extra-experimental-features";
 const EXTRA_FEATURES_VALUE: &str = "nix-command flakes";
 
-/// Manifest shapes recognized by [`NixCommand::validate`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ManifestShape {
-    /// A list of derivations — accepted in v1.
-    List,
-    /// A bare derivation — accepted in v1.
-    Drv,
-    /// An attribute set of derivations — *rejected* in v1 with a
-    /// targeted error. See module-level docs for the rationale and
-    /// the migration path users have today.
-    Set,
-}
-
-impl ManifestShape {
-    fn from_probe(tag: &str) -> Option<Self> {
-        match tag {
-            "list" => Some(Self::List),
-            "drv" => Some(Self::Drv),
-            "set" => Some(Self::Set),
-            _ => None,
-        }
-    }
-}
-
 /// [`RunOnceCommand`] for the `nix` handler.
 ///
 /// Triggers on `packages.nix` at pack root and invokes
-/// `nix profile install --file <path>` once per content hash.
+/// `nix profile install --expr <wrapper>` once per content hash.
 /// Inherits the three-state notify-don't-rerun policy from
 /// [`RunOnceHandler`](crate::handlers::run_once::RunOnceHandler).
+///
+/// Carries no content-shape validation — see the module-level
+/// "Shape-agnostic install" section and the lifecycle-invariant
+/// note on [`RunOnceCommand`].
 pub struct NixCommand;
 
 impl RunOnceCommand for NixCommand {
@@ -134,57 +110,25 @@ impl RunOnceCommand for NixCommand {
     }
 
     fn command_for(&self, path: &Path) -> (String, Vec<String>) {
-        // validate() has already rejected `set` and `unsupported`
-        // shapes by the time we get here, so the install form is the
-        // single canonical invocation for `list` and `drv` — no
-        // selector argument needed.
+        let expr = WRAPPER_EXPR_TEMPLATE.replace("@PATH@", &nix_path_literal(path));
         (
             "nix".into(),
             vec![
                 "profile".into(),
                 "install".into(),
-                "--file".into(),
-                path.to_string_lossy().into_owned(),
+                "--expr".into(),
+                expr,
                 EXTRA_FEATURES_FLAG.into(),
                 EXTRA_FEATURES_VALUE.into(),
             ],
         )
     }
 
-    fn validate(&self, _fs: &dyn Fs, runner: &dyn CommandRunner, path: &Path) -> Result<()> {
-        // KNOWN GAP (#161 PR 2 candidate): this validator runs at
-        // intent-planning time, before the executor consults
-        // `DataStore::did_run`. That means an already-run
-        // `packages.nix` that the user later edits into a broken
-        // shape will fail planning here instead of reaching the
-        // `RanDifferent` skip/notice path that the run-once
-        // notify-don't-rerun policy promises. Closing the gap
-        // requires either threading the datastore into `to_intents`
-        // (broad trait change) or moving validation to the executor
-        // (also broad). Deferred — for v1 the user gets a clear
-        // shape error and can revert the edit; that's strictly
-        // safer than installing a malformed manifest.
-        let tag = probe_shape(runner, path)?;
-        match ManifestShape::from_probe(&tag) {
-            Some(ManifestShape::List) | Some(ManifestShape::Drv) => Ok(()),
-            Some(ManifestShape::Set) => Err(DodotError::Fs {
-                path: path.to_path_buf(),
-                source: std::io::Error::other(
-                    "packages.nix evaluates to an attribute set, which is not yet supported in \
-                     v1 (the install would need `nix profile install --file <path> '.*'`, and \
-                     per-shape install dispatch is deferred). Please use the list form: \
-                     `{ pkgs ? import <nixpkgs> {} }: with pkgs; [ <packages> ]`",
-                ),
-            }),
-            None => Err(DodotError::Fs {
-                path: path.to_path_buf(),
-                source: std::io::Error::other(format!(
-                    "packages.nix has unsupported shape `{tag}` — must evaluate to a list of \
-                     derivations or a bare derivation (see docs/user/handlers/nix.lex)"
-                )),
-            }),
-        }
-    }
+    // No `validate` override — see lifecycle-invariant note on
+    // RunOnceCommand. Content-shape checks at planning time would
+    // diverge nix from install / homebrew. Malformed manifests
+    // surface at apply time via the `nix profile install` subprocess
+    // exit code and stderr, the same way a broken Brewfile does.
 
     fn status_deployed(&self) -> &str {
         "nix packages installed"
@@ -199,102 +143,19 @@ impl RunOnceCommand for NixCommand {
     }
 }
 
-/// Run `nix eval --file <path> --json --apply <SHAPE_PROBE_EXPR>` and
-/// return the JSON-decoded shape tag (`"list"`, `"drv"`, `"set"`, or
-/// `"unsupported"`).
-///
-/// A non-zero exit code or unparseable stdout is surfaced as an
-/// `Fs`-flavored error so it propagates the same way validation
-/// errors for other handlers do; the executor renders it back to the
-/// user via the standard intent-error path.
-fn probe_shape(runner: &dyn CommandRunner, path: &Path) -> Result<String> {
-    let args: Vec<String> = vec![
-        "eval".into(),
-        "--file".into(),
-        path.to_string_lossy().into_owned(),
-        "--json".into(),
-        "--apply".into(),
-        SHAPE_PROBE_EXPR.into(),
-        EXTRA_FEATURES_FLAG.into(),
-        EXTRA_FEATURES_VALUE.into(),
-    ];
-    let out = runner.run("nix", &args)?;
-    if out.exit_code != 0 {
-        return Err(DodotError::Fs {
-            path: path.to_path_buf(),
-            source: std::io::Error::other(format!(
-                "`nix eval` failed while validating packages.nix shape (exit {}): {}",
-                out.exit_code,
-                out.stderr.trim()
-            )),
-        });
-    }
-    // `nix eval --json` returns a JSON string (`"list"`, `"drv"`, …).
-    // serde_json correctly handles surrounding whitespace and any
-    // string escapes — manual trimming + quote-stripping breaks on
-    // either.
-    serde_json::from_str::<String>(out.stdout.trim()).map_err(|e| DodotError::Fs {
-        path: path.to_path_buf(),
-        source: std::io::Error::other(format!(
-            "`nix eval` returned non-string JSON for the shape probe ({e}): {}",
-            out.stdout.trim()
-        )),
-    })
+/// Render an absolute path as a Nix double-quoted string literal,
+/// escaping backslash and double-quote. Paths in practice cannot
+/// contain a newline (the absolute path comes from a filesystem
+/// walk), so the two-character escape set is sufficient.
+fn nix_path_literal(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::datastore::{CommandOutput, CommandRunner};
-    use std::sync::Mutex;
-
-    struct StubRunner {
-        stdout: String,
-        exit_code: i32,
-        calls: Mutex<Vec<Vec<String>>>,
-    }
-
-    impl StubRunner {
-        fn ok(stdout: &str) -> Self {
-            Self {
-                stdout: stdout.to_string(),
-                exit_code: 0,
-                calls: Mutex::new(Vec::new()),
-            }
-        }
-
-        fn failing(exit_code: i32) -> Self {
-            Self {
-                stdout: String::new(),
-                exit_code,
-                calls: Mutex::new(Vec::new()),
-            }
-        }
-    }
-
-    impl CommandRunner for StubRunner {
-        fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
-            let mut call = vec![executable.to_string()];
-            call.extend(arguments.iter().cloned());
-            self.calls.lock().unwrap().push(call);
-            Ok(CommandOutput {
-                exit_code: self.exit_code,
-                stdout: self.stdout.clone(),
-                stderr: "stub stderr".into(),
-            })
-        }
-    }
-
-    fn fake_fs() -> crate::testing::TempEnvironment {
-        crate::testing::TempEnvironment::builder()
-            .pack("tools")
-            .file(
-                "packages.nix",
-                "{ pkgs ? import <nixpkgs> {} }: [ pkgs.ripgrep ]",
-            )
-            .done()
-            .build()
-    }
 
     #[test]
     fn nix_command_identity() {
@@ -309,100 +170,86 @@ mod tests {
     }
 
     #[test]
-    fn command_for_returns_profile_install_with_features_flag() {
+    fn command_for_emits_profile_install_with_wrapper_expression() {
         let (exe, args) = NixCommand.command_for(Path::new("/p/tools/packages.nix"));
         assert_eq!(exe, "nix");
         assert_eq!(args[0], "profile");
         assert_eq!(args[1], "install");
-        assert_eq!(args[2], "--file");
-        assert_eq!(args[3], "/p/tools/packages.nix");
+        assert_eq!(args[2], "--expr");
+        // The wrapper expression embeds the path as a Nix string
+        // literal and contains the shape-collapse branches.
+        let expr = &args[3];
+        assert!(
+            expr.contains("import \"/p/tools/packages.nix\""),
+            "expr should import the manifest path as a Nix string: {expr}"
+        );
+        assert!(expr.contains("builtins.isFunction"));
+        assert!(expr.contains("builtins.isList"));
+        assert!(expr.contains("builtins.attrValues"));
         assert_eq!(args[4], EXTRA_FEATURES_FLAG);
         assert_eq!(args[5], EXTRA_FEATURES_VALUE);
     }
 
     #[test]
-    fn validate_accepts_list_shape() {
-        let env = fake_fs();
+    fn command_for_is_shape_agnostic() {
+        // Same handler, different manifest paths — same command
+        // shape every time. There is no per-content branching at
+        // planning time. (This is the property the lifecycle
+        // invariant on RunOnceCommand depends on for nix.)
+        let (e1, a1) = NixCommand.command_for(Path::new("/a/packages.nix"));
+        let (e2, a2) = NixCommand.command_for(Path::new("/b/packages.nix"));
+        assert_eq!(e1, e2);
+        assert_eq!(a1.len(), a2.len());
+        // The argv structure is identical — only the path inside
+        // the wrapper expression differs.
+        assert_eq!(a1[0], a2[0]); // "profile"
+        assert_eq!(a1[1], a2[1]); // "install"
+        assert_eq!(a1[2], a2[2]); // "--expr"
+        assert_eq!(a1[4], a2[4]); // features flag
+        assert_eq!(a1[5], a2[5]); // features value
+    }
+
+    #[test]
+    fn nix_path_literal_quotes_and_escapes() {
+        assert_eq!(nix_path_literal(Path::new("/a/b.nix")), "\"/a/b.nix\"");
+        // Embedded double-quote — escaped.
+        assert_eq!(
+            nix_path_literal(Path::new("/weird\"name.nix")),
+            "\"/weird\\\"name.nix\""
+        );
+        // Embedded backslash — escaped.
+        assert_eq!(
+            nix_path_literal(Path::new("/with\\backslash.nix")),
+            "\"/with\\\\backslash.nix\""
+        );
+    }
+
+    #[test]
+    fn validate_is_a_noop_inheriting_the_trait_default() {
+        // Per the RunOnceCommand lifecycle invariant: nix does not
+        // gatekeep planning on manifest content. validate uses the
+        // trait's default no-op implementation; malformed content
+        // surfaces at apply time.
+        use crate::datastore::CommandRunner;
+        use crate::testing::TempEnvironment;
+        struct NeverCalledRunner;
+        impl CommandRunner for NeverCalledRunner {
+            fn run(
+                &self,
+                _e: &str,
+                _a: &[String],
+            ) -> crate::Result<crate::datastore::CommandOutput> {
+                panic!("validate must not shell out — it's a no-op");
+            }
+        }
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("packages.nix", "anything at all — content is not checked")
+            .done()
+            .build();
         let abs = env.dotfiles_root.join("tools/packages.nix");
-        let runner = StubRunner::ok("\"list\"\n");
         NixCommand
-            .validate(env.fs.as_ref(), &runner, &abs)
-            .expect("list shape should validate");
-        let calls = runner.calls.lock().unwrap();
-        assert_eq!(calls.len(), 1);
-        let call = &calls[0];
-        assert_eq!(call[0], "nix");
-        assert_eq!(call[1], "eval");
-        assert_eq!(call[2], "--file");
-        assert_eq!(call[3], abs.to_string_lossy());
-        assert_eq!(call[4], "--json");
-        assert_eq!(call[5], "--apply");
-        assert!(call[6].contains("builtins.isList"));
-        // Function-wrapper handling: the probe must call `f {}` so
-        // the canonical `{ pkgs ? ... }: ...` manifest classifies by
-        // the inner shape rather than as a bare lambda.
-        assert!(call[6].contains("builtins.isFunction"));
-        assert!(call[6].contains("f {}"));
-        assert_eq!(call[7], EXTRA_FEATURES_FLAG);
-        assert_eq!(call[8], EXTRA_FEATURES_VALUE);
-    }
-
-    #[test]
-    fn validate_accepts_drv_shape() {
-        let env = fake_fs();
-        let abs = env.dotfiles_root.join("tools/packages.nix");
-        let runner = StubRunner::ok("\"drv\"");
-        NixCommand
-            .validate(env.fs.as_ref(), &runner, &abs)
-            .expect("drv shape should validate");
-    }
-
-    #[test]
-    fn validate_rejects_set_shape_with_v1_message() {
-        let env = fake_fs();
-        let abs = env.dotfiles_root.join("tools/packages.nix");
-        let runner = StubRunner::ok("\"set\"");
-        let err = NixCommand
-            .validate(env.fs.as_ref(), &runner, &abs)
-            .expect_err("set shape is rejected in v1");
-        let msg = format!("{err}");
-        assert!(
-            msg.contains("attribute set"),
-            "error should name the rejected shape, got: {msg}"
-        );
-        assert!(
-            msg.contains("list"),
-            "error should point at the list-form workaround, got: {msg}"
-        );
-    }
-
-    #[test]
-    fn validate_rejects_unsupported_shape() {
-        let env = fake_fs();
-        let abs = env.dotfiles_root.join("tools/packages.nix");
-        let runner = StubRunner::ok("\"unsupported\"");
-        let err = NixCommand
-            .validate(env.fs.as_ref(), &runner, &abs)
-            .expect_err("unsupported shape must error");
-        let msg = format!("{err}");
-        assert!(
-            msg.contains("unsupported"),
-            "error should mention unsupported, got: {msg}"
-        );
-    }
-
-    #[test]
-    fn validate_propagates_nix_eval_failure() {
-        let env = fake_fs();
-        let abs = env.dotfiles_root.join("tools/packages.nix");
-        let runner = StubRunner::failing(1);
-        let err = NixCommand
-            .validate(env.fs.as_ref(), &runner, &abs)
-            .expect_err("non-zero nix exit must error");
-        let msg = format!("{err}");
-        assert!(
-            msg.contains("nix eval"),
-            "error should mention nix eval, got: {msg}"
-        );
+            .validate(env.fs.as_ref(), &NeverCalledRunner, &abs)
+            .expect("validate is a no-op for nix");
     }
 }

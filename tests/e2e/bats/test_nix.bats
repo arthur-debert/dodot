@@ -1,12 +1,12 @@
 #!/usr/bin/env bats
 # E2E tests for the nix handler against a stubbed `nix` binary.
 #
-# The stub (helpers/nix_stub.bash) covers the two `nix` subcommands
-# the handler invokes — `nix eval --apply` for shape probing and
-# `nix profile install --file` for installation. Real Nix is out of
-# scope for the bats suite (no nix binary in CI; expensive setup);
-# tier-0 unit tests in `crates/dodot-lib/src/handlers/nix.rs` cover
-# the validator's own behavior and the run-once policy paths.
+# The stub (helpers/nix_stub.bash) covers the single subcommand the
+# handler invokes — `nix profile install --expr <wrapper>` — and
+# logs each install for assertion. Real Nix is out of scope for the
+# bats suite (no nix binary in CI; expensive setup); tier-0 unit
+# tests in `crates/dodot-lib/src/handlers/nix.rs` cover argv
+# construction and the wrapper expression itself.
 
 setup() {
     load helpers/setup
@@ -89,31 +89,41 @@ teardown() {
     assert_output_contains "nix packages not installed"
 }
 
-@test "attribute-set manifest is rejected with the v1 list-form workaround" {
-    # `# stub-shape: set` makes the stub return "set" from `nix eval`
-    # so the validator's per-shape rejection path fires. dodot up
-    # surfaces the validate error per-pack (it does not raise the
-    # global exit code for per-pack intent-collection failures); the
-    # assertion is on the error message reaching the user, not the
-    # process exit code.
-    create_pack_file "tools" "packages.nix" '# stub-shape: set
-{ pkgs ? import <nixpkgs> {} }: { ripgrep = pkgs.ripgrep; }'
+@test "attribute-set manifest installs via the wrapper expression" {
+    # The wrapper expression collapses list / drv / attrset shapes
+    # to a single list of derivations before installing, so every
+    # manifest shape goes through the same `nix profile install
+    # --expr` invocation. No planning-time gatekeeping by shape —
+    # see the RunOnceCommand lifecycle-invariant note.
+    create_pack_file "tools" "packages.nix" \
+        '{ pkgs ? import <nixpkgs> {} }: { ripgrep = pkgs.ripgrep; fd = pkgs.fd; }'
 
-    run dodot up
-    assert_output_contains "attribute set"
-    assert_output_contains "list form"
+    dodot up
 
-    [ "$(nix_stub_install_count)" = "0" ]
+    [ "$(nix_stub_install_count)" = "1" ]
+    assert_sentinel_exists "tools" "nix" "packages.nix-*"
 }
 
-@test "unsupported manifest shape is rejected before install" {
-    # Same per-pack-error contract as the attribute-set test above —
-    # the rejection surfaces in the output, not as a non-zero exit.
-    create_pack_file "tools" "packages.nix" '# stub-shape: unsupported
-"hello"'
+@test "broken-edit of previously-installed manifest surfaces as older version" {
+    # Mirrors the install / homebrew lifecycle: a previously-run
+    # file edited into something the underlying tool may dislike
+    # is still reported as 'older version' by status — dodot does
+    # NOT gatekeep planning on content. Any apply-time failure
+    # would come from nix at --provision-rerun, not from dodot
+    # refusing to plan.
+    create_pack_file "tools" "packages.nix" '{ pkgs ? import <nixpkgs> {} }: with pkgs; [ ripgrep ]'
+    dodot up
+    [ "$(nix_stub_install_count)" = "1" ]
 
-    run dodot up
-    assert_output_contains "unsupported shape"
+    # Edit the manifest into something a real nix would likely
+    # reject (a non-derivation string at the top level). dodot
+    # should still see it as 'older version', not fail planning.
+    create_pack_file "tools" "packages.nix" '"hello"'
 
-    [ "$(nix_stub_install_count)" = "0" ]
+    run dodot status tools
+    assert_output_contains "older version"
+
+    # And `dodot up` (without --provision-rerun) does not re-run.
+    dodot up
+    [ "$(nix_stub_install_count)" = "1" ]
 }

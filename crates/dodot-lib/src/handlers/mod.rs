@@ -331,10 +331,11 @@ pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
 ///
 /// Returns a map from handler name to handler instance. The `fs`
 /// reference is needed by the run-once handlers (install, homebrew,
-/// nix) for checksum computation; `runner` is threaded into the
-/// run-once handlers so per-command pre-flight validators (e.g.
-/// `nix eval --apply` shape checking on `packages.nix`) can shell
-/// out at intent-production time.
+/// nix) for checksum computation; `runner` is threaded in for any
+/// environmental pre-flight a `RunOnceCommand` may want to do at
+/// intent-production time (see the lifecycle-invariant note on
+/// `RunOnceCommand` — per-content validation is out of scope for
+/// run-once handlers).
 pub fn create_registry<'a>(
     fs: &'a dyn Fs,
     runner: &'a dyn crate::datastore::CommandRunner,
