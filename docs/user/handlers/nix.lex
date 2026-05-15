@@ -13,7 +13,7 @@ Runs `nix profile install` against your source `packages.nix` once per content-h
 
 2. Manifest shape
 
-    `packages.nix` must evaluate (after applying any default-arg function wrapper) to one of:
+    `packages.nix` evaluates to one of:
 
     - **List of derivations** — the canonical form:
 
@@ -29,29 +29,34 @@ Runs `nix profile install` against your source `packages.nix` once per content-h
 
       :: nix ::
 
-    The `{ pkgs ? import <nixpkgs> {} }:` function wrapper with a default argument is what makes `nix profile install --file <path>` work without dodot injecting anything: Nix auto-applies functions with defaulted arguments at evaluation time, resolving `pkgs` from the user's `NIX_PATH`. A bare list literal with no function wrapper has no `pkgs` in scope and fails to evaluate.
+    - **Attribute set of derivations** — useful when a pack wants named attrs for tooling outside dodot:
 
-    The handler delegates shape detection to Nix itself via `nix eval --apply` so dodot owns no `packages.nix` parser.
+          { pkgs ? import <nixpkgs> {} }:
+          { ripgrep = pkgs.ripgrep; fd = pkgs.fd; }
 
-    **Attribute-set manifests** (`{ ripgrep = pkgs.ripgrep; fd = pkgs.fd; }`) are recognized but **not yet supported in v1**. `nix profile install --file <path>` against an attribute set requires the `'.*'` selector argument, and per-shape install dispatch is deferred to a follow-up. The validator surfaces a clear error pointing at the list-form workaround when it sees an attribute set:
+      :: nix ::
 
-        packages.nix evaluates to an attribute set, which is not yet
-        supported in v1. Please use the list form:
-        `{ pkgs ? import <nixpkgs> {} }: with pkgs; [ <packages> ]`
+    The `{ pkgs ? import <nixpkgs> {} }:` function wrapper with a default argument lets the manifest resolve `pkgs` from the user's `NIX_PATH`. A bare list literal with no function wrapper has no `pkgs` in scope and fails to evaluate.
+
+3. How dodot invokes nix
+
+    Rather than dispatch on manifest shape, dodot wraps the manifest in a shape-normalizing Nix expression before installing. The install call is the same for every accepted shape:
+
+        nix profile install --expr '
+          let raw = import "<abs-path-to-packages.nix>";
+              m = if builtins.isFunction raw then raw {} else raw;
+          in
+            if builtins.isList m then m
+            else if builtins.isAttrs m && (m.type or null) == "derivation" then [ m ]
+            else if builtins.isAttrs m then builtins.attrValues m
+            else throw "unsupported shape"' \
+          --extra-experimental-features 'nix-command flakes'
 
     :: text ::
 
-3. Pre-flight shape validation
+    The wrapper imports the manifest, applies the outer function with `{}` when present (resolving the `pkgs` default), collapses list / derivation / attrset to a single list, and `nix profile install` installs that list directly — no selector needed for any shape.
 
-    Before invoking `nix profile install`, the handler runs:
-
-        nix eval --file <path> --json --apply '<probe>'
-
-    :: text ::
-
-    where `<probe>` is a small Nix expression that classifies the manifest into `list` / `drv` / `set` / `unsupported`. The probe is function-aware (`if builtins.isFunction f then f {} else f`) so the canonical wrapper resolves to the inner shape rather than reporting back as a bare lambda.
-
-    If the manifest doesn't match an accepted shape, the validator fails the planning phase with a manifest-shape error. Note: this currently fires even when the file was previously installed and the user has just edited it into a broken shape; the install proceeds only after the user fixes the manifest. (Closing that gap so the notify-don't-rerun policy applies uniformly to nix is tracked as follow-up work — see the source comment in `crates/dodot-lib/src/handlers/nix.rs`.)
+    There is no planning-time content validation: a syntax error or an unsupported shape inside `packages.nix` surfaces at apply time as a `nix` error, the same way a broken `Brewfile` surfaces a `brew bundle` error and a broken `install.sh` surfaces a `bash` error. dodot stays out of the business of writing its own Nix linter.
 
 4. Sentinels
 
@@ -95,9 +100,9 @@ Runs `nix profile install` against your source `packages.nix` once per content-h
 
     This is why packages install into the user's default profile rather than a dodot-owned side profile. A side profile would tacitly re-introduce ownership ("packages dodot put here") and break the property that packages persist past dodot's involvement. Installing into `~/.nix-profile` keeps dodot a *trigger* for installation, not an *owner* of the result. If the user uninstalls dodot, the packages stay.
 
-    What dodot tracks is the sentinel, not the Nix profile. dodot does not call `nix profile list`, does not diff installed packages against the manifest, and does not skip its run because a package is already present. The sentinel records "we ran `nix profile install --file <path>` against this content hash" — that is the entire state dodot tracks. Implications worth knowing:
+    What dodot tracks is the sentinel, not the Nix profile. dodot does not call `nix profile list`, does not diff installed packages against the manifest, and does not skip its run because a package is already present. The sentinel records "we ran `nix profile install` against this content hash" — that is the entire state dodot tracks. Implications worth knowing:
 
-    - **Manual `nix profile install` of the same package before dodot's first run doesn't suppress dodot's run.** With no sentinel on disk, the next `dodot up` will still invoke `nix profile install --file <path>`. `nix profile install` is not idempotent at the profile level — if the same package is already in the profile, Nix surfaces an error and the pack reports the failure. Reconcile by hand: either `nix profile remove` the manual entry before running dodot, or skip dodot's first invocation for that pack and let `dodot up --provision-rerun` apply once you've decided.
+    - **Manual `nix profile install` of the same package before dodot's first run doesn't suppress dodot's run.** With no sentinel on disk, the next `dodot up` will still invoke `nix profile install` against the manifest. `nix profile install` is not idempotent at the profile level — if the same package is already in the profile, Nix surfaces an error and the pack reports the failure. Reconcile by hand: either `nix profile remove` the manual entry before running dodot, or skip dodot's first invocation for that pack and let `dodot up --provision-rerun` apply once you've decided.
     - **Manual `nix profile remove` of a package the manifest still lists doesn't trigger a reinstall by dodot.** The sentinel says "we already ran with this content"; dodot considers the work done until the manifest changes or `--provision-rerun` is passed.
 
 7. Configuration
