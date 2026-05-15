@@ -24,3 +24,6 @@ docs/research
 __pycache__/
 *.pyc
 *.pyo
+
+# But do track the SessionStart hook config
+!.claude/settings.json
