@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-05-15
+
+
 ### Added
 
 - **User-facing reference page for the `nix` handler (#161, PR 2).** `docs/user/handlers/nix.lex` covers the manifest shapes (list / bare derivation / attribute set), the shape-agnostic `nix profile install --expr <wrapper>` invocation, the sentinel + snapshot layout, the three-state `dodot status` output, the `--provision-rerun` re-run flow, the "ensure installed" semantics that distinguish the handler from a side-profile owner, and the §9 list of explicit non-goals (no `flake.nix` / `home.nix` matching, no NixOS / nix-darwin system config, no auto-bootstrap, no removal, no channel-drift upgrades). README handler-table and the docs/user/handlers index now include the `nix` row alongside `homebrew` and `install`; `docs/user/handlers/mappings.lex` lists the default `nix = "packages.nix"` mapping in the priority table, raw-TOML example, and key-shape table.
@@ -42,7 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Behavior change for `install.sh` and `Brewfile` (#169, PR C):** when these files change after a successful run, `dodot up` no longer auto-reruns them. Instead, `dodot up` reports `ran older version of <file> — run \`dodot up --provision-rerun\` to apply current` and leaves the prior state untouched. Run-once semantics are now strictly *opt-in re-execution* — the dodot user, not the file's mtime, decides when to re-run consequential scripts. To apply the new content, pass `--provision-rerun` to `dodot up`. (Note: `--force` is a *separate* flag that only overwrites pre-existing files at symlink target paths; it does not trigger run-once re-execution.) Manual `brew uninstall` of packages a `Brewfile` still lists likewise stays sticky: the sentinel records "we ran with this content" and dodot considers the work done until the file changes or `--provision-rerun` is passed.
 - **Nix handler — uniform run-once lifecycle (#161, PR 3).** Removed the planning-time content-shape probe (`nix eval --apply`) and the v1 rejection of attribute-set manifests. The handler now invokes `nix profile install --expr <wrapper>` with a shape-normalizing Nix expression that collapses list / bare-derivation / attribute-set manifests to a single list before installing — same install command for every accepted shape, no per-shape dispatch. **Attribute-set manifests now install** (`{ pkgs ? import <nixpkgs> {} }: { ripgrep = pkgs.ripgrep; }`). Malformed content (syntax errors, unsupported shapes) surfaces at apply time via the `nix` subprocess, the same way a broken `Brewfile` surfaces a `brew bundle` error and a broken `install.sh` surfaces a `bash` error. This restores the lifecycle invariant that every run-once handler treats `has-run` / `which-version-has-run` / `will-run` identically: a previously-installed `packages.nix` the user later edits is now reported as `older version` (not failed planning), uniformly with `install` and `homebrew`. Constraint documented as a "Lifecycle invariant" section on `RunOnceCommand`.
 - Internal: `install` and `homebrew` handlers are now built on top of `RunOnceHandler<C>` via `InstallCommand` / `BrewfileCommand` specializations (#169, PR B). Duplicated checksum helpers consolidated in the shared module. Aside from the policy flip in PR C, no other observable behavior changed in the retrofit.
-
 ## [4.1.1] - 2026-05-12
 
 
