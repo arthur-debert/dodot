@@ -30,9 +30,9 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
     Cross-platform: a Nix handler works on macOS too, and a macOS user who prefers declarative Nix to imperative Homebrew can use both handlers in the same pack tree.
 
-    On formal manifest: `packages.nix` is a Nix expression evaluating to a set of packages. `nix profile install --file <path>` is its formal apply verb. dodot doesn't invent a manifest format; Nix's own evaluation is the format.
+    On formal manifest: `packages.nix` is a Nix expression evaluating to a set of packages. `nix profile install --expr <wrapper>` is its formal apply verb — a single command that installs the manifest after a shape-normalizing wrapper collapses list / bare-derivation / attribute-set forms to a uniform list (see §5.3). dodot doesn't invent a manifest format; Nix's own evaluation is the format.
 
-    On the install check: `nix profile list --json` is a local read of the profile manifest (well under a second in typical cases). dodot can compute the desired set, compare it to what's installed, and only invoke `nix profile install` for what's missing. No sentinel, no hash-and-skip dance. The check *is* the truth.
+    On the install check: dodot uses the same hash + sentinel + snapshot machinery as `install` and `homebrew`, inherited from the `RunOnceHandler` introduced in #169. The criterion-3 motivation that originally pointed at `nix profile list --json` for a sentinel-less diff did not survive contact with the run-once handlers' actual job: the state outside the file (pre-installed packages, channel drift, profile shadowing, `nix.conf` / `NIX_PATH` overrides) is too rich to derive ground truth from a profile read without reimplementing Nix-internal resolution. §5.5 walks through the reasoning. The narrow question dodot *can* answer truthfully — *did we run this exact file successfully?* — is the same shape for `install`, `homebrew`, and `nix`, which is what makes the uniform run-once lifecycle correct.
 
 
 3. Pack Composability
@@ -213,9 +213,9 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
     8.1. Minimum Nix Version
 
-        The handler depends on `nix profile install --expr` and `--extra-experimental-features 'nix-command flakes'`. Pinning the floor at *Nix 2.18*: by that version the new CLI is widely available, `experimental-features = nix-command flakes` (or just `nix-command`) is commonly enabled by default in popular installers (Determinate Systems installer, recent upstream defaults), and `--expr` is stable. 2.18 is the safer floor for current-distribution alignment.
+        The handler depends on `nix profile install --expr` and `--extra-experimental-features 'nix-command flakes'`. The de-facto floor is *Nix 2.18*: by that version the new CLI is widely available, `experimental-features = nix-command flakes` (or just `nix-command`) is commonly enabled by default in popular installers (Determinate Systems installer, recent upstream defaults), and `--expr` is stable. Earlier versions may work but are not tested.
 
-        On startup, the handler probes `nix --version`; if the parsed version is below 2.18, it errors with a clear message naming the required version and pointing at the installer docs. Earlier versions may work but are not tested.
+        Consistent with the lifecycle invariant in §5.3, the handler does *not* probe `nix --version` at plan time. Version mismatches surface at apply time via the `nix profile install` subprocess error, the same way a missing `nix` binary, a broken `Brewfile`, or a syntax-erroring `install.sh` surfaces — no planning-time validation.
 
 
 9. Future Work
