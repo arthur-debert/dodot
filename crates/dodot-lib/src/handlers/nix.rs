@@ -150,6 +150,18 @@ impl RunOnceCommand for NixCommand {
     }
 
     fn validate(&self, _fs: &dyn Fs, runner: &dyn CommandRunner, path: &Path) -> Result<()> {
+        // KNOWN GAP (#161 PR 2 candidate): this validator runs at
+        // intent-planning time, before the executor consults
+        // `DataStore::did_run`. That means an already-run
+        // `packages.nix` that the user later edits into a broken
+        // shape will fail planning here instead of reaching the
+        // `RanDifferent` skip/notice path that the run-once
+        // notify-don't-rerun policy promises. Closing the gap
+        // requires either threading the datastore into `to_intents`
+        // (broad trait change) or moving validation to the executor
+        // (also broad). Deferred — for v1 the user gets a clear
+        // shape error and can revert the edit; that's strictly
+        // safer than installing a malformed manifest.
         let tag = probe_shape(runner, path)?;
         match ManifestShape::from_probe(&tag) {
             Some(ManifestShape::List) | Some(ManifestShape::Drv) => Ok(()),
@@ -166,7 +178,7 @@ impl RunOnceCommand for NixCommand {
                 path: path.to_path_buf(),
                 source: std::io::Error::other(format!(
                     "packages.nix has unsupported shape `{tag}` — must evaluate to a list of \
-                     derivations or a bare derivation (see docs/user/handlers/nix.lex)"
+                     derivations or a bare derivation"
                 )),
             }),
         }

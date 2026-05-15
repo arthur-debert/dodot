@@ -19,8 +19,8 @@ use crate::conflicts;
 use crate::datastore::DidRunStatus;
 use crate::handlers::run_once::{file_checksum, run_once_status_messages};
 use crate::handlers::{
-    self, HANDLER_GATE, HANDLER_HOMEBREW, HANDLER_IGNORE, HANDLER_INSTALL, HANDLER_SKIP,
-    HANDLER_SYMLINK,
+    self, HANDLER_GATE, HANDLER_HOMEBREW, HANDLER_IGNORE, HANDLER_INSTALL, HANDLER_NIX,
+    HANDLER_SKIP, HANDLER_SYMLINK,
 };
 use crate::operations::HandlerIntent;
 use crate::packs::orchestration::{self, ExecutionContext};
@@ -102,14 +102,14 @@ impl Health {
                 "symlink" => "pending".into(),
                 "shell" => "not sourced".into(),
                 "path" => "not in PATH".into(),
-                "install" | "homebrew" => run_once_status_messages(handler).pending,
+                "install" | "homebrew" | "nix" => run_once_status_messages(handler).pending,
                 _ => "pending".into(),
             },
             Health::Deployed => match handler {
                 "symlink" => "deployed".into(),
                 "shell" => "sourced".into(),
                 "path" => "in PATH".into(),
-                "install" | "homebrew" => run_once_status_messages(handler).deployed,
+                "install" | "homebrew" | "nix" => run_once_status_messages(handler).deployed,
                 _ => "deployed".into(),
             },
             Health::DeployedWithError { label, .. } => label.clone(),
@@ -850,15 +850,17 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     }
                 }
                 "shell" | "path" => verify_staged(&m.absolute_path, &pack.name, &m.handler, ctx),
-                h if h == HANDLER_INSTALL || h == HANDLER_HOMEBREW => run_once_health(
-                    &m.absolute_path,
-                    &pack.name,
-                    &pack.display_name,
-                    &m.handler,
-                    ctx,
-                    ctx.show_diff,
-                    &mut diffs,
-                ),
+                h if h == HANDLER_INSTALL || h == HANDLER_HOMEBREW || h == HANDLER_NIX => {
+                    run_once_health(
+                        &m.absolute_path,
+                        &pack.name,
+                        &pack.display_name,
+                        &m.handler,
+                        ctx,
+                        ctx.show_diff,
+                        &mut diffs,
+                    )
+                }
                 _ => {
                     // Future run-once handlers without dedicated routing
                     // (or any other Provision/Setup handler) fall back

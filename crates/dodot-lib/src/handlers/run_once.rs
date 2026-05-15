@@ -319,12 +319,15 @@ pub fn status_messages_for<C: RunOnceCommand>(cmd: &C) -> RunOnceStatusMessages 
 /// `RunOnceHandler<C>` against the right `Fs`. Unknown handler names
 /// fall back to the trait defaults.
 pub fn run_once_status_messages(handler: &str) -> RunOnceStatusMessages {
-    use crate::handlers::{HANDLER_HOMEBREW, HANDLER_INSTALL};
+    use crate::handlers::{HANDLER_HOMEBREW, HANDLER_INSTALL, HANDLER_NIX};
     if handler == HANDLER_INSTALL {
         return status_messages_for(&crate::handlers::install::InstallCommand);
     }
     if handler == HANDLER_HOMEBREW {
         return status_messages_for(&crate::handlers::homebrew::BrewfileCommand);
+    }
+    if handler == HANDLER_NIX {
+        return status_messages_for(&crate::handlers::nix::NixCommand);
     }
     RunOnceStatusMessages {
         pending: "never ran".into(),
