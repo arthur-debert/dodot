@@ -93,7 +93,12 @@ Runs `nix profile install` against your source `packages.nix` once per content-h
     - If a pack's `packages.nix` shrinks from `[ ripgrep fd ]` to `[ ripgrep ]`, dodot also does *nothing* to `fd`. It stays installed.
     - `dodot down --uninstall` does not exist for this handler.
 
-    This is why packages install into the user's default profile rather than a dodot-owned side profile. A side profile would tacitly re-introduce ownership ("packages dodot put here") and break the property that packages persist past dodot's involvement. Installing into `~/.nix-profile` keeps dodot a *trigger* for installation, not an *owner* of the result. If the user later `nix profile install`s the same package by hand, no conflict. If the user uninstalls dodot, packages stay. If a manual install reaches the package first, dodot's next `up` sees it via Nix and does nothing.
+    This is why packages install into the user's default profile rather than a dodot-owned side profile. A side profile would tacitly re-introduce ownership ("packages dodot put here") and break the property that packages persist past dodot's involvement. Installing into `~/.nix-profile` keeps dodot a *trigger* for installation, not an *owner* of the result. If the user uninstalls dodot, the packages stay.
+
+    What dodot tracks is the sentinel, not the Nix profile. dodot does not call `nix profile list`, does not diff installed packages against the manifest, and does not skip its run because a package is already present. The sentinel records "we ran `nix profile install --file <path>` against this content hash" — that is the entire state dodot tracks. Implications worth knowing:
+
+    - **Manual `nix profile install` of the same package before dodot's first run doesn't suppress dodot's run.** With no sentinel on disk, the next `dodot up` will still invoke `nix profile install --file <path>`. `nix profile install` is not idempotent at the profile level — if the same package is already in the profile, Nix surfaces an error and the pack reports the failure. Reconcile by hand: either `nix profile remove` the manual entry before running dodot, or skip dodot's first invocation for that pack and let `dodot up --provision-rerun` apply once you've decided.
+    - **Manual `nix profile remove` of a package the manifest still lists doesn't trigger a reinstall by dodot.** The sentinel says "we already ran with this content"; dodot considers the work done until the manifest changes or `--provision-rerun` is passed.
 
 7. Configuration
 
