@@ -18,6 +18,7 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
         | 50       | skip     | `README`/`README.*`, `LICENSE`/`LICENSE.*`, `CHANGELOG`/`CHANGELOG.*`, `CONTRIBUTING`/`CONTRIBUTING.*`, `AUTHORS`/`AUTHORS.*`, `NOTICE`/`NOTICE.*`, `COPYING`/`COPYING.*` (case-insensitive) |
         | 20       | install  | `install.sh`, `install.bash`, `install.zsh`                                                                             |
         | 10       | homebrew | `Brewfile`                                                                                                              |
+        | 10       | nix      | `packages.nix`                                                                                                          |
         | 10       | path     | `bin/`                                                                                                                  |
         | 10       | shell    | `*.sh`, `*.bash`, `*.zsh` (any shell-extension file at the pack's root)                                                 |
         | 0        | symlink  | `*` (catch-all)                                                                                                         |
@@ -35,6 +36,7 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
         install  = ["install.sh", "install.bash", "install.zsh"]
         shell    = ["*.sh", "*.bash", "*.zsh"]
         homebrew = "Brewfile"
+        nix      = "packages.nix"
         ignore   = []
         skip     = [
             "README", "README.*",
@@ -57,6 +59,7 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
         | install  | list    | Multiple matched files all run, each with its own sentinel.                    |
         | shell    | list    | Every matched file is sourced.                                                 |
         | homebrew | string  | One `Brewfile` per pack.                                                       |
+        | nix      | string  | One `packages.nix` per pack.                                                   |
         | ignore   | list    | Matches drop silently — no entry in `dodot status`.                            |
         | skip     | list    | Matches surface as `skipped` in `dodot status`. Case-insensitive.              |
 

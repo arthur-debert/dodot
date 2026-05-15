@@ -5,15 +5,16 @@ dodot dispatches each source file in a pack to a handler. The handler decides wh
 
 For terminology, see [./glossary/handler.lex].
 
-1. The eight handlers
+1. The nine handlers
 
-    Five deploy handlers, one per snippet:
+    Six deploy handlers, one per snippet:
 
     - [./handlers/symlink.lex] — link source files into deployed locations. The catch-all.
     - [./handlers/shell.lex] — source shell scripts at login.
     - [./handlers/path.lex] — add a source `bin/` directory to `$PATH`.
     - [./handlers/install.lex] — run a one-shot setup script, content-hashed.
     - [./handlers/homebrew.lex] — run `brew bundle` against a source `Brewfile`, content-hashed.
+    - [./handlers/nix.lex] — run `nix profile install` against a source `packages.nix`, content-hashed.
 
     Three filter handlers, bundled in one snippet because they share a usage story:
 
