@@ -10,6 +10,8 @@
 //! integration are all inherited unchanged from
 //! [`RunOnceHandler`](crate::handlers::run_once::RunOnceHandler).
 //!
+//! User-facing reference: `docs/user/handlers/nix.lex`.
+//!
 //! # Manifest shape
 //!
 //! `packages.nix` must evaluate to one of three forms (per
@@ -178,7 +180,7 @@ impl RunOnceCommand for NixCommand {
                 path: path.to_path_buf(),
                 source: std::io::Error::other(format!(
                     "packages.nix has unsupported shape `{tag}` — must evaluate to a list of \
-                     derivations or a bare derivation"
+                     derivations or a bare derivation (see docs/user/handlers/nix.lex)"
                 )),
             }),
         }
