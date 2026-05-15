@@ -55,12 +55,12 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
     Concretely:
 
         - dodot does not maintain an ownership manifest. It does not record "pack X installed package Y" for the purpose of later removal.
-        - On `dodot up`, dodot computes the union of all packs' `packages.nix` outputs, asks Nix what's already in the profile, and installs the missing packages.
+        - On `dodot up`, dodot invokes `nix profile install` against each pack's `packages.nix` once per content hash (see §5.5). dodot does not ask Nix what is or isn't installed — the sentinel records "we ran this content," and a matching hash on subsequent runs is a no-op for dodot, independent of what Nix reports.
         - If a pack is removed, dodot does *nothing* to its packages. They stay installed.
         - If a pack's `packages.nix` shrinks from `[ ripgrep fd ]` to `[ ripgrep ]`, dodot also does *nothing* to `fd`. It stays installed. The pack stopped declaring it, but dodot still has no basis to assert no one needs it — another pack may, the user may, the user may have grown to depend on it after the pack first installed it.
         - `dodot down --uninstall` does not exist in this proposal and is left as a separate (harder) design problem for whenever it comes up.
 
-    This framing is what makes installing into the user's default profile — rather than a dodot-owned side profile — the right call. A side profile would tacitly re-introduce ownership ("packages dodot put here") and break the property that packages persist past dodot's involvement. Installing into `~/.nix-profile` keeps dodot a *trigger* for installation, not an *owner* of the result. If the user later `nix profile install`s the same package by hand, no conflict. If the user uninstalls dodot, packages stay. If a manual install reaches the package first, dodot's next `up` sees it already present and does nothing.
+    This framing is what makes installing into the user's default profile — rather than a dodot-owned side profile — the right call. A side profile would tacitly re-introduce ownership ("packages dodot put here") and break the property that packages persist past dodot's involvement. Installing into `~/.nix-profile` keeps dodot a *trigger* for installation, not an *owner* of the result. If the user later `nix profile install`s the same package by hand, no conflict — `nix profile install` is additive. If the user uninstalls dodot, packages stay. If a package is already installed before dodot's first run, the first `dodot up` still invokes `nix profile install` for the pack (which `nix profile install` tolerates by appending another profile element pointing at the same or a different store path — see §5.5 *Consequences*); subsequent runs with the same content hash skip via the sentinel.
 
 
 5. The Handler
@@ -94,7 +94,7 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
               :: nix ::
 
-        All three shapes require the `{ pkgs ? import <nixpkgs> {} }:` function wrapper with the default argument. The default is what makes `nix profile install --file` work without dodot injecting anything: Nix auto-applies functions with default arguments at evaluation time, resolving `pkgs` from the user's `NIX_PATH`. A `packages.nix` written as a bare list literal (no function wrapper) has no `pkgs` in scope and fails to evaluate.
+        All three shapes require the `{ pkgs ? import <nixpkgs> {} }:` function wrapper with the default argument. The default is what makes the manifest self-applying: Nix auto-applies a function with all-default arguments at evaluation time, resolving `pkgs` from the user's `NIX_PATH`. The same pattern is what `nix profile install --file <path>` relies on natively; dodot's shipped invocation uses `nix profile install --expr <wrapper>` (see §5.3) and preserves the pattern by applying the imported manifest with `{}` when it evaluates to a function. A `packages.nix` written as a bare list literal (no function wrapper) has no `pkgs` in scope and fails to evaluate.
 
         Documentation leads with the list form. If a pack author hands in something other than the three shapes above, the handler rejects it with a manifest-shape error (see §5.3). dodot does not "fix" malformed manifests.
 
@@ -215,7 +215,7 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
         The handler depends on `nix profile install --expr` and `--extra-experimental-features 'nix-command flakes'`. The de-facto floor is *Nix 2.18*: by that version the new CLI is widely available, `experimental-features = nix-command flakes` (or just `nix-command`) is commonly enabled by default in popular installers (Determinate Systems installer, recent upstream defaults), and `--expr` is stable. Earlier versions may work but are not tested.
 
-        Consistent with the lifecycle invariant in §5.3, the handler does *not* probe `nix --version` at plan time. Version mismatches surface at apply time via the `nix profile install` subprocess error, the same way a missing `nix` binary, a broken `Brewfile`, or a syntax-erroring `install.sh` surfaces — no planning-time validation.
+        Consistent with the lifecycle invariant in §5.5, the handler does *not* probe `nix --version` at plan time. Version mismatches surface at apply time via the `nix profile install` subprocess error, the same way a missing `nix` binary, a broken `Brewfile`, or a syntax-erroring `install.sh` surfaces — no planning-time validation.
 
 
 9. Future Work
