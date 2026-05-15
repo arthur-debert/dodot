@@ -100,55 +100,73 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
     5.3. Apply Command
 
-        The handler first determines the manifest shape with a cheap evaluation:
+        The handler invokes a single install command for every accepted manifest shape:
 
-            nix eval --file <path> --json --apply 'x:
-              if builtins.isList x then "list"
-              else if builtins.isAttrs x && (x.type or "") == "derivation" then "drv"
-              else if builtins.isAttrs x then "set"
-              else "unsupported"'
+            nix profile install --expr <wrapper-expr> \
+                --extra-experimental-features 'nix-command flakes'
 
         :: text ::
 
-        For each shape, the install invocation is:
+        `<wrapper-expr>` is a shape-normalizing Nix expression the handler builds at command-construction time. It imports the user's `packages.nix`, applies the outer function with `{}` when one is present (which resolves the `{ pkgs ? import <nixpkgs> {} }:` default), and collapses the resulting value to a list of derivations:
 
-            - list → `nix profile install --file <path>`
-            - drv  → `nix profile install --file <path>`
-            - set  → `nix profile install --file <path> '.*'`
+            let
+              raw = import "<path>";
+              m   = if builtins.isFunction raw then raw {} else raw;
+            in
+              if builtins.isList m then m
+              else if builtins.isAttrs m && (m.type or null) == "derivation" then [ m ]
+              else if builtins.isAttrs m then builtins.attrValues m
+              else throw "packages.nix at <path> evaluates to an unsupported shape ..."
 
-        Anything reported as `unsupported` (string, number, function that doesn't apply with defaults, etc.) is rejected with a manifest-shape error before any install is attempted. The `--file` form mirrors the Brewfile handler's `--file Brewfile`: explicit path, no implicit working-directory lookup, no environment-variable indirection.
+        :: nix ::
+
+        With the manifest collapsed to a list, `nix profile install --expr` installs it directly. The install command is identical for list, bare-derivation, and attribute-set manifests; the handler does not classify the manifest at planning time and does not run a separate `nix eval --apply` shape probe.
+
+        Malformed content (syntax errors, missing `pkgs`, unsupported shapes) surfaces as a `nix` subprocess error at apply time — the same way a broken `Brewfile` surfaces a `brew bundle` error and a broken `install.sh` surfaces a `bash` error. This _no planning-time content validation_ posture is the lifecycle invariant shared with the other run-once handlers (see §5.5); it is what keeps the handler from accumulating per-package-manager parsing logic it could never keep aligned with the upstream tool.
 
         The handler does not check that `nix` is installed before invoking — same posture as Brewfile with `brew`. If the binary is missing, the executor surfaces the error and `dodot up` reports it.
+
+        The `--extra-experimental-features 'nix-command flakes'` flag is passed defensively on every invocation. It is a no-op when the features are already enabled in the user's `nix.conf`; it guards against fresh Nix installs that have not yet opted into the new CLI.
+
+        _Design history._ An earlier version of this spec (v5) called for a planning-time `nix eval --file --json --apply '<shape-classifier>'` followed by shape-dispatched `nix profile install --file <path>` (with `'.*'` for attribute sets). The pivot to the wrapper expression dropped the eval probe entirely. Reasons: (1) one install command, no per-shape branch, removes a class of accidentally-divergent handling; (2) shape classification at plan time would be the only run-once handler doing planning-time content validation, breaking the lifecycle invariant called out in §5.5; (3) attribute-set manifests now install with no special selector, instead of being rejected as v1 originally intended. The change shipped in PR 3 of #161.
 
     5.4. Phase and Category
 
         The handler runs in the *Provision* phase and the *CodeExecution* category, the same bucket as Brewfile and `install.sh`.
 
-    5.5. Idempotency Without a Sentinel
+    5.5. Run-Once Lifecycle
 
-        Sentinels exist as workarounds for slow or impossible "is this done?" checks:
+        The handler uses the same hash + sentinel + snapshot machinery as `install` and `homebrew`, via the shared `RunOnceHandler` introduced in #169. On each `dodot up`:
 
-            - `install.sh` is arbitrary user code; there is no general way to ask "is this script done", so the handler hashes the script and stamps a sentinel.
-            - `Brewfile`'s `brew bundle check` typically triggers `brew update` (network, often 20s–2m). At 30 packs, full-pack checking is 7–42 minutes. A hash-based skip is the only viable workaround.
+            1. The handler hashes `packages.nix` (Blake3, rendered bytes preferred; on-disk bytes as fallback).
+            2. `DataStore::did_run` classifies the file as `NeverRan`, `RanCurrent`, or `RanDifferent` against any previously recorded sentinel for this (pack, "nix", "packages.nix") triple.
+            3. `NeverRan` → run the install (sentinel + `<sentinel>.snapshot` written on success). `RanCurrent` → skip silently. `RanDifferent` → skip with notice; `dodot status` reports "nix packages older version (N lines added, M removed)".
+            4. `dodot up --provision-rerun` bypasses both skip cases and re-runs against the current content. `--no-provision` skips the handler entirely, as for other Provision-phase handlers.
 
-        Nix has neither problem. `nix profile list --json` reads a local manifest in well under a second. On each `dodot up`, the handler:
+        Sentinel content and naming match the format used by `install` and `homebrew`. The snapshot sibling enables `dodot status --diff <pack>` to show the unified diff between the recorded content and the current `packages.nix`.
 
-            1. Evaluates each pack's `packages.nix` and extracts the desired set of package names (`pname` of each derivation).
-            2. Reads the current profile via `nix profile list --json` and extracts installed package names.
-            3. For each pack, if any of its desired packages are not in the installed set, invokes the install command for that pack (shape-dispatched per §5.3). Packs whose desired set is fully present are skipped.
+        _Why a sentinel, not `nix profile list --json` diffing?_
 
-        No sentinel file is recorded. No hash is computed. The state of the profile is the truth, and dodot just keeps it in sync.
+        An earlier version of this spec (v5 §5.5) argued that Nix could sidestep sentinels by diffing the desired package set against `nix profile list --json` on every `up`. The argument: `install.sh` and `Brewfile` need sentinels because their "is this done?" check is either impossible (arbitrary script) or slow (`brew bundle check` triggers `brew update`), but Nix has a sub-second local manifest read. That argument did not survive contact with the run-once handlers' actual job.
 
-        *Diff key: `pname`.* The diff matches by package name (`pname`), not store path and not name-with-version. A pack listing `pkgs.ripgrep` is satisfied by any installed `ripgrep`, regardless of version or how it got there. This means:
+        The thing being run is arbitrary user-supplied content. Even for Brew and Nix — bounded compared to `install.sh` — the _state outside the file_ dwarfs the state inside it:
 
-            - A user's prior `nix profile install nixpkgs#ripgrep` satisfies a pack that lists `pkgs.ripgrep`. Correct under "ensure installed": the package is there, whoever put it there.
-            - A `nixpkgs` channel update that bumps `ripgrep` from 13.0 to 14.0 does *not* trigger a reinstall. The existing entry's `pname` still matches; the diff is empty. `dodot up` is not an opportunistic upgrader. Users who want newer versions run `nix profile upgrade ripgrep` (or `nix profile upgrade '.*'`) themselves.
+            - Packages may already be installed before `dodot up` ever runs. The pack lists them; the profile has them; nothing happened.
+            - The same `pname` can resolve to multiple store paths (different versions, channel drift, manual `nix profile install` of a different `nixpkgs` ref).
+            - System packages, environment-managed binaries, and prior `nix profile install nixpkgs#<name>` invocations can shadow what a pack expects.
+            - User configuration (`nix.conf`, `NIX_PATH`, environment overrides) alters what "installed" even means.
 
-        Matching by store path is rejected because every channel update would make every package look uninstalled, conflating "drift" with "missing." Matching by full name-with-version has the same problem in milder form. `pname` is the right key for "ensure installed."
+        Getting a normalized "what would this manifest do, and is it already done?" answer requires reimplementing the package manager's resolution logic. dodot does not. There is no truthful diff dodot can compute without owning Nix-internal logic — and owning Nix-internal logic is exactly what the proposal's "delegate to Nix" principle (§4) rejects.
 
-        *Partial failure.* Each pack's install invocation is independent. If pack A succeeds and pack B's install fails, dodot reports the failure for pack B, leaves pack A's installs in place (the user profile is purely additive, partial application is a benign state), and exits non-zero. The next `dodot up` re-diffs all packs and re-attempts the failed one. There is no rollback — Nix profile generations exist for users who want one, dodot does not orchestrate them.
+        What dodot can answer truthfully is a much narrower question: _did we, dodot, run this exact file successfully?_ That is the sentinel. The same question applies uniformly to `install.sh`, `Brewfile`, and `packages.nix`: a successful run is recorded with the content hash; a subsequent run with the same hash is a skip; a subsequent run with a different hash is reported as "older version" and held until the user explicitly opts in via `--provision-rerun`. The shape of the answer is identical across the three handlers, because the underlying epistemic problem — _we cannot inspect the world richly enough to second-guess what we did_ — is identical.
 
-        *`--force` for this handler.* `dodot up --force` is dodot's general "re-run regardless of skip state" flag. For this handler it has no useful effect: the diff is already the source of truth, so an empty diff means there is genuinely nothing to install. `--force` does not upgrade packages and does not reset the profile. Users wanting an upgrade should run `nix profile upgrade`; users wanting a reset should manage the profile directly via `nix profile remove` or by rolling generations. `--no-provision` skips the handler entirely, as it does for other Provision-phase handlers.
+        Consequences worth being honest about:
+
+            - _Pre-installed packages are not detected._ A pack listing `pkgs.ripgrep` will invoke `nix profile install` on first run even if `ripgrep` is already on the user's profile. `nix profile install` is generally tolerant of this (it adds a profile element pointing at the same or a different store path; the user can `nix profile remove` extras). Same posture as Brewfile invoking `brew bundle` against already-installed packages.
+            - _Manual `nix profile remove` is sticky._ Once dodot has recorded a successful run for a hash, removing one of the installed packages by hand does not cause dodot to reinstall on the next `up`. The sentinel records "we ran with this content"; dodot considers the work done until the file content changes or the user runs `dodot up --provision-rerun`. Mirrors Brewfile: a manual `brew uninstall` of a package the Brewfile still lists also stays sticky.
+            - _Channel drift does not trigger reinstall._ A `nixpkgs` channel update that bumps `ripgrep` from 13.0 to 14.0 does not change the `packages.nix` content hash, so dodot takes no action. Users wanting the newer version run `nix profile upgrade ripgrep` themselves. dodot is not an opportunistic upgrader, by design.
+
+        _Partial failure._ If multiple packs each carry a `packages.nix` and one pack's install fails, the failing pack does not block the others — pack errors are surfaced as per-pack failures rather than aborting `dodot up` for the whole tree. Successfully-run packs have their sentinels written; the failing pack will be re-attempted on the next `up`. The Nix profile is purely additive; partial application is a benign state and there is no rollback (Nix profile generations exist for users who want one; dodot does not orchestrate them).
 
     5.6. Cross-Platform Coexistence
 
@@ -184,7 +202,7 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
         - *Remove packages.* See §4. dodot says "ensure installed", and that is the whole commitment.
 
-        - *Upgrade packages on channel drift.* See §5.5. `pname` matching means an installed `ripgrep` satisfies a pack listing `pkgs.ripgrep` regardless of version. Upgrades are the user's job.
+        - *Upgrade packages on channel drift.* See §5.5. The sentinel records "we ran with this content"; channel drift does not change file content, so dodot takes no action. Users wanting newer versions run `nix profile upgrade` themselves.
 
         - *Pin or inject `nixpkgs`.* The manifest's `{ pkgs ? import <nixpkgs> {} }` relies on the user's `NIX_PATH`. A v2 mode (§9.2) may inject pinned sources.
 
@@ -195,7 +213,7 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
     8.1. Minimum Nix Version
 
-        The handler depends on `nix profile list --json`, `nix profile install --file`, and `nix eval --file --apply --json`. Pinning the floor at **Nix 2.18**: by that version the new CLI is widely available with `experimental-features = nix-command flakes` (or just `nix-command`) commonly enabled by default in popular installers, including the Determinate Systems installer and recent upstream defaults. `nix profile list --json` stabilized earlier (2.13-ish) but 2.18 is the safer floor for current-distribution alignment.
+        The handler depends on `nix profile install --expr` and `--extra-experimental-features 'nix-command flakes'`. Pinning the floor at *Nix 2.18*: by that version the new CLI is widely available, `experimental-features = nix-command flakes` (or just `nix-command`) is commonly enabled by default in popular installers (Determinate Systems installer, recent upstream defaults), and `--expr` is stable. 2.18 is the safer floor for current-distribution alignment.
 
         On startup, the handler probes `nix --version`; if the parsed version is below 2.18, it errors with a clear message naming the required version and pointing at the installer docs. Earlier versions may work but are not tested.
 
@@ -225,7 +243,7 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
         - For users new to Nix: a real ramp. Nix has a learning curve, and the manifest-as-source-of-truth model is unfamiliar coming from imperative `nix profile install`.
         - No reproducibility guarantee across machines on different `NIX_PATH` channels. The same `packages.nix` may resolve to different package versions for different users (same as Brewfile, which doesn't pin versions either). Nix's reputation is built on reproducibility and users may assume they're getting it; user docs should be explicit that v1 does not. §9.2 outlines the pinning mode that would close this.
 
-    The pack manifest is the source of truth. A manual `nix profile remove` of a package a pack still lists will be undone on the next `dodot up`. This matches Brewfile semantics; users coming from imperative `nix profile install` may not have internalized it, so user-facing docs should call it out explicitly.
+    The pack manifest is the source of truth at the moment the handler first records a successful run; after that, the sentinel pins the state (§5.5). A manual `nix profile remove` of a package the pack still lists is _not_ undone on the next `dodot up` — the sentinel records "we ran with this content" and dodot considers the work done until the file content changes or the user runs `dodot up --provision-rerun`. This matches Brewfile semantics. Users coming from imperative `nix profile install` may not have internalized it, so user-facing docs should call it out explicitly.
 
     Honest about what this does not cost:
 
