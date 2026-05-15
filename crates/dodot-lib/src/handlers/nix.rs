@@ -79,7 +79,7 @@ in
   if builtins.isList m then m
   else if builtins.isAttrs m && (m.type or null) == "derivation" then [ m ]
   else if builtins.isAttrs m then builtins.attrValues m
-  else throw "packages.nix at @PATH@ evaluates to an unsupported shape (must be a list of derivations, a bare derivation, or an attribute set of derivations)""#;
+  else throw "packages.nix at ${@PATH@} evaluates to an unsupported shape (must be a list of derivations, a bare derivation, or an attribute set of derivations)""#;
 
 /// Defensive `--extra-experimental-features` argument passed on every
 /// `nix` invocation. The flag is a no-op when the features are
@@ -144,12 +144,25 @@ impl RunOnceCommand for NixCommand {
 }
 
 /// Render an absolute path as a Nix double-quoted string literal,
-/// escaping backslash and double-quote. Paths in practice cannot
-/// contain a newline (the absolute path comes from a filesystem
-/// walk), so the two-character escape set is sufficient.
+/// escaping the three sequences that have meaning inside a Nix
+/// double-quoted string:
+///
+/// - `\` → `\\` (escape the escape character itself; must run first).
+/// - `"` → `\"` (escape the string terminator).
+/// - `${` → `\${` (escape Nix string-interpolation; without this, a
+///   path containing `${` would trigger interpolation when the
+///   wrapper expression embeds it inside another string via the
+///   throw-message `${@PATH@}` form).
+///
+/// Paths in practice cannot contain a newline (the absolute path
+/// comes from a filesystem walk), so these three sequences cover
+/// the whole escape set.
 fn nix_path_literal(path: &Path) -> String {
     let s = path.to_string_lossy();
-    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped = s
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace("${", "\\${");
     format!("\"{escaped}\"")
 }
 
@@ -221,6 +234,13 @@ mod tests {
         assert_eq!(
             nix_path_literal(Path::new("/with\\backslash.nix")),
             "\"/with\\\\backslash.nix\""
+        );
+        // Embedded `${` — escaped so it doesn't trigger Nix
+        // interpolation when the literal is re-embedded inside a
+        // double-quoted string (`${@PATH@}` in the throw message).
+        assert_eq!(
+            nix_path_literal(Path::new("/p/${weird}/packages.nix")),
+            "\"/p/\\${weird}/packages.nix\""
         );
     }
 
