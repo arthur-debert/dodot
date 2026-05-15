@@ -54,7 +54,10 @@ case "$1" in
             marker="$(grep -m1 -oE '# *stub-shape: *[a-z]+' "$path" 2>/dev/null \
                 || true)"
             if [[ -n "$marker" ]]; then
-                shape="${marker##* }"
+                # Strip everything up to and including the last `:` or
+                # space — handles `# stub-shape: list`, `#stub-shape:list`,
+                # and the awkward `#stub-shape: list` consistently.
+                shape="${marker##*[: ]}"
             fi
         fi
         # Mimic `nix eval --json` output: a JSON-encoded string.

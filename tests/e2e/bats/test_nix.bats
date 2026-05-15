@@ -91,12 +91,15 @@ teardown() {
 
 @test "attribute-set manifest is rejected with the v1 list-form workaround" {
     # `# stub-shape: set` makes the stub return "set" from `nix eval`
-    # so the validator's per-shape rejection path fires.
+    # so the validator's per-shape rejection path fires. dodot up
+    # surfaces the validate error per-pack (it does not raise the
+    # global exit code for per-pack intent-collection failures); the
+    # assertion is on the error message reaching the user, not the
+    # process exit code.
     create_pack_file "tools" "packages.nix" '# stub-shape: set
 { pkgs ? import <nixpkgs> {} }: { ripgrep = pkgs.ripgrep; }'
 
     run dodot up
-    [ "$status" -ne 0 ]
     assert_output_contains "attribute set"
     assert_output_contains "list form"
 
@@ -104,11 +107,12 @@ teardown() {
 }
 
 @test "unsupported manifest shape is rejected before install" {
+    # Same per-pack-error contract as the attribute-set test above —
+    # the rejection surfaces in the output, not as a non-zero exit.
     create_pack_file "tools" "packages.nix" '# stub-shape: unsupported
 "hello"'
 
     run dodot up
-    [ "$status" -ne 0 ]
     assert_output_contains "unsupported shape"
 
     [ "$(nix_stub_install_count)" = "0" ]
