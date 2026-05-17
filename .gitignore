@@ -27,3 +27,8 @@ __pycache__/
 
 # But do track the SessionStart hook config
 !.claude/settings.json
+
+# mkdocs build output + plugin cache + local venv
+site/
+.mkdocs_lex_cache/
+.venv-docs/

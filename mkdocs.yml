@@ -1,0 +1,72 @@
+site_name: dodot
+site_description: A dotfiles manager that adapts to you, rather than the other way around.
+site_url: https://dodot.sh/
+repo_url: https://github.com/arthur-debert/dodot
+repo_name: arthur-debert/dodot
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - lex
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+# Note: paths use .md even though source files are .lex —
+# the mkdocs-lex plugin rewrites .lex to .md internally.
+nav:
+  - Home: index.md
+  - User Guide:
+      - Getting started: user/getting-started.md
+      - Adopting: user/adopting.md
+      - Handlers: user/handlers.md
+      - Commands: user/commands.md
+  - Reference:
+      - Philosophy: reference/philosophy.md
+      - Architecture: reference/architecture.md
+      - Terms & concepts: reference/terms-and-concepts.md
