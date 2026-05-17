@@ -1,0 +1,1037 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/reference/plists/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Plists - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#macos-plists" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Plists
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#macos-plists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS Plists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Mechanism
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-gitattributes-committed-in-the-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. .gitattributes (committed in the repo)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-gitconfig-per-clone-per-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. .git/config (per clone, per machine)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-the-up-time-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. The Up-Time Prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-day-to-day-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Day-to-Day Workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-adopting-existing-plists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Adopting Existing Plists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-cfprefsd-why-you-may-need-killall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. cfprefsd: Why You May Need killall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-filter-failure-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Filter Failure Modes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Filter Failure Modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-dodot-not-on-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. dodot not on $PATH
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-corrupt-or-non-plist-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. Corrupt or non-plist input
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-determinism-contract-violations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3. Determinism contract violations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-the-working-tree-binary-trade-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. The Working-Tree-Binary Trade-Off
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-the-generic-prompt-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. The Generic Prompt Registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plist-support-has-one-config-knob-symlink-plist_extensions-it-controls-which-filename-suffixes-detection-treats-as-plists-for-adopt-hints-the-up-time-prompt-and-the-gitattributes-lines-emitted-by-git-install-filters-deployment-is-still-governed-by-the-symlink-handler-and-the-files-location-the-same-as-any-other-file-there-is-no-preprocessorplist-section-plists-do-not-go-through-the-preprocessing-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plist support has one config knob: [symlink] plist_extensions. It controls which filename suffixes detection treats as plists (for adopt hints, the up-time prompt, and the .gitattributes lines emitted by git-install-filters). Deployment is still governed by the symlink handler and the file's location, the same as any other file. There is no [preprocessor.plist] section — plists do not go through the preprocessing pipeline.
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-commands-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Commands at a Glance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/reference/plists.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Plists</h1>
+
+<!-- lex:note -->
+
+<p>macOS-only behaviour is the deploy-side <code>_lib/</code> resolver (which routes <code>_lib/&lt;rest&gt;</code> to <code>~/Library/&lt;rest&gt;</code>) and the <code>~/Library/...</code> adopt inference. The CLI surface (<code>dodot plist clean/smudge</code>, <code>dodot git-install-filters/show-filters</code>), the canonical-XML transform, the determinism property, and the up-time install prompt all work on every platform — exercised in CI on Linux runners against real git. macOS is not a hard requirement to <strong>use</strong> plist filters in a dotfiles repo; it is the platform where the deployed file is what an OS app reads.</p>
+<!-- /lex:note -->
+
+<h2 id="macos-plists">macOS Plists<a class="headerlink" href="#macos-plists" title="Permanent link">&para;</a></h2>
+<p>macOS GUI applications store their preferences as binary plists at <code>~/Library/Preferences/&lt;bundle-id&gt;.plist</code> and <code>~/Library/Application Support/&lt;App&gt;/...</code>. dodot brings these under source control by translating them to canonical XML on <code>git add</code> and back to binary on <code>git checkout</code> — the file in your pack is the binary the app reads, and what git stores is human-diffable XML. There is no "render step", no datastore copy, no separate workflow. <code>git status</code> and <code>git diff</code> show settings changes the way they show every other dotfile change.</p>
+<p>This document is the user-facing reference. The architectural rationale (why clean/smudge filters rather than a preprocessing pipeline; why working-tree binary rather than working-tree XML) is <a href="./../proposals/plists.lex">in</a>.</p>
+<h2 id="1-the-mechanism">1. The Mechanism<a class="headerlink" href="#1-the-mechanism" title="Permanent link">&para;</a></h2>
+<p><strong>Three files; one symlink</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>
+</code></pre></div>
+<p>The deployed file IS the working-tree file (via dodot's normal symlink). When the macOS app writes settings, the bytes land at <code>&lt;pack&gt;/foo.plist</code> directly and that file's mtime updates. The next <code>git status</code> stats the working-tree path, sees the mtime mismatch against the index, and re-runs the clean filter on it. No injected timestamps, no <code>dodot refresh</code>, no separate datastore copy.</p>
+<p>What's in the index is canonical XML: dictionary keys sorted recursively (Unicode codepoint order), array order preserved, deterministic formatting, single trailing LF. The same logical plist always produces byte-identical XML regardless of the encoder's internal layout, so <code>git diff</code> only reports semantic changes — never encoder noise.</p>
+<h2 id="2-setup">2. Setup<a class="headerlink" href="#2-setup" title="Permanent link">&para;</a></h2>
+<p>Two pieces wire git to dodot's filters:</p>
+<h3 id="21-gitattributes-committed-in-the-repo">2.1. <code>.gitattributes</code> (committed in the repo)<a class="headerlink" href="#21-gitattributes-committed-in-the-repo" title="Permanent link">&para;</a></h3>
+<p><strong>Add a single line that binds `*.plist` files to the dodot-plist filter</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>*.plist filter=dodot-plist
+</code></pre></div>
+<p>This file is part of the repo and travels with every clone. Without the matching <code>.git/config</code> registration described below, <code>.gitattributes</code> alone is harmless but inert — git falls back to the identity filter.</p>
+<h3 id="22-gitconfig-per-clone-per-machine">2.2. <code>.git/config</code> (per clone, per machine)<a class="headerlink" href="#22-gitconfig-per-clone-per-machine" title="Permanent link">&para;</a></h3>
+<p><strong>Run once per machine</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>dodot git-install-filters
+</code></pre></div>
+<p><strong>Writes the `[filter "dodot-plist"]` block</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[filter &quot;dodot-plist&quot;]
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    clean  = dodot plist clean
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    smudge = dodot plist smudge
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    required = true
+</code></pre></div>
+<p><code>required = true</code> means git aborts loudly if the filter binary is missing or fails — preferable to silently storing the wrong representation. Re-running <code>dodot git-install-filters</code> is idempotent.</p>
+<p><strong>To inspect or install by hand instead</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>dodot git-show-filters
+</code></pre></div>
+<p>prints both snippets (the <code>.git/config</code> block and the <code>.gitattributes</code> line) without writing anything. Each is annotated with whether it is currently in place.</p>
+<h3 id="23-the-up-time-prompt">2.3. The Up-Time Prompt<a class="headerlink" href="#23-the-up-time-prompt" title="Permanent link">&para;</a></h3>
+<p><strong>On the first `dodot up` of a pack containing `*.plist` files, dodot offers to install the filters interactively if they are not yet registered</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>dodot detected N .plist file(s) in pack `mac-defaults`.
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>Plist support uses git clean/smudge filters to keep the source diffable.
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>Install filters now? Run `dodot git-show-filters` to inspect first.
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>[Y/n/show]
+</code></pre></div>
+<ul>
+<li><strong>Y</strong> (or empty input): runs <code>dodot git-install-filters</code> and dismisses the prompt for this machine. </li>
+<li><strong>n</strong>: skips. The prompt fires again on the next <code>up</code> until you install (or your filter setup is complete via some other path). </li>
+<li><strong>show</strong>: prints the config without installing. Doesn't dismiss the prompt. </li>
+</ul>
+<p>The prompt fires only on a TTY — non-interactive invocations (CI, shell scripts) skip it silently. To re-enable a dismissed prompt, run <code>dodot prompts reset plist.install_filters</code>.</p>
+<h2 id="3-day-to-day-workflow">3. Day-to-Day Workflow<a class="headerlink" href="#3-day-to-day-workflow" title="Permanent link">&para;</a></h2>
+<p><strong>Once filters are wired, plist work uses vanilla git</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>
+</code></pre></div>
+<p>No dodot command is invoked. The clean filter renders canonical XML for the index on <code>git add</code>; the smudge filter renders binary for the working tree on <code>git checkout</code>.</p>
+<p><strong>On another machine</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>$ git pull
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>$ dodot up
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>$ killall cfprefsd  # see §5
+</code></pre></div>
+<p><code>git pull</code> invokes the smudge filter on any updated <code>.plist</code> files, materialising the new binary in the working tree. <code>dodot up</code> ensures the symlinks are in place.</p>
+<h2 id="4-adopting-existing-plists">4. Adopting Existing Plists<a class="headerlink" href="#4-adopting-existing-plists" title="Permanent link">&para;</a></h2>
+<p><strong>To bring a plist already in `~/Library/Preferences/` (or any `~/Library/\&lt;sub&gt;/`) under dodot</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>dodot adopt --into &lt;pack&gt; ~/Library/Preferences/com.app.plist
+</code></pre></div>
+<p>The file moves to <code>&lt;pack&gt;/_lib/Preferences/com.app.plist</code> (the <code>_lib/</code> prefix routes back to <code>~/Library/Preferences/</code> on <code>dodot up</code>). A symlink replaces the original. <code>--into &lt;pack&gt;</code> is required — plist filenames are typically reverse-DNS bundle IDs that don't make useful pack names.</p>
+<p>Same flow works for <code>~/Library/LaunchAgents/...</code>, <code>~/Library/Fonts/...</code>, etc. — anything under <code>~/Library/</code> not nested in <code>Application Support</code> (which routes through <code>_app/</code> instead — <a href="./symlink-paths.lex">see</a> §6) or <code>Containers</code> (refused as sandboxed-app data).</p>
+<p>If filters aren't yet installed when you adopt, dodot prints a one-line tip pointing at <code>dodot git-install-filters</code>. You can install before or after adopting; the next <code>git add</code> runs the clean filter regardless.</p>
+<h2 id="5-cfprefsd-why-you-may-need-killall">5. cfprefsd: Why You May Need <code>killall</code><a class="headerlink" href="#5-cfprefsd-why-you-may-need-killall" title="Permanent link">&para;</a></h2>
+<p><strong>macOS's `cfprefsd` daemon caches plist values in memory. Writing to the on-disk binary — even via the deploy symlink — may not be picked up by a running app until cfprefsd re-reads its preferences. After pulling plist changes from another machine and running `dodot up`, run</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>killall cfprefsd
+</code></pre></div>
+<p>cfprefsd auto-respawns immediately; no data is lost. dodot prints this reminder in the <code>git-install-filters</code> success output.</p>
+<h2 id="6-filter-failure-modes">6. Filter Failure Modes<a class="headerlink" href="#6-filter-failure-modes" title="Permanent link">&para;</a></h2>
+<p><code>required = true</code> makes filter failures hard errors. Three things can trigger them:</p>
+<h3 id="61-dodot-not-on-path">6.1. <code>dodot</code> not on <code>$PATH</code><a class="headerlink" href="#61-dodot-not-on-path" title="Permanent link">&para;</a></h3>
+<p>The filter entry uses bare <code>dodot plist clean/smudge</code>, so the binary must be on <code>$PATH</code> for whatever process invokes git — shell, editor, GUI git client, etc. GUI git clients sometimes run from a reduced environment that doesn't see your shell's <code>$PATH</code>. The fix is to either put <code>dodot</code> on the system <code>$PATH</code> (e.g. <code>/usr/local/bin/dodot</code>) or hand-edit the <code>.git/config</code> block to use an absolute path.</p>
+<h3 id="62-corrupt-or-non-plist-input">6.2. Corrupt or non-plist input<a class="headerlink" href="#62-corrupt-or-non-plist-input" title="Permanent link">&para;</a></h3>
+<p><strong>If `.gitattributes` binds `*.plist` to the filter but a file matching that pattern isn't a valid plist (typo'd extension, corrupt download), the filter exits non-zero and git refuses the operation. dodot's error message names both common causes and points at `dodot git-show-filters` for inspection. To diagnose</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>plutil -lint &lt;file&gt;            # is the file a valid plist?
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>plutil -convert xml1 &lt;file&gt;    # what does it look like as XML?
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>dodot git-show-filters          # which files are bound to the filter?
+</code></pre></div>
+<h3 id="63-determinism-contract-violations">6.3. Determinism contract violations<a class="headerlink" href="#63-determinism-contract-violations" title="Permanent link">&para;</a></h3>
+<p>Two consecutive <code>git status</code> invocations on an unchanged file should produce the same blob SHA. If they don't, the canonicalisation has a non-deterministic dependency. dodot's unit suite includes a property test (<code>determinism_property_test</code>) that round-trips <code>binary → clean → smudge → clean</code> five times and asserts byte-equality; the e2e suite (<code>tests/e2e/bats/test_plists.bats</code>) verifies the same property through real <code>git add</code>. If you see drift in practice, file an issue with the offending plist attached.</p>
+<h2 id="7-the-working-tree-binary-trade-off">7. The Working-Tree-Binary Trade-Off<a class="headerlink" href="#7-the-working-tree-binary-trade-off" title="Permanent link">&para;</a></h2>
+<p>The cost of this architecture, stated plainly: the file in your pack is binary. <code>cat pack/com.app.plist</code> shows noise. An editor opening the pack file directly sees binary garbage.</p>
+<p><strong>What is *not* lost</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>- `git diff`, `git show &lt;ref&gt;:&lt;path&gt;`, `git log -p` all show XML — that is what git stores.
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>- `git status` shows whether the binary differs from the canonical XML in the index.
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>- PR reviews show XML diffs.
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>- Settings are authored by editing through the app&#39;s normal GUI, or by editing the deployed file with a plist editor — almost no one wants to hand-edit the file in the pack.
+</code></pre></div>
+<p>dodot does not ship a sugar command for this — it's a one-liner against <code>plutil</code>, and surfacing it as a dodot command would imply a workflow that should remain rare.</p>
+<h2 id="8-the-generic-prompt-registry">8. The Generic Prompt Registry<a class="headerlink" href="#8-the-generic-prompt-registry" title="Permanent link">&para;</a></h2>
+<p><strong>The up-time install offer goes through a content-agnostic registry at `\&lt;XDG_DATA_HOME&gt;/dodot/prompts.json`. Two CLI verbs</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>
+</code></pre></div>
+<p><code>dodot prompts list</code> shows known prompts as <code>active</code> (will fire when the condition is next met) or <code>dismissed</code> (suppressed). Future onboarding nudges use the same machinery — there's only one prompt today, but the registry is the right place to look when something does or doesn't fire.</p>
+<h2 id="9-configuration">9. Configuration<a class="headerlink" href="#9-configuration" title="Permanent link">&para;</a></h2>
+<!-- lex:toml -->
+
+<!-- /lex:toml -->
+
+<h3 id="plist-support-has-one-config-knob-symlink-plist_extensions-it-controls-which-filename-suffixes-detection-treats-as-plists-for-adopt-hints-the-up-time-prompt-and-the-gitattributes-lines-emitted-by-git-install-filters-deployment-is-still-governed-by-the-symlink-handler-and-the-files-location-the-same-as-any-other-file-there-is-no-preprocessorplist-section-plists-do-not-go-through-the-preprocessing-pipeline">Plist support has one config knob: <code>[symlink] plist_extensions</code>. It controls which filename suffixes detection treats as plists (for adopt hints, the up-time prompt, and the <code>.gitattributes</code> lines emitted by <code>git-install-filters</code>). Deployment is still governed by the symlink handler and the file's location, the same as any other file. There is no <code>[preprocessor.plist]</code> section — plists do not go through the preprocessing pipeline.<a class="headerlink" href="#plist-support-has-one-config-knob-symlink-plist_extensions-it-controls-which-filename-suffixes-detection-treats-as-plists-for-adopt-hints-the-up-time-prompt-and-the-gitattributes-lines-emitted-by-git-install-filters-deployment-is-still-governed-by-the-symlink-handler-and-the-files-location-the-same-as-any-other-file-there-is-no-preprocessorplist-section-plists-do-not-go-through-the-preprocessing-pipeline" title="Permanent link">&para;</a></h3>
+<p>[symlink] plist_extensions = ["plist"]   # default; add "binplist", "savedState", etc. as needed</p>
+<p>Honors the standard root → pack inheritance: a pack-level <code>.dodot.toml</code> can override the list for that pack only. Comparison is case-insensitive. When more than one extension is configured, <code>dodot git-install-filters</code> emits one <code>.gitattributes</code> line per extension (<code>*.plist filter=dodot-plist</code>, <code>*.binplist filter=dodot-plist</code>, …).</p>
+<h2 id="10-commands-at-a-glance">10. Commands at a Glance<a class="headerlink" href="#10-commands-at-a-glance" title="Permanent link">&para;</a></h2>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<p><strong>Plist-related verbs and what they do</strong></p>
+<p><code>dodot plist clean/smudge</code> are filters: they read stdin and write stdout. You don't normally invoke them by hand; git invokes them via the filter mechanism. Running them manually is fine for inspection (<code>dodot plist clean &lt; some.plist | head</code> shows the canonical XML form) but not part of any workflow.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

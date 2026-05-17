@@ -1,0 +1,1272 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/proposals/shipped/nix/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Nix - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proposal-nix-handler-for-declarative-per-pack-provisioning" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Nix
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#proposal-nix-handler-for-declarative-per-pack-provisioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposal: Nix Handler for Declarative Per-Pack Provisioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Motivation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Motivation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-the-linux-provisioning-gap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1. The Linux Provisioning Gap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-the-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2. The Criteria
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.2. The Criteria">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-criteria-define-what-could-actually-close-this-gap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three criteria define what could actually close this gap:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-why-nix-passes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Why Nix Passes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-pack-composability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Pack Composability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-ensure-installed-not-owned-by-pack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. "Ensure Installed", Not "Owned by Pack"
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. &#34;Ensure Installed&#34;, Not &#34;Owned by Pack&#34;">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#concretely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concretely:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The Handler
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. The Handler">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-trigger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. Trigger
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-manifest-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Manifest Shape
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.2. Manifest Shape">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#packagesnix-evaluates-to-one-of-three-nix-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        packages.nix evaluates to one of three Nix forms:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-apply-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Apply Command
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-phase-and-category" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4. Phase and Category
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-run-once-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5. Run-Once Lifecycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.5. Run-Once Lifecycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-handler-uses-the-same-hash-sentinel-snapshot-machinery-as-install-and-homebrew-via-the-shared-runoncehandler-introduced-in-169-on-each-dodot-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The handler uses the same hash + sentinel + snapshot machinery as install and homebrew, via the shared RunOnceHandler introduced in #169. On each `dodot up`:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-thing-being-run-is-arbitrary-user-supplied-content-even-for-brew-and-nix-bounded-compared-to-installsh-the-state-outside-the-file-dwarfs-the-state-inside-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The thing being run is arbitrary user-supplied content. Even for Brew and Nix — bounded compared to install.sh — the state outside the file dwarfs the state inside it:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#consequences-worth-being-honest-about" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences worth being honest about:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56-cross-platform-coexistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.6. Cross-Platform Coexistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-configuration-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Configuration Surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-what-dodot-does-not-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. What dodot Does Not Do
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. What dodot Does Not Do">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#out-of-scope-for-v1-deliberately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope for v1, deliberately:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-open-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Open Decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Open Decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-minimum-nix-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1. Minimum Nix Version
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-future-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Future Work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Future Work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-flake-aware-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1. Flake-Aware Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-pinned-nixpkgs-injection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2. Pinned nixpkgs Injection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-asdf-mise-sibling-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3. asdf / mise Sibling Handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-what-this-costs-the-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. What This Costs the User
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. What This Costs the User">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#honest-about-the-price-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Honest about the price tag:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#honest-about-what-this-does-not-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Honest about what this does not cost:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/proposals/shipped/nix.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Nix</h1>
+
+<h2 id="proposal-nix-handler-for-declarative-per-pack-provisioning">Proposal: Nix Handler for Declarative Per-Pack Provisioning<a class="headerlink" href="#proposal-nix-handler-for-declarative-per-pack-provisioning" title="Permanent link">&para;</a></h2>
+<p>This document specifies a Nix handler for dodot — a portable counterpart to the existing Brewfile handler, activated by a <code>packages.nix</code> file at pack root and applied via <code>nix profile install</code>. It is the Linux story for "edit a file, run dodot up, machine is closer to ready" that the Brewfile handler tells on macOS today, and it works equally well on macOS for users who prefer Nix to Homebrew.</p>
+<p>The handler is scoped narrowly on purpose. It installs packages into the user's default Nix profile and stops there: no home-manager, no system rebuild, no flake auto-detection, no apt/dnf/pacman fallback. The narrowness is what lets the handler stay pack-composable and lets <code>dodot up</code> retain its "ensure installed" semantics without owning the world.</p>
+<h2 id="1-motivation">1. Motivation<a class="headerlink" href="#1-motivation" title="Permanent link">&para;</a></h2>
+<h3 id="11-the-linux-provisioning-gap">1.1. The Linux Provisioning Gap<a class="headerlink" href="#11-the-linux-provisioning-gap" title="Permanent link">&para;</a></h3>
+<p>dodot's Brewfile handler turns <code>dodot up</code> into a one-stop shop for macOS users: dotfiles, shell config, <strong>and</strong> the packages those dotfiles assume installed, all in one declarative invocation. Configuration files are about programs; having dodot apply the program-set alongside its config is what makes the experience feel coherent.</p>
+<p>Linux users have no equivalent default handler today. The closest fallback is <code>install.sh</code> — a bespoke shell script the pack author writes — which ends up calling <code>apt</code>, <code>dnf</code>, <code>pacman</code>, or <code>snap</code> with hand-rolled idempotency and a hand-rolled answer for every distro. Distro package managers have many warts, and a thin shim over them becomes an eternal whack-a-mole.</p>
+<h3 id="12-the-criteria">1.2. The Criteria<a class="headerlink" href="#12-the-criteria" title="Permanent link">&para;</a></h3>
+<h4 id="three-criteria-define-what-could-actually-close-this-gap">Three criteria define what could actually close this gap:<a class="headerlink" href="#three-criteria-define-what-could-actually-close-this-gap" title="Permanent link">&para;</a></h4>
+<p>1. <strong>Significant audience.</strong> Nothing on Linux is as universal as Homebrew on macOS, but a choice that over-indexes on the dotfile-using population is good enough.</p>
+<p>2. <strong>Formal manifest mechanism.</strong> The tool dodot wraps must have a first-class "apply this manifest" verb. A shell script invoking the package manager is not it.</p>
+<p>3. <strong>Fast "is it installed?" check.</strong> Without one, dodot has to fall back to hash-and-sentinel skipping, which is a workaround for slow tools, not a feature. With one, <code>dodot up</code> can ask the package manager what's installed and just install the delta.</p>
+<p>Nix is the only candidate that passes all three. <code>apt</code>, <code>dnf</code>, <code>pacman</code>, <code>snap</code>, <code>flatpak</code> all fail criterion 2 — none ship a curated user-facing manifest format, only system-wide state dumps or list-input flags. Homebrew-on-Linux is a freebie for users already on Linuxbrew (the existing Brewfile handler runs unchanged), but the audience is too narrow to be the default. <code>asdf</code> and <code>mise</code> solve a different problem (pinning dev-tool versions); plausible future sibling handlers, not Brewfile parallels.</p>
+<h2 id="2-why-nix-passes">2. Why Nix Passes<a class="headerlink" href="#2-why-nix-passes" title="Permanent link">&para;</a></h2>
+<p>Cross-platform: a Nix handler works on macOS too, and a macOS user who prefers declarative Nix to imperative Homebrew can use both handlers in the same pack tree.</p>
+<p>On formal manifest: <code>packages.nix</code> is a Nix expression evaluating to a set of packages. <code>nix profile install --expr &lt;wrapper&gt;</code> is its formal apply verb — a single command that installs the manifest after a shape-normalizing wrapper collapses list / bare-derivation / attribute-set forms to a uniform list (see §5.3). dodot doesn't invent a manifest format; Nix's own evaluation is the format.</p>
+<p>On the install check: dodot uses the same hash + sentinel + snapshot machinery as <code>install</code> and <code>homebrew</code>, inherited from the <code>RunOnceHandler</code> introduced in #169. The criterion-3 motivation that originally pointed at `nix profile list --json` for a sentinel-less diff did not survive contact with the run-once handlers' actual job: the state outside the file (pre-installed packages, channel drift, profile shadowing, `nix.conf` / `NIX_PATH` overrides) is too rich to derive ground truth from a profile read without reimplementing Nix-internal resolution. §5.5 walks through the reasoning. The narrow question dodot *can* answer truthfully — *did we run this exact file successfully?* — is the same shape for `install`, `homebrew`, and `nix`, which is what makes the uniform run-once lifecycle correct.</p>
+<h2 id="3-pack-composability">3. Pack Composability<a class="headerlink" href="#3-pack-composability" title="Permanent link">&para;</a></h2>
+<p>This is the architectural reason the handler is shaped as it is, and the reason an earlier draft of this proposal — which centered on <code>home.nix</code> and <code>home-manager switch</code> — was wrong.</p>
+<p>dodot's organizing unit is the pack. Each pack is independently up-able and owns its own slice of the user's environment. The composability invariant is: <strong>one pack's contribution must not clobber another pack's contribution, and nothing dodot does to install one pack should interfere with the user's nix activity outside dodot.</strong></p>
+<p><code>home.nix</code> violates this. It is a single user-wide manifest. Two packs each shipping a <code>home.nix</code> cannot both <code>home-manager switch</code> — each invocation overwrites the entire user environment, blasting away everything the other pack and the user themselves declared. The only way to make home-manager pack-composable would be for dodot to merge per-pack home-manager modules into a synthetic top-level config, which requires dodot to understand home-manager's module system — a category of complexity dodot has no business taking on.</p>
+<p>Per-pack <code>packages.nix</code> composes cleanly. Each pack lists the packages it wants. dodot collects the union across packs and installs it. Nothing one pack does affects another pack's install. Nothing dodot does touches a home-manager config the user maintains independently — they live on different rails.</p>
+<p>The cost of this scope choice: the Nix handler installs packages but does not manage dotfiles, services, or shell init via Nix. dodot already handles dotfiles via the symlink handler; the package-install side is the gap this handler closes. Users who want declarative dotfile-management-via-Nix can run home-manager themselves, outside dodot.</p>
+<h2 id="4-ensure-installed-not-owned-by-pack">4. "Ensure Installed", Not "Owned by Pack"<a class="headerlink" href="#4-ensure-installed-not-owned-by-pack" title="Permanent link">&para;</a></h2>
+<p>The semantics of <code>dodot up</code> for this handler is: <strong>ensure these packages are installed in the user's Nix profile</strong>. Not: <strong>these packages are here because of this pack</strong>. Not: <strong>if this pack goes away, these packages should be uninstalled</strong>.</p>
+<h3 id="concretely">Concretely:<a class="headerlink" href="#concretely" title="Permanent link">&para;</a></h3>
+<ul>
+<li>dodot does not maintain an ownership manifest. It does not record "pack X installed package Y" for the purpose of later removal. </li>
+<li>On <code>dodot up</code>, dodot invokes <code>nix profile install</code> against each pack's <code>packages.nix</code> once per content hash (see §5.5). dodot does not ask Nix what is or isn't installed — the sentinel records "we ran this content," and a matching hash on subsequent runs is a no-op for dodot, independent of what Nix reports. </li>
+<li>If a pack is removed, dodot does <strong>nothing</strong> to its packages. They stay installed. </li>
+<li>If a pack's <code>packages.nix</code> shrinks from <code>[ ripgrep fd ]</code> to <code>[ ripgrep ]</code>, dodot also does <strong>nothing</strong> to <code>fd</code>. It stays installed. The pack stopped declaring it, but dodot still has no basis to assert no one needs it — another pack may, the user may, the user may have grown to depend on it after the pack first installed it. </li>
+<li><code>dodot down --uninstall</code> does not exist in this proposal and is left as a separate (harder) design problem for whenever it comes up. </li>
+</ul>
+<p>This framing is what makes installing into the user's default profile — rather than a dodot-owned side profile — the right call. A side profile would tacitly re-introduce ownership ("packages dodot put here") and break the property that packages persist past dodot's involvement. Installing into <code>~/.nix-profile</code> keeps dodot a <strong>trigger</strong> for installation, not an <strong>owner</strong> of the result. If the user later <code>nix profile install`s the same package by hand, no conflict — `nix profile install</code> is additive. If the user uninstalls dodot, packages stay. If a package is already installed before dodot's first run, the first <code>dodot up</code> still invokes <code>nix profile install</code> for the pack (which <code>nix profile install</code> tolerates by appending another profile element pointing at the same or a different store path — see §5.5 <strong>Consequences</strong>); subsequent runs with the same content hash skip via the sentinel.</p>
+<h2 id="5-the-handler">5. The Handler<a class="headerlink" href="#5-the-handler" title="Permanent link">&para;</a></h2>
+<h3 id="51-trigger">5.1. Trigger<a class="headerlink" href="#51-trigger" title="Permanent link">&para;</a></h3>
+<p>A file named <code>packages.nix</code> at pack root.</p>
+<h3 id="52-manifest-shape">5.2. Manifest Shape<a class="headerlink" href="#52-manifest-shape" title="Permanent link">&para;</a></h3>
+<h4 id="packagesnix-evaluates-to-one-of-three-nix-forms"><code>packages.nix</code> evaluates to one of three Nix forms:<a class="headerlink" href="#packagesnix-evaluates-to-one-of-three-nix-forms" title="Permanent link">&para;</a></h4>
+<p><strong>- *List of derivations* (canonical, documented form)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>  <span class="p">{</span> pkgs <span class="o">?</span> <span class="nb">import</span> <span class="l">&lt;nixpkgs&gt;</span> <span class="p">{}</span> <span class="p">}:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="k">with</span> pkgs<span class="p">;</span> <span class="p">[</span> ripgrep fd bat <span class="p">]</span>
+</code></pre></div>
+<p><strong>- *Bare derivation* (single-package convenience — the common case for a one-tool pack like `bat` or `zoxide`)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>  <span class="p">{</span> pkgs <span class="o">?</span> <span class="nb">import</span> <span class="l">&lt;nixpkgs&gt;</span> <span class="p">{}</span> <span class="p">}:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  pkgs<span class="o">.</span>zoxide
+</code></pre></div>
+<p><strong>- *Attribute set of derivations* (useful if a pack wants named attrs for tooling outside dodot)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>  <span class="p">{</span> pkgs <span class="o">?</span> <span class="nb">import</span> <span class="l">&lt;nixpkgs&gt;</span> <span class="p">{}</span> <span class="p">}:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  <span class="p">{</span> <span class="ss">ripgrep</span> <span class="o">=</span> pkgs<span class="o">.</span>ripgrep<span class="p">;</span> <span class="ss">fd</span> <span class="o">=</span> pkgs<span class="o">.</span>fd<span class="p">;</span> <span class="p">}</span>
+</code></pre></div>
+<p>All three shapes require the <code>{ pkgs ? import &lt;nixpkgs&gt; {} }:</code> function wrapper with the default argument. The default is what makes the manifest self-applying: Nix auto-applies a function with all-default arguments at evaluation time, resolving <code>pkgs</code> from the user's <code>NIX_PATH</code>. The same pattern is what <code>nix profile install --file &lt;path&gt;</code> relies on natively; dodot's shipped invocation uses <code>nix profile install --expr &lt;wrapper&gt;</code> (see §5.3) and preserves the pattern by applying the imported manifest with <code>{}</code> when it evaluates to a function. A <code>packages.nix</code> written as a bare list literal (no function wrapper) has no <code>pkgs</code> in scope and fails to evaluate.</p>
+<p>Documentation leads with the list form. If a pack author hands in something other than the three shapes above, the handler rejects it with a manifest-shape error (see §5.3). dodot does not "fix" malformed manifests.</p>
+<h3 id="53-apply-command">5.3. Apply Command<a class="headerlink" href="#53-apply-command" title="Permanent link">&para;</a></h3>
+<p><strong>The handler invokes a single install command for every accepted manifest shape</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nix profile install --expr &lt;wrapper-expr&gt; \
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    --extra-experimental-features &#39;nix-command flakes&#39;
+</code></pre></div>
+<p><strong>`\&lt;wrapper-expr&gt;` is a shape-normalizing Nix expression the handler builds at command-construction time. It imports the user's `packages.nix`, applies the outer function with `{}` when one is present (which resolves the `{ pkgs ? import \&lt;nixpkgs&gt; {} }:` default), and collapses the resulting value to a list of derivations</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">let</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="ss">raw</span> <span class="o">=</span> <span class="nb">import</span> <span class="s2">&quot;&lt;path&gt;&quot;</span><span class="p">;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="ss">m</span>   <span class="o">=</span> <span class="k">if</span> <span class="nb">builtins</span><span class="o">.</span>isFunction raw <span class="k">then</span> raw <span class="p">{}</span> <span class="k">else</span> raw<span class="p">;</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">in</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  <span class="k">if</span> <span class="nb">builtins</span><span class="o">.</span>isList m <span class="k">then</span> m
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  <span class="k">else</span> <span class="k">if</span> <span class="nb">builtins</span><span class="o">.</span>isAttrs m <span class="o">&amp;&amp;</span> <span class="p">(</span>m<span class="o">.</span>type <span class="ow">or</span> <span class="no">null</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;derivation&quot;</span> <span class="k">then</span> <span class="p">[</span> m <span class="p">]</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  <span class="k">else</span> <span class="k">if</span> <span class="nb">builtins</span><span class="o">.</span>isAttrs m <span class="k">then</span> <span class="nb">builtins</span><span class="o">.</span>attrValues m
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  <span class="k">else</span> <span class="nb">throw</span> <span class="s2">&quot;packages.nix at &lt;path&gt; evaluates to an unsupported shape ...&quot;</span>
+</code></pre></div>
+<p>With the manifest collapsed to a list, <code>nix profile install --expr</code> installs it directly. The install command is identical for list, bare-derivation, and attribute-set manifests; the handler does not classify the manifest at planning time and does not run a separate <code>nix eval --apply</code> shape probe.</p>
+<p>Malformed content (syntax errors, missing <code>pkgs</code>, unsupported shapes) surfaces as a <code>nix</code> subprocess error at apply time — the same way a broken <code>Brewfile</code> surfaces a <code>brew bundle</code> error and a broken <code>install.sh</code> surfaces a <code>bash</code> error. This <em>no planning-time content validation</em> posture is the lifecycle invariant shared with the other run-once handlers (see §5.5); it is what keeps the handler from accumulating per-package-manager parsing logic it could never keep aligned with the upstream tool.</p>
+<p>The handler does not check that <code>nix</code> is installed before invoking — same posture as Brewfile with <code>brew</code>. If the binary is missing, the executor surfaces the error and <code>dodot up</code> reports it.</p>
+<p>The <code>--extra-experimental-features 'nix-command flakes'</code> flag is passed defensively on every invocation. It is a no-op when the features are already enabled in the user's <code>nix.conf</code>; it guards against fresh Nix installs that have not yet opted into the new CLI.</p>
+<p><em>Design history.</em> An earlier version of this spec (v5) called for a planning-time <code>nix eval --file --json --apply '&lt;shape-classifier&gt;'</code> followed by shape-dispatched <code>nix profile install --file &lt;path&gt;</code> (with <code>'.*'</code> for attribute sets). The pivot to the wrapper expression dropped the eval probe entirely. Reasons: (1) one install command, no per-shape branch, removes a class of accidentally-divergent handling; (2) shape classification at plan time would be the only run-once handler doing planning-time content validation, breaking the lifecycle invariant called out in §5.5; (3) attribute-set manifests now install with no special selector, instead of being rejected as v1 originally intended. The change shipped in PR 3 of #161.</p>
+<h3 id="54-phase-and-category">5.4. Phase and Category<a class="headerlink" href="#54-phase-and-category" title="Permanent link">&para;</a></h3>
+<p>The handler runs in the <strong>Provision</strong> phase and the <strong>CodeExecution</strong> category, the same bucket as Brewfile and <code>install.sh</code>.</p>
+<h3 id="55-run-once-lifecycle">5.5. Run-Once Lifecycle<a class="headerlink" href="#55-run-once-lifecycle" title="Permanent link">&para;</a></h3>
+<h4 id="the-handler-uses-the-same-hash-sentinel-snapshot-machinery-as-install-and-homebrew-via-the-shared-runoncehandler-introduced-in-169-on-each-dodot-up">The handler uses the same hash + sentinel + snapshot machinery as <code>install</code> and <code>homebrew</code>, via the shared <code>RunOnceHandler</code> introduced in #169. On each `dodot up`:<a class="headerlink" href="#the-handler-uses-the-same-hash-sentinel-snapshot-machinery-as-install-and-homebrew-via-the-shared-runoncehandler-introduced-in-169-on-each-dodot-up" title="Permanent link">&para;</a></h4>
+<ol>
+<li>The handler hashes <code>packages.nix</code> (Blake3, rendered bytes preferred; on-disk bytes as fallback). </li>
+<li><code>DataStore::did_run</code> classifies the file as <code>NeverRan</code>, <code>RanCurrent</code>, or <code>RanDifferent</code> against any previously recorded sentinel for this (pack, "nix", "packages.nix") triple. </li>
+<li><code>NeverRan</code> → run the install (sentinel + <code>&lt;sentinel&gt;.snapshot</code> written on success). <code>RanCurrent</code> → skip silently. <code>RanDifferent</code> → skip with notice; <code>dodot status</code> reports "nix packages older version (N lines added, M removed)". </li>
+<li><code>dodot up --provision-rerun</code> bypasses both skip cases and re-runs against the current content. <code>--no-provision</code> skips the handler entirely, as for other Provision-phase handlers. </li>
+</ol>
+<p>Sentinel content and naming match the format used by <code>install</code> and <code>homebrew</code>. The snapshot sibling enables <code>dodot status --diff &lt;pack&gt;</code> to show the unified diff between the recorded content and the current <code>packages.nix</code>.</p>
+<p><em>Why a sentinel, not <code>nix profile list --json</code> diffing?</em></p>
+<p>An earlier version of this spec (v5 §5.5) argued that Nix could sidestep sentinels by diffing the desired package set against <code>nix profile list --json</code> on every <code>up</code>. The argument: <code>install.sh</code> and <code>Brewfile</code> need sentinels because their "is this done?" check is either impossible (arbitrary script) or slow (<code>brew bundle check</code> triggers <code>brew update</code>), but Nix has a sub-second local manifest read. That argument did not survive contact with the run-once handlers' actual job.</p>
+<h4 id="the-thing-being-run-is-arbitrary-user-supplied-content-even-for-brew-and-nix-bounded-compared-to-installsh-the-state-outside-the-file-dwarfs-the-state-inside-it">The thing being run is arbitrary user-supplied content. Even for Brew and Nix — bounded compared to <code>install.sh</code> — the <em>state outside the file</em> dwarfs the state inside it:<a class="headerlink" href="#the-thing-being-run-is-arbitrary-user-supplied-content-even-for-brew-and-nix-bounded-compared-to-installsh-the-state-outside-the-file-dwarfs-the-state-inside-it" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Packages may already be installed before <code>dodot up</code> ever runs. The pack lists them; the profile has them; nothing happened. </li>
+<li>The same <code>pname</code> can resolve to multiple store paths (different versions, channel drift, manual <code>nix profile install</code> of a different <code>nixpkgs</code> ref). </li>
+<li>System packages, environment-managed binaries, and prior <code>nix profile install nixpkgs#&lt;name&gt;</code> invocations can shadow what a pack expects. </li>
+<li>User configuration (<code>nix.conf</code>, <code>NIX_PATH</code>, environment overrides) alters what "installed" even means. </li>
+</ul>
+<p>Getting a normalized "what would this manifest do, and is it already done?" answer requires reimplementing the package manager's resolution logic. dodot does not. There is no truthful diff dodot can compute without owning Nix-internal logic — and owning Nix-internal logic is exactly what the proposal's "delegate to Nix" principle (§4) rejects.</p>
+<p>What dodot can answer truthfully is a much narrower question: <em>did we, dodot, run this exact file successfully?</em> That is the sentinel. The same question applies uniformly to <code>install.sh</code>, <code>Brewfile</code>, and <code>packages.nix</code>: a successful run is recorded with the content hash; a subsequent run with the same hash is a skip; a subsequent run with a different hash is reported as "older version" and held until the user explicitly opts in via <code>--provision-rerun</code>. The shape of the answer is identical across the three handlers, because the underlying epistemic problem — <em>we cannot inspect the world richly enough to second-guess what we did</em> — is identical.</p>
+<h4 id="consequences-worth-being-honest-about">Consequences worth being honest about:<a class="headerlink" href="#consequences-worth-being-honest-about" title="Permanent link">&para;</a></h4>
+<ul>
+<li><em>Pre-installed packages are not detected.</em> A pack listing <code>pkgs.ripgrep</code> will invoke <code>nix profile install</code> on first run even if <code>ripgrep</code> is already on the user's profile. <code>nix profile install</code> is generally tolerant of this (it adds a profile element pointing at the same or a different store path; the user can <code>nix profile remove</code> extras). Same posture as Brewfile invoking <code>brew bundle</code> against already-installed packages. </li>
+<li><em>Manual <code>nix profile remove</code> is sticky.</em> Once dodot has recorded a successful run for a hash, removing one of the installed packages by hand does not cause dodot to reinstall on the next <code>up</code>. The sentinel records "we ran with this content"; dodot considers the work done until the file content changes or the user runs <code>dodot up --provision-rerun</code>. Mirrors Brewfile: a manual <code>brew uninstall</code> of a package the Brewfile still lists also stays sticky. </li>
+<li><em>Channel drift does not trigger reinstall.</em> A <code>nixpkgs</code> channel update that bumps <code>ripgrep</code> from 13.0 to 14.0 does not change the <code>packages.nix</code> content hash, so dodot takes no action. Users wanting the newer version run <code>nix profile upgrade ripgrep</code> themselves. dodot is not an opportunistic upgrader, by design. </li>
+</ul>
+<p><em>Partial failure.</em> If multiple packs each carry a <code>packages.nix</code> and one pack's install fails, the failing pack does not block the others — pack errors are surfaced as per-pack failures rather than aborting <code>dodot up</code> for the whole tree. Successfully-run packs have their sentinels written; the failing pack will be re-attempted on the next <code>up</code>. The Nix profile is purely additive; partial application is a benign state and there is no rollback (Nix profile generations exist for users who want one; dodot does not orchestrate them).</p>
+<h3 id="56-cross-platform-coexistence">5.6. Cross-Platform Coexistence<a class="headerlink" href="#56-cross-platform-coexistence" title="Permanent link">&para;</a></h3>
+<p>Nix runs on Linux and macOS. The handler has no platform gate. A macOS user can have both a <code>Brewfile</code> and a <code>packages.nix</code> in different packs — or even in the same pack — and both handlers fire independently. They do not conflict: Brewfile manages a Homebrew-installed set, <code>packages.nix</code> manages a Nix-installed set, the two package managers do not overlap on disk.</p>
+<p>This coexistence is a feature, not an accident. A user migrating from Homebrew to Nix can do so pack-by-pack. A user who prefers Nix for cross-machine work and Homebrew for macOS-GUI casks can use each where it fits.</p>
+<h2 id="6-configuration-surface">6. Configuration Surface<a class="headerlink" href="#6-configuration-surface" title="Permanent link">&para;</a></h2>
+<p><strong>The default mapping is added to the `[mappings]` section, alongside `homebrew`</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">[mappings]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">homebrew</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Brewfile&quot;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">nix</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;packages.nix&quot;</span>
+</code></pre></div>
+<p>A user who prefers a different filename overrides the mapping in their root or pack <code>.dodot.toml</code>. The handler name <code>nix</code> is short and reserves room to grow modes (flake-aware, pinned-nixpkgs) under one handler key later without renaming.</p>
+<h2 id="7-what-dodot-does-not-do">7. What dodot Does Not Do<a class="headerlink" href="#7-what-dodot-does-not-do" title="Permanent link">&para;</a></h2>
+<h3 id="out-of-scope-for-v1-deliberately">Out of scope for v1, deliberately:<a class="headerlink" href="#out-of-scope-for-v1-deliberately" title="Permanent link">&para;</a></h3>
+<p>- <strong>Match <code>flake.nix</code> or <code>home.nix</code>.</strong> Flakes are ambiguous (dev shell, package, NixOS module, anything) and require an attribute selector the handler cannot reliably infer. <code>home.nix</code> is not pack-composable (§3).</p>
+<p>- <strong>Manage dotfiles, services, or shell init via Nix.</strong> That is home-manager's territory, and dodot already handles dotfiles via the symlink handler. Users who want home-manager run it themselves, on their own schedule, outside dodot.</p>
+<p>- <strong>Touch NixOS <code>configuration.nix</code> or nix-darwin <code>darwin-configuration.nix</code>.</strong> System-level configuration requires root and has a blast radius incompatible with <code>dodot up</code>'s "edit and re-run cheaply" model. The privilege boundary alone disqualifies it.</p>
+<p>- <strong>Auto-install Nix.</strong> If <code>nix</code> is not on PATH, the handler fails loudly. Same posture as Brewfile with <code>brew</code>. Bootstrapping a package manager is not a dotfile manager's job.</p>
+<p>- <strong>Remove packages.</strong> See §4. dodot says "ensure installed", and that is the whole commitment.</p>
+<p>- <strong>Upgrade packages on channel drift.</strong> See §5.5. The sentinel records "we ran with this content"; channel drift does not change file content, so dodot takes no action. Users wanting newer versions run <code>nix profile upgrade</code> themselves.</p>
+<p>- <strong>Pin or inject <code>nixpkgs</code>.</strong> The manifest's <code>{ pkgs ? import &lt;nixpkgs&gt; {} }</code> relies on the user's <code>NIX_PATH</code>. A v2 mode (§9.2) may inject pinned sources.</p>
+<p>- <strong>Mirror or wrap apt, dnf, pacman, snap, flatpak.</strong> They don't pass criterion 2 (§1.2). Users who need distro-package provisioning have <code>install.sh</code>.</p>
+<h2 id="8-open-decisions">8. Open Decisions<a class="headerlink" href="#8-open-decisions" title="Permanent link">&para;</a></h2>
+<h3 id="81-minimum-nix-version">8.1. Minimum Nix Version<a class="headerlink" href="#81-minimum-nix-version" title="Permanent link">&para;</a></h3>
+<p>The handler depends on <code>nix profile install --expr</code> and <code>--extra-experimental-features 'nix-command flakes'</code>. The de-facto floor is <strong>Nix 2.18</strong>: by that version the new CLI is widely available, <code>experimental-features = nix-command flakes</code> (or just <code>nix-command</code>) is commonly enabled by default in popular installers (Determinate Systems installer, recent upstream defaults), and <code>--expr</code> is stable. Earlier versions may work but are not tested.</p>
+<p>Consistent with the lifecycle invariant in §5.5, the handler does <strong>not</strong> probe <code>nix --version</code> at plan time. Version mismatches surface at apply time via the <code>nix profile install</code> subprocess error, the same way a missing <code>nix</code> binary, a broken <code>Brewfile</code>, or a syntax-erroring <code>install.sh</code> surfaces — no planning-time validation.</p>
+<h2 id="9-future-work">9. Future Work<a class="headerlink" href="#9-future-work" title="Permanent link">&para;</a></h2>
+<h3 id="91-flake-aware-mode">9.1. Flake-Aware Mode<a class="headerlink" href="#91-flake-aware-mode" title="Permanent link">&para;</a></h3>
+<p>Once <code>packages.nix</code> usage settles, a v2 could detect a sibling <code>flake.nix</code> and switch to <code>nix profile install &lt;flake-ref&gt;#&lt;attr&gt;</code>. The flake reference and attribute selector are the missing pieces — likely solved by a <code>[handlers.nix] flake_attr = "..."</code> config key. Not v1.</p>
+<h3 id="92-pinned-nixpkgs-injection">9.2. Pinned <code>nixpkgs</code> Injection<a class="headerlink" href="#92-pinned-nixpkgs-injection" title="Permanent link">&para;</a></h3>
+<p>v1 relies on the user's <code>NIX_PATH</code> for <code>&lt;nixpkgs&gt;</code>, which means two users on the same pack can get different package versions depending on their channel. A v2 mode could let a pack declare a pinned <code>nixpkgs</code> source (flake input or <code>niv</code>-style JSON) and dodot would invoke evaluation against the pinned source via <code>--arg</code>. The shape interacts with §9.1 — settle both together.</p>
+<h3 id="93-asdf-mise-sibling-handler">9.3. asdf / mise Sibling Handler<a class="headerlink" href="#93-asdf-mise-sibling-handler" title="Permanent link">&para;</a></h3>
+<p>Orthogonal. <code>.tool-versions</code> (asdf) and <code>mise.toml</code> (mise) pin dev-tool versions; not Brewfile parallels. A separate handler would slot into the same Provision-phase shape and invoke <code>asdf install</code> or <code>mise install</code>. Mentioned here so future-us does not accidentally absorb it into the Nix handler.</p>
+<h2 id="10-what-this-costs-the-user">10. What This Costs the User<a class="headerlink" href="#10-what-this-costs-the-user" title="Permanent link">&para;</a></h2>
+<h3 id="honest-about-the-price-tag">Honest about the price tag:<a class="headerlink" href="#honest-about-the-price-tag" title="Permanent link">&para;</a></h3>
+<ul>
+<li>One config-schema field added (<code>[mappings] nix = "packages.nix"</code>). </li>
+<li>One handler-name reservation (<code>nix</code>). </li>
+<li>For users already running Nix: zero new effort. <code>dodot up</code> starts driving per-pack package installation. </li>
+<li>For users new to Nix: a real ramp. Nix has a learning curve, and the manifest-as-source-of-truth model is unfamiliar coming from imperative <code>nix profile install</code>. </li>
+<li>No reproducibility guarantee across machines on different <code>NIX_PATH</code> channels. The same <code>packages.nix</code> may resolve to different package versions for different users (same as Brewfile, which doesn't pin versions either). Nix's reputation is built on reproducibility and users may assume they're getting it; user docs should be explicit that v1 does not. §9.2 outlines the pinning mode that would close this. </li>
+</ul>
+<p>The pack manifest is the source of truth at the moment the handler first records a successful run; after that, the sentinel pins the state (§5.5). A manual <code>nix profile remove</code> of a package the pack still lists is <em>not</em> undone on the next <code>dodot up</code> — the sentinel records "we ran with this content" and dodot considers the work done until the file content changes or the user runs <code>dodot up --provision-rerun</code>. This matches Brewfile semantics. Users coming from imperative <code>nix profile install</code> may not have internalized it, so user-facing docs should call it out explicitly.</p>
+<h3 id="honest-about-what-this-does-not-cost">Honest about what this does not cost:<a class="headerlink" href="#honest-about-what-this-does-not-cost" title="Permanent link">&para;</a></h3>
+<ul>
+<li>No change to Brewfile behavior. The two handlers are independent. </li>
+<li>No platform gating. Linux and macOS users get the same handler. </li>
+<li>No system-level surface. Nothing requires sudo or modifies <code>/etc</code>. </li>
+<li>No automatic bootstrap. If <code>nix</code> is not installed, <code>dodot up</code> reports it like any other missing binary. </li>
+<li>No interference with a user's existing home-manager setup. The handler does not touch home-manager. </li>
+</ul>
+<p>The shape we are aiming for: the same "edit a file, run dodot up, machine is closer to ready" experience that Brewfile gives macOS users, with the same scope, the same safety posture, and a tighter "ensure installed" semantic that survives manual user activity on the same profile.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

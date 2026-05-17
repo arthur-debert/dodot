@@ -1,0 +1,2221 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/proposals/shipped/conditional-running/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Conditional running - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-specification-conditional-running" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Conditional running
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#design-specification-conditional-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Specification: Conditional Running
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Motivation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Motivation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-the-real-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1. The Real Cases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.1. The Real Cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-concrete-situations-have-surfaced-that-share-the-same-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three concrete situations have surfaced that share the same shape:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-why-templates-are-the-wrong-tool-for-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2. Why Templates Are the Wrong Tool For This
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.2. Why Templates Are the Wrong Tool For This">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#templates-are-the-wrong-tool-when-the-question-is-should-this-file-exist-on-this-host-at-all-reasons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Templates are the wrong tool when the question is "should this file exist on this host at all?" Reasons:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-whats-already-partly-there" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3. What's Already Partly There
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.3. What&#39;s Already Partly There">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-existing-mechanisms-do-part-of-the-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two existing mechanisms do part of the job:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Principles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Principles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-the-filesystem-should-tell-the-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. The Filesystem Should Tell the Truth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-one-grammar-generic-over-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. One Grammar, Generic Over Labels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-no-predicate-composition-in-the-filename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. No Predicate Composition in the Filename
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2.3. No Predicate Composition in the Filename">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filename-gates-do-not-and-stack-install_darwin_arm64sh-is-not-the-path-to-darwin-and-arm64-and-stacking-lives-inside-the-label-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filename gates do not AND-stack. install._darwin._arm64.sh is not the path to "darwin AND arm64"; AND-stacking lives inside the label table:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-gating-is-existence-not-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4. Gating Is Existence, Not Content
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-reuse-existing-machinery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5. Reuse Existing Machinery
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-current-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The Current State
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The Current State">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-what-dodot-does-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. What Dodot Does Today
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-what-breaks-without-this-proposal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. What Breaks Without This Proposal
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.2. What Breaks Without This Proposal">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-cost-is-that" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The cost is that:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-survey-of-prior-art" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Survey of Prior Art
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Survey of Prior Art">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-dotfiles-managers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. Dotfiles Managers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-adjacent-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Adjacent Tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-synthesis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. Synthesis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.3. Synthesis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-patterns-dominate-at-three-granularities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three patterns dominate, at three granularities:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-proposal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Proposal
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Proposal">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-the-filename-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. The Filename Grammar
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-label-resolution-built-in-and-user-defined" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Label Resolution: Built-in and User-Defined
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.2. Label Resolution: Built-in and User-Defined">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resolution-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolution rules:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-pack-level-gating-pack-os" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Pack-Level Gating: [pack] os
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.3. Pack-Level Gating: [pack] os">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantics:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-a-concrete-os-key-and-not-a-generalized-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why a concrete os key and not a generalized gates:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-composition-with-existing-mechanisms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4. Composition with Existing Mechanisms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-resolution-when-multiple-gates-apply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5. Resolution: When Multiple Gates Apply
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-configuration-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Configuration Surface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Configuration Surface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-new-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. New Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-inheritance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. Inheritance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3. Defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-where-gates-live-in-the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. Where Gates Live in the Pipeline
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.1. Where Gates Live in the Pipeline">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-stages-highest-to-lowest-in-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline stages (highest to lowest in execution):
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-the-gatehandler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. The GateHandler
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.2. The GateHandler">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-new-filter-handler-is-registered-alongside-ignorehandler-and-skiphandler-its-purpose-is-twofold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A new filter handler is registered alongside IgnoreHandler and SkipHandler. Its purpose is twofold:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-resolver-pseudocode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3. Resolver Pseudocode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-composition-with-preprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4. Composition with Preprocessing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-what-this-proposal-does-not-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. What This Proposal Does NOT Build
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. What This Proposal Does NOT Build">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-no-predicate-dsl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1. No Predicate DSL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-no-stacking-filename-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2. No Stacking Filename Gates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-no-negation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3. No Negation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-no-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4. No Profiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85-no-hostname-suffix-surface-in-v1-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.5. No Hostname-Suffix Surface in v1 Docs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#86-no-matcher-awareness-beyond-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.6. No Matcher Awareness Beyond Filter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#87-no-dodot-adopt-round-trip-magic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.7. No dodot adopt Round-Trip Magic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#88-no-gate-segments-inside-routing-prefix-subtrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.8. No Gate Segments Inside Routing-Prefix Subtrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-implementation-sketch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Implementation Sketch
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Implementation Sketch">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-module-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1. Module Layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-trait-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2. Trait Surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-status-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3. Status Surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#94-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.4. Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-documentation-deliverables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Documentation Deliverables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Documentation Deliverables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-docs-updates-when-this-lands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required docs updates when this lands:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-phased-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Phased Implementation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-what-this-costs-the-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. What This Costs the User
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. What This Costs the User">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#being-honest-about-the-price-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Being honest about the price tag:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-this-does-not-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this does NOT cost:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Open Questions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="13. Open Questions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#131-built-in-hostname-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.1. Built-in Hostname Labels?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#132-wsl-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.2. WSL Detection?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#133-case-sensitivity-of-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.3. Case Sensitivity of Labels?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#134-empty-match-behaviour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.4. Empty-Match Behaviour?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#135-should-pack-os-generalize-to-pack-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.5. Should [pack] os Generalize to [pack] gates?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#136-dodot-config-gen-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.6. dodot config gen Output
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14-implementation-notes-vs-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. Implementation Notes vs. Spec
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="14. Implementation Notes vs. Spec">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#141-rightmost-wins-filename-parser-not-at-most-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.1. Rightmost-wins Filename Parser, Not "At Most One"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#142-darwin-vs-macos-naming-disagrees-with-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.2. darwin vs macos Naming Disagrees with Templates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#143-helper-renamed-to-filter_pre_preprocess_gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.3. Helper Renamed to filter_pre_preprocess_gates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#144-gates-inside-routing-prefix-subtrees-are-not-supported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.4. Gates Inside Routing-Prefix Subtrees Are Not Supported
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#145-only-os-validates-against-root-config-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.5. --only-os Validates Against Root Config Only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#146-mappingsgates-glob-scope-is-top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.6. [mappings.gates] Glob Scope Is Top-Level
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#147-status-footnote-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.7. Status Footnote Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#148-hostfacts-caching-on-executioncontext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.8. HostFacts Caching on ExecutionContext
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/proposals/shipped/conditional-running.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Conditional running</h1>
+
+<h2 id="design-specification-conditional-running">Design Specification: Conditional Running<a class="headerlink" href="#design-specification-conditional-running" title="Permanent link">&para;</a></h2>
+<!-- lex:note -->
+
+<p><strong>Status: implemented and shipped.</strong> Phases C1–C5 landed in PR #135 (with follow-up doc PR #136 merged into it). The user-facing reference lives in [./../../user/conditional-running.lex] (full guide), [./../../user/configuration.lex] §2.1 / §4.1 / §5 (config schema), and [./../../user/handlers/controlling-activation.lex] §1.3 (the `gate` filter handler). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the user/reference docs disagree about behavior, those docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom for the deviations that were accepted during implementation.</p>
+<!-- /lex:note -->
+
+<p>This document specifies how dodot routes pack files based on runtime properties of the host — primarily operating system, with the architecture left open for arch and user-defined predicates. The current state has one mechanism for this case (templates with <code>{% if dodot.os == "macos" %}</code>), and that mechanism is the wrong shape for the file-level and pack-level needs that prompted this proposal.</p>
+<!-- lex:note -->
+
+<p><a href="./../../reference/terms-and-concepts.lex">See</a> for terminology used throughout.</p>
+<!-- /lex:note -->
+
+<p>The proposal is small on purpose. It introduces a single grammar — <code>_&lt;label&gt;</code> as a filename infix or directory segment — that gates whether dodot deploys/runs an entry, plus a <code>[pack] os</code> config key for whole-pack gating, plus a small extension to the existing Filter-phase handler family. The grammar is generic over a label table; OS labels (<code>darwin</code>, <code>linux</code>, etc.) ship as built-ins, and the architecture accommodates user-defined labels as a future extension without changing the parser.</p>
+<h2 id="1-motivation">1. Motivation<a class="headerlink" href="#1-motivation" title="Permanent link">&para;</a></h2>
+<h3 id="11-the-real-cases">1.1. The Real Cases<a class="headerlink" href="#11-the-real-cases" title="Permanent link">&para;</a></h3>
+<h4 id="three-concrete-situations-have-surfaced-that-share-the-same-shape">Three concrete situations have surfaced that share the same shape:<a class="headerlink" href="#three-concrete-situations-have-surfaced-that-share-the-same-shape" title="Permanent link">&para;</a></h4>
+<p>- A <code>Brewfile</code> should only run on macOS. Today, the user either accepts that <code>brew bundle</code> fails on Linux (Homebrew exists on Linux too, but the brewfile is mac-specific), or wraps the entry in a templated pack with <code>{% if dodot.os == "macos" %}</code> and renders an empty file on Linux — which still gets deployed as an empty file.</p>
+<p>- An <code>install.sh</code> script that does Linux-specific package work via <code>apt-get</code> should not execute on macOS. The same template trick produces a script that runs <code># nothing on darwin</code>, which is at best a no-op and at worst confusing.</p>
+<p>- A whole pack of macOS-specific GUI app configs (<code>_app/Code/...</code>, <code>_lib/LaunchAgents/...</code>) is dead weight on Linux. The user wants the pack to <strong>not be considered</strong> on the wrong OS, not deployed as a pile of skipped entries.</p>
+<p>These are not requests for a predicate language. They are requests for a gating primitive that sits at the right granularity — file, subtree, or pack — without forcing every gated entry to become a template.</p>
+<h3 id="12-why-templates-are-the-wrong-tool-for-this">1.2. Why Templates Are the Wrong Tool For This<a class="headerlink" href="#12-why-templates-are-the-wrong-tool-for-this" title="Permanent link">&para;</a></h3>
+<p>dodot already supports templates with full access to <code>dodot.os</code>, <code>dodot.arch</code>, <code>dodot.hostname</code>. For <strong>content</strong> that varies between hosts, templates are correct: line-level branching, value substitution, computed paths.</p>
+<h4 id="templates-are-the-wrong-tool-when-the-question-is-should-this-file-exist-on-this-host-at-all-reasons">Templates are the wrong tool when the question is "should this file exist on this host at all?" Reasons:<a class="headerlink" href="#templates-are-the-wrong-tool-when-the-question-is-should-this-file-exist-on-this-host-at-all-reasons" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Templates always produce an output. An empty render still gets deployed; a Linux-rendered Brewfile.tmpl produces an empty Brewfile that <code>brew bundle</code> happily runs on. The semantics are "transform content," not "decide existence." </li>
+<li>Templates require turning a regular file into a <code>.tmpl</code> file. That changes everything downstream — the file enters the preprocessing pipeline, gets a baseline cache entry, may participate in reverse-merge for <code>git status</code> purposes, and incurs the divergence-tracking machinery. For a 5-line shell script the user wants to run only on macOS, that's an enormous tax. </li>
+<li>Templates put the OS test inside the file content, where it's invisible from <code>ls</code>. The filesystem stops telling the truth about what dodot will do. </li>
+</ul>
+<p>A separate gating mechanism keeps templates focused on what they're for (content) and gives gating its own surface (existence/dispatch).</p>
+<h3 id="13-whats-already-partly-there">1.3. What's Already Partly There<a class="headerlink" href="#13-whats-already-partly-there" title="Permanent link">&para;</a></h3>
+<h4 id="two-existing-mechanisms-do-part-of-the-job">Two existing mechanisms do part of the job:<a class="headerlink" href="#two-existing-mechanisms-do-part-of-the-job" title="Permanent link">&para;</a></h4>
+<ul>
+<li><code>.dodotignore</code> skips a whole pack — but unconditionally. There's no way to say "skip on Linux only." </li>
+<li><code>[mappings] ignore</code> and <code>[mappings] skip</code> drop matched files inside a pack — also unconditional. </li>
+</ul>
+<p>Both are pre-handler filters. Conditional gating is the same primitive plus a predicate. The architecture chapter (§5) shows how the new mechanism extends rather than parallels these.</p>
+<h2 id="2-principles">2. Principles<a class="headerlink" href="#2-principles" title="Permanent link">&para;</a></h2>
+<h3 id="21-the-filesystem-should-tell-the-truth">2.1. The Filesystem Should Tell the Truth<a class="headerlink" href="#21-the-filesystem-should-tell-the-truth" title="Permanent link">&para;</a></h3>
+<p>A user listing their pack should see which files are darwin-only and which are linux-only without grepping for <code>{% if %}</code> blocks. This is the same principle that underwrites pack-ordering's numeric prefix and routing's <code>_home/</code> / <code>_app/</code> directories. A <code>_darwin</code> token in a filename is visible from <code>ls</code>; a templated <code>{% if %}</code> inside a <code>.sh.tmpl</code> is not.</p>
+<p>Cost: gating is encoded in the name, which couples identity to predicate. We accept that cost for the same reason pack-ordering accepted it for ordering.</p>
+<h3 id="22-one-grammar-generic-over-labels">2.2. One Grammar, Generic Over Labels<a class="headerlink" href="#22-one-grammar-generic-over-labels" title="Permanent link">&para;</a></h3>
+<p>We resist the temptation to ship "OS gating" as a one-off. The grammar is <code>_&lt;label&gt;</code>, where <code>&lt;label&gt;</code> resolves through a hardcoded match table to a set of <code>(dimension, value)</code> equality checks, AND-ed together. OS labels (<code>darwin</code>, <code>linux</code>, <code>macos</code>) are the seed table; arch follows trivially; user-defined labels (<code>laptop</code>, <code>arm-mac</code>) are a small additive extension.</p>
+<p>This is <strong>not</strong> a predicate language. There are no operators, no expressions, no negation, no precedence. A label is an opaque token that resolves to "all these dimensions equal these values, simultaneously." The user-facing pitch is "label your file with the host trait it needs"; the implementation is a hashmap lookup.</p>
+<h3 id="23-no-predicate-composition-in-the-filename">2.3. No Predicate Composition in the Filename<a class="headerlink" href="#23-no-predicate-composition-in-the-filename" title="Permanent link">&para;</a></h3>
+<h4 id="filename-gates-do-not-and-stack-install_darwin_arm64sh-is-not-the-path-to-darwin-and-arm64-and-stacking-lives-inside-the-label-table">Filename gates do not AND-stack. <code>install._darwin._arm64.sh</code> is <strong>not</strong> the path to "darwin AND arm64"; AND-stacking lives inside the label table:<a class="headerlink" href="#filename-gates-do-not-and-stack-install_darwin_arm64sh-is-not-the-path-to-darwin-and-arm64-and-stacking-lives-inside-the-label-table" title="Permanent link">&para;</a></h4>
+<p>[gates] arm-mac = { os = "darwin", arch = "aarch64" }</p>
+<p>Then the file is <code>install._arm-mac.sh</code>. One name → one label → one resolved predicate. The grammar stays a single slot; combinatorial cases route through user-defined labels.</p>
+<p>Implementation note: the parser scans for the rightmost <code>._&lt;token&gt;</code> boundary in the basename. If a filename happens to contain multiple <code>._&lt;token&gt;</code> patterns (<code>install._bar._baz.sh</code>), only the rightmost (<code>_baz</code>) is treated as a gate; everything to its left is part of the stem. This is rightmost-wins, not "hard error on more than one." That keeps filenames like <code>foo._bar._darwin.sh</code> workable when <code>_bar</code> is just a name component the user wants in the file's stem.</p>
+<p>This is exactly the pack-ordering posture: "one mechanism, not three" — and combinatorics live in user-controlled config rather than in filename parsers.</p>
+<h3 id="24-gating-is-existence-not-content">2.4. Gating Is Existence, Not Content<a class="headerlink" href="#24-gating-is-existence-not-content" title="Permanent link">&para;</a></h3>
+<p>Templates handle content (<code>{% if %}</code>); gates handle existence (drop or pass). The two are orthogonal and compose: <code>aliases._darwin.sh.tmpl</code> is "a darwin-only file that is also a template." The gate fires first (drop on Linux); the template renders on the survivors.</p>
+<h3 id="25-reuse-existing-machinery">2.5. Reuse Existing Machinery<a class="headerlink" href="#25-reuse-existing-machinery" title="Permanent link">&para;</a></h3>
+<p>Gates are not a new pipeline phase. They live in the scanner's lexical-normalization step — the same step that already strips ordering prefixes from pack names (<code>010-nvim</code> → <code>nvim</code>). Failed-gate entries are tagged for the existing Filter-phase handler family; passing-gate entries surface under their stripped names.</p>
+<p>Concretely: a <code>GateHandler</code> sits in the registry beside <code>IgnoreHandler</code> and <code>SkipHandler</code>, with the same shape (claim-and-drop, no intent emitted). Its rules are dynamically generated from the resolved gate table at scan time. The handler/category/phase model stays uniform; the gate decision happens at scan, the same way <code>SkipHandler</code>'s decision is positional priority.</p>
+<h2 id="3-the-current-state">3. The Current State<a class="headerlink" href="#3-the-current-state" title="Permanent link">&para;</a></h2>
+<h3 id="31-what-dodot-does-today">3.1. What Dodot Does Today<a class="headerlink" href="#31-what-dodot-does-today" title="Permanent link">&para;</a></h3>
+<p>- The scanner walks each pack directory and presents file/dir entries to the rule matcher under their literal names. The only normalization at scan is <code>display_name_for(pack)</code> for pack directory names (strips numeric ordering prefix). File names are passed through unchanged.</p>
+<p>- Filter-phase handlers (<code>ignore</code>, <code>skip</code>) drop matched files via positional priority (100 / 50, above precise mappings at 10). They claim matches and emit no intents.</p>
+<p>- The template preprocessor renders <code>*.tmpl</code> files into <code>&lt;datastore&gt;/packs/&lt;pack&gt;/preprocessed/&lt;stripped-name&gt;</code> and feeds the rendered output into normal handler dispatch.</p>
+<p>- <code>dodot.os</code>, <code>dodot.arch</code>, <code>dodot.hostname</code>, etc. are exposed to templates via the <code>dodot.*</code> namespace; they are evaluated live at render time.</p>
+<h3 id="32-what-breaks-without-this-proposal">3.2. What Breaks Without This Proposal<a class="headerlink" href="#32-what-breaks-without-this-proposal" title="Permanent link">&para;</a></h3>
+<p>Nothing breaks. A user can rename <code>Brewfile</code> to <code>Brewfile.tmpl</code> with <code>{% if dodot.os != "macos" %}{# empty #}{% else %}brew "ripgrep"{% endif %}</code> and get the right behavior on darwin-only via the Brewfile reference matching. Pack-level gating can be approximated by <code>.dodotignore</code> plus a manual <code>git checkout</code> ritual.</p>
+<h4 id="the-cost-is-that">The cost is that:<a class="headerlink" href="#the-cost-is-that" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Every gate is a template, with the full preprocessing-pipeline tax. </li>
+<li>Empty files still get deployed; not every handler treats "empty" as "absent." </li>
+<li>Pack-level gating is unavailable without manual git rituals. </li>
+<li>The filesystem stops answering "what does dodot do here?" without reading file contents. </li>
+</ul>
+<p>This proposal pays those costs once, in the framework, with a small, additive grammar.</p>
+<h2 id="4-survey-of-prior-art">4. Survey of Prior Art<a class="headerlink" href="#4-survey-of-prior-art" title="Permanent link">&para;</a></h2>
+<p>The decision space has been explored extensively. The full survey informs the trade-offs but the conclusion is what matters.</p>
+<h3 id="41-dotfiles-managers">4.1. Dotfiles Managers<a class="headerlink" href="#41-dotfiles-managers" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>chezmoi</dt>
+<dd>
+<p>Filename suffixes (<code>run_once_</code>, <code>_darwin</code>, <code>executable_</code>) plus Go-template content gating; an empty render results in a skipped target. The closest analog to this proposal in spirit. Cost: filename grammar is dense and easy to typo, and the OS-suffix and template-empty mechanisms overlap awkwardly.</p>
+</dd>
+<dt>yadm</dt>
+<dd>
+<p><code>name##os.Linux,arch.x86_64</code> filename suffix system with multi-condition AND, scoring, and negation. The most expressive filename-grammar in any tool surveyed; also the ugliest. The <code>##</code> delimiter is hostile to editors, tab-completion, and visual scanning.</p>
+</dd>
+<dt>dotbot</dt>
+<dd>
+<p>YAML <code>if:</code> clauses with arbitrary shell expressions per link directive. Maximum power, zero structure; every condition is a quoting exercise.</p>
+</dd>
+<dt>rcm</dt>
+<dd>
+<p><code>host-&lt;hostname&gt;/</code> and <code>tag-&lt;name&gt;/</code> directory prefixes. Filesystem-visible, simple. Activation is per-invocation (<code>rcup -t work</code>). No OS/arch primitives — those have to be encoded as tags.</p>
+</dd>
+<dt>toml-bombadil</dt>
+<dd>
+<p>TOML profiles with stacking. <code>bombadil link -p sway,work</code> activates multiple. Cleaner than dotdrop's include graph; no built-in OS detection.</p>
+</dd>
+<dt>nix-home-manager</dt>
+<dd>
+<p>Programmatic. <code>pkgs.stdenv.isDarwin</code>, <code>lib.mkIf</code>, anywhere. Maximum expressiveness; requires writing Nix.</p>
+</dd>
+<dt>mackup, dotdrop, GNU Stow, bare git+scripts</dt>
+<dd>
+<p>See research notes — none contributes a primitive this proposal builds on.</p>
+</dd>
+</dl>
+<h3 id="42-adjacent-tools">4.2. Adjacent Tools<a class="headerlink" href="#42-adjacent-tools" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>Ansible</dt>
+<dd>
+<p><code>host_vars/</code> and <code>group_vars/</code> directory conventions plus <code>when:</code> Jinja2 expressions on tasks. Two complementary mechanisms — directory-membership for variables, predicate clause for execution.</p>
+</dd>
+<dt>CMake</dt>
+<dd>
+<p><code>if(APPLE)</code>, <code>if(UNIX)</code>, with rich predicates and <code>option()</code> for user tags. <code>cmake -DENABLE_FOO=ON</code> is the canonical user-tag mechanism.</p>
+</dd>
+</dl>
+<h3 id="43-synthesis">4.3. Synthesis<a class="headerlink" href="#43-synthesis" title="Permanent link">&para;</a></h3>
+<h4 id="three-patterns-dominate-at-three-granularities">Three patterns dominate, at three granularities:<a class="headerlink" href="#three-patterns-dominate-at-three-granularities" title="Permanent link">&para;</a></h4>
+<p>L1 (whole pack/profile):    rcm tag-dirs, bombadil profiles, ansible groups L2 (whole file/dir):        yadm <code>##cond.value</code>, chezmoi empty-render L3 (lines within a file):   templates everywhere</p>
+<p>dodot already has L3. dodot's philosophy (§7 <a href="./../../reference/philosophy.lex">in</a>) explicitly rules out L1's "profile" framing. The unaddressed gap is L2: file/subtree/pack-level gating.</p>
+<p>The cleanest L2 mechanisms in the survey share a property: a recognised filename or directory grammar with a config counterpart. That is exactly the pattern dodot already uses for routing prefixes (<code>home.X</code> ↔ <code>force_home</code>, <code>_app/</code> ↔ <code>app_aliases</code>). This proposal mirrors that pattern.</p>
+<h2 id="5-proposal">5. Proposal<a class="headerlink" href="#5-proposal" title="Permanent link">&para;</a></h2>
+<h3 id="51-the-filename-grammar">5.1. The Filename Grammar<a class="headerlink" href="#51-the-filename-grammar" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=lllll -->
+
+<!-- /lex:table -->
+
+<p><strong>Per-file gates use a <code>._&lt;label&gt;</code> infix immediately before the extension, or as the final segment for extensionless files</strong></p>
+<!-- lex:table align=llll -->
+
+<!-- /lex:table -->
+
+<p><strong>Per-subtree gates use a <code>_&lt;label&gt;</code> directory segment whose contents are gated as a unit. The segment itself is removed from the deploy path</strong></p>
+<p>Gate dirs live at the pack root; routing-prefix subtrees (<code>_home/</code>, <code>_xdg/</code>, <code>_app/</code>, <code>_lib/</code>) live <strong>inside</strong> a passing-gate dir, not the other way around. The scanner expands gate dirs at scan time, so the contents surface at pack-root level on a matching host. Nesting in the opposite order (routing prefix at top, gate inside) is not supported in this iteration — the symlink handler owns recursion inside routing-prefix dirs and is intentionally gate-unaware. Putting the gate at the outer level reads more naturally too ("the darwin slice of my pack contains a <code>_home/</code> subtree").</p>
+<p><strong>A standalone `_\&lt;label&gt;/` directory at the pack root gates everything beneath it without changing the deploy root</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cross-platform-pack/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    _darwin/
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>        macos-only.sh
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    _linux/
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        linux-only.sh
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    shared.sh
+</code></pre></div>
+<dl>
+<dt>The grammar is positional and unambiguous because filename slots don't overlap</dt>
+<dd>
+<ul>
+<li>Routing prefix lives at the start of the basename (<code>home.X</code>) or as a top-level directory (<code>_home/</code>). </li>
+<li>Gate token lives at the end of the basename, just before the extension (<code>._&lt;label&gt;.ext</code>), or as a directory segment (<code>_&lt;label&gt;/</code>). </li>
+<li>The two slots never collide; their order in the filename is fixed. </li>
+</ul>
+</dd>
+</dl>
+<h3 id="52-label-resolution-built-in-and-user-defined">5.2. Label Resolution: Built-in and User-Defined<a class="headerlink" href="#52-label-resolution-built-in-and-user-defined" title="Permanent link">&para;</a></h3>
+<p>A label is an opaque token. dodot resolves it through a <code>[gates]</code> table that maps each label to a set of <code>(dimension, expected_value)</code> pairs, AND-ed together. Dimensions are exactly the existing <code>dodot.*</code> namespace.</p>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<p><strong>Built-in labels (compiled defaults; user does not write these)</strong></p>
+<p><strong>User-defined labels in `.dodot.toml`</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>
+</code></pre></div>
+<h4 id="resolution-rules">Resolution rules:<a class="headerlink" href="#resolution-rules" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Equality only. No operators, no negation, no expressions. </li>
+<li>Multiple <code>(dim, val)</code> pairs in a label entry are implicitly AND-ed. </li>
+<li>User-defined labels deep-merge with built-ins per the standard config layering. User config can shadow a built-in (e.g., redefine <code>darwin</code> to also require a hostname); the built-in's mapping is replaced wholesale by the user entry. Doing this is unusual; documented but not promoted. </li>
+<li>Unknown label tokens are a hard error at scan time. Typo guard. Fail message names the file and the unknown label. </li>
+</ul>
+<p>Dimensions accepted in the value side: <code>os</code>, <code>arch</code>, <code>hostname</code>, <code>username</code>. Mirrors the <code>dodot.*</code> template namespace. Unknown dimensions are a hard error at config-load time.</p>
+<p>Promotion editorial: v1 docs lead with the OS use case, mention arch, and footnote user-defined labels. The machinery is generic; the documentation is curated.</p>
+<h3 id="53-pack-level-gating-pack-os">5.3. Pack-Level Gating: <code>[pack] os</code><a class="headerlink" href="#53-pack-level-gating-pack-os" title="Permanent link">&para;</a></h3>
+<p><strong>For whole-pack gating, a separate config key — concrete, not generalized</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>
+</code></pre></div>
+<h4 id="semantics">Semantics:<a class="headerlink" href="#semantics" title="Permanent link">&para;</a></h4>
+<ul>
+<li>List of OS values. Empty list or absence = "all OSes" (today's behaviour). </li>
+<li>Match is OR within the list (<code>["darwin", "linux"]</code> runs on either). </li>
+<li>Values are compared against <code>dodot.os</code> exactly; the same alias map as labels applies (<code>macos</code> → <code>darwin</code>). </li>
+<li>When the current OS isn't in the list, the pack short-circuits at scan time. No file is matched, no handler runs. </li>
+<li>The pack surfaces in <code>dodot status</code> as <code>inactive (os=darwin, current=linux)</code> rather than disappearing silently. Users debugging "why didn't my mac pack deploy on linux" get an answer. </li>
+</ul>
+<h4 id="why-a-concrete-os-key-and-not-a-generalized-gates">Why a concrete <code>os</code> key and not a generalized <code>gates</code>:<a class="headerlink" href="#why-a-concrete-os-key-and-not-a-generalized-gates" title="Permanent link">&para;</a></h4>
+<ul>
+<li>The whole-pack case is dominated by OS gating. Hostname-level pack gating is rare; arch-level pack gating is rarer. </li>
+<li><code>[pack] os = ["darwin"]</code> is more discoverable than <code>[pack] gates = ["darwin"]</code> for a feature most users want at the pack level. </li>
+<li>The filename grammar handles the generic case. Pack-level can stay narrow. </li>
+</ul>
+<p>Future work may add <code>[pack] gates = [...]</code> if the demand surfaces; the two coexist if/when that happens.</p>
+<h3 id="54-composition-with-existing-mechanisms">5.4. Composition with Existing Mechanisms<a class="headerlink" href="#54-composition-with-existing-mechanisms" title="Permanent link">&para;</a></h3>
+<p><strong>Routing prefixes (per [./../../reference/symlink-paths.lex])</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>home.bashrc._darwin              →  ~/.bashrc on darwin only
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>_darwin/_home/.bashrc            →  ~/.bashrc on darwin only (subtree form, gate outside)
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>_home/.bashrc._darwin            →  ~/.bashrc on darwin only (per-file inside subtree)
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>_darwin/_app/Code/User/x.json    →  &lt;app_support&gt;/Code/User/x.json on darwin only
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>home.bashrc._darwin + [symlink.targets] entry → routing-override conflict (per §6.6 of symlink-paths)
+</code></pre></div>
+<p><strong>Templates</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aliases._darwin.sh.tmpl
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  gate fires first (drop on Linux)
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  if pass: template renders aliases.sh.tmpl into aliases.sh
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  shell handler picks up aliases.sh
+</code></pre></div>
+<p><strong>Pack ordering</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>010-mac-tools/.dodot.toml: [pack] os = [&quot;darwin&quot;]
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  entire pack inactive on Linux; ordering prefix is preserved on darwin
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>010-shared-tools/_darwin/foo.sh
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  shared pack; foo.sh gates on darwin only
+</code></pre></div>
+<p><strong>Mappings</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>install._darwin.sh
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  filename gate strips to `install.sh`
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  `[mappings] install = [&quot;install.sh&quot;, ...]` matches the stripped name
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  install handler runs the original (gated) source path
+</code></pre></div>
+<h3 id="55-resolution-when-multiple-gates-apply">5.5. Resolution: When Multiple Gates Apply<a class="headerlink" href="#55-resolution-when-multiple-gates-apply" title="Permanent link">&para;</a></h3>
+<p>A single file can be gated by both filename grammar AND <code>[mappings.os]</code> (a future addition; see §6). When that happens: hard error, refuse to deploy, point at both, ask user to pick one. Same posture as <code>[symlink.targets]</code> vs routing prefix conflict.</p>
+<p>A file under both a directory gate and a filename gate: AND. <code>_darwin/.bashrc._linux</code> is impossible (the file would have to be on darwin AND linux). Surfaces as the file never matching its own gate; deployed nowhere; visible in status as "gated out (label conflict)."</p>
+<p>A pack with <code>[pack] os</code> set AND filename gates inside: the pack-level gate is checked first. If the pack is inactive on this OS, no file inside is even scanned. If the pack is active, file gates apply normally.</p>
+<h2 id="6-configuration-surface">6. Configuration Surface<a class="headerlink" href="#6-configuration-surface" title="Permanent link">&para;</a></h2>
+<h3 id="61-new-schema">6.1. New Schema<a class="headerlink" href="#61-new-schema" title="Permanent link">&para;</a></h3>
+<p><strong>Schema additions to `.dodot.toml`</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Pack-level gating</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">[pack]</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">os</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;darwin&quot;</span><span class="p">]</span><span class="w">              </span><span class="c1"># list of OS values; empty/absent = all</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Label table (extends built-ins)</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="k">[gates]</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">laptop</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;mbp-arthur&quot;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">arm-mac</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">os</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;darwin&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">arch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;aarch64&quot;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># Glob-based filename gating without renaming</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="k">[mappings.gates]</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="s2">&quot;install-mac.sh&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;darwin&quot;</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="s2">&quot;Brewfile&quot;</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;darwin&quot;</span>
+</code></pre></div>
+<p><code>[mappings.gates]</code> patterns match the same top-level pack entries the scanner surfaces — the symlink handler's nested per-file recursion is gate-unaware, so globs containing path separators only match if a top-level entry has that shape. This matches the posture from §8.8 (gates don't reach inside routing-prefix subtrees). For per-file gating of nested files, use the filename grammar (<code>install._darwin.sh</code>) instead. Invalid glob patterns are a hard error at scan time, and matches are deterministic (lexicographic pattern order, first-match-wins).</p>
+<h3 id="62-inheritance">6.2. Inheritance<a class="headerlink" href="#62-inheritance" title="Permanent link">&para;</a></h3>
+<p>Standard three-layer model: compiled defaults \&lt; root <code>.dodot.toml</code> \&lt; pack <code>.dodot.toml</code>. <code>[gates]</code> deep-merges across layers (per the maps-deep-merge rule); a pack can introduce a label without restating root labels. <code>[pack] os</code> is pack-scoped only — it has no meaning at root level (a root config setting <code>[pack] os</code> would gate every pack, which is silly; root-level <code>[pack] os</code> is a config error and rejected).</p>
+<h3 id="63-defaults">6.3. Defaults<a class="headerlink" href="#63-defaults" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<p><strong>Defaults table</strong></p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[gates]</code></td>
+<td>built-in seed (darwin, linux, macos, arm64, x86_64, …)</td>
+</tr>
+<tr>
+<td><code>[pack] os</code></td>
+<td><code>[]</code> (all)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-architecture">7. Architecture<a class="headerlink" href="#7-architecture" title="Permanent link">&para;</a></h2>
+<h3 id="71-where-gates-live-in-the-pipeline">7.1. Where Gates Live in the Pipeline<a class="headerlink" href="#71-where-gates-live-in-the-pipeline" title="Permanent link">&para;</a></h3>
+<p>Gates are evaluated at scan time, in the same lexical-normalization pass that strips ordering prefixes from pack names. The scanner already does this for pack-display-name resolution (<code>display_name_for("010-nvim") → "nvim"</code>); gate-stripping is the file/dir-level analog.</p>
+<h4 id="pipeline-stages-highest-to-lowest-in-execution">Pipeline stages (highest to lowest in execution):<a class="headerlink" href="#pipeline-stages-highest-to-lowest-in-execution" title="Permanent link">&para;</a></h4>
+<ol>
+<li>Pack discovery: walk dotfiles root, find pack directories, apply <code>.dodotignore</code> filter. </li>
+<li>Pack gating: read each pack's <code>.dodot.toml</code>, evaluate <code>[pack] os</code> against current host. Drop inactive packs early. </li>
+<li>File scan + lexical normalization: walk each active pack's tree. <ol>
+<li>Strip routing prefixes (<code>_home/</code>, <code>_xdg/</code>, ...) — this is configured by symlink rules, not done by the scanner; documented here for context. </li>
+<li>Strip ordering prefix from pack names (existing behaviour). </li>
+<li>NEW: parse gate tokens (<code>._&lt;label&gt;.</code>, <code>_&lt;label&gt;/</code>). Look up label in resolved gate table. </li>
+<li>NEW: drop entries whose gate evaluates false. Surface them in status as "gated out." </li>
+<li>NEW: pass surviving entries to rule matching with stripped names. </li>
+</ol>
+</li>
+<li>Rule matching: existing behaviour, on the cleaned names. </li>
+<li>Preprocessing (templates etc.): existing behaviour, on the gate-survivors. </li>
+<li>Handler dispatch and intent generation: existing behaviour. </li>
+</ol>
+<p>The gate decision happens in stage 3c–3e. The matcher and handlers see a "virtual" pack tree with gate suffixes stripped and failed entries removed.</p>
+<h3 id="72-the-gatehandler">7.2. The <code>GateHandler</code><a class="headerlink" href="#72-the-gatehandler" title="Permanent link">&para;</a></h3>
+<h4 id="a-new-filter-handler-is-registered-alongside-ignorehandler-and-skiphandler-its-purpose-is-twofold">A new filter handler is registered alongside <code>IgnoreHandler</code> and <code>SkipHandler</code>. Its purpose is twofold:<a class="headerlink" href="#a-new-filter-handler-is-registered-alongside-ignorehandler-and-skiphandler-its-purpose-is-twofold" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Provide a registered handler-name that the scanner tags failed-gate entries with, so they surface in <code>dodot status</code> under a meaningful label. </li>
+<li>Carry the per-gate metadata needed for the status renderer (which label, which dimension, what the host has, what the gate expected). </li>
+</ul>
+<p>Like <code>IgnoreHandler</code>/<code>SkipHandler</code>, it is <code>Filter</code> phase, <code>Configuration</code> category, <code>Precise</code> match, <code>Exclusive</code> scope. Its <code>to_intents</code> returns <code>Ok(vec![])</code> — gate handling produces no executable intent. Its rules are <strong>dynamically generated</strong> from the resolved gate table at scan time.</p>
+<p><strong>Status surface</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>$ dodot status
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  cross-platform/
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    ...
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    aliases.sh                    (sourced)
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    aliases._linux.sh             gated out (label=linux, current os=darwin)
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    Brewfile                      (provisioned)
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    install._linux.sh             gated out (label=linux, current os=darwin)
+</code></pre></div>
+<p>The "gated out" rendering is distinct from <code>skip</code>'s rendering — gates are not "we chose to skip"; they're "the host doesn't match." The label and the host fact are both shown.</p>
+<p><strong>Pack-level inactive</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>$ dodot status
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  ...
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  010-mac-tools                   inactive (os=darwin, current=linux)
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  011-shared-tools                ...
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>  ...
+</code></pre></div>
+<h3 id="73-resolver-pseudocode">7.3. Resolver Pseudocode<a class="headerlink" href="#73-resolver-pseudocode" title="Permanent link">&para;</a></h3>
+<p><strong>Scanner's gate evaluation, called once per file/dir entry</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>
+</code></pre></div>
+<p><code>parse_basename_gate</code> recognises <code>&lt;stem&gt;._&lt;label&gt;.&lt;ext&gt;</code> where <code>&lt;label&gt;</code> is a single segment after <code>_</code> containing only <code>[A-Za-z0-9_-]</code>. Extensionless variants (<code>Brewfile._darwin</code>) treat the trailing <code>._&lt;label&gt;</code> as the gate.</p>
+<p><code>strip_underscore_label</code> matches a directory segment of the form <code>_&lt;label&gt;</code> (entire segment starts with <code>_</code>). Note: this is the same prefix as <code>_home/</code>, <code>_xdg/</code>, etc. (routing prefixes). Disambiguation: routing prefixes are configured tokens (a small fixed set: <code>home</code>, <code>xdg</code>, <code>app</code>, <code>lib</code>); a <code>_&lt;token&gt;</code> directory segment is a routing prefix if the token is in that set, otherwise it's a gate label. Unknown tokens after <code>_</code> in a directory segment are gate labels and resolve through the gate table; if the table doesn't know the label either, hard error.</p>
+<h3 id="74-composition-with-preprocessing">7.4. Composition with Preprocessing<a class="headerlink" href="#74-composition-with-preprocessing" title="Permanent link">&para;</a></h3>
+<p><strong>Templates are still preprocessors. The gate strips its suffix at scan time, *before* preprocessing matches `.tmpl`. So</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>aliases._darwin.sh.tmpl  →  scan strips ._darwin  →  aliases.sh.tmpl  →  template preprocesses  →  aliases.sh  →  shell handler
+</code></pre></div>
+<p>On Linux, the gate fails first and the file never reaches the preprocessor. No render, no cache entry, no divergence tracking.</p>
+<p>Plists, secrets, and any future preprocessor compose the same way: gate first (existence), preprocessor second (content). No preprocessor needs to know about gates.</p>
+<h2 id="8-what-this-proposal-does-not-build">8. What This Proposal Does NOT Build<a class="headerlink" href="#8-what-this-proposal-does-not-build" title="Permanent link">&para;</a></h2>
+<p>Listed explicitly so future readers don't mistake omission for oversight.</p>
+<h3 id="81-no-predicate-dsl">8.1. No Predicate DSL<a class="headerlink" href="#81-no-predicate-dsl" title="Permanent link">&para;</a></h3>
+<p>No <code>[pack] when = "os == 'darwin' &amp;&amp; hostname == 'work'"</code>. No filename <code>name#os==darwin.sh</code>. No regex matching. The grammar is "label → AND of equalities," and the user's expressivity flows through user-defined labels.</p>
+<h3 id="82-no-stacking-filename-gates">8.2. No Stacking Filename Gates<a class="headerlink" href="#82-no-stacking-filename-gates" title="Permanent link">&para;</a></h3>
+<p><code>install._darwin._arm64.sh</code> is not parsed as "darwin AND arm64." Compound predicates use a user-defined label (<code>arm-mac</code>).</p>
+<p>The parser uses rightmost-wins semantics — given multiple <code>._&lt;token&gt;</code> segments, only the rightmost is treated as a gate, the rest stay in the stem (see §2.3). It does not hard-error on multiple segments because that would forbid filenames like <code>foo._bar._darwin.sh</code> where <code>_bar</code> is a legitimate name component (e.g. a tool's pack-internal naming convention).</p>
+<p>Reason: AND-stacking of dimensions is the same expression already supported by user-defined labels. One way to do it.</p>
+<h3 id="83-no-negation">8.3. No Negation<a class="headerlink" href="#83-no-negation" title="Permanent link">&para;</a></h3>
+<p>No <code>_!darwin</code> or <code>_not-darwin</code>. If a user wants "everywhere except darwin," they list the positive labels (<code>._linux.sh</code>) for each target OS, or rely on the absence of a gate (no suffix means "all hosts"). Negation is an open door we don't need to walk through.</p>
+<h3 id="84-no-profiles">8.4. No Profiles<a class="headerlink" href="#84-no-profiles" title="Permanent link">&para;</a></h3>
+<p>§7. dodot is single-config-per-machine. No <a href="./../../reference/philosophy.lex">Per</a><code>dodot up --profile work</code>. Hostname-based gates and user-defined labels cover the practical "work vs home" cases without introducing a profile concept.</p>
+<h3 id="85-no-hostname-suffix-surface-in-v1-docs">8.5. No Hostname-Suffix Surface in v1 Docs<a class="headerlink" href="#85-no-hostname-suffix-surface-in-v1-docs" title="Permanent link">&para;</a></h3>
+<p>The dimension table accepts <code>hostname</code>, but v1 docs and the seed <code>[gates]</code> table do not include hostname-derived built-in labels. Reason: hostnames are user-specific; baking any into built-ins is presumptuous. Users define their own (<code>laptop = { hostname = "mbp-arthur" }</code>) and use the resulting label.</p>
+<p>The implementation supports <code>hostname</code> in user labels on day one. We just don't lead with it.</p>
+<h3 id="86-no-matcher-awareness-beyond-filter">8.6. No Matcher Awareness Beyond Filter<a class="headerlink" href="#86-no-matcher-awareness-beyond-filter" title="Permanent link">&para;</a></h3>
+<p>Gates do not modify rule priorities, do not change handler dispatch order, and do not introduce new handler categories. The filter-handler precedent is fully sufficient.</p>
+<h3 id="87-no-dodot-adopt-round-trip-magic">8.7. No <code>dodot adopt</code> Round-Trip Magic<a class="headerlink" href="#87-no-dodot-adopt-round-trip-magic" title="Permanent link">&para;</a></h3>
+<p>Adopting <code>~/.bashrc</code> from a darwin host produces <code>home.bashrc</code> (no gate). Adding a gate is a manual rename. Reason: adopt's job is "infer where this file lives"; "should this file exist only on this OS" is a design intent the user has to declare. A <code>--only-os &lt;os&gt;</code> flag is a minor future polish (deferred to phase C5).</p>
+<h3 id="88-no-gate-segments-inside-routing-prefix-subtrees">8.8. No Gate Segments Inside Routing-Prefix Subtrees<a class="headerlink" href="#88-no-gate-segments-inside-routing-prefix-subtrees" title="Permanent link">&para;</a></h3>
+<p><code>_home/_darwin/.bashrc</code> is <strong>not</strong> supported. The scanner expands gate dirs only at pack-root level; recursion inside <code>_home/</code>, <code>_xdg/</code>, <code>_app/</code>, and <code>_lib/</code> is owned by the symlink handler and is intentionally gate-unaware. Users who want OS-specific routing put the gate at the top level: <code>_darwin/_home/.bashrc</code>. This composes correctly because gate dirs strip on a matching host, leaving <code>_home/.bashrc</code> for the symlink resolver to route.</p>
+<p>Extending the symlink handler's per-file recursion to evaluate nested gate segments is straightforward but adds dispatch logic to a code path the trait is otherwise minimal in. We defer until a real use case shows the outer-gate form is insufficient.</p>
+<h2 id="9-implementation-sketch">9. Implementation Sketch<a class="headerlink" href="#9-implementation-sketch" title="Permanent link">&para;</a></h2>
+<p>The implementation is structurally additive: every change either introduces a new scanner stage, a new handler, or a new config key. No existing behaviour changes.</p>
+<h3 id="91-module-layout">9.1. Module Layout<a class="headerlink" href="#91-module-layout" title="Permanent link">&para;</a></h3>
+<p><strong>New code</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>crates/dodot-lib/src/gates/
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    mod.rs            # GateTable type, label resolution
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    builtins.rs       # built-in seed (darwin, linux, arm64, ...)
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    parse.rs          # filename + dirname gate token parsing
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>crates/dodot-lib/src/handlers/
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    gate.rs           # GateHandler (filter-phase, registered)
+</code></pre></div>
+<p><strong>Modified code</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>crates/dodot-lib/src/config/
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    mod.rs            # add [gates], [pack] os to schema
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>crates/dodot-lib/src/packs/
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    mod.rs            # pack-level os gate evaluation
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>crates/dodot-lib/src/rules/
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    scanner.rs        # call into gates::evaluate during entry classification
+</code></pre></div>
+<h3 id="92-trait-surface">9.2. Trait Surface<a class="headerlink" href="#92-trait-surface" title="Permanent link">&para;</a></h3>
+<p><strong>The Handler trait does not change. `GateHandler` implements `Handler` with the existing surface — it's a registered filter handler with dynamically generated rules. Rule generation is a new helper</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>
+</code></pre></div>
+<p>The gate rules are added to the rule set per-pack (because <code>[gates]</code> can be pack-overridden). Cost: per-pack rule generation is <code>O(labels)</code> and runs once per <code>dodot up</code>/<code>status</code>.</p>
+<h3 id="93-status-surface">9.3. Status Surface<a class="headerlink" href="#93-status-surface" title="Permanent link">&para;</a></h3>
+<p><code>dodot status</code> rendering recognises <code>HANDLER_GATE</code> matches and renders them with the "gated out (label=X, current=Y)" line. The rendering helper consults the <code>GateTable</code> to produce the human-readable expected/actual.</p>
+<p>Pack-level "inactive (os=...)" rows are rendered by the pack-discovery layer, not by a handler — analogous to how <code>.dodotignore</code>-skipped packs are rendered today.</p>
+<h3 id="94-tests">9.4. Tests<a class="headerlink" href="#94-tests" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>Unit tests</dt>
+<dd>
+<ul>
+<li><code>gates::parse</code> for filename grammar parsing (positive, negative, alias, malformed). </li>
+<li><code>gates::resolve</code> for built-in + user label lookup, AND semantics, dimension validation. </li>
+<li><code>gate_rules_for</code> for dynamic rule generation across host configurations. </li>
+</ul>
+</dd>
+<dt>Integration tests against <code>TempEnvironment</code></dt>
+<dd>
+<ul>
+<li>Pack with <code>[pack] os = ["darwin"]</code> deploys on darwin, inactive on linux. </li>
+<li>File with <code>._darwin.sh</code> deploys on darwin, gated out on linux. </li>
+<li>Directory <code>_darwin/</code> gates a subtree. </li>
+<li>Compound user label (<code>arm-mac</code>) works. </li>
+<li>Unknown label is a hard error with file path in the message. </li>
+<li>Gate composes with template (<code>._darwin.sh.tmpl</code> renders only on darwin). </li>
+<li>Gate composes with routing prefix (<code>home.bashrc._darwin</code>). </li>
+<li><code>[mappings.gates]</code> and filename gate on the same file is a hard error (deferred to C4 if <code>[mappings.gates]</code> doesn't ship in C1–C3). </li>
+</ul>
+</dd>
+<dt>E2E (bats) tests</dt>
+<dd>
+<ul>
+<li>One darwin-only and one linux-only pack on a real test host; <code>dodot status</code> and <code>dodot up</code> produce the expected rows and deployments.</li>
+</ul>
+</dd>
+</dl>
+<h2 id="10-documentation-deliverables">10. Documentation Deliverables<a class="headerlink" href="#10-documentation-deliverables" title="Permanent link">&para;</a></h2>
+<h3 id="required-docs-updates-when-this-lands">Required docs updates when this lands:<a class="headerlink" href="#required-docs-updates-when-this-lands" title="Permanent link">&para;</a></h3>
+<ul>
+<li>New user doc: <code>docs/user/conditional-running.lex</code>. Walks through OS gating with examples; mentions arch and user-defined labels in a footnote. </li>
+<li>Update <code>docs/user/configuration.lex</code>: add <code>[pack] os</code> and <code>[gates]</code> sections. </li>
+<li>Update <code>docs/user/templates.lex</code>: add a "When NOT to use templates" subsection pointing at gates for whole-file gating. </li>
+<li>Update <code>docs/reference/handlers.lex</code>: add <code>GateHandler</code> to the handler taxonomy. </li>
+<li>Update <code>docs/dev/handlers.lex</code>: add the new handler module and its dynamic-rule generation. </li>
+<li>Update <code>docs/reference/terms-and-concepts.lex</code>: add <code>gate</code>, <code>gate label</code>, <code>gate table</code> entries. </li>
+</ul>
+<h2 id="11-phased-implementation">11. Phased Implementation<a class="headerlink" href="#11-phased-implementation" title="Permanent link">&para;</a></h2>
+<p>Each phase ships value on its own.</p>
+<p>Phase C1: Filename gating, files only.</p>
+<ul>
+<li>Built-in gate table (<code>darwin</code>, <code>linux</code>, <code>macos</code>, <code>arm64</code>, <code>x86_64</code>). </li>
+<li>Filename grammar: <code>&lt;stem&gt;._&lt;label&gt;.&lt;ext&gt;</code> and extensionless <code>&lt;name&gt;._&lt;label&gt;</code>. </li>
+<li><code>GateHandler</code> registered in the filter phase. </li>
+<li>Dynamic rule generation; failed-gate matches drop, passing-gate matches pass with stripped names. </li>
+<li>Status renders "gated out" rows. </li>
+<li>User-defined <code>[gates]</code> config section (one-line entries, AND semantics). </li>
+<li>Tests covering the basic OS use case. </li>
+</ul>
+<p>Smallest shippable slice that solves the original three motivating cases.</p>
+<p>Phase C2: Directory gating.</p>
+<ul>
+<li>Directory segment <code>_&lt;label&gt;/</code> parsing. </li>
+<li>Composition with routing-prefix subtrees. </li>
+<li>Tests covering subtree gates inside <code>_home/</code>, <code>_xdg/</code>, <code>_app/</code>. </li>
+</ul>
+<p>Phase C3: Pack-level gating.</p>
+<ul>
+<li><code>[pack] os = [...]</code> config key. </li>
+<li>Pack-discovery pass evaluates gate; inactive packs short-circuit at scan. </li>
+<li>Status renders "inactive (os=...)" rows. </li>
+<li>Tests covering inactive-pack behaviour. </li>
+</ul>
+<p>Phase C4: Glob-based gating in mappings.</p>
+<ul>
+<li><code>[mappings.gates]</code> config key. </li>
+<li>Hard-error conflict with filename grammar on the same file. </li>
+<li>Useful for repos that can't rename files. </li>
+</ul>
+<p>Phase C5: Adopt round-trip polish.</p>
+<ul>
+<li><code>dodot adopt --only-os &lt;os&gt;</code> flag. </li>
+<li>Adopt produces a gated filename when explicitly requested. </li>
+</ul>
+<p>C1 is the minimum viable feature. C2 and C3 are independent of each other and ship in either order. C4 is an escape hatch for legacy repos and can be deferred indefinitely. C5 is ergonomic polish.</p>
+<h2 id="12-what-this-costs-the-user">12. What This Costs the User<a class="headerlink" href="#12-what-this-costs-the-user" title="Permanent link">&para;</a></h2>
+<h3 id="being-honest-about-the-price-tag">Being honest about the price tag:<a class="headerlink" href="#being-honest-about-the-price-tag" title="Permanent link">&para;</a></h3>
+<ul>
+<li>One new grammar to learn: <code>_&lt;label&gt;</code> as filename infix or directory segment. The token universe is small (six built-ins) and self-explanatory. </li>
+<li>One config key (<code>[pack] os</code>) and one config table (<code>[gates]</code>) — both opt-in, both inert if absent. </li>
+<li>A nudge in user docs: "when you'd reach for a template just to skip a file, use a gate instead." </li>
+</ul>
+<h3 id="what-this-does-not-cost">What this does NOT cost:<a class="headerlink" href="#what-this-does-not-cost" title="Permanent link">&para;</a></h3>
+<ul>
+<li>No CLI surface change. No new commands, no new flags (until C5). </li>
+<li>No workflow change. <code>dodot up</code> and <code>dodot status</code> work the same way; gates surface in status output but don't require user interaction. </li>
+<li>No template migration. Existing <code>{% if dodot.os %}</code> templates keep working; users can migrate at their own pace. </li>
+<li>No git integration cost. Gates do not enter the preprocessing pipeline, do not contribute to the baseline cache, do not require a clean filter. </li>
+<li>No lock-in. Removing a gate is a file rename; removing the feature entirely is a <code>dodot up</code> away. </li>
+</ul>
+<h2 id="13-open-questions">13. Open Questions<a class="headerlink" href="#13-open-questions" title="Permanent link">&para;</a></h2>
+<h3 id="131-built-in-hostname-labels">13.1. Built-in Hostname Labels?<a class="headerlink" href="#131-built-in-hostname-labels" title="Permanent link">&para;</a></h3>
+<p>Should dodot ship with built-in labels for common hostname patterns (<code>{ hostname = $current_hostname }</code> as label <code>host</code>)? Probably not: hostnames are user-specific and the user-defined-label path covers the case cleanly.</p>
+<h3 id="132-wsl-detection">13.2. WSL Detection?<a class="headerlink" href="#132-wsl-detection" title="Permanent link">&para;</a></h3>
+<p>WSL hosts report <code>linux</code> for <code>dodot.os</code> but have substantially different filesystem expectations (no <code>/Library</code>, possible <code>/mnt/c</code>, etc.). Should we add a <code>wsl</code> built-in label? Recommend deferring until a real WSL user surfaces a concrete need; the user-defined-label path covers it (<code>wsl = { os = "linux", ??? }</code> — there's no clean dimension to detect WSL from the existing <code>dodot.*</code> namespace, so this might motivate adding a <code>dodot.platform</code> or <code>dodot.kernel</code> field).</p>
+<h3 id="133-case-sensitivity-of-labels">13.3. Case Sensitivity of Labels?<a class="headerlink" href="#133-case-sensitivity-of-labels" title="Permanent link">&para;</a></h3>
+<p>macOS filesystems are case-insensitive by default; Linux is case-sensitive. If a user names a file <code>install._Darwin.sh</code> (capital D), what happens? Recommend: labels are case-sensitive (compared exactly to the table). An entry <code>_Darwin</code> is unknown; hard error. The hardness encourages consistent naming and avoids a "did the user mean <code>darwin</code>?" silent miss.</p>
+<h3 id="134-empty-match-behaviour">13.4. Empty-Match Behaviour?<a class="headerlink" href="#134-empty-match-behaviour" title="Permanent link">&para;</a></h3>
+<p>If <code>[gates]</code> has no user entries and a pack has no gated files, the entire feature is invisible — no rules generated, no scanner overhead beyond the per-entry parse-attempt. Confirm this is the expected zero-cost path.</p>
+<h3 id="135-should-pack-os-generalize-to-pack-gates">13.5. Should <code>[pack] os</code> Generalize to <code>[pack] gates</code>?<a class="headerlink" href="#135-should-pack-os-generalize-to-pack-gates" title="Permanent link">&para;</a></h3>
+<p>v1 ships only <code>[pack] os</code> for the concrete OS-only case (per user feedback during design). If we later want pack-level architecture or hostname gating, do we add <code>[pack] arch</code>, <code>[pack] hostname</code>, ... or a single <code>[pack] gates = ["arm-mac"]</code>? Recommend deferring until demand surfaces; either choice is additive.</p>
+<h3 id="136-dodot-config-gen-output">13.6. <code>dodot config gen</code> Output<a class="headerlink" href="#136-dodot-config-gen-output" title="Permanent link">&para;</a></h3>
+<p><code>dodot config gen</code> emits a starter <code>.dodot.toml</code> with all keys commented out. Should it include the entire built-in <code>[gates]</code> table commented? Recommend: just <code># [gates]</code> with a one-line example, since the built-ins are not user-overridable in practice (and the docs cover them). Keeps the generated file from ballooning.</p>
+<h2 id="14-implementation-notes-vs-spec">14. Implementation Notes vs. Spec<a class="headerlink" href="#14-implementation-notes-vs-spec" title="Permanent link">&para;</a></h2>
+<p>The implementation deviates from the spec above in a few places. Listed here so future readers don't mistake the spec for the source of truth:</p>
+<h3 id="141-rightmost-wins-filename-parser-not-at-most-one">14.1. Rightmost-wins Filename Parser, Not "At Most One"<a class="headerlink" href="#141-rightmost-wins-filename-parser-not-at-most-one" title="Permanent link">&para;</a></h3>
+<p>Spec §2.3 / §8.2 originally claimed "a file may carry at most one filename gate token." The shipped parser (<code>gates::parse_basename_gate</code>) instead uses rightmost-wins: given multiple <code>._&lt;token&gt;</code> segments in a basename (<code>foo._bar._darwin.sh</code>), only the rightmost (<code>_darwin</code>) is treated as a gate; everything to its left stays in the stem (<code>foo._bar.sh</code>). This is a friendlier behaviour — it lets users have legitimate name components like <code>foo._bar.…</code> that aren't gates without forcing a hard error — and the spec was updated post-review to describe the rightmost-wins rule explicitly. Cross-reference: §2.3 paragraph "Implementation note" and §8.2 second paragraph.</p>
+<h3 id="142-darwin-vs-macos-naming-disagrees-with-templates">14.2. <code>darwin</code> vs <code>macos</code> Naming Disagrees with Templates<a class="headerlink" href="#142-darwin-vs-macos-naming-disagrees-with-templates" title="Permanent link">&para;</a></h3>
+<p>Spec §5.2 and §6.1 implicitly assume the gate <code>dimension = value</code> checks compare against the same OS values templates expose as <code>dodot.os</code>. They don't. Templates pass through <code>std::env::consts::OS</code> as <code>"macos"</code> on macOS hosts; the gate machinery normalises the host OS to <code>"darwin"</code> (the Rust <code>target_os</code> name) and accepts <code>"macos"</code> only as an alias. The two surfaces disagree on the canonical macOS string. Documented <a href="./../../user/configuration.lex">in</a> §2.1 <a href="./../../user/conditional-running.lex">and</a> §5; the gate side ships with the alias bridge so <code>[pack] os = ["macos"]</code> Just Works, but the asymmetry is a real wart for users mixing both surfaces.</p>
+<h3 id="143-helper-renamed-to-filter_pre_preprocess_gates">14.3. Helper Renamed to <code>filter_pre_preprocess_gates</code><a class="headerlink" href="#143-helper-renamed-to-filter_pre_preprocess_gates" title="Permanent link">&para;</a></h3>
+<p>Spec §9.2 sketched a <code>gate_rules_for(...)</code> helper for dynamic rule generation. The shipped form is <code>filter_pre_preprocess_gates</code> (in <code>crates/dodot-lib/src/packs/orchestration.rs</code>), which evaluates all three gate sources (basename suffix, directory segment, <code>[mappings.gates]</code> glob) before preprocessing runs. Same role in the pipeline (filter-phase gate evaluation) but a different name and a broader scope than the spec suggested — the spec assumed only basename gates would need pre-preprocess handling, but mapping-gates also reach the preprocessor and needed the same treatment.</p>
+<h3 id="144-gates-inside-routing-prefix-subtrees-are-not-supported">14.4. Gates Inside Routing-Prefix Subtrees Are Not Supported<a class="headerlink" href="#144-gates-inside-routing-prefix-subtrees-are-not-supported" title="Permanent link">&para;</a></h3>
+<p>Spec §5.1 implied gate dirs could nest inside routing-prefix subtrees (<code>_home/_darwin/.bashrc</code>). The shipped scanner only evaluates gate dirs at the pack root; the symlink handler's per-file recursion inside <code>_home/</code>, <code>_xdg/</code>, <code>_app/</code>, <code>_lib/</code> is intentionally gate-unaware. The supported nesting is the <strong>opposite</strong> — gate at the outer level: <code>_darwin/_home/.bashrc</code>. Spec was updated post-review (§5.1 example table, §8.8 deferral note) to describe the supported shape and document the inverse case as future work. The reverse case (gate inside routing prefix) is straightforward to implement — extend the symlink handler's recursion to consult the gate table per directory segment — but adds dispatch logic to a code path the trait is otherwise minimal in. Deferred until a real use case shows the outer-gate form is insufficient.</p>
+<h3 id="145-only-os-validates-against-root-config-only">14.5. <code>--only-os</code> Validates Against Root Config Only<a class="headerlink" href="#145-only-os-validates-against-root-config-only" title="Permanent link">&para;</a></h3>
+<p>Spec §11 (phase C5) said <code>--only-os</code> validates the label against the resolved gate table. The shipped form validates against the <strong>root</strong> <code>.dodot.toml</code>'s <code>[gates]</code> only — labels defined exclusively in a pack-level <code>.dodot.toml</code> are not visible because adopt validates before it knows which pack the source maps into (and pack inference can require <code>--into</code>, which adopts validates <strong>after</strong>). Documented <a href="./../../user/conditional-running.lex">in</a> §8. Users who want a custom label for <code>--only-os</code> define it in the root config; the label is still referenceable from any pack via filename grammar or <code>[mappings.gates]</code>.</p>
+<h3 id="146-mappingsgates-glob-scope-is-top-level">14.6. <code>[mappings.gates]</code> Glob Scope Is Top-Level<a class="headerlink" href="#146-mappingsgates-glob-scope-is-top-level" title="Permanent link">&para;</a></h3>
+<p>Spec §6.1 / §7 example showed <code>[mappings.gates] "setup/*.sh" = "linux"</code> suggesting nested-path globs work. They don't, in the shipped implementation: the scanner surfaces top-level entries and <code>[mappings.gates]</code> matches against <strong>that</strong> shape — globs containing path separators only fire when a top-level entry has the matching shape. The symlink handler's nested per-file recursion is intentionally gate-unaware (mirroring §14.4's directory-gate limitation). Spec was updated post-review (§6.1) to remove the misleading nested example and describe the depth-1 scope explicitly. Same future-work note as §14.4 — extending nested matching is straightforward but waits for real demand.</p>
+<h3 id="147-status-footnote-format">14.7. Status Footnote Format<a class="headerlink" href="#147-status-footnote-format" title="Permanent link">&para;</a></h3>
+<p>Spec §7.2 sketched a status row reading <code>gated out (label=X, current=Y)</code>. The shipped renderer uses two parts: the row label is <code>gated out (X)</code> (just the label name) and a footnote stamps <code>expected os=darwin; got os=linux</code> (test-failure idiom) — <a href="./../../user/conditional-running.lex">see</a> §10. The spec's combined form was rejected during implementation as harder to scan when many rows share the same gate; splitting label-on-row from predicate-in-footnote keeps the per-row column alignment stable.</p>
+<h3 id="148-hostfacts-caching-on-executioncontext">14.8. <code>HostFacts</code> Caching on <code>ExecutionContext</code><a class="headerlink" href="#148-hostfacts-caching-on-executioncontext" title="Permanent link">&para;</a></h3>
+<p>Spec §7.1 / §9.1 didn't specify when host facts get detected. The shipped form caches them once per <code>ExecutionContext</code> (<code>HostFacts::detect()</code> runs in <code>production()</code>); per-pack scanning then borrows <code>&amp;HostFacts</code> from the context instead of re-detecting. Without this, the <code>hostname(1)</code> shell-out fired per pack — a measurable per-run cost on repos with many packs, and a correctness concern when system state changes mid-run. The detection helpers (<code>detect_hostname</code> / <code>detect_username</code>) are also shared with the template preprocessor's <code>dodot.hostname</code> / <code>dodot.username</code> resolution so the two paths can never disagree.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

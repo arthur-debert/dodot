@@ -1,0 +1,1659 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/proposals/shipped/pack-ordering/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Pack ordering - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-specification-pack-ordering" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Pack ordering
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#design-specification-pack-ordering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Specification: Pack Ordering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Motivation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Motivation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-bootstrap-is-the-common-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1. Bootstrap Is the Common Case
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.1. Bootstrap Is the Common Case">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-real-situations-have-surfaced-from-early-adoption-all-variations-of-the-same-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three real situations have surfaced from early adoption, all variations of the same shape:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-the-undocumented-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2. The Undocumented Contract
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.2. The Undocumented Contract">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dodot-already-orders-packs-lexicographically-by-directory-name-shell-init-files-are-emitted-across-packs-in-that-same-order-pack-name-validation-accepts-digits-hyphens-underscores-and-dots-so-users-can-already-prefix-a-directory-with-001-and-observe-the-ordering-effect-what-is-missing-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dodot already orders packs lexicographically by directory name. Shell init files are emitted across packs in that same order. Pack name validation accepts digits, hyphens, underscores, and dots, so users can already prefix a directory with 001- and observe the ordering effect. What is missing is:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Principles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Principles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-the-filesystem-should-tell-the-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. The Filesystem Should Tell the Truth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-one-mechanism-not-three" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. One Mechanism, Not Three
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-ordering-is-not-dependency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. Ordering Is Not Dependency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-current-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The Current State
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The Current State">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-what-dodot-does-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. What dodot Does Today
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-what-breaks-without-this-proposal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. What Breaks Without This Proposal
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.2. What Breaks Without This Proposal">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#nothing-breaks-a-user-can-rename-their-packs-to-001-brew-010-nvim-100-starship-today-and-ordering-will-work-as-expected-the-cost-they-pay-is-that" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nothing breaks. A user can rename their packs to 001-brew, 010-nvim, 100-starship today and ordering will work as expected. The cost they pay is that:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-survey-of-prior-art" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Survey of Prior Art
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Survey of Prior Art">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-dotfiles-managers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. Dotfiles Managers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-adjacent-ordering-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Adjacent Ordering Systems
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-what-the-survey-says" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. What the Survey Says
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.3. What the Survey Says">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-families" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three families:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-proposal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Proposal
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Proposal">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-the-contract-document-what-already-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. The Contract (Document What Already Exists)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.1. The Contract (Document What Already Exists)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#add-to-docsreferencehandlerslex-a-new-cross-pack-ordering-section-with-this-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add to docs/reference/handlers.lex, a new "Cross-pack ordering" section with this contract:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-the-prefix-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. The Prefix Grammar
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.2. The Prefix Grammar">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-pack-directory-matching-the-regex-d-_-has-its-prefix-recognised-as-ordering-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A pack directory matching the regex ^(\d+)[-_](.+)$ has its prefix recognised as ordering metadata:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-collision-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Collision Rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.3. Collision Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-classes-of-collision-are-possible-all-are-scan-time-errors-with-both-offending-paths-reported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three classes of collision are possible. All are scan-time errors with both offending paths reported:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-recommended-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4. Recommended Convention
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.4. Recommended Convention">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#document-do-not-enforce" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document, do not enforce:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-what-this-proposal-does-not-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. What This Proposal Does Not Build
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. What This Proposal Does Not Build">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-no-priority-field-in-dodottoml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. No priority Field in .dodot.toml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-no-dependency-graph-requires-after" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. No Dependency Graph (requires:, after:)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-no-phase-buckets-bootstrap-main-late" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3. No Phase Buckets (bootstrap/, main/, late/)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-no-_-prefix-as-a-bootstrap-signal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4. No _ Prefix as a Bootstrap Signal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65-no-validation-of-bootstrap-hygiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5. No Validation of Bootstrap Hygiene
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-implementation-sketch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Implementation Sketch
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Implementation Sketch">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-pack-struct-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. Pack Struct Changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-scan-time-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. Scan-Time Changes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.2. Scan-Time Changes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scan_packs-gains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        scan_packs() gains:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-lookup-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3. Lookup Changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-display-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4. Display Surfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.4. Display Surfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#every-user-facing-surface-switches-to-display_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Every user-facing surface switches to display_name:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#75-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.5. Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-documentation-deliverables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Documentation Deliverables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Documentation Deliverables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-cross-pack-ordering-section-in-handlerslex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1. Cross-Pack Ordering Section in handlers.lex
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-bootstrap-zone-note-in-getting-startedlex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2. Bootstrap Zone Note in getting-started.lex
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-pack-ordering-how-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3. Pack Ordering How-To
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.3. Pack Ordering How-To">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#new-short-doc-under-docsreference-or-wherever-how-tos-live-covering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New short doc under docs/reference/ (or wherever how-tos live) covering:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-migration-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4. Migration Note
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-phased-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Phased Implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Phased Implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#revisit-only-on-concrete-user-demand-candidates-in-rough-order-of-likelihood" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Revisit only on concrete user demand. Candidates, in rough order of likelihood:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-what-this-costs-the-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. What This Costs the User
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. What This Costs the User">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#being-honest-about-the-price-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Being honest about the price tag:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#being-honest-about-what-this-does-not-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Being honest about what this does not cost:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/proposals/shipped/pack-ordering.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Pack ordering</h1>
+
+<h2 id="design-specification-pack-ordering">Design Specification: Pack Ordering<a class="headerlink" href="#design-specification-pack-ordering" title="Permanent link">&para;</a></h2>
+<p>This document specifies how dodot orders the application of packs across a dotfiles repository. The current behaviour — strict lexicographic order by directory name — is a de-facto contract that has never been written down, and users have no idiomatic way to express "this pack must run before that one" when bootstrap dependencies require it.</p>
+<p>The proposal is small on purpose. It documents the existing contract, adds a recognised numeric prefix grammar for pack directories, and explicitly defers richer ordering surfaces (priority fields, dependency graphs, phase buckets) until real usage shows the prefix is insufficient. The handlers <a href="./preprocessing-pipeline.lex">spec</a> already covers within-pack handler phases; this document covers the gap above that — order across packs.</p>
+<h2 id="1-motivation">1. Motivation<a class="headerlink" href="#1-motivation" title="Permanent link">&para;</a></h2>
+<h3 id="11-bootstrap-is-the-common-case">1.1. Bootstrap Is the Common Case<a class="headerlink" href="#11-bootstrap-is-the-common-case" title="Permanent link">&para;</a></h3>
+<h4 id="three-real-situations-have-surfaced-from-early-adoption-all-variations-of-the-same-shape">Three real situations have surfaced from early adoption, all variations of the same shape:<a class="headerlink" href="#three-real-situations-have-surfaced-from-early-adoption-all-variations-of-the-same-shape" title="Permanent link">&para;</a></h4>
+<ul>
+<li>The Homebrew shell environment must be evaluated before any pack that uses brew. Today this lives in raw shell rc above the dodot eval, because dodot has no way to express "this pack first". </li>
+<li><code>compinit</code> must run after all completion-providing plugins are loaded but before <code>fzf-tab</code>. The cross-pack ordering between a <code>completion</code> pack and an <code>fzf-tab</code> pack is undefined unless the user knows the lex-order trick. </li>
+<li>On a fresh macOS install, baseline setup (xcode-select, license acceptance, etc.) is a precondition for anything that compiles. Today users either run <code>dodot up &lt;bootstrap-pack&gt;</code> manually first or push the work outside dodot entirely. </li>
+</ul>
+<p>These are not requests for a dependency graph. They are requests for an ordering primitive. The distinction matters; see §6.</p>
+<h3 id="12-the-undocumented-contract">1.2. The Undocumented Contract<a class="headerlink" href="#12-the-undocumented-contract" title="Permanent link">&para;</a></h3>
+<h4 id="dodot-already-orders-packs-lexicographically-by-directory-name-shell-init-files-are-emitted-across-packs-in-that-same-order-pack-name-validation-accepts-digits-hyphens-underscores-and-dots-so-users-can-already-prefix-a-directory-with-001-and-observe-the-ordering-effect-what-is-missing-is">dodot already orders packs lexicographically by directory <a href="../crates/dodot-lib/src/packs/mod.rs">name</a>. Shell init files are emitted across packs in that same <a href="../crates/dodot-lib/src/shell/mod.rs">order</a>. Pack name validation accepts digits, hyphens, underscores, and dots, so users can already prefix a directory with <code>001-</code> and observe the ordering effect. What is missing is:<a class="headerlink" href="#dodot-already-orders-packs-lexicographically-by-directory-name-shell-init-files-are-emitted-across-packs-in-that-same-order-pack-name-validation-accepts-digits-hyphens-underscores-and-dots-so-users-can-already-prefix-a-directory-with-001-and-observe-the-ordering-effect-what-is-missing-is" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Documentation that this contract exists and can be relied on. </li>
+<li>A recognised, opinionated grammar so the prefix is treated as ordering metadata rather than as part of the pack's logical name. </li>
+<li>A getting-started note explaining what belongs in raw shell rc (the bootstrap-before-init zone) versus what belongs in a pack. </li>
+</ul>
+<p>The first item is free. The second is small. The third is documentation only. None of this requires a new ordering engine.</p>
+<h2 id="2-principles">2. Principles<a class="headerlink" href="#2-principles" title="Permanent link">&para;</a></h2>
+<h3 id="21-the-filesystem-should-tell-the-truth">2.1. The Filesystem Should Tell the Truth<a class="headerlink" href="#21-the-filesystem-should-tell-the-truth" title="Permanent link">&para;</a></h3>
+<p>A user listing their dotfiles directory should be able to see the order packs will apply. This is dodot's house style: explicit over magical, visible over configured. A <code>priority = 30</code> field buried in a <code>.dodot.toml</code> is invisible to anyone scanning the directory; a directory named <code>030-nvim</code> is not. The cost is that the order is encoded in the name, which couples identity to position. We accept that cost.</p>
+<h3 id="22-one-mechanism-not-three">2.2. One Mechanism, Not Three<a class="headerlink" href="#22-one-mechanism-not-three" title="Permanent link">&para;</a></h3>
+<p>Numeric prefixes, an <code>_</code> bootstrap convention, a <code>priority</code> field, and a <code>requires:</code> dependency list are all candidates. Shipping any two of them in the same release creates a conflict-of-rules problem (which wins when they disagree?) and forces every user to learn both. This proposal ships exactly one mechanism — the numeric prefix — and reserves the others as future work, gated on real demand. See §6.</p>
+<h3 id="23-ordering-is-not-dependency">2.3. Ordering Is Not Dependency<a class="headerlink" href="#23-ordering-is-not-dependency" title="Permanent link">&para;</a></h3>
+<p>systemd's split between <code>Before=</code>/<code>After=</code> (ordering) and <code>Requires=</code>/<code>Wants=</code> (dependency strength) is the right primitive, and conflating them is the documented failure mode of every system that has tried. dodot's prefix is purely an ordering primitive: it says "A applies before B", not "A is required for B to make sense". A pack with a missing dependency is the user's problem, not the framework's. We do not detect, validate, or react to it.</p>
+<h2 id="3-the-current-state">3. The Current State<a class="headerlink" href="#3-the-current-state" title="Permanent link">&para;</a></h2>
+<h3 id="31-what-dodot-does-today">3.1. What dodot Does Today<a class="headerlink" href="#31-what-dodot-does-today" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>scan_packs()</code> reads the dotfiles directory, builds a <code>Pack</code> per subdirectory, and sorts by directory <a href="../crates/dodot-lib/src/packs/mod.rs">name</a>. </li>
+<li>The shell handler iterates packs in scan order and emits one source line per shell file per <a href="../crates/dodot-lib/src/shell/mod.rs">pack</a>. Across packs, the lex order is the source order. </li>
+<li><code>dodot up &lt;name&gt;</code> resolves the argument by exact directory-name <a href="../crates/dodot-lib/src/packs/orchestration.rs">match</a>. There is no fuzzy match, no alias system, no prefix stripping. </li>
+<li>Pack name <a href="../crates/dodot-lib/src/packs/mod.rs">validation</a> accepts <code>[A-Za-z0-9._-]+</code>, so <code>001-brew</code>, <code>010_nvim</code>, and <code>99.late</code> are all currently legal pack names. </li>
+</ul>
+<h3 id="32-what-breaks-without-this-proposal">3.2. What Breaks Without This Proposal<a class="headerlink" href="#32-what-breaks-without-this-proposal" title="Permanent link">&para;</a></h3>
+<h4 id="nothing-breaks-a-user-can-rename-their-packs-to-001-brew-010-nvim-100-starship-today-and-ordering-will-work-as-expected-the-cost-they-pay-is-that">Nothing breaks. A user can rename their packs to <code>001-brew</code>, <code>010-nvim</code>, <code>100-starship</code> today and ordering will work as expected. The cost they pay is that:<a class="headerlink" href="#nothing-breaks-a-user-can-rename-their-packs-to-001-brew-010-nvim-100-starship-today-and-ordering-will-work-as-expected-the-cost-they-pay-is-that" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Every CLI invocation uses the prefixed name: <code>dodot up 010-nvim</code>, not <code>dodot up nvim</code>. </li>
+<li>Every status output, error message, and log line shows the prefix. </li>
+<li>The convention is theirs, not dodot's; another user reading their repo has to infer it. </li>
+</ul>
+<p>This proposal pays those costs once, in the framework, so users don't pay them on every interaction.</p>
+<h2 id="4-survey-of-prior-art">4. Survey of Prior Art<a class="headerlink" href="#4-survey-of-prior-art" title="Permanent link">&para;</a></h2>
+<p>The decision space has been explored extensively by adjacent tools. We summarise rather than enumerate; the full survey informs the trade-offs but the conclusion is what matters.</p>
+<h3 id="41-dotfiles-managers">4.1. Dotfiles Managers<a class="headerlink" href="#41-dotfiles-managers" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>chezmoi</dt>
+<dd>
+<p>Filename grammar: <code>run_once_before_NN-name.sh</code>. Phase encoded in the name (<code>before</code>, <code>after</code>, <code>once</code>); within a phase, lexical order. The closest analog to what we're proposing. Bootstrap is solved cleanly. Cost: filename grammar is dense and easy to typo, and the <code>once</code> hash key is the filename, so renaming breaks idempotency.</p>
+</dd>
+<dt>dotbot</dt>
+<dd>
+<p>YAML list order is the order. No deps, no priorities. Refactoring means rewriting the giant ordered list. Works, but the ordering surface is one global file rather than per-pack metadata.</p>
+</dd>
+<dt>yadm</dt>
+<dd>
+<p>One user-authored bootstrap script. Punts the problem to the user.</p>
+</dd>
+<dt>rcm</dt>
+<dd>
+<p><code>pre-up.d/</code> and <code>post-up.d/</code> directories with run-parts-style lex order. Two phases plus lex within. Coarse but adequate for the bootstrap case.</p>
+</dd>
+<dt>home-manager (Nix)</dt>
+<dd>
+<p>Full DAG. Solves everything. Requires buying into Nix.</p>
+</dd>
+<dt>Ansible roles</dt>
+<dd>
+<p><code>meta/main.yml</code> <code>dependencies:</code>. Named, explicit, transitively resolved. The gold standard for declared deps, also the most expensive in machinery.</p>
+</dd>
+</dl>
+<h3 id="42-adjacent-ordering-systems">4.2. Adjacent Ordering Systems<a class="headerlink" href="#42-adjacent-ordering-systems" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>SysV <code>S01foo</code>, <code>S99bar</code></dt>
+<dd>
+<p>The original NN-prefix pattern. Works in practice; the documented pain is renumbering cascades and the implicit-meaning problem (<code>S30</code> doesn't say <strong>why</strong> it's before <code>S40</code>). The 10/20/30 gap convention exists precisely to mitigate the renumbering pain.</p>
+</dd>
+<dt>run-parts (<code>/etc/cron.d</code>, <code>/etc/logrotate.d</code>)</dt>
+<dd>
+<p>Lexical order with conventional prefixes <code>00-</code>, <code>50-</code>, <code>99-</code>. Pitfall: filenames with dots are silently skipped by run-parts itself. Universal gap convention.</p>
+</dd>
+<dt>systemd</dt>
+<dd>
+<p><code>Before=</code> / <code>After=</code> for ordering, <code>Requires=</code> / <code>Wants=</code> for dependency. Decoupling the two is the lesson worth stealing.</p>
+</dd>
+<dt>zsh plugin managers (zinit, antigen)</dt>
+<dd>
+<p><code>.zshrc</code> line order. <code>compinit</code> → <code>fzf-tab</code> is the canonical "ordering matters" example in the entire shell ecosystem.</p>
+</dd>
+<dt>Vim plugin/after, Emacs use-package :after</dt>
+<dd>
+<p>Phase buckets and named "load after" deps respectively. The vim two-phase model (plugin/, after/plugin/) is a reminder that two buckets cover surprisingly many cases.</p>
+</dd>
+</dl>
+<h3 id="43-what-the-survey-says">4.3. What the Survey Says<a class="headerlink" href="#43-what-the-survey-says" title="Permanent link">&para;</a></h3>
+<h4 id="three-families">Three families:<a class="headerlink" href="#three-families" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Numeric prefix + lex sort (SysV, run-parts, chezmoi-in-practice). Zero learning, visible, painful to renumber. </li>
+<li>Named deps + topo-sort (Ansible, use-package, Nix). Refactor-safe, requires config, edge cases in the graph. </li>
+<li>Phase buckets (vim plugin/after, chezmoi before/after, rcm pre/post). Coarse, adequate for ~90% of bootstrap cases, almost no machinery. </li>
+</ul>
+<p>The chezmoi precedent is the strongest argument for prefix-based ordering specifically in dotfiles tooling: the model is proven on the same problem we're solving. The systemd precedent is the strongest argument for <strong>not</strong> conflating ordering with dependency.</p>
+<h2 id="5-proposal">5. Proposal<a class="headerlink" href="#5-proposal" title="Permanent link">&para;</a></h2>
+<h3 id="51-the-contract-document-what-already-exists">5.1. The Contract (Document What Already Exists)<a class="headerlink" href="#51-the-contract-document-what-already-exists" title="Permanent link">&para;</a></h3>
+<h4 id="add-to-docsreferencehandlerslex-a-new-cross-pack-ordering-section-with-this-contract">Add to <code>docs/reference/handlers.lex</code>, a new "Cross-pack ordering" section with this contract:<a class="headerlink" href="#add-to-docsreferencehandlerslex-a-new-cross-pack-ordering-section-with-this-contract" title="Permanent link">&para;</a></h4>
+<p>dodot processes packs in lexicographic order of their on-disk directory names. Within a pack, handlers run in their fixed phase order. Across packs, this lex order determines the relative order of every cross-pack effect — shell init source order, PATH entry order, install/provision execution order.</p>
+<p>This sentence resolves the original feedback at zero implementation cost. Ship it before any code change.</p>
+<h3 id="52-the-prefix-grammar">5.2. The Prefix Grammar<a class="headerlink" href="#52-the-prefix-grammar" title="Permanent link">&para;</a></h3>
+<h4 id="a-pack-directory-matching-the-regex-d-_-has-its-prefix-recognised-as-ordering-metadata">A pack directory matching the regex <code>^(\d+)[-_](.+)$</code> has its prefix recognised as ordering metadata:<a class="headerlink" href="#a-pack-directory-matching-the-regex-d-_-has-its-prefix-recognised-as-ordering-metadata" title="Permanent link">&para;</a></h4>
+<dl>
+<dt>On disk</dt>
+<dd>
+<p>The directory is named with the prefix: <code>010-nvim</code>, <code>020_zsh</code>, <code>100-starship</code>.</p>
+</dd>
+<dt>Logical pack name</dt>
+<dd>
+<p>The portion after the separator: <code>nvim</code>, <code>zsh</code>, <code>starship</code>. This is what every user-facing surface uses — <code>dodot up &lt;name&gt;</code>, status output, error messages, generated shell-init comments, log lines.</p>
+</dd>
+<dt>Sort key</dt>
+<dd>
+<p>The full on-disk directory name. Lexicographic sort over the full name produces the intended numeric order <strong>as long as users follow the digit-width convention</strong> (see §5.4).</p>
+</dd>
+<dt>Unprefixed packs</dt>
+<dd>
+<p>Sort lexically among themselves and interleave naturally with prefixed ones. <code>010-brew</code> \&lt; <code>020-zsh</code> \&lt; <code>nvim</code> \&lt; <code>starship</code>, so prefixed packs run before unprefixed ones in this example.</p>
+</dd>
+</dl>
+<h3 id="53-collision-rules">5.3. Collision Rules<a class="headerlink" href="#53-collision-rules" title="Permanent link">&para;</a></h3>
+<h4 id="three-classes-of-collision-are-possible-all-are-scan-time-errors-with-both-offending-paths-reported">Three classes of collision are possible. All are scan-time errors with both offending paths reported:<a class="headerlink" href="#three-classes-of-collision-are-possible-all-are-scan-time-errors-with-both-offending-paths-reported" title="Permanent link">&para;</a></h4>
+<dl>
+<dt>Logical-name collision</dt>
+<dd>
+<p>Both <code>nvim</code> and <code>010-nvim</code> exist. The logical name <code>nvim</code> is ambiguous. Hard error.</p>
+</dd>
+<dt>Multi-prefix collision</dt>
+<dd>
+<p>Both <code>010-nvim</code> and <code>020-nvim</code> exist. The logical name <code>nvim</code> resolves to two packs. Hard error.</p>
+</dd>
+<dt>Empty stem</dt>
+<dd>
+<p><code>010-</code> or <code>010_</code> (no name after the separator). Hard error: a pack must have a name.</p>
+</dd>
+</dl>
+<p>The non-collision case — two packs with the same prefix and different stems (<code>010-brew</code> and <code>010-zsh</code>) — is permitted; lex order on the stem decides between them. We do not enforce the gap convention; it is documented but not validated.</p>
+<h3 id="54-recommended-convention">5.4. Recommended Convention<a class="headerlink" href="#54-recommended-convention" title="Permanent link">&para;</a></h3>
+<h4 id="document-do-not-enforce">Document, do not enforce:<a class="headerlink" href="#document-do-not-enforce" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Three-digit prefixes with leading zeros: <code>010</code>, <code>020</code>, <code>050</code>, <code>100</code>. Two digits work but break sort once you cross 99 to 100. </li>
+<li>Gap convention: 10/20/30/.../100, leaving room to insert without renumbering. This is the universal lesson from SysV and run-parts. </li>
+<li>Reserved range by convention: <code>000–099</code> for bootstrap-y things (PATH setup, package manager install, OS-level prereqs). <code>100–899</code> for normal packs. <code>900–999</code> for late-loading things (prompt, autosuggestions, anything that wants to see the fully-populated environment). </li>
+<li>Hyphen separator preferred over underscore. Both work; hyphen reads better and matches existing dodot conventions. </li>
+</ul>
+<p>These are conventions for the docs and the canonical example, not validation rules. A user who wants <code>5-foo</code> and <code>99-bar</code> is not wrong; they have just bought themselves a renumbering hazard, and that is their business.</p>
+<h2 id="6-what-this-proposal-does-not-build">6. What This Proposal Does Not Build<a class="headerlink" href="#6-what-this-proposal-does-not-build" title="Permanent link">&para;</a></h2>
+<p>Each of these is a reasonable extension. None ships in this proposal.</p>
+<h3 id="61-no-priority-field-in-dodottoml">6.1. No <code>priority</code> Field in <code>.dodot.toml</code><a class="headerlink" href="#61-no-priority-field-in-dodottoml" title="Permanent link">&para;</a></h3>
+<p>A <code>priority = 30</code> field per pack would decouple order from directory name and make refactoring easier (move a pack between order positions without renaming). The cost is that order becomes invisible: you can no longer answer "what runs first?" by listing the directory. Per principle 2.1, the filesystem should tell the truth. Defer until a concrete case shows the prefix can't handle it.</p>
+<h3 id="62-no-dependency-graph-requires-after">6.2. No Dependency Graph (<code>requires:</code>, <code>after:</code>)<a class="headerlink" href="#62-no-dependency-graph-requires-after" title="Permanent link">&para;</a></h3>
+<p>An explicit <code>after: [pack-name]</code> field, with topo-sort and cycle detection, is the Ansible/use-package model. It is refactor-safe and expresses intent precisely. It is also a multi-week project (graph construction, cycle detection, error UX, doc churn) for a problem that the prefix solves for the 90% case. If real usage produces a case where two packs need to be relatively ordered without caring about their global position, revisit. The prefix and an <code>after:</code> field compose without contradiction; we are not painting ourselves into a corner.</p>
+<h3 id="63-no-phase-buckets-bootstrap-main-late">6.3. No Phase Buckets (<code>bootstrap/</code>, <code>main/</code>, <code>late/</code>)<a class="headerlink" href="#63-no-phase-buckets-bootstrap-main-late" title="Permanent link">&para;</a></h3>
+<p>Either as parent directories or as a frontmatter field. The prefix already provides finer-grained control than three buckets, and the convention in §5.4 (000–099 / 100–899 / 900–999) gives the same coarse-grained intuition without a second mechanism. Per principle 2.2.</p>
+<h3 id="64-no-_-prefix-as-a-bootstrap-signal">6.4. No <code>_</code> Prefix as a Bootstrap Signal<a class="headerlink" href="#64-no-_-prefix-as-a-bootstrap-signal" title="Permanent link">&para;</a></h3>
+<p>"Anything prefixed with <code>_</code> runs first" was considered. It is a one-bit phase bucket layered on top of the lex-order rule, which means two ordering rules that interact. Two rules &gt; one rule. The <code>0NN-</code> prefix range covers the same intent.</p>
+<h3 id="65-no-validation-of-bootstrap-hygiene">6.5. No Validation of Bootstrap Hygiene<a class="headerlink" href="#65-no-validation-of-bootstrap-hygiene" title="Permanent link">&para;</a></h3>
+<p>dodot does not detect "you put a brew-using pack before the brew-installing pack". That is a runtime failure of the user's pack scripts, surfaced through normal exit codes. Validating it would require dodot to understand what each pack actually does, which is out of scope by a wide margin.</p>
+<h2 id="7-implementation-sketch">7. Implementation Sketch<a class="headerlink" href="#7-implementation-sketch" title="Permanent link">&para;</a></h2>
+<p>Approximate scope: one struct field, one regex, one collision check, one display swap, plus tests and docs.</p>
+<h3 id="71-pack-struct-changes">7.1. Pack Struct Changes<a class="headerlink" href="#71-pack-struct-changes" title="Permanent link">&para;</a></h3>
+<p>The <code>Pack</code> struct gains a <code>display_name: String</code> alongside the existing <code>name: String</code>. The <code>name</code> field continues to hold the raw on-disk directory name and continues to be the sort key; <code>display_name</code> holds the stripped form.</p>
+<p>For unprefixed packs, <code>display_name == name</code>. For prefixed packs, <code>display_name</code> is the stem.</p>
+<h3 id="72-scan-time-changes">7.2. Scan-Time Changes<a class="headerlink" href="#72-scan-time-changes" title="Permanent link">&para;</a></h3>
+<h4 id="scan_packs-gains"><code>scan_packs()</code> <a href="../crates/dodot-lib/src/packs/mod.rs">gains:</a><a class="headerlink" href="#scan_packs-gains" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Regex match for the prefix grammar; populate <code>display_name</code>. </li>
+<li>Collision detection (§5.3) implemented as a pass over the scanned packs after sort: hash by <code>display_name</code>, error on duplicates with both source paths in the message. </li>
+</ul>
+<p>Sort behaviour is unchanged: still by <code>name</code>, still lex.</p>
+<h3 id="73-lookup-changes">7.3. Lookup Changes<a class="headerlink" href="#73-lookup-changes" title="Permanent link">&para;</a></h3>
+<p><code>dodot up &lt;arg&gt;</code> <a href="../crates/dodot-lib/src/packs/orchestration.rs">resolves</a> <code>&lt;arg&gt;</code> against <code>display_name</code> first. Exact match on <code>display_name</code> wins. As a fallback, exact match on <code>name</code> (raw) is also accepted, so users with muscle memory or scripts referencing the prefixed form are not broken.</p>
+<p>If <code>&lt;arg&gt;</code> matches multiple packs (only possible if the user disabled collision detection, which they cannot — see §5.3), the same scan-time error fires.</p>
+<h3 id="74-display-surfaces">7.4. Display Surfaces<a class="headerlink" href="#74-display-surfaces" title="Permanent link">&para;</a></h3>
+<h4 id="every-user-facing-surface-switches-to-display_name">Every user-facing surface switches to <code>display_name</code>:<a class="headerlink" href="#every-user-facing-surface-switches-to-display_name" title="Permanent link">&para;</a></h4>
+<ul>
+<li><code>dodot status</code> table rows </li>
+<li><code>dodot list</code> output </li>
+<li>Error messages ("pack <code>nvim</code> not found") </li>
+<li>Generated shell-init comments (<code># pack: nvim</code>) </li>
+<li>Log lines </li>
+</ul>
+<p>Internal surfaces (datastore paths, sentinel keys, anything keyed by directory identity) continue to use <code>name</code>. The directory on disk is still <code>010-nvim</code>; the datastore subtree is still <code>010-nvim/</code>. Only display changes.</p>
+<h3 id="75-tests">7.5. Tests<a class="headerlink" href="#75-tests" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Round-trip: scan a fixture with mixed prefixed/unprefixed packs, assert sort order and <code>display_name</code> values. </li>
+<li>Collision detection: each of the three collision classes produces the expected error. </li>
+<li>Lookup: <code>dodot up &lt;stripped&gt;</code> and <code>dodot up &lt;raw&gt;</code> both find the right pack. </li>
+<li>Display: fixture with <code>010-nvim</code> produces output containing <code>nvim</code>, not <code>010-nvim</code>, in the rendered template. </li>
+</ul>
+<h2 id="8-documentation-deliverables">8. Documentation Deliverables<a class="headerlink" href="#8-documentation-deliverables" title="Permanent link">&para;</a></h2>
+<p>The proposal's user value is roughly half code and half docs. The doc work is:</p>
+<h3 id="81-cross-pack-ordering-section-in-handlerslex">8.1. Cross-Pack Ordering Section in handlers.lex<a class="headerlink" href="#81-cross-pack-ordering-section-in-handlerslex" title="Permanent link">&para;</a></h3>
+<p>Per §5.1. One paragraph stating the lex-order contract, with a concrete example.</p>
+<h3 id="82-bootstrap-zone-note-in-getting-startedlex">8.2. Bootstrap Zone Note in getting-started.lex<a class="headerlink" href="#82-bootstrap-zone-note-in-getting-startedlex" title="Permanent link">&para;</a></h3>
+<p>One sentence: anything that must exist before dodot can run (Homebrew shellenv that puts dodot on PATH, OS-level prereqs that block any pack from succeeding) belongs in raw shell rc above the dodot eval line, not in a pack. Resolves the third user feedback item.</p>
+<h3 id="83-pack-ordering-how-to">8.3. Pack Ordering How-To<a class="headerlink" href="#83-pack-ordering-how-to" title="Permanent link">&para;</a></h3>
+<h4 id="new-short-doc-under-docsreference-or-wherever-how-tos-live-covering">New short doc under <code>docs/reference/</code> (or wherever how-tos live) covering:<a class="headerlink" href="#new-short-doc-under-docsreference-or-wherever-how-tos-live-covering" title="Permanent link">&para;</a></h4>
+<ul>
+<li>The prefix grammar </li>
+<li>The 10/20/30 gap convention and why it matters </li>
+<li>The 000–099 / 100–899 / 900–999 reserved-range convention </li>
+<li>The canonical example: <code>010-brew</code>, <code>020-zsh</code>, <code>030-compinit</code>, <code>040-fzf-tab</code>, <code>100-starship</code>, <code>900-zsh-autosuggestions</code> </li>
+<li>A note that prefixes are optional — unprefixed packs work fine and most users will never need them </li>
+</ul>
+<h3 id="84-migration-note">8.4. Migration Note<a class="headerlink" href="#84-migration-note" title="Permanent link">&para;</a></h3>
+<p>Existing users with prefixed packs (today, manually, paying the CLI ergonomics cost) should be told their pack names are about to change in CLI output. This is a behaviour change, not a breaking one (the raw-name fallback in §7.3 keeps scripts working), but worth a CHANGELOG line.</p>
+<h2 id="9-phased-implementation">9. Phased Implementation<a class="headerlink" href="#9-phased-implementation" title="Permanent link">&para;</a></h2>
+<p>Phase 1: Documentation. *(Independent of all code.)*</p>
+<p>Land §8.1 and §8.2 immediately. Resolves the original feedback's items 2 and 3 with zero code risk. Optional: §8.3 with the canonical example, even before the prefix grammar is recognised by the code — the example works today via plain lex order.</p>
+<p>Phase 2: Prefix grammar.</p>
+<p>Implement §7.1 through §7.4. Tests per §7.5. CHANGELOG note per §8.4. Full §8.3 documenting the recognised grammar.</p>
+<p>Phase 3: Deferred.</p>
+<h3 id="revisit-only-on-concrete-user-demand-candidates-in-rough-order-of-likelihood">Revisit only on concrete user demand. Candidates, in rough order of likelihood:<a class="headerlink" href="#revisit-only-on-concrete-user-demand-candidates-in-rough-order-of-likelihood" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>priority</code> field as an alternative to prefix (if users complain about renames). </li>
+<li><code>after:</code> field for relative ordering without global position (if compinit/fzf-tab style cases multiply). </li>
+<li>Validation hooks that warn when a known-bootstrap pack is positioned after a known-consumer pack (low priority; almost certainly never). </li>
+</ul>
+<h2 id="10-what-this-costs-the-user">10. What This Costs the User<a class="headerlink" href="#10-what-this-costs-the-user" title="Permanent link">&para;</a></h2>
+<h3 id="being-honest-about-the-price-tag">Being honest about the price tag:<a class="headerlink" href="#being-honest-about-the-price-tag" title="Permanent link">&para;</a></h3>
+<ul>
+<li>One new convention to learn (the prefix grammar). Optional — unprefixed packs continue to work. </li>
+<li>A small renumbering hazard if the gap convention is ignored. The convention is documented; the user owns the consequences. </li>
+<li>One behaviour change in CLI output: a pack named <code>010-nvim</code> on disk now displays as <code>nvim</code>. Pre-existing scripts referencing the raw name still work via the fallback in §7.3. </li>
+</ul>
+<h3 id="being-honest-about-what-this-does-not-cost">Being honest about what this does not cost:<a class="headerlink" href="#being-honest-about-what-this-does-not-cost" title="Permanent link">&para;</a></h3>
+<ul>
+<li>No change to existing packs that don't use prefixes. </li>
+<li>No new config file, no new schema, no new CLI flags. </li>
+<li>No background processing, no cache invalidation, no migration script. </li>
+<li>No dependency resolution, no graph, no cycle detection, no failure modes that didn't already exist. </li>
+</ul>
+<p>The proposal is small because the problem is small. dodot already orders packs; we are giving the existing order a name and a recognised grammar, and writing down what was previously folklore. That is the shape this feature should have.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

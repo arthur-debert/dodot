@@ -1,0 +1,1187 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/reference/philosophy/">
+      
+      
+        <link rel="prev" href="../../user/commands/">
+      
+      
+        <link rel="next" href="../architecture/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Philosophy - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dodot-philosophy" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Philosophy
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dodot-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dodot Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-problem-isnt-solved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Problem Isn't Solved
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-things-dodot-refuses-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Things dodot Refuses To Do
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The Things dodot Refuses To Do">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-never-wrap-source-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. Never wrap source control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-no-workflow-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. No workflow change
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-no-apply-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. No apply step
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-no-lock-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4. No lock-in
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-things-dodot-wants-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The Things dodot Wants To Do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-data-tension" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The Data Tension
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-live-receipts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Live Receipts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-conventions-over-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Conventions Over Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-trade-offs-we-accept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Trade-offs We Accept
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-when-dodot-fits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. When dodot Fits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-the-magical-extras" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. The Magical Extras
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-the-bottom-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. The Bottom Line
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dodot-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dodot Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-problem-isnt-solved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Problem Isn't Solved
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-things-dodot-refuses-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Things dodot Refuses To Do
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The Things dodot Refuses To Do">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-never-wrap-source-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. Never wrap source control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-no-workflow-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. No workflow change
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-no-apply-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. No apply step
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-no-lock-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4. No lock-in
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-things-dodot-wants-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The Things dodot Wants To Do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-data-tension" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The Data Tension
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-live-receipts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Live Receipts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-conventions-over-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Conventions Over Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-trade-offs-we-accept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Trade-offs We Accept
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-when-dodot-fits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. When dodot Fits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-the-magical-extras" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. The Magical Extras
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-the-bottom-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. The Bottom Line
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/reference/philosophy.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Philosophy</h1>
+
+<!-- lex:note -->
+
+<p><a href="./terms-and-concepts.lex">See</a> for terminology used throughout.</p>
+<!-- /lex:note -->
+
+<h2 id="dodot-philosophy">dodot Philosophy<a class="headerlink" href="#dodot-philosophy" title="Permanent link">&para;</a></h2>
+<p>dodot is opinionated. This document explains the opinions, the reasoning behind them, and the trade-offs they force. If the opinions match yours, dodot will feel obvious. If they don't, you should probably use a different tool. Either outcome is fine — the point of this document is to help you tell which one applies.</p>
+<h2 id="1-the-problem-isnt-solved">1. The Problem Isn't Solved<a class="headerlink" href="#1-the-problem-isnt-solved" title="Permanent link">&para;</a></h2>
+<p>Configuring your tools is exacting work that you're expected to redo every time you reinstall, switch machines, or onboard a new role. Since the problem is as old as dotfiles themselves — happy 50th birthday, <code>.profile</code> — you'd expect it to have been solved once and moved on from. It hasn't. The landscape is a spectrum with two clusters and a gap.</p>
+<ul>
+<li>At the low end: manual management — scp, tar, self-email, git plus a shell script. Perfectly workable. Error-prone, not repeatable, rarely centralized. </li>
+<li>At the high end: complex tools — chezmoi, dotbot, nix-home-manager, and fleet-provisioning frameworks like Ansible. Powerful, but each imposes a workflow, a database, or a domain language. </li>
+</ul>
+<p>What's missing is the middle. You want real features — not just symlinks, but PATH management, script execution, machine-specific configs, secret handling — without signing up for a workflow migration. That middle is where dodot lives.</p>
+<h2 id="2-the-things-dodot-refuses-to-do">2. The Things dodot Refuses To Do<a class="headerlink" href="#2-the-things-dodot-refuses-to-do" title="Permanent link">&para;</a></h2>
+<p>These aren't preferences. They're the hard constraints that shape every design decision. Each one came out of pain with tools that crossed the line.</p>
+<h3 id="21-never-wrap-source-control">2.1. Never wrap source control<a class="headerlink" href="#21-never-wrap-source-control" title="Permanent link">&para;</a></h3>
+<p>git is the source of truth. Full stop. dodot does not diff, status, commit, or otherwise interpose itself between you and git. You use git the same way you'd use it anywhere else — vanilla commands, vanilla workflow. The shelf life of a dotfile manager is a few years; git's shelf life is decades. Couple your data to git, not to us.</p>
+<h3 id="22-no-workflow-change">2.2. No workflow change<a class="headerlink" href="#22-no-workflow-change" title="Permanent link">&para;</a></h3>
+<p>You edit configs the way you already edit them — in your editor, through an app's settings pane, however. There's no <code>dodot edit</code>, no wrapper shell, no forced commit step. If your tool hot-reloads on disk changes, it still does. If it reloads on next launch, it still does.</p>
+<h3 id="23-no-apply-step">2.3. No apply step<a class="headerlink" href="#23-no-apply-step" title="Permanent link">&para;</a></h3>
+<p>Running <code>dodot up</code> once is setup. After that, edits are live — the deployed file IS the source file through a symlink chain. Forget to regenerate? There's nothing to regenerate.</p>
+<h3 id="24-no-lock-in">2.4. No lock-in<a class="headerlink" href="#24-no-lock-in" title="Permanent link">&para;</a></h3>
+<p>Uninstalling dodot should leave a working system. The artifacts dodot creates — symlinks, a small state directory — are all legible, scriptable, and movable by hand. No bespoke format, no database, nothing that requires dodot to interpret.</p>
+<h2 id="3-the-things-dodot-wants-to-do">3. The Things dodot Wants To Do<a class="headerlink" href="#3-the-things-dodot-wants-to-do" title="Permanent link">&para;</a></h2>
+<p>The no-gos above are necessary but not sufficient. A tool that only symlinks isn't much of a tool. dodot also wants to:</p>
+<ul>
+<li>cover the real feature set: PATH additions, shell hooks, package installs, one-shot provisioning </li>
+<li>be honest about what it will do before it does it (<code>dodot status</code>, <code>--dry-run</code>) </li>
+<li>keep the configuration surface small enough to hold in your head </li>
+<li>make both adoption and abandonment cheap — minutes to try, minutes to leave </li>
+<li>eventually cover the harder cases: template expansion, secret injection, binary-format representations like plists </li>
+</ul>
+<p>Holding these together with the no-gos is the interesting problem.</p>
+<h2 id="4-the-data-tension">4. The Data Tension<a class="headerlink" href="#4-the-data-tension" title="Permanent link">&para;</a></h2>
+<p>Here's the design problem in one paragraph. You want dodot to be able to answer: <em>is this file managed by me? was this install script already run? what's pending versus deployed?</em> That kind of answer usually implies state — a database, a manifest, an <code>apply</code>-step output. But any bespoke state representation creates lock-in, drifts from reality, and does a poor job of reimplementing a package manager.</p>
+<p>We want queryable state, <em>and</em> we want the filesystem to be the state, <em>and</em> we don't want a database. Pick two — unless you can find a trick.</p>
+<p>The trick dodot uses is the <em>double-link</em>: a layer of indirection through a small, legible directory that IS the state. <a href="./data-layer.lex">See</a> for the mechanics. The short version:</p>
+<ul>
+<li>queryable with <code>ls</code> and <code>readlink</code>, not a custom tool </li>
+<li>scriptable: you can move, copy, or inspect it like any directory tree </li>
+<li>dies cleanly when dodot dies — no orphan formats </li>
+<li>lets dodot tell the difference between "file linked by me" and "file you linked yourself" without a sidecar database </li>
+</ul>
+<p>The double-link is the single most unusual thing about dodot. Everything else is consequence.</p>
+<h2 id="5-live-receipts">5. Live Receipts<a class="headerlink" href="#5-live-receipts" title="Permanent link">&para;</a></h2>
+<p>The double-link has a second property that's easy to miss. In most tools, state is a receipt — a record of what happened, written alongside the thing that happened. "Ran install.sh at 14:32"; "linked .vimrc to ~/dotfiles/vim/vimrc." The receipt lives in a separate place (a database, a lockfile) from the thing itself. Keeping them in sync is a problem the tool has to solve, and when it gets it wrong, you get drift — the receipt says one thing, the filesystem says another.</p>
+<p>dodot's datastore inverts this. The state isn't a record of what happened; it IS what happens. When the shell integration runs at login, it walks the datastore directory: for every file under <code>&lt;pack&gt;/shell/</code>, it emits a <code>source</code> line; for every directory under <code>&lt;pack&gt;/path/</code>, it prepends that directory to <code>$PATH</code>. The state directory is the <em>input</em> to the behavior, not a description of it.</p>
+<p>That makes every entry a <em>live receipt</em>: it simultaneously records that dodot did something and produces the effect of that thing. Delete a symlink from the datastore and the corresponding config stops being live on the next shell open — no cleanup step, no re-sync. Add one by hand and it starts being live. You can't drift because there's nothing to drift from.</p>
+<p>This is the property that makes <code>ls -la ~/.local/share/dodot/packs/</code> a real debugging tool. You aren't reading a log of past dodot runs; you're reading the current, effective configuration. The receipt and the thing are the same object.</p>
+<h2 id="6-conventions-over-configuration">6. Conventions Over Configuration<a class="headerlink" href="#6-conventions-over-configuration" title="Permanent link">&para;</a></h2>
+<p>Once you go beyond "just symlink it," a tool has to decide what to do with <code>install.sh</code>, <code>aliases.sh</code>, <code>Brewfile</code>, <code>bin/</code>. The expressive path is a DSL — a manifest file that lists, per file, what happens. dodot's path is convention: file names map to handlers. You already name your files sensibly; let that be the config.</p>
+<p>This buys two things.</p>
+<ul>
+<li><em>Zero-config onboarding.</em> A dotfiles repo that already uses conventional names — and almost all of them do — needs no setup to work with dodot. </li>
+<li><em>Trivial extensibility.</em> Add a new handler, add a default name mapping. Users who want different names drop a <code>.dodot.toml</code>; nobody else notices. </li>
+</ul>
+<p>The trade-off is collisions between communities' conventions. We picked names that are widespread and not too contested; where we had to pick, we picked. You can always override.</p>
+<h2 id="7-trade-offs-we-accept">7. Trade-offs We Accept<a class="headerlink" href="#7-trade-offs-we-accept" title="Permanent link">&para;</a></h2>
+<p>Design is subtraction. The things dodot is deliberately not:</p>
+<ul>
+<li><em>No profiles.</em> One configuration per machine. For "work vs home," use separate packs and enable different subsets. </li>
+<li><em>No rollback outside git.</em> dodot does not keep a history of past deployments. Git keeps history of your configs; that is the history you want. </li>
+<li><em>No central orchestration.</em> dodot is a single-user, single-machine tool. Fleets belong to Ansible and friends. </li>
+<li><em>Unopinionated about structure.</em> dodot won't tell you how to organize packs. That's your judgment call; the tool works with whatever directories it finds. </li>
+</ul>
+<p>Several of these could be added as features. We think they would cost more in complexity than they'd return in utility for the target user.</p>
+<h2 id="8-when-dodot-fits">8. When dodot Fits<a class="headerlink" href="#8-when-dodot-fits" title="Permanent link">&para;</a></h2>
+<p>You are likely to like dodot if:</p>
+<ul>
+<li>your dotfiles live in git and you want that to stay true </li>
+<li>you've been burned by tools that wrapped your workflow </li>
+<li>you want more than symlinks (PATH, shell, install scripts) without a DSL </li>
+<li>you expect to use your dotfile setup for years, across several machines, and don't want a migration when the current tool goes stale </li>
+</ul>
+<p>dodot is probably the wrong fit if:</p>
+<ul>
+<li>you need multiple profiles on one machine </li>
+<li>you want rollback of deployment history as a first-class feature </li>
+<li>you're doing fleet provisioning (Ansible, Salt, Nix are more appropriate) </li>
+<li>you need hard guarantees about secrets that go beyond "don't commit plaintext" </li>
+</ul>
+<h2 id="9-the-magical-extras">9. The Magical Extras<a class="headerlink" href="#9-the-magical-extras" title="Permanent link">&para;</a></h2>
+<p>Some features live at the edge of "can we keep the no-gos?" Template expansion, secret injection, plist handling — these all involve a source file that differs from the deployed file, which is exactly the case where the simple symlink story breaks down.</p>
+<p>dodot's answer is a preprocessing pipeline plus some careful work on the git side (clean/smudge filters, a pre-commit reverse-merge step) to preserve the "git is truth, no workflow change" contract even when the deployed file and the source file diverge. The design is detailed <a href="./pre-processors.lex">in</a> and in <a href="./../proposals">the</a> directory.</p>
+<p>The point to take from this document is that these features exist because giving them up would mean users go elsewhere, and they are designed with the no-gos of section 2 treated as hard constraints, not negotiable trade-offs.</p>
+<h2 id="10-the-bottom-line">10. The Bottom Line<a class="headerlink" href="#10-the-bottom-line" title="Permanent link">&para;</a></h2>
+<p>dodot does the minimum to be useful, and then carefully adds what's needed to stay useful for years. It is opinionated about the inputs — git, filesystem, shell — and quiet about everything else. Your dotfiles are yours; dodot helps put them in the right places and gets out of the way.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

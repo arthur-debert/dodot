@@ -1,0 +1,916 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/reference/pre-processors/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Pre processors - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#preprocessors" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Pre processors
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#preprocessors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preprocessors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-what-a-preprocessor-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What a Preprocessor Is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-three-shapes-of-transformation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Three Shapes of Transformation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Three Shapes of Transformation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-generative-one-way" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. Generative (one-way)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-representational-two-way" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. Representational (two-way)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-opaque-write-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3. Opaque (write-only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-why-preprocessing-is-a-phase-not-a-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Why Preprocessing Is a Phase, Not a Handler
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-dodot-ethos-challenge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The Dodot Ethos Challenge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-whats-implemented-whats-planned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. What's Implemented, What's Planned
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-where-rendered-output-lives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Where Rendered Output Lives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-disabling-and-overriding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Disabling and Overriding
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/reference/pre-processors.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Pre processors</h1>
+
+<!-- lex:note -->
+
+<p><a href="./terms-and-concepts.lex">See</a> for terminology used throughout.</p>
+<!-- /lex:note -->
+
+<h2 id="preprocessors">Preprocessors<a class="headerlink" href="#preprocessors" title="Permanent link">&para;</a></h2>
+<p>Some dotfiles need to vary between machines, inject secrets at deploy time, or exist in one format under source control and a different one on disk. For these cases a plain symlink is not enough: the file in your repo is not the file you want deployed. Preprocessors are how dodot handles that without giving up the properties that make dodot dodot.</p>
+<p>This document covers what a preprocessor is, the three shapes they come in, and how they fit into the rest of the pipeline. For hands-on template usage, <a href="./../user/templates.lex">see</a>. For the design of unshipped preprocessors, see <a href="./../proposals">the</a> directory.</p>
+<h2 id="1-the-problem">1. The Problem<a class="headerlink" href="#1-the-problem" title="Permanent link">&para;</a></h2>
+<p>The default dodot story is: your repo file IS your deployed file, linked through the datastore. That works beautifully when the two really are the same bytes. It breaks down whenever they're not.</p>
+<ul>
+<li>Templates. You want the git-user email to differ between laptop and workstation. You need <em>one</em> source file, <em>two</em> different deployed files. </li>
+<li>Secrets. Your shell config references an API token you don't want in git. </li>
+<li>Binary representations. macOS plists live as binary on disk but are useless under source control in that form. </li>
+<li>Encrypted artifacts. An SSH key belongs on disk in plaintext but in git encrypted. </li>
+</ul>
+<p>All of these share a shape: the version-controlled source and the deployed artifact differ. The question is how to handle that without giving up git-is-truth, no-apply-step, or no-workflow-change.</p>
+<h2 id="2-what-a-preprocessor-is">2. What a Preprocessor Is<a class="headerlink" href="#2-what-a-preprocessor-is" title="Permanent link">&para;</a></h2>
+<p>A preprocessor is a phase in the dodot pipeline that runs <em>before</em> handler dispatch. It takes a source file and produces an output file. The output is written to the datastore, where handlers pick it up as if it had always been there.</p>
+<p>Preprocessors are identified by filename convention, the same way handlers are. <code>config.toml.tmpl</code> is a template (preprocessor: template; output: <code>config.toml</code>). <code>com.app.plist.xml</code> is a plist source (preprocessor: plist; output: <code>com.app.plist</code>). <code>id_ed25519.age</code> is an encrypted blob (preprocessor: age; output: <code>id_ed25519</code>).</p>
+<p>What comes out the other side of the preprocessor looks to the rest of the pipeline like a regular file. The handler that claims it doesn't know or care that preprocessing happened. This matters for composition: a rendered <code>aliases.sh.tmpl</code> still flows through the shell handler and gets sourced at login; a rendered <code>install.sh.tmpl</code> still runs once and stores a sentinel.</p>
+<h2 id="3-three-shapes-of-transformation">3. Three Shapes of Transformation<a class="headerlink" href="#3-three-shapes-of-transformation" title="Permanent link">&para;</a></h2>
+<p>Preprocessors differ not in what they do — they all take a source and produce an output — but in whether the transformation can be reversed. This determines what happens when the <em>deployed</em> file is edited (by an app, by you, by a GUI settings pane) and no longer matches what the preprocessor would produce from the source. dodot calls this <em>divergence</em>, and divergence has to be handled differently depending on the transform's shape.</p>
+<h3 id="31-generative-one-way">3.1. Generative (one-way)<a class="headerlink" href="#31-generative-one-way" title="Permanent link">&para;</a></h3>
+<p>A template produces its output, but the output doesn't contain enough information to reconstruct the template. <code>{{ hostname }}</code> becomes <code>laptop</code> on render; from <code>laptop</code> alone you cannot tell whether the template said <code>{{ hostname }}</code>, a hard-coded literal, or something else entirely.</p>
+<p>Source of truth: the source. The deployed file is a derived artifact.</p>
+<p>Divergence: handled best-effort. dodot can tell you the deployed file changed, and for the common case — edits to lines that don't touch a template expression — it can confidently write those changes back to the source. For lines that do touch a template expression, it cannot; it inserts a conflict marker and asks you to decide.</p>
+<h3 id="32-representational-two-way">3.2. Representational (two-way)<a class="headerlink" href="#32-representational-two-way" title="Permanent link">&para;</a></h3>
+<p>A plist can be converted from binary to XML and back with no data loss; the two are equivalent representations of the same data. The same is true of many format pairs.</p>
+<p>Source of truth: whichever form the tooling modifies. For plists, the app writes the binary continuously, so the binary is authoritative at any given moment; the XML is the git-friendly mirror.</p>
+<p>Divergence: handled automatically. The exact mechanism depends on the preprocessor — for plists, it's git's own clean/smudge filter machinery <a href="./plists.lex">(see</a>); for any future Representational preprocessor running through the pipeline, it would be a <code>dodot transform check</code> pass that reverse-converts and writes back. Either way, no heuristics are needed and no user-facing conflicts arise — the math is on our side.</p>
+<h3 id="33-opaque-write-only">3.3. Opaque (write-only)<a class="headerlink" href="#33-opaque-write-only" title="Permanent link">&para;</a></h3>
+<p>An encrypted file can be decrypted on deploy, but re-encrypting it silently from a changed plaintext is neither safe nor dodot's job. The deployed form is plaintext; the source form is ciphertext; the reverse path is deliberately left out.</p>
+<p>Source of truth: the source (ciphertext). The deployed file is ephemeral.</p>
+<p>Divergence: reported, not acted on. If the deployed plaintext has been modified, dodot tells you; you decide how to update the source, decrypt it yourself, edit it, re-encrypt, and commit. dodot does not own your encryption keys.</p>
+<p>These three shapes cover the full spectrum from "fully automatic" (plists) to "hands off" (encryption). Every preprocessor declares which shape it is, and the pipeline adjusts its divergence handling accordingly.</p>
+<h2 id="4-why-preprocessing-is-a-phase-not-a-handler">4. Why Preprocessing Is a Phase, Not a Handler<a class="headerlink" href="#4-why-preprocessing-is-a-phase-not-a-handler" title="Permanent link">&para;</a></h2>
+<p>Preprocessors could have been built as handlers — match <code>.tmpl</code>, do the rendering, then... deploy the output? As what? The original intent was probably to symlink it, or source it, or run it, depending on the original file name. Forcing preprocessing to be a handler means the preprocessor has to internally re-match the stripped filename against the rule system to figure out what to do next. That's handler logic inside a handler, and it compounds every time we add a new preprocessor.</p>
+<p>Making preprocessing a separate phase cleanly decomposes the problem. The preprocessor produces an output file; the rule system matches that output to a handler by its logical name; the handler does its normal job. Each piece has one responsibility. Adding a new preprocessor (secrets, plists, encrypted files) doesn't touch any handler code.</p>
+<h2 id="5-the-dodot-ethos-challenge">5. The Dodot Ethos Challenge<a class="headerlink" href="#5-the-dodot-ethos-challenge" title="Permanent link">&para;</a></h2>
+<p>Preprocessing puts pressure on two of dodot's hard constraints.</p>
+<ul>
+<li><em>Git is the source of truth.</em> If the deployed file and the source file differ, and the deployed file is what you actually edit, then <code>git diff</code> on the source no longer tells you what changed. </li>
+<li><em>No workflow change.</em> If the only way to propagate an edit back to git is to run <code>dodot render</code> or similar, that's an apply step by another name. </li>
+</ul>
+<p>Most dotfile managers that support templating or secrets accept these compromises. dodot tries harder. The mechanism is an optional git integration layer (clean and smudge filters, a pre-commit hook) that detects divergence and writes changes back to the source automatically at commit time, using each preprocessor's declared transform shape to decide how aggressive to be.</p>
+<p>The result: <code>git diff</code> shows the right thing at commit time, <code>git log</code> shows the right history, and PR reviews see real changes. The user accepts one Y/n per machine to install the git-side hooks; after that, the magic is ambient. The full design lives <a href="./../proposals/shipped/magic.lex">in</a>.</p>
+<h2 id="6-whats-implemented-whats-planned">6. What's Implemented, What's Planned<a class="headerlink" href="#6-whats-implemented-whats-planned" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Template preprocessing is implemented.</strong> Write <code>config.toml.tmpl</code>, it renders on <code>dodot up</code> via MiniJinja, downstream handlers deploy the output. <a href="./../user/templates.lex">See</a> for usage. The preprocessing pipeline itself (the phase that turns source files into rendered outputs and feeds them into handlers) is shipped — templates are its first user. </li>
+<li><strong>Plist support is also implemented</strong>, but does NOT go through this preprocessing pipeline. It ships as a pair of git clean/smudge filters that translate macOS <code>*.plist</code> files between binary (working tree) and canonical XML (git index) on the fly. The architectural reasoning — why plists ducked out of the pipeline despite being a textbook Representational transform — is <a href="./../proposals/shipped/plists.lex">in</a> §2.3, and the user-facing reference is <a href="./plists.lex">at</a>. Shipped: <code>dodot plist clean/smudge</code> (the conversion engine), <code>dodot git-install-filters/show-filters</code> (the per-clone setup), <code>dodot prompts list/reset</code> (a generic dismissed-prompt registry that powers the up-time install offer). </li>
+<li><strong>The git-integration layer for templates is shipped.</strong> A per-file baseline cache (<code>rendered_hash</code>, <code>source_hash</code>, <code>context_hash</code>, <code>rendered_content</code>, <code>tracked_render</code>) sits under <code>&lt;cache_dir&gt;/preprocessor/</code>; <code>dodot transform check [--strict] [--dry-run]</code> runs the 4-state divergence matrix and applies reverse-merge diffs back to source via [burgertocow](https://crates.io/crates/burgertocow-lib) + [diffy](https://crates.io/crates/diffy); <code>dodot transform install-hook</code> registers a pre-commit hook that runs <code>dodot refresh &amp;&amp; dodot transform check --strict</code> to refuse commits with unresolved drift; <code>dodot template install-filter</code> registers a git clean filter (<code>dodot template clean --path %f</code>) that makes <code>git status</code> and <code>git diff</code> see deployed-side template edits between commits, with a fast path that avoids re-rendering (and thus re-triggering any secret-provider auth); <code>dodot refresh</code> copies deployed-side mtimes onto sources so git's stat-cache invalidates; <code>dodot git-install-alias</code> lays down a Tier-2 shell alias (<code>alias git='dodot refresh --quiet &amp;&amp; command git'</code>) for users who want <code>git status</code> to always reflect the latest template state; <code>dodot transform status</code> is a passive read-only view of the divergence cache. End-to-end design lives <a href="./../proposals/shipped/magic.lex">in</a>; user-facing walkthrough is <a href="./template-magic.lex">at</a>. </li>
+<li><strong>Secret handling is implemented</strong>, both shapes covered. <strong>Value injection</strong> uses a <code>{{ secret("scheme:reference") }}</code> MiniJinja function inside templates, dispatched through a <code>SecretProvider</code> trait with built-in providers for <code>pass</code> (password-store), <code>op</code> (1Password CLI), <code>bw</code> (Bitwarden CLI), <code>sops</code> (Mozilla SOPS), <code>keychain</code> (macOS Keychain via <code>security</code>), and <code>secret-tool</code> (freedesktop Secret Service). Resolved values are cached within a single <code>dodot up</code> run; multi-line returns are refused at render time (whole-file is a separate path). <strong>Whole-file decryption</strong> uses <code>*.age</code> and <code>*.gpg</code> Opaque preprocessors that decrypt at deploy time and chmod the rendered datastore file to 0600 atomically. Both shapes share a per-render <code>&lt;baseline&gt;.secret.json</code> sidecar that lists which lines came from which <code>secret(...)</code> call; the sidecar is read at <code>dodot transform check</code> and clean-filter time so a rotated secret value in the deployed file doesn't get rewritten back into the template source as a literal. <code>dodot secret probe</code> and <code>dodot secret list</code> provide read-only inspection. Design and <a href="./../proposals/shipped/secrets.lex">rationale:</a> (preserved as historical context). User-facing <a href="./../user/secrets.lex">guide:</a>. Developer <a href="./../dev/secret.lex">guide:</a>. </li>
+</ul>
+<h2 id="7-where-rendered-output-lives">7. Where Rendered Output Lives<a class="headerlink" href="#7-where-rendered-output-lives" title="Permanent link">&para;</a></h2>
+<p>Preprocessor output is written under the pack's datastore entry, in a <code>preprocessed/</code> subdirectory that mirrors the original pack layout.</p>
+<p><strong>Rendered output path</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>~/.local/share/dodot/packs/&lt;pack&gt;/preprocessed/&lt;stripped-name&gt;
+</code></pre></div>
+<p>The downstream handler creates its links or runs its commands against this path, not against the original source. This has two consequences worth knowing: the rendered file is what you inspect if you want to see exactly what a preprocessor produced; and for code-execution handlers (install, homebrew), the sentinel hash is derived from the rendered content, so changing a template variable re-triggers the install step on the next deploy.</p>
+<p><code>dodot up</code> will not overwrite a rendered file whose bytes have diverged from the cached baseline (i.e. you've edited the deployed file in place since the last <code>up</code>). The render is skipped, the user's edits stay on disk, and a one-line warning surfaces. Resolve via <code>dodot transform check</code> (auto-merge the deployed-side edit back into the source) or re-run with <code>--force</code> (overwrite). Staleness is defined from file content only — env vars referenced via <code>{{ env.X }}</code> are read live at render time and are intentionally not part of the cache-invalidation signal; users who rotate a referenced env var pick up the new value with <code>dodot up --force</code>. <a href="./../proposals/shipped/preprocessing-pipeline.lex">See</a> §6.4.</p>
+<h2 id="8-disabling-and-overriding">8. Disabling and Overriding<a class="headerlink" href="#8-disabling-and-overriding" title="Permanent link">&para;</a></h2>
+<p>Preprocessing is on by default for any file matching a registered preprocessor's pattern. Four levels of opt-out:</p>
+<ul>
+<li>Global: <code>[preprocessor] enabled = false</code> in the root <code>.dodot.toml</code>. All preprocessing is skipped; <code>.tmpl</code> files deploy verbatim. </li>
+<li>Per preprocessor: <code>[preprocessor.template] enabled = false</code> disables template rendering but leaves other preprocessors active. </li>
+<li>Per file (drop entirely): add the filename to <code>[mappings] ignore</code> and the file is dropped silently — same contract as <code>.gitignore</code>. Use <code>[mappings] skip</code> instead if you'd like the file to remain visible in <code>dodot status</code> as <code>skipped</code>. </li>
+<li>Per file (skip reverse-merge only): add a glob pattern to <code>[preprocessor.template] no_reverse = ["..."]</code>. The template still renders on <code>dodot up</code>, but <code>dodot transform check</code> and the clean filter both skip reverse-merge for matching files. Useful for templates whose content is mostly dynamic (more <code>{{ }}</code> than static text) — burgertocow's heuristic degrades on those, so the user often gets more conflict markers than usable diffs. With <code>no_reverse</code> set, divergence is still detected and surfaced; only the auto-merge step is skipped. </li>
+</ul>
+<p>Pack-level <code>.dodot.toml</code> overrides the root for any of these keys, so you can flip a setting on or off for a single pack.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

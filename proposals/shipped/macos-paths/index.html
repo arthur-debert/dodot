@@ -1,0 +1,2162 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/proposals/shipped/macos-paths/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Macos paths - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-specification-macos-paths-and-the-_app-convention" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Macos paths
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#design-specification-macos-paths-and-the-_app-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Specification: MacOs Paths and the _app/ Convention
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Problem
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. The Problem">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-two-roots-are-not-enough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1. Two Roots Are Not Enough
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-xdg_config_home-cannot-be-the-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2. XDG_CONFIG_HOME Cannot Be the Switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-cross-platform-packs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3. Cross-Platform Packs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.3. Cross-Platform Packs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-vscode-pack-containing-usersettingsjson-should-deploy-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A vscode pack containing User/settings.json should deploy to:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4. Goals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-three-roots-not-two" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Three Roots, Not Two
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Three Roots, Not Two">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-the-pather-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. The Pather Surface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2.1. The Pather Surface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resolution-in-xdgpatherbuilderbuild" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolution in XdgPatherBuilder::build():
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-three-coordinates-going-forward" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. Three Coordinates Going Forward
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-_app-directory-prefix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The _app/ Directory Prefix
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The _app/ Directory Prefix">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. Behavior
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.1. Behavior">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deploys-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploys to:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-position-in-the-priority-ladder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. Position in the Priority Ladder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-the-app_aliases-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3. The app_aliases Map
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.3. The app_aliases Map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aliases-compose-with-the-rest-of-the-ladder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aliases compose with the rest of the ladder:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-the-curated-force_app-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4. The Curated force_app List
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.4. The Curated force_app List">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#341-the-hundred-entry-cap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4.1. The Hundred-Entry Cap
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.4.1. The Hundred-Entry Cap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inclusion-criterion-documented-in-the-source-file-one-line-per-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inclusion criterion (documented in the source file, one-line per entry):
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#342-initial-seed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4.2. Initial Seed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-_lib-directory-prefix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The _lib/ Directory Prefix
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The _lib/ Directory Prefix">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-linux-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Linux Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-path-resolution-full-specification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Path Resolution: Full Specification
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Path Resolution: Full Specification">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-the-updated-priority-ladder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. The Updated Priority Ladder
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.1. The Updated Priority Ladder">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priorities-highest-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priorities (highest first):
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tie-breaking-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tie-breaking notes:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-resolver-pseudocode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Resolver Pseudocode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-worked-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Worked Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-configuration-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Configuration Surface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Configuration Surface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-schema-additions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. Schema Additions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-inheritance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. Inheritance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-defaults-by-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3. Defaults by Platform
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-adopt-source-roots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Adopt: Source Roots
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Adopt: Source Roots">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-cli-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. CLI Shape
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-recognized-source-roots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. Recognized Source Roots
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.2. Recognized Source Roots">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-design-notes-are-load-bearing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two design notes are load-bearing:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-inference-decline-and-into" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3. Inference Decline and --into
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-pack-override-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4. Pack-Override Encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#75-pack-root-directory-expansion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.5. Pack-Root Directory Expansion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.5. Pack-Root Directory Expansion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#concrete-dodot-adopt-confighelix-produces-per-child-of-confighelix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concrete: dodot adopt ~/.config/helix/ produces, per child of ~/.config/helix/:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#76-auto-creating-packs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.6. Auto-Creating Packs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#77-appsupport-source-implementation-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.7. AppSupport Source Implementation Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.7. AppSupport Source Implementation Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-libraryapplication-supportxrest-row-of-72-is-specified-but-not-yet-plumbed-the-inference-framework-reserves-a-sourcerootappsupport-variant-but-the-matcher-does-not-consult-it-because-pather-does-not-yet-expose-app_support_dir-phase-m1-when-m1-lands-two-changes-complete-the-appsupport-adopt-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The ~/Library/Application Support/&lt;X&gt;/&lt;rest&gt; row of §7.2 is specified but not yet plumbed: the inference framework reserves a SourceRoot::AppSupport variant, but the matcher does not consult it because Pather does not yet expose app_support_dir() (Phase M1). When M1 lands, two changes complete the AppSupport adopt path:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#78-sandboxed-apps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.8. Sandboxed Apps
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-automagical-path-divination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Automagical Path Divination
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Automagical Path Divination">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-the-capitalization-heuristic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1. The Capitalization Heuristic
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.1. The Capitalization Heuristic">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#macos-gui-app-folders-under-libraryapplication-support-follow-a-strong-naming-pattern-that-distinguishes-them-from-linux-cli-tool-config-folders-under-config-a-folder-name-is-a-probable-macos-gui-app-target-if" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MacOs GUI app folders under ~/Library/Application Support/ follow a strong naming pattern that distinguishes them from Linux CLI-tool config folders under ~/.config/. A folder name is a probable MacOs GUI app target if:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-homebrew-cask-probing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2. Homebrew Cask Probing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.2. Homebrew Cask Probing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#available-via-subprocess" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available via subprocess:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-json-outputs-artifactszap-field-gives-for-any-installed-cask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The JSON output's artifacts[].zap field gives, for any installed cask:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dodot-uses-this-data-in-two-places" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dodot uses this data in two places:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#821-why-not-auto-derive-force_app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2.1. Why Not Auto-Derive force_app
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-macos-native-apis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3. MacOs Native APIs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.3. MacOs Native APIs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#several-macos-native-sources-of-metadata-complement-homebrew-probing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several MacOs-native sources of metadata complement homebrew probing:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-the-dodot-probe-app-subcommand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4. The dodot probe app Subcommand
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85-what-dodot-does-not-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.5. What dodot Does Not Do
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.5. What dodot Does Not Do">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#out-of-scope-deliberately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope, deliberately:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-documentation-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Documentation Updates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-implementation-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Implementation Phases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-open-questions-and-future-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Open Questions and Future Work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Open Questions and Future Work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#111-_app-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.1. _app/ Naming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-app_uses_library-false-on-macos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.2. app_uses_library = false on MacOs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-plist-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.3. Plist Coverage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#114-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.4. Windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#115-adopt-time-plist-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.5. Adopt-Time Plist Conversion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-implementation-notes-vs-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Implementation Notes vs. Spec
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. Implementation Notes vs. Spec">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#121-force_app-initial-seed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.1. force_app Initial Seed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#122-force_home-force_app-overlap-warning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.2. force_home / force_app Overlap Warning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#123-app_uses_library-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.3. app_uses_library Default
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#124-dodot-probe-app-sample-output-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.4. dodot probe app Sample Output Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#125-tutorial-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.5. Tutorial Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#126-cask-aware-rename-suggestion-beyond-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.6. Cask-Aware Rename Suggestion (Beyond Spec)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/proposals/shipped/macos-paths.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Macos paths</h1>
+
+<h2 id="design-specification-macos-paths-and-the-_app-convention">Design Specification: MacOs Paths and the <code>_app/</code> Convention<a class="headerlink" href="#design-specification-macos-paths-and-the-_app-convention" title="Permanent link">&para;</a></h2>
+<!-- lex:note -->
+
+<p><strong>Status: implemented and shipped.</strong> Phases M1–M6 landed in PRs #90, #91, and #92. The follow-up cask-aware rename suggestion (PR #92) refined the M5 ergonomic on top of M6's brew probe. The user-facing reference for the resulting feature lives in [./../reference/symlink-paths.lex] §6 (the `_app/` / `_lib/` / `force_app` / `app_aliases` family) and §10 (the macOS advisory probe layer). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom of this document for the deviations that were accepted during implementation.</p>
+<!-- /lex:note -->
+
+<p>This document specifies how dodot routes pack files on MacOs, where a third filesystem coordinate — <code>~/Library/Application Support/&lt;App&gt;/</code> — sits alongside the two roots the resolver already understands (<code>$HOME</code> and <code>$XDG_CONFIG_HOME</code>). It extends the symlink-deployment ladder defined <a href="./../reference/symlink-paths.lex">in</a> with two new directory prefixes (<code>_app/</code> and <code>_lib/</code>), a curated <code>force_app</code> list, and a pack-level <code>app_aliases</code> map. It also describes an advisory layer — homebrew-cask and MacOs-native introspection — that powers <code>dodot adopt</code> suggestions and <code>dodot up</code> warnings without ever overriding the resolver's deterministic priority order.</p>
+<p>The spec is split into two parts. The first half (sessions 1–7) is the deterministic core: where files end up, why, and how to express user intent. The second half (session 8) is the advisory "automagical" layer that sits on top, isolated so it does not perturb the resolver and can evolve independently.</p>
+<h2 id="1-the-problem">1. The Problem<a class="headerlink" href="#1-the-problem" title="Permanent link">&para;</a></h2>
+<p>This proposal addresses a MacOs-specific gap: on Linux, GUI and CLI applications share the same XDG-compliant text-file hierarchy and the resolver's existing rules already cover them, whereas MacOs splits GUI app data into <code>~/Library/Application Support/</code> with app-specific folder names that rarely match the natural pack name.</p>
+<h3 id="11-two-roots-are-not-enough">1.1. Two Roots Are Not Enough<a class="headerlink" href="#11-two-roots-are-not-enough" title="Permanent link">&para;</a></h3>
+<p>dodot's resolver recognizes two filesystem roots: <code>$HOME</code> (legacy unix canons — <code>.bashrc</code>, <code>.ssh/</code>, <code>.gnupg/</code>) and <code>$XDG_CONFIG_HOME</code> (everything else, namespaced under the pack name by default). The four escape hatches in <code>symlink-paths.lex</code> (<code>home.X</code>, <code>_home/</code>, <code>_xdg/</code>, <code>[symlink.targets]</code>) all express user intent within those two coordinates.</p>
+<p>MacOs GUI applications read configuration from a third coordinate: <code>~/Library/Application Support/&lt;App&gt;/</code>. VS Code reads <code>~/Library/Application Support/Code/User/settings.json</code> on MacOs but <code>~/.config/Code/User/settings.json</code> on Linux. Same logical file, different root, <strong>and the folder name (<code>Code</code>) often differs from the natural pack name (<code>vscode</code>)</strong>.</p>
+<p>Today the only way to land a file under <code>~/Library/Application Support/</code> in dodot is <code>[symlink.targets]</code> with an absolute path. That hardcodes the platform into the pack and forfeits the pack-relative composability the <code>_xdg/</code> and <code>_home/</code> prefixes were introduced to provide.</p>
+<h3 id="12-xdg_config_home-cannot-be-the-switch">1.2. <code>XDG_CONFIG_HOME</code> Cannot Be the Switch<a class="headerlink" href="#12-xdg_config_home-cannot-be-the-switch" title="Permanent link">&para;</a></h3>
+<p>A tempting solution would be to redirect <code>$XDG_CONFIG_HOME</code> itself to <code>~/Library/Application Support/</code> on MacOs — exactly what the Rust <code>directories</code> crate does. dodot rejects this approach. Modern CLI tools on MacOs (nvim, helix, ghostty, kitty, lazygit, starship, gh, …) use <code>~/.config/</code> natively and would break under such a flip. MacOs users routinely have both kinds of tools coexisting on the same machine. The choice between roots cannot be a per-machine env-var; it must be a per-target decision encoded in the pack.</p>
+<h3 id="13-cross-platform-packs">1.3. Cross-Platform Packs<a class="headerlink" href="#13-cross-platform-packs" title="Permanent link">&para;</a></h3>
+<h4 id="a-vscode-pack-containing-usersettingsjson-should-deploy-to">A <code>vscode</code> pack containing <code>User/settings.json</code> should deploy to:<a class="headerlink" href="#a-vscode-pack-containing-usersettingsjson-should-deploy-to" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Linux:  <code>~/.config/Code/User/settings.json</code> </li>
+<li>MacOs:  <code>~/Library/Application Support/Code/User/settings.json</code> </li>
+</ul>
+<p>Both the root <strong>and</strong> the app-folder name diverge from a naive <code>vscode/User/settings.json</code> reading. dodot needs a way for the pack to express "this is GUI-app config under the name X", once, with the OS choosing the root and an alias mechanism resolving the pack-name → app-folder mismatch.</p>
+<h3 id="14-goals">1.4. Goals<a class="headerlink" href="#14-goals" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Express "this is GUI-app config" once per subtree, in a way that does the right thing on Linux <strong>and</strong> MacOs, without <code>if os == "darwin"</code> branching inside packs. </li>
+<li>Slot cleanly into the existing §1–§5 priority ladder as new rungs, not as parallel machinery. </li>
+<li>Keep the resolver deterministic over textual prefixes; OS-awareness lives in one place (<code>Pather</code>). </li>
+<li>Make <code>dodot adopt ~/Library/Application\ Support/Code/User/settings.json</code> Just Work — produce a pack-relative path that round-trips on both platforms. </li>
+<li>Avoid mackup-style maintenance debt. Ship a small curated list of well-known apps with a hard cap; do not maintain a 700-entry database. </li>
+</ul>
+<h2 id="2-three-roots-not-two">2. Three Roots, Not Two<a class="headerlink" href="#2-three-roots-not-two" title="Permanent link">&para;</a></h2>
+<h3 id="21-the-pather-surface">2.1. The <code>Pather</code> Surface<a class="headerlink" href="#21-the-pather-surface" title="Permanent link">&para;</a></h3>
+<p><strong>A new accessor on the `Pather` trait exposes the application-support root</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>
+</code></pre></div>
+<h4 id="resolution-in-xdgpatherbuilderbuild">Resolution in <code>XdgPatherBuilder::build()</code>:<a class="headerlink" href="#resolution-in-xdgpatherbuilderbuild" title="Permanent link">&para;</a></h4>
+<ul>
+<li>MacOs:           <code>$HOME/Library/Application Support</code> </li>
+<li>Linux and other: <code>$XDG_CONFIG_HOME</code> (so <code>_app/</code> falls through cleanly to the existing root) </li>
+</ul>
+<p>Overridable via <code>XdgPatherBuilder::app_support_dir(...)</code> for tests and for users who deliberately want MacOs to route through <code>~/.config/</code> like Linux. The OS check lives exclusively in this builder; the resolver stays platform-agnostic and operates only on textual prefixes.</p>
+<h3 id="22-three-coordinates-going-forward">2.2. Three Coordinates Going Forward<a class="headerlink" href="#22-three-coordinates-going-forward" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<p><strong>After this proposal lands, every symlink target resolves into exactly one of three roots</strong></p>
+<p>On Linux the second and third coordinates collapse to one filesystem location. On MacOs they diverge. The resolver always knows which of the three a target belongs to; the OS only enters the picture once, when <code>Pather</code> materialises <code>app_support_dir</code>.</p>
+<h2 id="3-the-_app-directory-prefix">3. The <code>_app/</code> Directory Prefix<a class="headerlink" href="#3-the-_app-directory-prefix" title="Permanent link">&para;</a></h2>
+<h3 id="31-behavior">3.1. Behavior<a class="headerlink" href="#31-behavior" title="Permanent link">&para;</a></h3>
+<p><code>_app/</code> is the per-subtree opt-in for "this is GUI-application config". Like <code>_xdg/</code> and <code>_home/</code>, it skips pack namespacing entirely: every file under <code>_app/</code> deploys raw, with the pack name playing no role.</p>
+<p><strong>Mapping</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;pack&gt;/_app/&lt;name&gt;/&lt;rest&gt;  →  &lt;app_support_dir&gt;/&lt;name&gt;/&lt;rest&gt;
+</code></pre></div>
+<h4 id="deploys-to">Deploys to:<a class="headerlink" href="#deploys-to" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Linux:  <code>~/.config/Code/User/settings.json</code> </li>
+<li>MacOs:  <code>~/Library/Application Support/Code/User/settings.json</code> </li>
+</ul>
+<p>The pack literally states "this is GUI-app config under name <code>Code</code>". dodot picks the root per platform.</p>
+<h3 id="32-position-in-the-priority-ladder">3.2. Position in the Priority Ladder<a class="headerlink" href="#32-position-in-the-priority-ladder" title="Permanent link">&para;</a></h3>
+<p><code>_app/</code> is an explicit per-subtree user opt-in, structurally identical to <code>_xdg/</code> and <code>_home/</code>. It joins them at Priority 2 of the resolver (see §5). It outranks <code>force_home</code> and the default rule, but is outranked by <code>home.X</code> (per-file opt-in, more specific) and <code>[symlink.targets]</code> (explicit absolute override).</p>
+<h3 id="33-the-app_aliases-map">3.3. The <code>app_aliases</code> Map<a class="headerlink" href="#33-the-app_aliases-map" title="Permanent link">&para;</a></h3>
+<p><strong>Cross-platform packs frequently want the *natural* pack name (`vscode`) without writing `_app/Code/` for every entry. The `[symlink.app_aliases]` table lets a user declare a pack-level rewrite</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>
+</code></pre></div>
+<p>When a pack name appears as a key in <code>app_aliases</code>, the <strong>default rule</strong> for that pack is rerouted: instead of <code>$XDG_CONFIG_HOME/&lt;pack&gt;/&lt;rel_path&gt;</code>, the deploy path becomes <code>&lt;app_support_dir&gt;/&lt;value&gt;/&lt;rel_path&gt;</code>. The pack <code>vscode</code> with <code>User/settings.json</code> then deploys to <code>~/Library/Application Support/Code/User/settings.json</code> on MacOs, <code>~/.config/Code/User/settings.json</code> on Linux — without any <code>_app/</code> prefix in the pack tree.</p>
+<h4 id="aliases-compose-with-the-rest-of-the-ladder">Aliases compose with the rest of the ladder:<a class="headerlink" href="#aliases-compose-with-the-rest-of-the-ladder" title="Permanent link">&para;</a></h4>
+<ul>
+<li>A <code>home.X</code> file inside an aliased pack still routes to <code>$HOME/.X</code> (priority 1 outranks the aliased default). </li>
+<li>A <code>_xdg/</code> subtree inside an aliased pack still deploys raw under <code>$XDG_CONFIG_HOME</code> (explicit user intent wins over the alias). </li>
+<li>A <code>[symlink.targets]</code> entry still wins absolutely. </li>
+</ul>
+<p>Aliases are scoped to the alias map's defining <code>.dodot.toml</code>. A pack-level <code>.dodot.toml</code> setting <code>[symlink.app_aliases]</code> overrides the root <code>.dodot.toml</code>. A pack-level alias is the recommended location, since the alias is logically a property of the pack.</p>
+<h3 id="34-the-curated-force_app-list">3.4. The Curated <code>force_app</code> List<a class="headerlink" href="#34-the-curated-force_app-list" title="Permanent link">&para;</a></h3>
+<p>Analogous to <code>force_home</code>, <code>force_app</code> is a curated list of top-level pack-entry names that get auto-routed to the app-support root <strong>without</strong> requiring a <code>_app/</code> prefix or an alias entry. It exists to make the high-impact common case (well-known editors, terminals, productivity apps) magical.</p>
+<p><strong>Schema</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">[symlink]</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">force_app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="s2">&quot;Code&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="s2">&quot;Cursor&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="s2">&quot;Sublime Text&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="s2">&quot;Rectangle Pro&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="c1"># … capped at ~100 entries; see §3.4.1</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="p">]</span>
+</code></pre></div>
+<p>Matching follows <code>force_home</code> semantics: the <strong>first segment</strong> of the pack-relative path is compared against entries (case-sensitive — Library folder names are case-sensitive).</p>
+<h4 id="341-the-hundred-entry-cap">3.4.1. The Hundred-Entry Cap<a class="headerlink" href="#341-the-hundred-entry-cap" title="Permanent link">&para;</a></h4>
+<p>The default <code>force_app</code> list is capped at 100 entries, enforced as a CI invariant. Adding entry 101 is a forcing function to drop the weakest-justified existing entry. This keeps the list a curated convenience, not an open-ended database. The cap is not configurable; users who want more redirects use <code>_app/</code> or <code>app_aliases</code>.</p>
+<h5 id="inclusion-criterion-documented-in-the-source-file-one-line-per-entry">Inclusion criterion (documented in the source file, one-line per entry):<a class="headerlink" href="#inclusion-criterion-documented-in-the-source-file-one-line-per-entry" title="Permanent link">&para;</a></h5>
+<ul>
+<li>The app must be widely deployed in the developer-tools community. </li>
+<li>Its Application Support folder name must be stable across versions. </li>
+<li>The folder name must not collide with any plausible CLI tool's <code>~/.config/</code> directory. </li>
+</ul>
+<p>Entries that fail the third criterion (e.g. an app whose folder name happens to be <code>vim</code>) are excluded by construction.</p>
+<h4 id="342-initial-seed">3.4.2. Initial Seed<a class="headerlink" href="#342-initial-seed" title="Permanent link">&para;</a></h4>
+<p>The initial list is empty. Entries are added based on real user demand once the mechanism ships. This avoids day-one wrong defaults and lets the cap-100 discipline establish itself organically.</p>
+<h2 id="4-the-_lib-directory-prefix">4. The <code>_lib/</code> Directory Prefix<a class="headerlink" href="#4-the-_lib-directory-prefix" title="Permanent link">&para;</a></h2>
+<h3 id="41-behavior">4.1. Behavior<a class="headerlink" href="#41-behavior" title="Permanent link">&para;</a></h3>
+<p><code>_lib/</code> is the MacOs-only counterpart to <code>_app/</code>. Where <code>_app/</code> cross-routes between two platforms, <code>_lib/</code> declares a hard MacOs-only target — appropriate for apps with no Linux equivalent (<code>Rectangle Pro</code>, <code>Karabiner-Elements</code>, MacOs-native plist consumers).</p>
+<p><strong>Mapping (MacOs)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>&lt;pack&gt;/_lib/&lt;rest&gt;  →  $HOME/Library/&lt;rest&gt;
+</code></pre></div>
+<h3 id="42-linux-behavior">4.2. Linux Behavior<a class="headerlink" href="#42-linux-behavior" title="Permanent link">&para;</a></h3>
+<p><strong>On non-MacOs platforms, `_lib/` emits no symlink intent and produces a soft warning</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>
+</code></pre></div>
+<p>The pack is otherwise unaffected; other entries deploy normally. This matches the friction level of a missing source file: visible, recoverable, non-fatal.</p>
+<h2 id="5-path-resolution-full-specification">5. Path Resolution: Full Specification<a class="headerlink" href="#5-path-resolution-full-specification" title="Permanent link">&para;</a></h2>
+<h3 id="51-the-updated-priority-ladder">5.1. The Updated Priority Ladder<a class="headerlink" href="#51-the-updated-priority-ladder" title="Permanent link">&para;</a></h3>
+<p>The resolver in <code>crates/dodot-lib/src/handlers/symlink.rs</code> evaluates the following rules in order. The first matching rule wins. This is a strict superset of the existing ladder; sessions 0, 1, 3, 4 are unchanged from <code>symlink-paths.lex</code>.</p>
+<h4 id="priorities-highest-first">Priorities (highest first):<a class="headerlink" href="#priorities-highest-first" title="Permanent link">&para;</a></h4>
+<ol>
+<li>Custom target from <code>[symlink.targets]</code> </li>
+<li><code>home.X</code> prefix (top-level files only) → <code>$HOME/.X</code> </li>
+<li>Directory prefixes (per-subtree, skip pack namespace): <ol>
+<li><code>_home/&lt;rest&gt;</code> → <code>$HOME/.&lt;rest&gt;</code> </li>
+<li><code>_xdg/&lt;rest&gt;</code>  → <code>$XDG_CONFIG_HOME/&lt;rest&gt;</code> </li>
+<li><code>_app/&lt;rest&gt;</code>  → <code>&lt;app_support_dir&gt;/&lt;rest&gt;</code> </li>
+<li><code>_lib/&lt;rest&gt;</code>  → <code>$HOME/Library/&lt;rest&gt;</code> (MacOs only; warn elsewhere) </li>
+</ol>
+</li>
+<li><code>force_home</code> list → <code>$HOME/.&lt;first-segment&gt;/&lt;rest&gt;</code> </li>
+<li><code>force_app</code> list → <code>&lt;app_support_dir&gt;/&lt;first-segment&gt;/&lt;rest&gt;</code> </li>
+<li><code>app_aliases[pack]</code> → <code>&lt;app_support_dir&gt;/&lt;alias&gt;/&lt;rel_path&gt;</code> </li>
+<li>Default → <code>$XDG_CONFIG_HOME/&lt;pack-display-name&gt;/&lt;rel_path&gt;</code> </li>
+</ol>
+<h4 id="tie-breaking-notes">Tie-breaking notes:<a class="headerlink" href="#tie-breaking-notes" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Within Priority 2, only one prefix can match a given path (they are mutually exclusive by syntax). </li>
+<li><code>force_home</code> and <code>force_app</code> are mutually exclusive; entries appearing in both lists are a configuration error and produce a startup warning. </li>
+<li><code>app_aliases</code> only applies when no higher-priority rule matched — it modifies <strong>the default</strong>, not user-explicit prefixes. </li>
+</ul>
+<h3 id="52-resolver-pseudocode">5.2. Resolver Pseudocode<a class="headerlink" href="#52-resolver-pseudocode" title="Permanent link">&para;</a></h3>
+<p><strong>Pseudocode</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">fn</span><span class="w"> </span><span class="nf">resolve_target</span><span class="p">(</span><span class="n">pack</span><span class="p">,</span><span class="w"> </span><span class="n">rel_path</span><span class="p">,</span><span class="w"> </span><span class="n">config</span><span class="p">,</span><span class="w"> </span><span class="n">paths</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">PathBuf</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">pack</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">display_name_for</span><span class="p">(</span><span class="n">pack</span><span class="p">);</span><span class="w">  </span><span class="c1">// strip ordering prefix</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">home</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">paths</span><span class="p">.</span><span class="n">home_dir</span><span class="p">();</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">xdg</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">paths</span><span class="p">.</span><span class="n">xdg_config_home</span><span class="p">();</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">app</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">paths</span><span class="p">.</span><span class="n">app_support_dir</span><span class="p">();</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="c1">// 0. Custom target override</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">targets</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">rel_path</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">is_absolute</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">xdg</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="c1">// 1. home.X (top-level files only)</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">rest</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strip_home_prefix</span><span class="p">(</span><span class="n">rel_path</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">home</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">rest</span><span class="p">);</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">    </span><span class="c1">// 2. Directory-prefix escape hatches</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">r</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rel_path</span><span class="p">.</span><span class="n">strip_prefix</span><span class="p">(</span><span class="s">&quot;_home/&quot;</span><span class="p">)</span><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">home</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">dot_first</span><span class="p">(</span><span class="n">r</span><span class="p">));</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">r</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rel_path</span><span class="p">.</span><span class="n">strip_prefix</span><span class="p">(</span><span class="s">&quot;_xdg/&quot;</span><span class="p">)</span><span class="w">   </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">xdg</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">r</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">r</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rel_path</span><span class="p">.</span><span class="n">strip_prefix</span><span class="p">(</span><span class="s">&quot;_app/&quot;</span><span class="p">)</span><span class="w">   </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">app</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">r</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">r</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rel_path</span><span class="p">.</span><span class="n">strip_prefix</span><span class="p">(</span><span class="s">&quot;_lib/&quot;</span><span class="p">)</span><span class="w">   </span><span class="p">{</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="fm">cfg!</span><span class="p">(</span><span class="n">target_os</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;MacOs&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">home</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="s">&quot;Library&quot;</span><span class="p">).</span><span class="n">join</span><span class="p">(</span><span class="n">r</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">               </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">warn_and_skip</span><span class="p">()</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="w">    </span><span class="c1">// 3. force_home</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">is_force_home</span><span class="p">(</span><span class="n">rel_path</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">config</span><span class="p">.</span><span class="n">force_home</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">home</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">dot_first</span><span class="p">(</span><span class="n">rel_path</span><span class="p">));</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a><span class="w">    </span><span class="c1">// 4. force_app</span>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">is_force_app</span><span class="p">(</span><span class="n">rel_path</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">config</span><span class="p">.</span><span class="n">force_app</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">app</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">rel_path</span><span class="p">);</span>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a><span class="w">    </span><span class="c1">// 5. app_aliases (pack-level rewrite of the default)</span>
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">alias</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">app_aliases</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">pack</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-38" name="__codelineno-6-38" href="#__codelineno-6-38"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">app</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">alias</span><span class="p">).</span><span class="n">join</span><span class="p">(</span><span class="n">rel_path</span><span class="p">);</span>
+<a id="__codelineno-6-39" name="__codelineno-6-39" href="#__codelineno-6-39"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-40" name="__codelineno-6-40" href="#__codelineno-6-40"></a>
+<a id="__codelineno-6-41" name="__codelineno-6-41" href="#__codelineno-6-41"></a><span class="w">    </span><span class="c1">// 6. Default</span>
+<a id="__codelineno-6-42" name="__codelineno-6-42" href="#__codelineno-6-42"></a><span class="w">    </span><span class="n">xdg</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">pack</span><span class="p">).</span><span class="n">join</span><span class="p">(</span><span class="n">rel_path</span><span class="p">)</span>
+<a id="__codelineno-6-43" name="__codelineno-6-43" href="#__codelineno-6-43"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="53-worked-examples">5.3. Worked Examples<a class="headerlink" href="#53-worked-examples" title="Permanent link">&para;</a></h3>
+<p>All examples assume <code>XDG_CONFIG_HOME=~/.config</code>, MacOs unless noted, and <code>[symlink.app_aliases] vscode = "Code"</code>.</p>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<p><strong>Examples</strong></p>
+<table>
+<thead>
+<tr>
+<th>Pack/path</th>
+<th>Resolution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vscode/User/settings.json</code></td>
+<td><code>~/Library/Application Support/Code/User/settings.json</code> (rule 5)</td>
+</tr>
+<tr>
+<td><code>vscode/User/settings.json</code> (Linux)</td>
+<td><code>~/.config/Code/User/settings.json</code> (rule 5)</td>
+</tr>
+<tr>
+<td><code>vscode/_xdg/Code/User/foo</code></td>
+<td><code>~/.config/Code/User/foo</code> (rule 2b — explicit overrides alias)</td>
+</tr>
+<tr>
+<td><code>mac-apps/_app/Cursor/User/keys</code></td>
+<td><code>~/Library/Application Support/Cursor/User/keys</code> (rule 2c)</td>
+</tr>
+<tr>
+<td><code>mac-apps/_lib/LaunchAgents/x.plist</code></td>
+<td><code>~/Library/LaunchAgents/x.plist</code> (rule 2d, MacOs)</td>
+</tr>
+<tr>
+<td><code>mac-apps/_lib/...</code> (Linux)</td>
+<td>(skipped, warning emitted)</td>
+</tr>
+<tr>
+<td><code>nvim/init.lua</code></td>
+<td><code>~/.config/nvim/init.lua</code> (rule 6)</td>
+</tr>
+<tr>
+<td><code>shell/home.bashrc</code></td>
+<td><code>~/.bashrc</code> (rule 1)</td>
+</tr>
+<tr>
+<td><code>net/ssh/config</code></td>
+<td><code>~/.ssh/config</code> (rule 3, force_home)</td>
+</tr>
+<tr>
+<td><code>apps/Code/User/foo</code> + force_app</td>
+<td><code>~/Library/Application Support/Code/User/foo</code> (rule 4)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6-configuration-surface">6. Configuration Surface<a class="headerlink" href="#6-configuration-surface" title="Permanent link">&para;</a></h2>
+<h3 id="61-schema-additions">6.1. Schema Additions<a class="headerlink" href="#61-schema-additions" title="Permanent link">&para;</a></h3>
+<p><strong>Added `[symlink]` keys</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">[symlink]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># When true, `_app/` and `app_aliases` route through</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># ~/Library/Application Support on MacOs. Default true on</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># darwin, false elsewhere. Set false on MacOs to opt into</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Linux-style ~/.config behavior for everything.</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">app_uses_library</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="c1"># Curated list. Top-level pack entries whose first segment</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="c1"># matches deploy to &lt;app_support_dir&gt;/&lt;name&gt;/. Capped at 100.</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="n">force_app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span>
+</code></pre></div>
+<p><strong>Added `[symlink.app_aliases]` table</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">[symlink.app_aliases]</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">vscode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Code&quot;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">warp</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;dev.warp.Warp-Stable&quot;</span>
+</code></pre></div>
+<h3 id="62-inheritance">6.2. Inheritance<a class="headerlink" href="#62-inheritance" title="Permanent link">&para;</a></h3>
+<p>Follows the existing 3-layer hierarchy: compiled defaults \&lt; root <code>.dodot.toml</code> \&lt; pack <code>.dodot.toml</code>. <code>app_aliases</code> is most idiomatically declared in pack-level config since it is logically a property of the pack.</p>
+<h3 id="63-defaults-by-platform">6.3. Defaults by Platform<a class="headerlink" href="#63-defaults-by-platform" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<p>| Setting             | MacOs default | Linux default                       | | <code>app_uses_library</code>  | <code>true</code>        | <code>false</code> (and ignored)               | | <code>force_app</code>         | <code>[]</code>          | <code>[]</code>                                | | <code>app_aliases</code>       | <code>{}</code>          | <code>{}</code> (pack-level overrides apply equally) |</p>
+<p>On Linux with <code>app_uses_library = false</code>, <code>_app/</code> and <code>app_aliases</code> continue to route, but <code>app_support_dir</code> resolves to <code>$XDG_CONFIG_HOME</code> so behavior is indistinguishable from <code>_xdg/</code>. The mechanism is OS-agnostic; only the destination differs.</p>
+<h2 id="7-adopt-source-roots">7. Adopt: Source Roots<a class="headerlink" href="#7-adopt-source-roots" title="Permanent link">&para;</a></h2>
+<p>The pre-inference adopt CLI took the form <code>dodot adopt &lt;pack&gt; &lt;files...&gt;</code> and refused any source whose parent was not <code>$HOME</code> (the "flat-at-top-level" rule). The inference framework — landed for HOME and XDG roots, with the AppSupport root reserved here for Phases M1–M4 — generalises that into a per-source path-inference pass that picks the pack name, the in-pack path, and the round-trip prefix from the source's deployed location.</p>
+<h3 id="71-cli-shape">7.1. CLI Shape<a class="headerlink" href="#71-cli-shape" title="Permanent link">&para;</a></h3>
+<p><strong>New shape</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>dodot adopt &lt;path&gt;...                # pack name inferred per source
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>dodot adopt &lt;path&gt;... --into &lt;pack&gt;  # all sources land in &lt;pack&gt;
+</code></pre></div>
+<p><code>--into</code> is the override switch: it forces a single destination pack regardless of what inference would have picked. When the source's natural pack differs from the override, the in-pack path switches to the explicit-prefix encoding (<code>_xdg/&lt;X&gt;/&lt;rest&gt;</code>, <code>_app/&lt;X&gt;/&lt;rest&gt;</code>) so round-trip via Priority 2 still lands the deployed file at the original location. See §7.4.</p>
+<h3 id="72-recognized-source-roots">7.2. Recognized Source Roots<a class="headerlink" href="#72-recognized-source-roots" title="Permanent link">&para;</a></h3>
+<p>Recognized adopt source roots, with the in-pack path each yields when the pack name is the <strong>naturally inferred</strong> one (i.e. <code>--into</code> agrees with inference, or <code>--into</code> is omitted). The override-aware path is in §7.4.</p>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<p><strong>Recognized adopt source roots</strong></p>
+<table>
+<thead>
+<tr>
+<th>Source path under</th>
+<th>Inferred pack</th>
+<th>In-pack path (natural)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$HOME/.&lt;X&gt;</code> (file)</td>
+<td>(require <code>--into</code>)</td>
+<td><code>home.&lt;X&gt;</code></td>
+</tr>
+<tr>
+<td><code>$HOME/.&lt;X&gt;/...</code> (dir)</td>
+<td>(require <code>--into</code>)</td>
+<td><code>_home/&lt;X&gt;/...</code></td>
+</tr>
+<tr>
+<td><code>$HOME/&lt;X&gt;</code> (force_home match)</td>
+<td>(require <code>--into</code>)</td>
+<td><code>&lt;X&gt;</code> (bare)</td>
+</tr>
+<tr>
+<td><code>$XDG_CONFIG_HOME/&lt;X&gt;/&lt;rest&gt;</code></td>
+<td><code>&lt;X&gt;</code></td>
+<td><code>&lt;rest&gt;</code></td>
+</tr>
+<tr>
+<td><code>$XDG_CONFIG_HOME/&lt;X&gt;/</code> (the dir itself)</td>
+<td><code>&lt;X&gt;</code></td>
+<td>(expand children)</td>
+</tr>
+<tr>
+<td><code>~/Library/Application Support/&lt;X&gt;/&lt;rest&gt;</code></td>
+<td><code>&lt;X&gt;</code></td>
+<td><code>_app/&lt;X&gt;/&lt;rest&gt;</code></td>
+</tr>
+<tr>
+<td><code>~/Library/Application Support/&lt;X&gt;/</code></td>
+<td><code>&lt;X&gt;</code></td>
+<td>(expand children)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="two-design-notes-are-load-bearing">Two design notes are load-bearing:<a class="headerlink" href="#two-design-notes-are-load-bearing" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>XDG sources use *bare* in-pack paths, not <code>_xdg/&lt;X&gt;/&lt;rest&gt;</code>.</strong> The pack-name segment is <strong>the</strong> pack name; the resolver's default rule (Priority 6, <code>$XDG/&lt;pack&gt;/&lt;rel&gt;</code>) round-trips correctly without any prefix. This is a corrected reading versus an earlier draft of this section. The <code>_xdg/</code> prefix is the <strong>override</strong> encoding (§7.4), not the natural one. </li>
+<li><strong>AppSupport in-pack paths *do* use the <code>_app/&lt;X&gt;/</code> prefix even at natural pack name.</strong> That's because the resolver's default rule routes pack <code>&lt;X&gt;</code> to <code>$XDG/&lt;X&gt;/</code>, <strong>not</strong> <code>&lt;app_support_dir&gt;/&lt;X&gt;/</code>. Without the <code>_app/</code> prefix the round-trip would land the file in <code>~/.config/&lt;X&gt;/</code> on MacOs (wrong root), so the prefix is mandatory. Alternative: declare <code>[symlink.app_aliases] &lt;X&gt; = "&lt;X&gt;"</code> in the pack and use bare paths; adopt may emit this aliasing form when the capitalization heuristic (§8.1) says the folder is a GUI app and the user opts in. By default adopt produces <code>_app/&lt;X&gt;/&lt;rest&gt;</code> with no config writes. </li>
+</ul>
+<h3 id="73-inference-decline-and-into">7.3. Inference Decline and <code>--into</code><a class="headerlink" href="#73-inference-decline-and-into" title="Permanent link">&para;</a></h3>
+<p><code>$HOME/.X</code> sources (and force_home matches) carry no pack structure inference can mine: a file like <code>~/.bashrc</code> could plausibly belong in a <code>shell</code>, <code>bash</code>, or <code>dotfiles</code> pack. Inference declines and surfaces an error pointing at <code>--into</code>.</p>
+<p>Multi-source invocations are required to agree on a single pack: if <code>~/.config/nvim/init.lua</code> and <code>~/.config/helix/config.toml</code> are passed together without <code>--into</code>, inference produces conflicting pack names (<code>nvim</code> and <code>helix</code>) and adopt refuses, naming both candidates so the user can split or specify <code>--into</code>.</p>
+<p>Mixing HOME-decline and XDG-inferred sources in a single invocation is allowed: they all land in the (single) inferred pack, with the HOME sources using their pack-name-independent <code>home.X</code> / <code>_home/X/</code> prefixes.</p>
+<h3 id="74-pack-override-encoding">7.4. Pack-Override Encoding<a class="headerlink" href="#74-pack-override-encoding" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<p><strong>When <code>--into &lt;Y&gt;</code> is supplied and <code>&lt;Y&gt;</code> ≠ the source's natural pack name, the in-pack path switches to the explicit-prefix encoding so the deployed path stays the same</strong></p>
+<p>Concrete: <code>dodot adopt ~/.config/lazygit/config.yml --into toolbox</code> lands the file at <code>toolbox/_xdg/lazygit/config.yml</code>. The <code>_xdg/</code> Priority-2 prefix bypasses pack-namespacing, so re-deploying still lands the symlink at <code>~/.config/lazygit/config.yml</code> even though the pack is <code>toolbox</code>.</p>
+<h3 id="75-pack-root-directory-expansion">7.5. Pack-Root Directory Expansion<a class="headerlink" href="#75-pack-root-directory-expansion" title="Permanent link">&para;</a></h3>
+<p>When the source IS the pack-root directory under XDG or AppSupport (<code>~/.config/nvim/</code>, <code>~/Library/Application Support/Code/</code>), adopt enumerates the directory's children and creates one plan per top-level entry, instead of making the directory itself one big symlink-to-pack-root. Each child becomes a top-level pack member, so <code>dodot up</code> deploys per-entry like any other pack.</p>
+<h4 id="concrete-dodot-adopt-confighelix-produces-per-child-of-confighelix">Concrete: <code>dodot adopt ~/.config/helix/</code> produces, per child of <code>~/.config/helix/</code>:<a class="headerlink" href="#concrete-dodot-adopt-confighelix-produces-per-child-of-confighelix" title="Permanent link">&para;</a></h4>
+<ul>
+<li><code>~/.config/helix/config.toml</code> → <code>helix/config.toml</code> </li>
+<li><code>~/.config/helix/themes/</code> → <code>helix/themes/</code> </li>
+</ul>
+<p>After adopt, each child of <code>~/.config/helix/</code> is its own symlink; <code>~/.config/helix/</code> itself stays a real directory.</p>
+<p>Expansion does not apply to <code>$HOME/.X/</code> directory sources — those keep the existing <code>_home/&lt;X&gt;/</code> whole-subtree adoption (§7.2 row 2). The reason is asymmetric: <code>~/.weechat/</code> <strong>is</strong> the file the user wants symlinked back, whereas <code>~/.config/helix/</code> is a container <strong>whose contents</strong> are what the user wants symlinked.</p>
+<h3 id="76-auto-creating-packs">7.6. Auto-Creating Packs<a class="headerlink" href="#76-auto-creating-packs" title="Permanent link">&para;</a></h3>
+<p>When all sources point at a single inferred pack name and that pack does not exist on disk, adopt creates it (an empty directory; no <code>.dodot.toml</code> written). When <code>--into &lt;pack&gt;</code> is supplied and <code>&lt;pack&gt;</code> does not exist, adopt refuses — the explicit name is a typo guard the user opted into. The user can run <code>dodot init &lt;pack&gt;</code> first to bootstrap an explicit pack.</p>
+<h3 id="77-appsupport-source-implementation-status">7.7. AppSupport Source Implementation Status<a class="headerlink" href="#77-appsupport-source-implementation-status" title="Permanent link">&para;</a></h3>
+<h4 id="the-libraryapplication-supportxrest-row-of-72-is-specified-but-not-yet-plumbed-the-inference-framework-reserves-a-sourcerootappsupport-variant-but-the-matcher-does-not-consult-it-because-pather-does-not-yet-expose-app_support_dir-phase-m1-when-m1-lands-two-changes-complete-the-appsupport-adopt-path">The <code>~/Library/Application Support/&lt;X&gt;/&lt;rest&gt;</code> row of §7.2 is <strong>specified</strong> but not yet <strong>plumbed</strong>: the inference framework reserves a <code>SourceRoot::AppSupport</code> variant, but the matcher does not consult it because <code>Pather</code> does not yet expose <code>app_support_dir()</code> (Phase M1). When M1 lands, two changes complete the AppSupport adopt path:<a class="headerlink" href="#the-libraryapplication-supportxrest-row-of-72-is-specified-but-not-yet-plumbed-the-inference-framework-reserves-a-sourcerootappsupport-variant-but-the-matcher-does-not-consult-it-because-pather-does-not-yet-expose-app_support_dir-phase-m1-when-m1-lands-two-changes-complete-the-appsupport-adopt-path" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Add a third arm to the root-matching ladder in <code>commands::adopt::infer::infer_target</code> checking <code>app_support_dir</code>, between the XDG and HOME arms (longest-prefix order: AppSupport &gt; XDG &gt; HOME — though on Linux both AppSupport and XDG resolve to the same path and the AppSupport arm is unreachable in practice). </li>
+<li>In the natural in-pack path, prepend <code>_app/&lt;X&gt;/</code> so Priority 2c routes back to <code>&lt;app_support_dir&gt;/&lt;X&gt;/&lt;rest&gt;</code>. The override-aware path is already <code>_app/&lt;X&gt;/&lt;rest&gt;</code> (§7.4), so override behavior is symmetric. </li>
+</ul>
+<p>Adopt's directory-expansion path (<code>SourceRoot::AppSupport</code>) is already wired through <code>expand_child_in_pack</code>: when a pack-root directory under AppSupport expands, each child gets <code>_app/&lt;X&gt;/&lt;child&gt;</code> as its in-pack path. This is the "pack <code>vscode</code> with <code>app_aliases.vscode = "Code"</code>" alternative's <strong>non-aliased</strong> implementation, kept simple by default and refinable via the capitalization heuristic (§8.1) once advisory probing lands.</p>
+<h3 id="78-sandboxed-apps">7.8. Sandboxed Apps<a class="headerlink" href="#78-sandboxed-apps" title="Permanent link">&para;</a></h3>
+<p>MacOs sandboxed apps (App Store apps and many first-party apps) write to <code>~/Library/Containers/&lt;bundle-id&gt;/Data/Library/Application Support/&lt;X&gt;/</code> rather than the canonical location. These containers are not intended for external editing and their contents are often partially managed by the system.</p>
+<p><code>dodot adopt</code> refuses sources under <code>~/Library/Containers/</code> with a clear message. The refusal is platform-agnostic: even on Linux a path matching that shape is rejected, so the same refusal text is the right thing to print on every OS (the path simply doesn't exist on Linux in practice).</p>
+<p><strong>Refusal text</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>error: &lt;path&gt;
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  this is a sandboxed app&#39;s container; its config is not
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  intended to be edited externally. dodot does not support
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  adopting from ~/Library/Containers/.
+</code></pre></div>
+<p>Users who genuinely need to manage container files can copy them into a pack manually and use <code>[symlink.targets]</code> with an absolute path.</p>
+<h2 id="8-automagical-path-divination">8. Automagical Path Divination<a class="headerlink" href="#8-automagical-path-divination" title="Permanent link">&para;</a></h2>
+<p>The deterministic resolver in §5 is intentionally narrow: it operates on textual prefixes and configured lists, nothing else. But MacOs exposes rich metadata about installed applications, and Homebrew — present on essentially every MacOs developer machine — maintains a community-curated database of where every cask-installed app stores its data. Used judiciously, these signals turn <code>dodot adopt</code> into a pleasant suggestion engine and <code>dodot up</code> into a verification layer that catches typos before they ship.</p>
+<p>The cardinal rule for everything in this session: <strong>probes are advisory, never authoritative</strong>. The resolver in §5 never consults them. If a probe returns wrong information, the user sees a wrong suggestion or a wrong warning, not a wrong deployment.</p>
+<h3 id="81-the-capitalization-heuristic">8.1. The Capitalization Heuristic<a class="headerlink" href="#81-the-capitalization-heuristic" title="Permanent link">&para;</a></h3>
+<h4 id="macos-gui-app-folders-under-libraryapplication-support-follow-a-strong-naming-pattern-that-distinguishes-them-from-linux-cli-tool-config-folders-under-config-a-folder-name-is-a-probable-macos-gui-app-target-if">MacOs GUI app folders under <code>~/Library/Application Support/</code> follow a strong naming pattern that distinguishes them from Linux CLI-tool config folders under <code>~/.config/</code>. A folder name is a <strong>probable</strong> MacOs GUI app target if:<a class="headerlink" href="#macos-gui-app-folders-under-libraryapplication-support-follow-a-strong-naming-pattern-that-distinguishes-them-from-linux-cli-tool-config-folders-under-config-a-folder-name-is-a-probable-macos-gui-app-target-if" title="Permanent link">&para;</a></h4>
+<ul>
+<li>It contains at least one uppercase letter (<code>Code</code>, <code>Cursor</code>, <code>IntelliJ IDEA</code>, <code>Sublime Text</code>), or </li>
+<li>It contains a space (<code>Application Support</code>, <code>Sublime Text 3</code>, <code>Smart Code ltd</code>), or </li>
+<li>It matches a reverse-DNS pattern of two or more dotted lowercase segments (<code>com.apple.dt.Xcode</code>, <code>org.videolan.vlc</code>, <code>dev.warp.Warp-Stable</code>). </li>
+</ul>
+<p>A folder name is a <strong>probable</strong> CLI-tool target if it is all lowercase, contains no spaces, and does not match reverse-DNS. The CLI-tool population (<code>nvim</code>, <code>helix</code>, <code>ghostty</code>, <code>kitty</code>, <code>lazygit</code>, …) is uniformly lowercase-hyphenated; the population of capitalized <code>~/.config/Foo</code> directories for CLI tools is empty in practice (FS case-insensitivity gotchas keep package authors away from it).</p>
+<p>Used inside <code>dodot adopt</code>, this heuristic powers the default suggestion when a source path could be ambiguous. It is <strong>not</strong> used in the resolver, where determinism over textual prefixes is non-negotiable.</p>
+<h3 id="82-homebrew-cask-probing">8.2. Homebrew Cask Probing<a class="headerlink" href="#82-homebrew-cask-probing" title="Permanent link">&para;</a></h3>
+<p>Homebrew cask packages declare a <code>zap</code> stanza enumerating every filesystem location an app touches: Application Support directories, Caches, Preferences PLists, LaunchAgents, et cetera. This is structurally the same data mackup curated by hand for years — except homebrew-cask is community-maintained at scale and self-updates as apps change.</p>
+<h4 id="available-via-subprocess">Available via subprocess:<a class="headerlink" href="#available-via-subprocess" title="Permanent link">&para;</a></h4>
+<p>$ brew list --cask --versions      # installed casks (offline, fast) $ brew info --json=v2 --cask \&lt;token&gt;   # full metadata incl. zap</p>
+<h4 id="the-json-outputs-artifactszap-field-gives-for-any-installed-cask">The JSON output's <code>artifacts[].zap</code> field gives, for any installed cask:<a class="headerlink" href="#the-json-outputs-artifactszap-field-gives-for-any-installed-cask" title="Permanent link">&para;</a></h4>
+<ul>
+<li>app-folder-name candidates: leaf names of <code>~/Library/Application Support/&lt;X&gt;</code> zap entries </li>
+<li>bundle name: <code>artifacts[].app[0]</code> (e.g. <code>"Visual Studio Code.app"</code>) </li>
+<li>associated Preferences plists, Caches, LaunchAgents </li>
+</ul>
+<h4 id="dodot-uses-this-data-in-two-places">dodot uses this data in two places:<a class="headerlink" href="#dodot-uses-this-data-in-two-places" title="Permanent link">&para;</a></h4>
+<ul>
+<li>At <code>adopt</code> time, to enrich the success message ("homebrew cask <code>visual-studio-code</code> confirms this is VS Code's app-support directory") and to surface sibling adoption candidates ("homebrew also reports <code>~/Library/Preferences/com.microsoft.VSCode.plist</code> for this cask — adopt that too?"). </li>
+<li>At <code>up</code>/<code>status</code> time, to soften "missing target directory" warnings into actionable hints ("looks like <code>&lt;cask-token&gt;</code> isn't installed yet — <code>_app/Code/...</code> will deploy but the app isn't here to read it"). </li>
+</ul>
+<h4 id="821-why-not-auto-derive-force_app">8.2.1. Why Not Auto-Derive <code>force_app</code><a class="headerlink" href="#821-why-not-auto-derive-force_app" title="Permanent link">&para;</a></h4>
+<p>A reasonable-sounding alternative is to populate <code>force_app</code> automatically from homebrew-cask zap data. dodot deliberately does not do this. Auto-derivation reintroduces mackup's maintenance debt by proxy: a homebrew-cask change to a zap stanza would silently change a dodot deployment. The curated 100-entry list (§3.4) is owned by dodot. Brew probes inform user-facing suggestions, never resolver state.</p>
+<h3 id="83-macos-native-apis">8.3. MacOs Native APIs<a class="headerlink" href="#83-macos-native-apis" title="Permanent link">&para;</a></h3>
+<h4 id="several-macos-native-sources-of-metadata-complement-homebrew-probing">Several MacOs-native sources of metadata complement homebrew probing:<a class="headerlink" href="#several-macos-native-sources-of-metadata-complement-homebrew-probing" title="Permanent link">&para;</a></h4>
+<ul>
+<li><code>mdls</code> — Spotlight metadata for a single bundle. <code>mdls -name kMDItemCFBundleIdentifier "/Applications/&lt;X&gt;.app"</code> returns the bundle ID (e.g. <code>com.microsoft.VSCode</code>). Instantaneous. </li>
+<li><code>mdfind</code> — Spotlight query. <code>mdfind "kMDItemKind == 'Application' &amp;&amp; kMDItemDisplayName == 'Cursor'"</code> resolves a display name to a bundle path. Useful when only a friendly name is known. </li>
+<li><code>defaults domains</code> — lists every preference domain registered in <code>~/Library/Preferences/</code>. The canonical API for plist-style preferences. Out of scope for <code>_app/</code> (preferences are a different file class) but available if <code>_lib/Preferences/</code> ever needs validation. </li>
+<li><code>lsregister -dump</code> — the full LaunchServices database. Comprehensive but heavy. Not used by dodot baseline. </li>
+<li><code>NSFileManager.URLsForDirectory(.applicationSupportDirectory, ...)</code> — the Cocoa API. Would require linking AppKit; not worth the dependency burden when env-var resolution is sufficient and trivially mockable. </li>
+</ul>
+<p>Of these, <code>mdls</code> is the most useful: cheap, scriptable, and resolves the "is this directory actually an installed app?" question authoritatively when given the .app bundle path.</p>
+<h3 id="84-the-dodot-probe-app-subcommand">8.4. The <code>dodot probe app</code> Subcommand<a class="headerlink" href="#84-the-dodot-probe-app-subcommand" title="Permanent link">&para;</a></h3>
+<p><strong>A new probe subcommand surfaces all available metadata for a pack, treating MacOs introspection as an explicit diagnostic step rather than a silent background process</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>$ dodot probe app &lt;pack&gt;
+</code></pre></div>
+<p>This is a debugging and discovery surface, not part of any deployment hot path. It is run on demand.</p>
+<h3 id="85-what-dodot-does-not-do">8.5. What dodot Does Not Do<a class="headerlink" href="#85-what-dodot-does-not-do" title="Permanent link">&para;</a></h3>
+<h4 id="out-of-scope-deliberately">Out of scope, deliberately:<a class="headerlink" href="#out-of-scope-deliberately" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Auto-curate <code>force_app</code> from homebrew-cask zap data (§8.2.1). </li>
+<li>Run a long-running daemon that watches LaunchServices for app-install events. </li>
+<li>Use <code>defaults write/read</code> to manage plist contents (that is a separate handler — <a href="./plists.lex">see</a>). </li>
+<li>Mirror mackup's bundled app database. The combination of <code>_app/</code>, <code>app_aliases</code>, <code>force_app</code> (curated, capped), and homebrew probing covers the same ground without the curation cost. </li>
+</ul>
+<h2 id="9-documentation-updates">9. Documentation Updates<a class="headerlink" href="#9-documentation-updates" title="Permanent link">&para;</a></h2>
+<p><code>docs/reference/symlink-paths.lex</code> gains a new §6 (renumbering existing §6/§7) documenting <code>_app/</code> and <code>_lib/</code>, and §3 (<code>force_home</code>) gains a sibling <code>force_app</code> subsection. The §1 introduction adds the third-coordinate table from §2.2 of this proposal.</p>
+<p><code>docs/reference/terms-and-concepts.lex</code> adds entries for <strong>app-support root</strong>, <strong>app alias</strong>, and <strong>force_app</strong>.</p>
+<p>A new tutorial section (<code>dodot tutorial</code>) walks through adopting <code>~/Library/Application Support/Code/User/settings.json</code> end-to-end on MacOs, demonstrating both the <code>_app/</code> prefix and the <code>app_aliases</code> mechanism.</p>
+<h2 id="10-implementation-phases">10. Implementation Phases<a class="headerlink" href="#10-implementation-phases" title="Permanent link">&para;</a></h2>
+<p>This proposal is structurally additive: every change either introduces a new resolver rule, a new config key, or a new advisory probe. No existing behaviour changes. Phases are independently shippable.</p>
+<p>Phase M1: <code>Pather</code> and <code>_app/</code></p>
+<ul>
+<li>Add <code>app_support_dir()</code> to <code>Pather</code> and <code>XdgPatherBuilder</code>. </li>
+<li>Add the <code>_app/</code> directory prefix to the resolver as Priority 2c. </li>
+<li>Add <code>app_uses_library</code> config key with platform-aware defaults. </li>
+<li>Update <code>symlink-paths.lex</code> with the new prefix. </li>
+<li>Tests: prefix resolution on both platforms; builder override. </li>
+</ul>
+<p>Phase M2: <code>force_app</code> and <code>app_aliases</code></p>
+<ul>
+<li>Add <code>force_app</code> config key and resolver Priority 4. </li>
+<li>Add <code>[symlink.app_aliases]</code> table and resolver Priority 5. </li>
+<li>Add CI invariant capping <code>force_app</code> defaults at 100 entries. </li>
+<li>Tests: alias-vs-prefix precedence; alias scoping; force_app first-segment matching. </li>
+</ul>
+<p>Phase M3: <code>_lib/</code></p>
+<ul>
+<li>Add the <code>_lib/</code> directory prefix as Priority 2d (MacOs) / warn-and-skip (other). </li>
+<li>Tests: MacOs resolution; Linux warning emission. </li>
+</ul>
+<p>Phase M4: Adopt extensions</p>
+<ul>
+<li>Extend <code>derive_pack_filename</code> to accept the source root. </li>
+<li>Recognize <code>~/Library/Application Support/&lt;X&gt;/</code> as a valid adopt source. </li>
+<li>Recognize <code>$XDG_CONFIG_HOME/&lt;X&gt;/</code> as a valid adopt source (deriving <code>_xdg/</code>). </li>
+<li>Refuse <code>~/Library/Containers/</code> sources. </li>
+<li>Tests: round-trip adopt → up → identical deployed path; container refusal. </li>
+</ul>
+<p>Phase M5: Capitalization heuristic in adopt</p>
+<ul>
+<li>Use the heuristic to drive <code>adopt</code>'s default suggestion when the user's input is ambiguous. </li>
+<li>Keep the resolver heuristic-free. </li>
+</ul>
+<p>Phase M6: Brew + MacOs probes</p>
+<ul>
+<li>Implement <code>brew info --json=v2 --cask</code> lookup with on-disk caching. </li>
+<li>Wire enrichment into <code>adopt</code> success messages and sibling-adoption suggestions. </li>
+<li>Wire missing-target verification into <code>up</code>/<code>status</code>. </li>
+<li>Add the <code>dodot probe app</code> subcommand. </li>
+<li>Tests: mock subprocess output; cache invalidation. </li>
+</ul>
+<p>Phases M1–M4 are the deterministic core and ship together as a single user-facing feature. Phase M5 is small ergonomics. Phase M6 is the advisory layer and is independently shippable later.</p>
+<h2 id="11-open-questions-and-future-work">11. Open Questions and Future Work<a class="headerlink" href="#11-open-questions-and-future-work" title="Permanent link">&para;</a></h2>
+<h3 id="111-_app-naming">11.1. <code>_app/</code> Naming<a class="headerlink" href="#111-_app-naming" title="Permanent link">&para;</a></h3>
+<p>Alternatives considered: <code>_gui/</code>, <code>_apps/</code>, <code>_appcfg/</code>. <code>_app/</code> is the shortest and matches the term "app config" most readers reach for first. Locked in unless review surfaces a strong objection.</p>
+<h3 id="112-app_uses_library-false-on-macos">11.2. <code>app_uses_library = false</code> on MacOs<a class="headerlink" href="#112-app_uses_library-false-on-macos" title="Permanent link">&para;</a></h3>
+<p>Allowed and supported. A user who is "<code>~/.config</code>-everywhere even on MacOs" can flip this in their root <code>.dodot.toml</code>, and <code>_app/</code> plus <code>app_aliases</code> will route through <code>~/.config/</code> instead. <code>_lib/</code> is unaffected (it explicitly targets <code>~/Library/</code>, not <code>app_support_dir</code>).</p>
+<h3 id="113-plist-coverage">11.3. Plist Coverage<a class="headerlink" href="#113-plist-coverage" title="Permanent link">&para;</a></h3>
+<p><code>_lib/Preferences/&lt;bundle-id&gt;.plist</code> is syntactically valid under this proposal, but plist files are usually binary and not directly user-editable. The plist <a href="./plists.lex">preprocessor</a> is the right path for plist content management. <code>_lib/Preferences/</code> covers the routing; the preprocessor covers the format. The two compose without further work.</p>
+<h3 id="114-windows">11.4. Windows<a class="headerlink" href="#114-windows" title="Permanent link">&para;</a></h3>
+<p>Out of scope for this proposal. Windows analogues (<code>%APPDATA%</code>, <code>%LOCALAPPDATA%</code>) would slot into the same architecture by extending <code>Pather</code> with additional accessors and adding a <code>_appdata/</code> prefix. Deferred until there is a real Windows user.</p>
+<h3 id="115-adopt-time-plist-conversion">11.5. Adopt-Time Plist Conversion<a class="headerlink" href="#115-adopt-time-plist-conversion" title="Permanent link">&para;</a></h3>
+<p>When a user adopts <code>~/Library/Preferences/com.foo.plist</code> (a binary plist), should adopt automatically invoke the plist preprocessor's reverse path to produce the XML form? The <code>plists.lex</code> proposal answers yes. This proposal defers to that one and stays orthogonal.</p>
+<h2 id="12-implementation-notes-vs-spec">12. Implementation Notes vs. Spec<a class="headerlink" href="#12-implementation-notes-vs-spec" title="Permanent link">&para;</a></h2>
+<p>The implementation deviates from the spec above in a few places. They're listed here so future readers don't mistake the spec for the source of truth:</p>
+<h3 id="121-force_app-initial-seed">12.1. <code>force_app</code> Initial Seed<a class="headerlink" href="#121-force_app-initial-seed" title="Permanent link">&para;</a></h3>
+<p>Spec §3.4.2: "The initial list is empty." Implementation ships with <code>["Code", "Cursor", "Zed", "Emacs"]</code>, decided during implementation review as a pragmatic starter set covering the most common GUI editors developers manage with dodot. The hundred-entry cap (§3.4.1) and inclusion criteria still apply. Seed-vs-cap is enforced by the unit test <code>default_force_app_under_hundred_entry_cap</code>.</p>
+<h3 id="122-force_home-force_app-overlap-warning">12.2. <code>force_home</code> / <code>force_app</code> Overlap Warning<a class="headerlink" href="#122-force_home-force_app-overlap-warning" title="Permanent link">&para;</a></h3>
+<p>Spec §5.1 calls for a startup warning when an entry appears in both lists. Not implemented. The default lists don't overlap (the curated criteria practically guarantee that — Library folder names are uppercase or contain spaces; Unix canons are lowercase), and a user-introduced overlap would surface as a routing surprise rather than silent failure (force_home wins by ladder priority). Tracked as future polish if real-world overlap reports come in.</p>
+<h3 id="123-app_uses_library-default">12.3. <code>app_uses_library</code> Default<a class="headerlink" href="#123-app_uses_library-default" title="Permanent link">&para;</a></h3>
+<p>Spec §6.3 says the default is <code>true</code> on macOS, <code>false</code> on Linux (and ignored). Implementation uses a single platform-agnostic default of <code>true</code>. The Linux behavior the spec describes is achieved instead by the Pather: on non-macOS, <code>app_support_dir</code> always equals <code>xdg_config_home</code>, so the flag is functionally a no-op even when its value is <code>true</code>. Same observable behaviour, simpler config schema.</p>
+<h3 id="124-dodot-probe-app-sample-output-format">12.4. <code>dodot probe app</code> Sample Output Format<a class="headerlink" href="#124-dodot-probe-app-sample-output-format" title="Permanent link">&para;</a></h3>
+<p>Spec §8.4 shows a sample with an <code>alias: vscode → Code (~/Library/Application Support/Code/) [exists]</code> line and <code>[installed]</code> indicators on cask rows. The shipped renderer uses <code>(alias)</code> / <code>(force_app)</code> / <code>(_app/)</code> as the source-rule annotation, omits the explicit <code>[installed]</code> marker (the matching layer is installed-only by construction, so the indicator was always-true and dropped during PR #91 review), and renders `[exists]` / `[missing]` in the existing-on-disk column. Functionally equivalent; cosmetically diverged.</p>
+<h3 id="125-tutorial-integration">12.5. Tutorial Integration<a class="headerlink" href="#125-tutorial-integration" title="Permanent link">&para;</a></h3>
+<p>Spec §9 calls for *"a new tutorial section (<code>dodot tutorial</code>) walks through adopting <code>~/Library/Application Support/Code/User/settings.json</code> end-to-end on macOS, demonstrating both the <code>_app/</code> prefix and the <code>app_aliases</code> mechanism."* Not implemented. The reference docs <a href="./../reference/symlink-paths.lex">(</a> §6 and §10) and the bats e2e tests cover the same ground; a guided tutorial step is independently shippable later.</p>
+<h3 id="126-cask-aware-rename-suggestion-beyond-spec">12.6. Cask-Aware Rename Suggestion (Beyond Spec)<a class="headerlink" href="#126-cask-aware-rename-suggestion-beyond-spec" title="Permanent link">&para;</a></h3>
+<p>PR #92 added a refinement not described in the original spec: when M5's capitalization-heuristic tip fires *and* the M6 brew probe finds an installed cask matching the pack's app-support folder, the suggested rename uses the cask token instead of a whitespace-strip-lowercase mangling. For reverse-DNS bundle-ID folders (`com.colliderli.iina`) this is the difference between a useful suggestion (`iina`) and a useless one (`comcolliderliiina`). Documented in [./../reference/symlink-paths.lex] §10.2.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

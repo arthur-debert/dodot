@@ -1,0 +1,1328 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/user/troubleshooting/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Troubleshooting - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#troubleshooting" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Troubleshooting
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-when-you-reach-for-this-doc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. When you reach for this doc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-three-diagnostic-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The three diagnostic commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-nothing-happened-my-pack-isnt-visible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. "Nothing happened" / "My pack isn't visible"
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. &#34;Nothing happened&#34; / &#34;My pack isn&#39;t visible&#34;">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-dodot-list-doesnt-show-the-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. dodot list doesn't show the directory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-a-file-is-in-the-pack-but-not-in-dodot-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. A file is in the pack but not in dodot status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-a-pack-appears-as-inactive-on-this-os" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3. A pack appears as Inactive on this OS
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-status-shows-it-but-it-didnt-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. "Status shows it but it didn't deploy"
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. &#34;Status shows it but it didn&#39;t deploy&#34;">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-status-row-says-skipped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. Status row says skipped
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-status-row-says-gated-out-label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Status row says gated out (&lt;label&gt;)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-status-row-says-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. Status row says error
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-it-went-somewhere-unexpected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. "It went somewhere unexpected"
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. &#34;It went somewhere unexpected&#34;">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-file-deployed-under-configpack-instead-of-x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. File deployed under ~/.config/&lt;pack&gt;/... instead of ~/.X
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-deployed-under-configpack-instead-of-configsome-other-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Deployed under ~/.config/&lt;pack&gt;/ instead of ~/.config/&lt;some-other-name&gt;/
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-macos-deployed-under-configcode-instead-of-libraryapplication-supportcode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. macOS: deployed under ~/.config/Code/... instead of ~/Library/Application Support/Code/...
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-how-do-i-confirm-where-it-actually-went" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4. "How do I confirm where it actually went?"
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-probe-when-status-isnt-enough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Probe — when status isn't enough
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-shell-integration-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Shell integration issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Shell integration issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-aliases-path-additions-from-a-pack-dont-take-effect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. "Aliases / PATH additions from a pack don't take effect"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-a-sourced-script-is-failing-silently" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. "A sourced script is failing silently"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-slow-shell-startup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3. "Slow shell startup"
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-macos-specific-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. macOS-specific issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. macOS-specific issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-git-diff-shows-binary-garbage-on-a-plist-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1. "git diff shows binary garbage on a *.plist file"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-i-committed-a-plist-but-the-app-on-another-machine-still-shows-old-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2. "I committed a plist but the app on another machine still shows old settings"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-librarycontainers-adopt-is-refused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3. "~/Library/Containers/&lt;...&gt; adopt is refused"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-im-on-macos-but-my-gui-app-config-went-to-config-instead-of-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4. "I'm on macOS but my GUI app config went to ~/.config/ instead of ~/Library/"
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-template-secret-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Template &amp; secret errors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Template &amp; secret errors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-template-render-failed-undefined-value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1. "template render failed: undefined value"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-secret-provider-x-is-not-authenticated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2. "secret provider 'X' is not authenticated"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-secret-resolved-to-a-multi-line-value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3. "secret resolved to a multi-line value"
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-recovery-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Recovery patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Recovery patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#101-i-added-dodotignore-to-a-deployed-pack-and-now-the-symlinks-wont-go-away" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.1. "I added .dodotignore to a deployed pack and now the symlinks won't go away"
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10.1. &#34;I added .dodotignore to a deployed pack and now the symlinks won&#39;t go away&#34;">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dodot-down-only-walks-discovered-packs-the-marker-hides-the-pack-from-discovery-recovery-remove-the-marker-run-down-re-add-the-marker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dodot down only walks discovered packs; the marker hides the pack from discovery. Recovery: remove the marker, run down, re-add the marker.
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#102-i-want-to-start-over-with-a-clean-state-for-a-pack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.2. "I want to start over with a clean state for a pack"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#103-i-want-to-undo-an-adopt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.3. "I want to undo an adopt"
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/user/troubleshooting.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Troubleshooting</h1>
+
+<!-- lex:verified -->
+
+<!-- /lex:verified -->
+
+<!-- lex:note -->
+
+<p>Terminology — this doc uses [pack], [handler], [dotfiles root]. <a href="./glossary/">See</a>.</p>
+<!-- /lex:note -->
+
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<p>Something's not behaving the way you expected. This doc is the symptom-first map: pick the row that matches what you see, follow the pointer, fix it. For deeper introspection — exactly what dodot wrote to disk, per-source shell timings, app-support routing — <a href="./commands/probe.lex">see</a> (summarized in §6 below).</p>
+<h2 id="1-when-you-reach-for-this-doc">1. When you reach for this doc<a class="headerlink" href="#1-when-you-reach-for-this-doc" title="Permanent link">&para;</a></h2>
+<ul>
+<li>You ran a dodot command and got a result you didn't expect. </li>
+<li>A file is reporting <code>pending</code> / <code>skipped</code> / <code>gated out</code> / <code>error</code> and you want to know why. </li>
+<li>A deployed config isn't behaving like the one in your repo. </li>
+<li>Shell startup feels slow, or a sourced file is silently failing. </li>
+<li><code>git diff</code> shows binary garbage on a plist file. </li>
+</ul>
+<h2 id="2-the-three-diagnostic-commands">2. The three diagnostic commands<a class="headerlink" href="#2-the-three-diagnostic-commands" title="Permanent link">&para;</a></h2>
+<p><strong>Before reading further, try these three in order. Most surprises resolve with the first or second</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>dodot<span class="w"> </span>status<span class="w">                 </span><span class="c1"># what dodot sees per pack</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>dodot<span class="w"> </span>up<span class="w"> </span>--dry-run<span class="w">           </span><span class="c1"># what dodot would do, no changes</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>dodot<span class="w"> </span>probe<span class="w"> </span>deployment-map<span class="w">   </span><span class="c1"># every symlink dodot owns, source -&gt; target</span>
+</code></pre></div>
+<p><code>status</code> and <code>up --dry-run</code> answer "what does dodot think?" <code>probe deployment-map</code> answers "what's actually on disk?" The gap between those two is where most surprises live.</p>
+<h2 id="3-nothing-happened-my-pack-isnt-visible">3. "Nothing happened" / "My pack isn't visible"<a class="headerlink" href="#3-nothing-happened-my-pack-isnt-visible" title="Permanent link">&para;</a></h2>
+<h3 id="31-dodot-list-doesnt-show-the-directory">3.1. <code>dodot list</code> doesn't show the directory<a class="headerlink" href="#31-dodot-list-doesnt-show-the-directory" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Is there a <code>.dodotignore</code> marker inside?</strong> Pure file-presence check; remove with <code>rm &lt;dir&gt;/.dodotignore</code> to bring the pack back into discovery. <a href="./filters.lex">See</a> §3. </li>
+<li><strong>Is the directory at the dotfiles root?</strong> dodot only discovers top-level directories of <code>$DOTFILES_ROOT</code>. Nested directories (<code>packs/nvim/</code>) aren't packs unless you set the root accordingly. </li>
+<li><strong>Is dodot looking at the right root?</strong> dodot resolves it as <code>$DOTFILES_ROOT</code> → <code>git rev-parse --show-toplevel</code> → cwd. Run from inside your dotfiles repo, or set <code>DOTFILES_ROOT</code> explicitly. <a href="./glossary/dotfiles-root.lex">See</a>. </li>
+</ul>
+<h3 id="32-a-file-is-in-the-pack-but-not-in-dodot-status">3.2. A file is in the pack but not in <code>dodot status</code><a class="headerlink" href="#32-a-file-is-in-the-pack-but-not-in-dodot-status" title="Permanent link">&para;</a></h3>
+<ul>
+<li>It matched <code>[mappings] ignore</code> (silent drop). Files in this list never surface. <a href="./filters.lex">See</a> §5. </li>
+<li>It matched <code>[pack] ignore</code> (scan-time drop). Default list covers <code>.git</code>, <code>node_modules</code>, swapfiles, etc. <a href="./filters.lex">See</a> §4. </li>
+</ul>
+<h3 id="33-a-pack-appears-as-inactive-on-this-os">3.3. A pack appears as <code>Inactive on this OS</code><a class="headerlink" href="#33-a-pack-appears-as-inactive-on-this-os" title="Permanent link">&para;</a></h3>
+<p>The pack has <code>[pack] os = ["..."]</code> set and your current OS isn't in the list. The whole pack is short-circuited at scan time. <a href="./conditional-running.lex">See</a> for the gating mechanism.</p>
+<h2 id="4-status-shows-it-but-it-didnt-deploy">4. "Status shows it but it didn't deploy"<a class="headerlink" href="#4-status-shows-it-but-it-didnt-deploy" title="Permanent link">&para;</a></h2>
+<h3 id="41-status-row-says-skipped">4.1. Status row says <code>skipped</code><a class="headerlink" href="#41-status-row-says-skipped" title="Permanent link">&para;</a></h3>
+<p>Matched <code>[mappings] skip</code> (defaults: README, LICENSE, CHANGELOG, …). Override per-pack with <code>[mappings] skip = []</code> to deploy intentionally. <a href="./filters.lex">See</a> §6.</p>
+<h3 id="42-status-row-says-gated-out-label">4.2. Status row says <code>gated out (&lt;label&gt;)</code><a class="headerlink" href="#42-status-row-says-gated-out-label" title="Permanent link">&para;</a></h3>
+<p>The file's host predicate doesn't match this machine. <code>install._darwin.sh</code> on Linux, <code>_linux/foo</code> on macOS, etc. The footnote shows expected vs actual host facts. <a href="./conditional-running.lex">See</a>.</p>
+<h3 id="43-status-row-says-error">4.3. Status row says <code>error</code><a class="headerlink" href="#43-status-row-says-error" title="Permanent link">&para;</a></h3>
+<p>Something blocked deployment. Common causes:</p>
+<ul>
+<li><strong>Routing override conflict</strong> — a file has both a <code>[symlink.targets]</code> entry and a routing prefix (<code>home.X</code>, <code>_home/X</code>, <code>app.X</code>, …). Pick one. <a href="./paths.lex">See</a> §6. </li>
+<li><strong>Protected path</strong> — the deploy target is in <code>[symlink] protected_paths</code> (SSH private keys, <code>.gnupg</code>, AWS credentials, …). Either rename the file out of the conflict, or override <code>protected_paths</code>. </li>
+<li><strong>A non-dodot file or symlink is at the deploy target.</strong> Move or remove it; dodot won't overwrite files it doesn't own. </li>
+</ul>
+<h2 id="5-it-went-somewhere-unexpected">5. "It went somewhere unexpected"<a class="headerlink" href="#5-it-went-somewhere-unexpected" title="Permanent link">&para;</a></h2>
+<h3 id="51-file-deployed-under-configpack-instead-of-x">5.1. File deployed under <code>~/.config/&lt;pack&gt;/...</code> instead of <code>~/.X</code><a class="headerlink" href="#51-file-deployed-under-configpack-instead-of-x" title="Permanent link">&para;</a></h3>
+<p>The default rule namespaces under XDG. Use the <code>home.X</code> filename prefix, or rely on <code>force_home</code> defaults (covers <code>bashrc</code>, <code>zshrc</code>, <code>ssh</code>, <code>aws</code>, …). <a href="./paths.lex">See</a> §4.1.</p>
+<h3 id="52-deployed-under-configpack-instead-of-configsome-other-name">5.2. Deployed under <code>~/.config/&lt;pack&gt;/</code> instead of <code>~/.config/&lt;some-other-name&gt;/</code><a class="headerlink" href="#52-deployed-under-configpack-instead-of-configsome-other-name" title="Permanent link">&para;</a></h3>
+<p>Pack-name namespacing is in the way. Use <code>_xdg/&lt;target&gt;/</code> for a subtree, or <code>xdg.X</code> for one file. <a href="./paths.lex">See</a> §4.3.</p>
+<h3 id="53-macos-deployed-under-configcode-instead-of-libraryapplication-supportcode">5.3. macOS: deployed under <code>~/.config/Code/...</code> instead of <code>~/Library/Application Support/Code/...</code><a class="headerlink" href="#53-macos-deployed-under-configcode-instead-of-libraryapplication-supportcode" title="Permanent link">&para;</a></h3>
+<p><code>app_support_dir</code> is what controls this. On macOS it defaults to <code>~/Library/Application Support</code>; if your config has <code>[symlink] app_uses_library = false</code>, that route collapses onto <code>~/.config</code>. Check <code>dodot config get symlink.app_uses_library</code>.</p>
+<h3 id="54-how-do-i-confirm-where-it-actually-went">5.4. "How do I confirm where it actually went?"<a class="headerlink" href="#54-how-do-i-confirm-where-it-actually-went" title="Permanent link">&para;</a></h3>
+<p>``` dodot probe deployment-map | grep \&lt;pack&gt; ```</p>
+<p>The source path is on the left, deployed target on the right.</p>
+<h2 id="6-probe-when-status-isnt-enough">6. Probe — when status isn't enough<a class="headerlink" href="#6-probe-when-status-isnt-enough" title="Permanent link">&para;</a></h2>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<p><strong><code>dodot status</code> shows the per-pack story; <code>dodot probe</code> opens up the data that backs it. Four subcommands</strong></p>
+<table>
+<thead>
+<tr>
+<th>Subcommand</th>
+<th>Answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>deployment-map</code></td>
+<td>Every dodot-owned symlink, source -&gt; target.</td>
+</tr>
+<tr>
+<td><code>show-data-dir</code></td>
+<td>Tree view of <code>$XDG_DATA_HOME/dodot/</code> (sentinels, staged init scripts).</td>
+</tr>
+<tr>
+<td><code>shell-init</code></td>
+<td>Per-source timings + exit codes from your most recent shell startup.</td>
+</tr>
+<tr>
+<td><code>app</code> (macOS)</td>
+<td>App-support routing for a pack: folders, casks, bundles.</td>
+</tr>
+</tbody>
+</table>
+<p>Reach for <code>probe</code> when:</p>
+<ul>
+<li>A deployed config isn't behaving and you want to confirm the symlink chain. </li>
+<li>Shell startup feels slow: <code>dodot probe shell-init --runs</code> aggregates the last 10 runs (p50 / p95 / max per source). </li>
+<li>A sourced shell file is silently failing: <code>dodot probe shell-init --errors-only</code> lists every target with a non-zero exit. </li>
+<li>You're routing a macOS GUI-app pack and want to confirm the resolver picked the folder you expected: <code>dodot probe app &lt;pack&gt;</code>. </li>
+</ul>
+<p>Full probe <a href="./commands/probe.lex">reference:</a>.</p>
+<h2 id="7-shell-integration-issues">7. Shell integration issues<a class="headerlink" href="#7-shell-integration-issues" title="Permanent link">&para;</a></h2>
+<h3 id="71-aliases-path-additions-from-a-pack-dont-take-effect">7.1. "Aliases / PATH additions from a pack don't take effect"<a class="headerlink" href="#71-aliases-path-additions-from-a-pack-dont-take-effect" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Did you add <code>eval "$(dodot init-sh)"</code> to your rc? <a href="./shell-integration.lex">See</a> §3. </li>
+<li>Is the eval in a per-session file (<code>~/.bashrc</code>, <code>~/.zshrc</code>) and not a login-only file (<code>~/.profile</code>)? </li>
+<li>Did you open a new shell? Already-running shells hold their old environment. </li>
+<li>Check the script: <code>dodot init-sh | less</code>. Does it list the source you expected? </li>
+</ul>
+<h3 id="72-a-sourced-script-is-failing-silently">7.2. "A sourced script is failing silently"<a class="headerlink" href="#72-a-sourced-script-is-failing-silently" title="Permanent link">&para;</a></h3>
+<p>Failures are not silent. The init script prints <code>dodot: shell source exited &lt;code&gt;: &lt;path&gt;</code> to stderr when a source errors. If you don't see that output, the file isn't being reached — start with <code>dodot init-sh</code> to confirm it's listed.</p>
+<p>For per-run history: <code>dodot probe shell-init --errors-only</code>.</p>
+<h3 id="73-slow-shell-startup">7.3. "Slow shell startup"<a class="headerlink" href="#73-slow-shell-startup" title="Permanent link">&para;</a></h3>
+<p>``` dodot probe shell-init --runs        # p50 / p95 / max per source dodot probe shell-init --runs 50     # over the last 50 runs ```</p>
+<p>Look for sources with high p95 — that's your bottleneck. The probe needs <code>[shell_init].profiling.enabled = true</code> to collect data; if no profiles exist, open a new shell first.</p>
+<h2 id="8-macos-specific-issues">8. macOS-specific issues<a class="headerlink" href="#8-macos-specific-issues" title="Permanent link">&para;</a></h2>
+<h3 id="81-git-diff-shows-binary-garbage-on-a-plist-file">8.1. "git diff shows binary garbage on a <code>*.plist</code> file"<a class="headerlink" href="#81-git-diff-shows-binary-garbage-on-a-plist-file" title="Permanent link">&para;</a></h3>
+<p>The dodot-plist git filter isn't installed in this clone. Run <code>dodot git-install-filters</code>. <a href="./plists.lex">See</a> §3.</p>
+<h3 id="82-i-committed-a-plist-but-the-app-on-another-machine-still-shows-old-settings">8.2. "I committed a plist but the app on another machine still shows old settings"<a class="headerlink" href="#82-i-committed-a-plist-but-the-app-on-another-machine-still-shows-old-settings" title="Permanent link">&para;</a></h3>
+<p>macOS's <code>cfprefsd</code> daemon caches plist values in memory. After <code>git pull</code> + <code>dodot up</code>, run <code>killall cfprefsd</code> (auto-respawns immediately). Some apps also need a relaunch. <a href="./plists.lex">See</a> §6.</p>
+<h3 id="83-librarycontainers-adopt-is-refused">8.3. "<code>~/Library/Containers/&lt;...&gt;</code> adopt is refused"<a class="headerlink" href="#83-librarycontainers-adopt-is-refused" title="Permanent link">&para;</a></h3>
+<p>Sandboxed-app data lives in Containers and isn't safe to externalize — apps may rebuild it on launch. Use <code>~/Library/Application Support/&lt;App&gt;/</code> (which adopts via <code>_app/</code>) or whatever the app's documented config path is. <a href="./adopting.lex">See</a> §3.4.</p>
+<h3 id="84-im-on-macos-but-my-gui-app-config-went-to-config-instead-of-library">8.4. "I'm on macOS but my GUI app config went to <code>~/.config/</code> instead of <code>~/Library/</code>"<a class="headerlink" href="#84-im-on-macos-but-my-gui-app-config-went-to-config-instead-of-library" title="Permanent link">&para;</a></h3>
+<p>Either <code>[symlink] app_uses_library = false</code> is set somewhere in your config (collapsing <code>app_support_dir</code> onto XDG), or your pack name doesn't match <code>force_app</code> and there's no <code>_app/</code> prefix or <code>[symlink.app_aliases]</code> entry. <a href="./paths.lex">See</a> §4.4.</p>
+<h2 id="9-template-secret-errors">9. Template &amp; secret errors<a class="headerlink" href="#9-template-secret-errors" title="Permanent link">&para;</a></h2>
+<h3 id="91-template-render-failed-undefined-value">9.1. "template render failed: undefined value"<a class="headerlink" href="#91-template-render-failed-undefined-value" title="Permanent link">&para;</a></h3>
+<p>A template references a variable that isn't defined. The error names the file. Three fixes:</p>
+<ul>
+<li>Define the variable in <code>[preprocessor.template.vars]</code> in your <code>.dodot.toml</code>. </li>
+<li>Reference an environment variable: <code>{{ env.NAME }}</code>. </li>
+<li>Mark the value optional: <code>{{ name | default("fallback") }}</code>. </li>
+</ul>
+<p>§5.<a href="./templates.lex">See</a></p>
+<h3 id="92-secret-provider-x-is-not-authenticated">9.2. "secret provider 'X' is not authenticated"<a class="headerlink" href="#92-secret-provider-x-is-not-authenticated" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>op</code> (1Password): set <code>OP_SERVICE_ACCOUNT_TOKEN</code> in your environment. </li>
+<li><code>bw</code> (Bitwarden): run <code>bw unlock</code>, export the printed <code>BW_SESSION</code>. </li>
+<li><code>gpg</code>: cache the passphrase by decrypting one file interactively first (gpg-agent will hold it). </li>
+<li><code>pass</code>: ensure <code>pass init &lt;gpg-key&gt;</code> has run; the password store needs to exist. </li>
+</ul>
+<p>For an at-a-glance view: <code>dodot secret probe</code>. <a href="./secrets.lex">See</a> §9.</p>
+<h3 id="93-secret-resolved-to-a-multi-line-value">9.3. "secret resolved to a multi-line value"<a class="headerlink" href="#93-secret-resolved-to-a-multi-line-value" title="Permanent link">&para;</a></h3>
+<p>Value injection refuses multi-line secrets — they're a footgun in templated config (a single newline can break TOML / YAML / shell). Use whole-file decryption (<code>*.age</code> / <code>*.gpg</code>) for multi-line secrets. <a href="./secrets.lex">See</a> §4.</p>
+<h2 id="10-recovery-patterns">10. Recovery patterns<a class="headerlink" href="#10-recovery-patterns" title="Permanent link">&para;</a></h2>
+<h3 id="101-i-added-dodotignore-to-a-deployed-pack-and-now-the-symlinks-wont-go-away">10.1. "I added <code>.dodotignore</code> to a deployed pack and now the symlinks won't go away"<a class="headerlink" href="#101-i-added-dodotignore-to-a-deployed-pack-and-now-the-symlinks-wont-go-away" title="Permanent link">&para;</a></h3>
+<!-- lex:shell -->
+
+<!-- /lex:shell -->
+
+<h4 id="dodot-down-only-walks-discovered-packs-the-marker-hides-the-pack-from-discovery-recovery-remove-the-marker-run-down-re-add-the-marker"><code>dodot down</code> only walks discovered packs; the marker hides the pack from discovery. Recovery: remove the marker, run <code>down</code>, re-add the marker.<a class="headerlink" href="#dodot-down-only-walks-discovered-packs-the-marker-hides-the-pack-from-discovery-recovery-remove-the-marker-run-down-re-add-the-marker" title="Permanent link">&para;</a></h4>
+<p>rm \&lt;pack&gt;/.dodotignore dodot down \&lt;pack&gt; touch \&lt;pack&gt;/.dodotignore</p>
+<p>§9 for the watch-out.<a href="./filters.lex">See</a></p>
+<h3 id="102-i-want-to-start-over-with-a-clean-state-for-a-pack">10.2. "I want to start over with a clean state for a pack"<a class="headerlink" href="#102-i-want-to-start-over-with-a-clean-state-for-a-pack" title="Permanent link">&para;</a></h3>
+<p>dodot down \&lt;pack&gt; dodot up \&lt;pack&gt;</p>
+<!-- lex:shell -->
+
+<!-- /lex:shell -->
+
+<p><code>down</code> cleans every dodot-owned artifact for the pack (symlinks, install sentinels, brew sentinels, staged shell init lines). <code>up</code> rebuilds from the current pack contents.</p>
+<h3 id="103-i-want-to-undo-an-adopt">10.3. "I want to undo an <code>adopt</code>"<a class="headerlink" href="#103-i-want-to-undo-an-adopt" title="Permanent link">&para;</a></h3>
+<p><strong>There's no `dodot un-adopt`. To reverse</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>mv<span class="w"> </span>&lt;pack&gt;/&lt;adopted-relative-path&gt;<span class="w"> </span>&lt;original-source-path&gt;
+</code></pre></div>
+<p>i.e. replace the symlink at the source location with the file from the pack. dodot doesn't track adoption history; git does.</p>
+<h2 id="11-see-also">11. See also<a class="headerlink" href="#11-see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="./commands/probe.lex">—</a> every probe subcommand in detail. </li>
+<li><a href="./commands/status.lex">—</a> the per-pack snapshot, baseline diagnostic. </li>
+<li><a href="./paths.lex">—</a> where files end up at deploy time. </li>
+<li><a href="./filters.lex">—</a> the five mechanisms for keeping files out of dispatch. </li>
+<li><a href="./shell-integration.lex">—</a> the eval line and what runs from it. </li>
+<li><a href="./templates.lex">—</a> preprocessing-pipeline issues. <a href="./secrets.lex">,</a></li>
+<li><a href="./plists.lex">—</a> macOS plist filter setup. </li>
+<li><a href="./glossary/">—</a> terminology. </li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

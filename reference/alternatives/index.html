@@ -1,0 +1,1902 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/reference/alternatives/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Alternatives - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#alternatives-how-dodot-compares-to-the-rest-of-the-space" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Alternatives
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-how-dodot-compares-to-the-rest-of-the-space" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives — how dodot compares to the rest of the space
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-where-dodot-sits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Where dodot sits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-principles-to-compare-against" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The principles to compare against
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The principles to compare against">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#these-are-the-load-bearing-positions-in-dodots-design-the-rest-of-this-document-checks-each-alternative-against-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        These are the load-bearing positions in dodot's design. The rest of this document checks each alternative against them.
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-chezmoi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. chezmoi
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. chezmoi">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-how-chezmoi-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. How chezmoi works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-where-chezmoi-and-dodot-agree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. Where chezmoi and dodot agree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-where-they-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3. Where they differ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-things-chezmoi-can-do-that-dodot-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4. Things chezmoi can do that dodot doesn't
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.4. Things chezmoi can do that dodot doesn&#39;t">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#worth-separating-these-by-what-kind-of-difference-they-are-not-every-item-on-a-x-can-do-y-dodot-cant-list-is-the-same-shape-some-are-structural-gaps-in-dodot-some-are-intentional-non-goals-some-are-mechanically-easy-to-add-as-adoption-grows-and-some-are-convenience-verbs-over-capability-dodot-already-has" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worth separating these by what kind of difference they are. Not every item on a "X can do Y, dodot can't" list is the same shape: some are structural gaps in dodot, some are intentional non-goals, some are mechanically easy to add as adoption grows, and some are convenience verbs over capability dodot already has.
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-a-note-on-chezmoi-diff-and-chezmoi-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5. A note on chezmoi diff and chezmoi merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-migration-cost-off-each-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6. Migration cost off each tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-yadm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. yadm
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. yadm">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-how-yadm-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. How yadm works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-where-yadm-and-dodot-agree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Where yadm and dodot agree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-where-they-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. Where they differ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-things-yadm-can-do-that-dodot-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4. Things yadm can do that dodot doesn't
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-migration-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5. Migration cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-gnu-stow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. GNU Stow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. GNU Stow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-how-stow-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. How Stow works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-where-stow-and-dodot-agree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Where Stow and dodot agree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-where-they-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Where they differ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-things-stow-can-do-that-dodot-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4. Things Stow can do that dodot doesn't
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-migration-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5. Migration cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-dotbot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. dotbot
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. dotbot">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-how-dotbot-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. How dotbot works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-where-dotbot-and-dodot-agree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. Where dotbot and dodot agree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-where-they-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3. Where they differ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-things-dotbot-can-do-that-dodot-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4. Things dotbot can do that dodot doesn't
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6.4. Things dotbot can do that dodot doesn&#39;t">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#641-self-bootstrap-on-a-new-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4.1. Self-bootstrap on a new machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#642-explicit-low-level-deploy-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4.2. Explicit low-level deploy operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#643-plugin-ecosystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4.3. Plugin ecosystem
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6.4.3. Plugin ecosystem">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-dotbot-wiki-lists-80-community-plugins-the-ones-that-show-up-in-real-world-repos-cluster-into-four-buckets-and-the-bucket-map-is-illuminating-each-cluster-closes-a-gap-dotbots-core-leaves-open-dodots-first-class-handler-set-homebrew-install-shell-path-template-secret-plist-covers-roughly-the-same-ground-built-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The dotbot wiki lists ~80 community plugins. The ones that show up in real-world repos cluster into four buckets, and the bucket map is illuminating: each cluster closes a gap dotbot's core leaves open. dodot's first-class handler set (homebrew, install, shell, path, template, secret, plist) covers roughly the same ground built in.
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65-migration-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5. Migration cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-home-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Home Manager
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Home Manager">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-how-home-manager-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. How Home Manager works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-where-home-manager-and-dodot-agree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. Where Home Manager and dodot agree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-where-they-differ-and-they-differ-a-lot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3. Where they differ — and they differ a lot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-things-home-manager-can-do-that-dodot-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4. Things Home Manager can do that dodot doesn't
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.4. Things Home Manager can do that dodot doesn&#39;t">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#three-of-these-four-are-intentional-non-goals-for-dodot-features-that-would-require-accepting-the-nix-tax-a-6-gb-package-manager-a-workflow-shift-away-from-hand-edited-config-files-deployed-files-that-become-read-only-store-symlinks-the-remaining-one-is-a-structural-choice-with-a-small-workaround" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three of these four are intentional non-goals for dodot — features that would require accepting the Nix tax (a 6-GB package manager, a workflow shift away from hand-edited config files, deployed files that become read-only store symlinks). The remaining one is a structural choice with a small workaround.
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#75-migration-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.5. Migration cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-dotter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. dotter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. dotter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-how-dotter-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1. How dotter works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-where-dotter-and-dodot-agree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2. Where dotter and dodot agree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-where-they-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3. Where they differ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-things-dotter-can-do-that-dodot-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4. Things dotter can do that dodot doesn't
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85-migration-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.5. Migration cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-dotdrop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. dotdrop
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. dotdrop">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-how-dotdrop-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1. How dotdrop works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-where-dotdrop-and-dodot-agree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2. Where dotdrop and dodot agree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-where-they-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3. Where they differ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#94-things-dotdrop-can-do-that-dodot-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.4. Things dotdrop can do that dodot doesn't
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#95-migration-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.5. Migration cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-summary-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Summary tables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Summary tables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#101-source-layout-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.1. Source layout &amp; deployment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#102-source-control-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.2. Source-control posture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#103-features-built-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.3. Features (built-in)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#104-cognitive-load-portability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.4. Cognitive load &amp; portability
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-the-shape-of-the-choice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. The shape of the choice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-holding-dodots-principles-constant-whats-actually-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Holding dodot's principles constant: what's actually missing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. Holding dodot&#39;s principles constant: what&#39;s actually missing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#121-whats-not-on-this-list-and-why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.1. What's not on this list and why
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-when-dodot-isnt-for-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. When dodot isn't for you
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="13. When dodot isn&#39;t for you">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-other-side-of-the-coin-if-the-features-below-are-central-to-your-workflow-dodot-is-the-wrong-tool-these-items-cant-close-inside-dodot-without-changing-what-dodot-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The other side of the coin. If the features below are central to your workflow, dodot is the wrong tool. These items can't close inside dodot without changing what dodot is.
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/reference/alternatives.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Alternatives</h1>
+
+<!-- lex:note -->
+
+<p>For dodot's own design rationale <a href="./philosophy.lex">see</a>; for terminology <a href="./terms-and-concepts.lex">see</a>.</p>
+<!-- /lex:note -->
+
+<h2 id="alternatives-how-dodot-compares-to-the-rest-of-the-space">Alternatives — how dodot compares to the rest of the space<a class="headerlink" href="#alternatives-how-dodot-compares-to-the-rest-of-the-space" title="Permanent link">&para;</a></h2>
+<p>Dotfile management is a crowded space. This document compares dodot against the seven alternatives most people end up choosing between: chezmoi, yadm, GNU Stow, dotbot, Home Manager, dotter, and dotdrop. Each comparison is anchored against dodot's design principles, listed in §2, so the question "does this tool work the way dodot works?" can be answered in a sentence per axis.</p>
+<h2 id="1-where-dodot-sits">1. Where dodot sits<a class="headerlink" href="#1-where-dodot-sits" title="Permanent link">&para;</a></h2>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<p><strong>The space breaks roughly into four clusters</strong></p>
+<table>
+<thead>
+<tr>
+<th>Cluster</th>
+<th>Examples</th>
+<th>Trait</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>symlink farms</td>
+<td>GNU Stow, dotter</td>
+<td>symlinks only, narrow scope, no apply step</td>
+</tr>
+<tr>
+<td>YAML/TOML orchestrators</td>
+<td>dotbot, dotter, dotdrop</td>
+<td>a config file lists what to do</td>
+</tr>
+<tr>
+<td>source-state managers</td>
+<td>chezmoi, dotdrop</td>
+<td>source ≠ deployed; an <code>apply</code> step renders/copies</td>
+</tr>
+<tr>
+<td>git-tree-over-$HOME</td>
+<td>yadm</td>
+<td>$HOME itself is the working tree of a bare git repo</td>
+</tr>
+<tr>
+<td>declarative reproducible</td>
+<td>Home Manager (Nix)</td>
+<td>rewrite config as Nix; user files become store links</td>
+</tr>
+</tbody>
+</table>
+<p>dodot is its own row. It's a symlink manager that also handles the things-symlinks-can't-do (shell sourcing, PATH, install scripts, Brewfiles, plists) without crossing into source-state or declarative territory. The data layer <a href="./data-layer.lex">(</a>) is the trick that lets it do this: a "live receipt" double-link so the filesystem <em>is</em> the state, without a database and without an apply step that has to be re-run after edits.</p>
+<h2 id="2-the-principles-to-compare-against">2. The principles to compare against<a class="headerlink" href="#2-the-principles-to-compare-against" title="Permanent link">&para;</a></h2>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<h3 id="these-are-the-load-bearing-positions-in-dodots-design-the-rest-of-this-document-checks-each-alternative-against-them">These are the load-bearing positions in dodot's design. The rest of this document checks each alternative against them.<a class="headerlink" href="#these-are-the-load-bearing-positions-in-dodots-design-the-rest-of-this-document-checks-each-alternative-against-them" title="Permanent link">&para;</a></h3>
+<p>| Principle                                                        | What it means                                                            | | Minimal requirements on file layout                              | group by directory, special filenames map to special actions             | | No mapping required, unless you want to customize                | conventional names = working setup with zero config                      | | No workflow change, no apply step                                | edit your files as you please; symlinks make edits live                  | | No tooling change — plain git, end-to-end                        | dodot never wraps, interprets, or interposes on git                      | | Three commands to learn — <code>status</code>, <code>up</code>, <code>down</code>                 | the cognitive load of routine use is small                               | | Correct path handling, including macOS Library / plist quirks    | XDG vs <code>$HOME</code>, Application Support, binary plists                       |</p>
+<p>The advanced surface — templates, secrets, conditional running, plists — exists, but is designed to be reachable without breaking any of the above.</p>
+<h2 id="3-chezmoi">3. chezmoi<a class="headerlink" href="#3-chezmoi" title="Permanent link">&para;</a></h2>
+<p>chezmoi (https://chezmoi.io) is the most feature-rich tool in the space and the closest competitor in adoption. Written in Go.</p>
+<h3 id="31-how-chezmoi-works">3.1. How chezmoi works<a class="headerlink" href="#31-how-chezmoi-works" title="Permanent link">&para;</a></h3>
+<p>Your source tree lives at <code>~/.local/share/chezmoi</code> and is <em>renamed</em>: <code>~/.zshrc</code> becomes <code>dot_zshrc</code> in the source, <code>~/.config/foo</code> becomes <code>dot_config/foo</code>, and a small vocabulary of prefixes (<code>private_</code>, <code>executable_</code>, <code>readonly_</code>, <code>encrypted_</code>, <code>symlink_</code>, <code>literal_</code>) encodes file attributes. Templates are flagged with a <code>.tmpl</code> suffix; one-shot scripts with <code>run_once_</code> / <code>run_onchange_</code>. <code>chezmoi apply</code> reads that tree and <em>writes regular files</em> to your home directory (symlinks are an opt-in mode).</p>
+<p>State sits in a BoltDB file (<code>chezmoistate.boltdb</code>) tracking the hashes used to gate <code>run_once_</code> / <code>run_onchange_</code> scripts. Templates are Go <code>text/template</code> with chezmoi-specific functions for <code>.chezmoi.os</code>, <code>.chezmoi.hostname</code>, et al.</p>
+<h3 id="32-where-chezmoi-and-dodot-agree">3.2. Where chezmoi and dodot agree<a class="headerlink" href="#32-where-chezmoi-and-dodot-agree" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Vanilla git for the source tree; both refuse to wrap commit/push. </li>
+<li>First-class conditional deployment by OS / hostname / arch. </li>
+<li>First-class secret integration with a wide range of providers (chezmoi covers more — 1Password, Bitwarden, AWS/Azure secret managers, Keychain, GNOME Keyring, etc.; dodot covers the popular subset — pass, 1Password, Bitwarden, sops, Keychain, secret-tool, age, gpg). </li>
+<li>Whole-file encryption via age and gpg. </li>
+<li>Templates with per-host content variation. </li>
+<li>An import / adopt path for existing files. </li>
+</ul>
+<h3 id="33-where-they-differ">3.3. Where they differ<a class="headerlink" href="#33-where-they-differ" title="Permanent link">&para;</a></h3>
+<p>File layout. chezmoi requires you to rename files into <code>dot_</code>-prefixed attribute syntax. A <code>.zshrc.tmpl</code> in source becomes <code>~/.zshrc</code>. dodot leaves your filenames alone: <code>git/gitconfig</code> deploys as <code>~/.gitconfig</code> because that's the convention dodot reads off the disk shape; the source path you see in the repo is the same path the editor sees later. Renaming is an explicit dodot opt-in (<code>home.X</code>, <code>_home/</code>, <code>_xdg/</code>, <code>_app/</code>) used when the default doesn't fit.</p>
+<p>Apply step. chezmoi has one; dodot does not. With chezmoi, deployed files are <em>copies</em> of the rendered output; edits at <code>~/.zshrc</code> are not reflected in the source until you run <code>chezmoi re-add</code> (or <code>chezmoi merge</code>). The next <code>chezmoi apply</code> will <em>overwrite</em> your edit if you didn't re-add it. dodot's symlink chain means the deployed file and the source file are the same byte stream — there is nothing to re-add and nothing to overwrite, because the round-trip never happens.</p>
+<p>State. chezmoi keeps a BoltDB; dodot keeps a directory of legible symlinks. The chezmoi DB can drift from reality (an entry says a script ran when its sentinel is stale, for example); dodot's "state IS the behavior" property forecloses that class of drift — <a href="./philosophy.lex">see</a> §5.</p>
+<p>Command surface. chezmoi is <code>add</code> / <code>apply</code> / <code>diff</code> / <code>status</code> / <code>edit</code> / <code>re-add</code> / <code>merge</code> / <code>forget</code> / <code>unmanage</code> / <code>update</code> / <code>verify</code> / <code>import</code> / <code>cd</code> / <code>git</code> / <code>state</code> / <code>execute-template</code> / <code>data</code> / <code>doctor</code> / <code>secret</code> / <code>chattr</code> — and that's the core. dodot is <code>status</code> / <code>up</code> / <code>down</code>, plus discoverable helpers (<code>adopt</code>, <code>init</code>, <code>fill</code>, <code>tutorial</code>).</p>
+<p>Shell, PATH, Brewfile, install.sh. chezmoi does not manage any of these natively; you write <code>run_onchange_install-packages.sh.tmpl</code> and the patterns are documented but unowned. dodot has first-class handlers for all four.</p>
+<p>macOS plists. chezmoi has no first-class plist story; the documented pattern is a <code>modify_</code> script that reads the existing plist with <code>plutil</code>/<code>PlistBuddy</code> and rewrites it. dodot ships git clean/smudge filters that bring binary plists under <code>git diff</code> review without leaving binary state in the repo — <a href="./../user/plists.lex">see</a>.</p>
+<h3 id="34-things-chezmoi-can-do-that-dodot-doesnt">3.4. Things chezmoi can do that dodot doesn't<a class="headerlink" href="#34-things-chezmoi-can-do-that-dodot-doesnt" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<h4 id="worth-separating-these-by-what-kind-of-difference-they-are-not-every-item-on-a-x-can-do-y-dodot-cant-list-is-the-same-shape-some-are-structural-gaps-in-dodot-some-are-intentional-non-goals-some-are-mechanically-easy-to-add-as-adoption-grows-and-some-are-convenience-verbs-over-capability-dodot-already-has">Worth separating these by what kind of difference they are. Not every item on a "X can do Y, dodot can't" list is the same shape: some are structural gaps in dodot, some are intentional non-goals, some are mechanically easy to add as adoption grows, and some are convenience verbs over capability dodot already has.<a class="headerlink" href="#worth-separating-these-by-what-kind-of-difference-they-are-not-every-item-on-a-x-can-do-y-dodot-cant-list-is-the-same-shape-some-are-structural-gaps-in-dodot-some-are-intentional-non-goals-some-are-mechanically-easy-to-add-as-adoption-grows-and-some-are-convenience-verbs-over-capability-dodot-already-has" title="Permanent link">&para;</a></h4>
+<p>| Item                                                 | Kind                  | | External files pinned by URL or git ref              | Structural gap        | | Per-machine answers prompted at <code>chezmoi init</code>       | Convenience / UX      | | AWS/Azure/Keeper/LastPass/Dashlane/Doppler providers | Adoption-driven       | | Cross-platform Windows support                       | Intentional non-goal  |</p>
+<p>Walking each:</p>
+<ul>
+<li><strong>External files (structural).</strong> chezmoi's <code>.chezmoiexternal.toml</code> declares resources that should exist on disk but are sourced from upstream — <code>type = "git-repo"</code> for oh-my-zsh, <code>type = "archive"</code> for a Nerd Font zip, <code>type = "file"</code> for a single URL'd file, <code>type = "archive-file"</code> for one file inside an archive. Each entry has a <code>refreshPeriod</code> so <code>chezmoi apply</code> re-checks upstream on a cadence. dodot has no analog. A dodot user covers the same need today with an <code>install.sh</code> that does <code>git clone &amp;&amp; git pull</code> (content-hashed, but doesn't periodically refresh on its own) or a git submodule (manual <code>--remote</code> updates) or a Brewfile entry (when upstream ships through brew). The gap is real; adding it would mean a new handler with new failure modes (network, untrusted upstream, hash pinning), so the design cost is non-zero even if the implementation is small. </li>
+<li><strong>Init-time prompts (convenience).</strong> <code>chezmoi init</code> runs <code>.chezmoi.toml.tmpl</code> and prompts for any <code>promptStringOnce</code> calls, writing the answers to <code>~/.config/chezmoi/chezmoi.toml</code>. dodot already has the underlying mechanism — per-machine template vars under <code>[preprocessor.template.vars]</code> — but no interactive verb that asks for them on first run. Strictly a missing UX shortcut, not a capability gap. </li>
+<li><strong>More secret providers (adoption-driven).</strong> dodot ships six providers covering the most-used ground (pass, op, bw, sops, keychain, secret-tool) plus age/gpg whole-file. AWS Secrets Manager, Azure Key Vault, LastPass, Dashlane, Doppler, Keeper, etc. would be additional implementations of the same provider trait; they materialize as user demand surfaces. </li>
+<li><strong>Windows (intentional non-goal).</strong> dodot is unix-first by design; macOS plists and XDG/Library path resolution sit at the center of the value proposition. Windows is not on the roadmap. </li>
+</ul>
+<p>Once you discount the intentional non-goal and the adoption-driven item, <strong>*external files is the one structural capability from chezmoi's surface that dodot is missing*</strong>. (§12 collects the structural gaps across the whole alternatives space.)</p>
+<h3 id="35-a-note-on-chezmoi-diff-and-chezmoi-merge">3.5. A note on <code>chezmoi diff</code> and <code>chezmoi merge</code><a class="headerlink" href="#35-a-note-on-chezmoi-diff-and-chezmoi-merge" title="Permanent link">&para;</a></h3>
+<p><code>chezmoi diff</code> and <code>chezmoi merge</code> exist because chezmoi has an apply step: the source (<code>dot_zshrc.tmpl</code>) and the deployed (<code>~/.zshrc</code>) are different objects that drift the moment either side is edited, and git can only see the source. The chezmoi verbs are how the user asks "what would <code>apply</code> do?" and "reconcile my deployed edits into source." They are consequences of the apply-step model, not capability beyond what dodot offers.</p>
+<p>In dodot, divergence is structurally impossible for plain symlinked files — source and deployed are the same bytes. The only files where divergence <strong>can</strong> happen are preprocessed (<code>.tmpl</code>, <code>.age</code>, <code>.gpg</code>, plists), and dodot already covers that case via the git-augmentation stack <a href="./../user/commands/git-augmentation.lex">(</a>):</p>
+<ul>
+<li><code>dodot transform status</code> reports the synced/diverged matrix per cached preprocessed file (the <code>chezmoi diff</code> equivalent for the only files where it's relevant). </li>
+<li>The template clean filter (<code>dodot template install-filter</code>) makes <code>git diff</code> show deployed-side template edits as if they were source-side, so vanilla <code>git diff</code> does the job at single-file granularity. </li>
+<li>The pre-commit hook (<code>dodot transform install-hook</code>) runs <code>transform check --strict</code> automatically — either reverse-merging deployed-side edits into source or failing the commit with conflict markers. That's the <code>chezmoi merge</code> equivalent. </li>
+<li>The Tier-2 shell alias (<code>dodot git-install-alias</code>) makes <code>git status</code> always reflect current truth without a manual <code>dodot refresh</code>. </li>
+</ul>
+<p>What a dodot user with the extensions installed <strong>does</strong> lose from chezmoi's verbs is ergonomic, not structural: chezmoi's <code>merge</code> can launch a configured three-way merge tool (vimdiff/meld/...) on <code>source ↔ destination ↔ target</code>, where dodot writes inline <code>dodot-conflict</code> markers into the source for you to resolve in your editor. Same outcome, different UI.</p>
+<h3 id="36-migration-cost-off-each-tool">3.6. Migration cost off each tool<a class="headerlink" href="#36-migration-cost-off-each-tool" title="Permanent link">&para;</a></h3>
+<p>Off chezmoi: tractable. Deployed files are regular files (default mode), so they keep working. You undo the <code>dot_</code> rename of source files by hand or with a one-time script. The Go template syntax stays put unless you replace it.</p>
+<p>Off dodot: trivial. <code>dodot down</code> removes everything dodot owns; the dotfiles repo is plain files with conventional names. No renames to undo.</p>
+<h2 id="4-yadm">4. yadm<a class="headerlink" href="#4-yadm" title="Permanent link">&para;</a></h2>
+<p>yadm (https://yadm.io) is "Yet Another Dotfiles Manager." A single Bash script that wraps git.</p>
+<h3 id="41-how-yadm-works">4.1. How yadm works<a class="headerlink" href="#41-how-yadm-works" title="Permanent link">&para;</a></h3>
+<p>yadm makes <code>$HOME</code> itself the working tree of a bare git repo stored at <code>~/.local/share/yadm/repo.git</code>. Your <code>~/.zshrc</code> is the tracked file — no source-state directory, no symlinks, no renames. <code>yadm</code> commands fall in three categories: yadm-specific verbs (<code>alt</code>, <code>encrypt</code>, <code>bootstrap</code>), git-passthrough verbs (<code>add</code>, <code>commit</code>, <code>push</code>, <code>status</code>) executed with <code>--git-dir</code> and <code>--work-tree</code> pre-set, and a few small mediators (<code>gitconfig</code>, <code>enter</code>).</p>
+<p>Per-host variation rides on "alt files": <code>~/.zshrc##os.Darwin</code> is symlinked to <code>~/.zshrc</code> on macOS via <code>yadm alt</code>. Suffix grammar covers OS, hostname, distro, class, arch, user, extension, template engine.</p>
+<h3 id="42-where-yadm-and-dodot-agree">4.2. Where yadm and dodot agree<a class="headerlink" href="#42-where-yadm-and-dodot-agree" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Plain git underneath; no committed-format lock-in. </li>
+<li>The dotfiles repo is the source of truth, not a database. </li>
+<li>Vanilla git commands still work alongside the tool. </li>
+<li>A whole-pack-equivalent gate by hostname / OS / arch exists. </li>
+<li>Adopting existing files is trivial (files are already at their target paths). </li>
+<li>Low command surface — but bigger than dodot's three. </li>
+</ul>
+<h3 id="43-where-they-differ">4.3. Where they differ<a class="headerlink" href="#43-where-they-differ" title="Permanent link">&para;</a></h3>
+<p>Git wrapping. yadm is a git wrapper by design — <code>yadm add</code>, <code>yadm commit</code>, <code>yadm push</code> are the canonical surface. You <em>can</em> use plain <code>git</code> with <code>--git-dir</code>/<code>--work-tree</code>, but that's friction, not the primary path. dodot refuses to wrap git at all; you run <code>git commit</code> the way you run <code>git commit</code> in any other repo.</p>
+<p>Source tree is <code>$HOME</code>. With yadm there is no separate dotfiles directory you can browse without git noise. With dodot, your packs are visible top-level directories of a dotfiles repo you can navigate, search, and grep without git in the picture.</p>
+<p>Shell, PATH, Brewfile, install.sh. yadm has <code>bootstrap</code> (a single script that runs once after <code>clone</code>). It is yours to write — there are no handlers for <code>*.sh</code> sourcing, PATH dirs, Brewfile, or content-hashed re-runs.</p>
+<p>Templates. yadm's "default" template engine is an awk-based Jinja-lite; it also supports esh, j2cli, envtpl. It works, but is less ergonomic than chezmoi's Go templates or dodot's MiniJinja. No secret-function inside templates.</p>
+<p>Secrets. yadm offers <code>yadm encrypt</code>/<code>decrypt</code> (a single tar archive of globbed files, GPG-encrypted, committed as one blob), plus thin wrappers around <code>transcrypt</code> and <code>git-crypt</code>. No integration with <code>pass</code>, 1Password, Bitwarden, sops, Keychain, age, etc.</p>
+<p>macOS plists. None.</p>
+<p>State semantics. yadm's "state" is git itself plus the alt symlinks; that's coherent, but the alt mechanism is the only handler-like piece. Anything dodot does past pure file deployment (shell init, PATH, install hashing, Brewfile sentinels, plist filters) yadm does not do.</p>
+<h3 id="44-things-yadm-can-do-that-dodot-doesnt">4.4. Things yadm can do that dodot doesn't<a class="headerlink" href="#44-things-yadm-can-do-that-dodot-doesnt" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Files live at their canonical path in <code>$HOME</code>. No symlinks, ever — programs that struggle with symlinks (sandboxed apps, some editors) see real files. </li>
+<li>The setup story is genuinely one command: <code>yadm clone &lt;url&gt;</code> and you're in. </li>
+<li>Direct edits to <code>~/.zshrc</code> are direct commits-in-waiting; no symlink chain to think about. </li>
+</ul>
+<h3 id="45-migration-cost">4.5. Migration cost<a class="headerlink" href="#45-migration-cost" title="Permanent link">&para;</a></h3>
+<p>Off yadm: nothing to do. Files are already at their canonical paths. Delete the bare repo if you want. Alt-file symlinks remain as plain symlinks (or delete those by hand).</p>
+<p>Off dodot: <code>dodot down</code> reverses everything; the dotfiles repo is portable.</p>
+<h2 id="5-gnu-stow">5. GNU Stow<a class="headerlink" href="#5-gnu-stow" title="Permanent link">&para;</a></h2>
+<p>GNU Stow (https://www.gnu.org/software/stow/) is the original symlink farm manager. Written in Perl for managing per-package installs under <code>/usr/local</code>; the dotfiles community repurposed it.</p>
+<h3 id="51-how-stow-works">5.1. How Stow works<a class="headerlink" href="#51-how-stow-works" title="Permanent link">&para;</a></h3>
+<p>Each "package" is a subdirectory of the stow directory whose internal tree <em>mirrors</em> the target tree exactly. <code>dotfiles/vim/.vimrc</code> is symlinked to <code>~/.vimrc</code> when you <code>stow vim</code>. Stow tries to fold whole subtrees into a single symlink when nothing collides ("tree folding"), and splits them apart when a second package needs to share the subtree ("unfolding").</p>
+<p>That's it. No state, no templates, no scripts, no secrets, no conditional logic, no shell/PATH integration, no plist handling, no package install hooks.</p>
+<h3 id="52-where-stow-and-dodot-agree">5.2. Where Stow and dodot agree<a class="headerlink" href="#52-where-stow-and-dodot-agree" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Symlinks are the deployment mechanism; both keep state in the filesystem. </li>
+<li>No database, no apply step beyond <code>stow &lt;pkg&gt;</code>. </li>
+<li>Lock-in is essentially zero (Stow has none; dodot has the datastore directory but it dies cleanly). </li>
+<li>Vanilla git for source control. </li>
+</ul>
+<h3 id="53-where-they-differ">5.3. Where they differ<a class="headerlink" href="#53-where-they-differ" title="Permanent link">&para;</a></h3>
+<p>Scope. Stow only does symlinks. Anything past that — sourcing shell snippets, adding to PATH, running Brewfile, dealing with plists, decrypting secrets, host conditionals — is not in Stow's lane and never will be. dodot does all of those as first-class handlers.</p>
+<p>Path layout. Stow requires you to mirror the target tree exactly inside each package: <code>vim/.vimrc</code>, <code>vim/.config/nvim/init.vim</code>. dodot reads pack-root entries with XDG defaults: <code>nvim/init.lua</code> deploys to <code>~/.config/nvim/init.lua</code> automatically. The <code>.config</code> mirroring step that Stow needs is dodot's default; the <code>~/.bashrc</code> mirroring that Stow needs is dodot's <code>home.X</code> opt-in or <code>force_home</code> list.</p>
+<p>Adopt. <code>stow --adopt</code> exists. It does the <em>opposite</em> of what most users expect: it moves the live file <em>into</em> the package, overwriting whatever was already there in the repo. Without a <code>git diff</code> save, you lose the repo's prior contents. dodot's <code>adopt</code> is the conservative direction — move the live file into the pack, replace the source with a symlink back, refuse if names collide.</p>
+<p>Conventional names. Stow doesn't have any: every file is just a path mirror. <code>Brewfile</code>, <code>install.sh</code>, <code>aliases.sh</code>, <code>bin/</code> are inert filenames to Stow, deployed as their literal selves.</p>
+<p>Target default. Stow's default target is the <em>parent</em> of the stow directory, not <code>$HOME</code>. You almost always need <code>-t ~</code> or run from a specific layout. dodot defaults to <code>$HOME</code> everywhere.</p>
+<p>Per-host. Stow has no built-in conditional. Multi-machine workflows are "different packages per machine, stow selectively." dodot ships filename grammar, directory segments, glob tables, and <code>[pack] os</code> for this.</p>
+<h3 id="54-things-stow-can-do-that-dodot-doesnt">5.4. Things Stow can do that dodot doesn't<a class="headerlink" href="#54-things-stow-can-do-that-dodot-doesnt" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Run on a 25-year-old box with only Perl installed. </li>
+<li>Manage software installs under prefixes that aren't <code>$HOME</code> (it's a <code>/usr/local</code>-style symlink farm too). </li>
+<li>Tree folding — one directory symlink can replace many file symlinks. dodot can also wholesale-link directories, but Stow's folding/unfolding is its defining trick. </li>
+</ul>
+<h3 id="55-migration-cost">5.5. Migration cost<a class="headerlink" href="#55-migration-cost" title="Permanent link">&para;</a></h3>
+<p>Off Stow: trivial. Symlinks are plain, deletable with <code>stow -D</code> or <code>rm</code>. Files in the stow dir are plain files.</p>
+<p>Off dodot: trivial. Same story.</p>
+<h2 id="6-dotbot">6. dotbot<a class="headerlink" href="#6-dotbot" title="Permanent link">&para;</a></h2>
+<p>dotbot (https://github.com/anishathalye/dotbot) is a YAML-driven symlink-and-script bootstrapper, typically vendored as a git submodule.</p>
+<h3 id="61-how-dotbot-works">6.1. How dotbot works<a class="headerlink" href="#61-how-dotbot-works" title="Permanent link">&para;</a></h3>
+<p>An <code>install.conf.yaml</code> lists directives in order: <code>link:</code> (the dominant one), <code>create:</code>, <code>shell:</code>, <code>clean:</code>, <code>defaults:</code>, <code>plugins:</code>. <code>link:</code> maps a path in <code>$HOME</code> to a path in the repo; <code>shell:</code> invokes arbitrary shell commands; <code>clean:</code> deletes dead symlinks under a directory. You run <code>./install</code> (the bundled shim) and dotbot reconciles. Every run is full re-evaluation; there's no state file.</p>
+<h3 id="62-where-dotbot-and-dodot-agree">6.2. Where dotbot and dodot agree<a class="headerlink" href="#62-where-dotbot-and-dodot-agree" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Symlinks are the primary deployment mechanism. </li>
+<li>Vanilla git. </li>
+<li>Idempotent re-runs. </li>
+<li>Low lock-in. </li>
+</ul>
+<h3 id="63-where-they-differ">6.3. Where they differ<a class="headerlink" href="#63-where-they-differ" title="Permanent link">&para;</a></h3>
+<p>Mapping is mandatory. Every dotfile you want deployed must be listed under <code>link:</code> (or matched by glob). There is no convention-based dispatch. dodot's whole point is that you don't list anything — the file's name is the configuration.</p>
+<p>Templates, secrets, encryption. None native. There are plugins (<code>dotbot-template</code>, <code>dotbot-age</code>, <code>dotbot-sops</code>, <code>dotbot-gitcrypt</code>) for each, but they're community-maintained and you wire them up.</p>
+<p>Conditional running. Per-directive <code>if:</code> taking a shell snippet. Cross-platform repos typically end up with <code>if: '[[ "$(uname)" == "Darwin" ]]'</code> strewn across the YAML, or split into multiple top-level configs and a wrapper.</p>
+<p>Shell integration / PATH. No first-class handler. You write a <code>shell:</code> entry that appends to <code>.bashrc</code> or <code>.zshrc</code>, or you symlink your own init file that does it.</p>
+<p>Package install. <code>shell:</code> entry running <code>brew bundle</code>, <code>apt-get install</code>, etc. The plugin ecosystem covers most package managers — <code>dotbot-brew</code>, <code>dotbot-apt</code>, <code>dotbot-dnf</code>, <code>dotbot-pip</code> — but you pick and wire.</p>
+<p>One-shot semantics. <code>shell:</code> runs every time. You make it idempotent by hand (<code>command -v fzf || install</code>). dodot's install handler is content-hashed: edit the script, and it re-runs; leave it alone, and it doesn't.</p>
+<p>macOS plists. None. <code>defaults write</code> from a <code>shell:</code> entry is the documented approach.</p>
+<p>Adopt. No <code>import</code> workflow. You move files into the repo by hand and add YAML entries.</p>
+<p>Command surface. Effectively <code>./install</code> plus flags. Smaller than dodot's three commands at first glance, but every dotfile and every action you want is a YAML entry to author and maintain — the surface migrates from CLI verbs to config schema.</p>
+<h3 id="64-things-dotbot-can-do-that-dodot-doesnt">6.4. Things dotbot can do that dodot doesn't<a class="headerlink" href="#64-things-dotbot-can-do-that-dodot-doesnt" title="Permanent link">&para;</a></h3>
+<p>Three meaningfully different things, all flowing from dotbot's "explicit-config-first" stance: the YAML manifest IS the contract, every dotfile and every action is declared in it, and a wide plugin ecosystem fills the gaps that the core doesn't address.</p>
+<h4 id="641-self-bootstrap-on-a-new-machine">6.4.1. Self-bootstrap on a new machine<a class="headerlink" href="#641-self-bootstrap-on-a-new-machine" title="Permanent link">&para;</a></h4>
+<p>Vendored as a git submodule plus a committed <code>install</code> shim, dotbot needs no system-wide install — <code>git clone &lt;repo&gt; &amp;&amp; cd &lt;repo&gt; &amp;&amp; ./install</code> is enough on any machine with Python on <code>$PATH</code>. Python is almost always present, so in practice the new-machine bootstrap is one command. dodot is a Rust binary that has to be installed first (<code>brew install</code>, <code>cargo install</code>, <code>.deb</code>, etc.) before it can do anything. Once installed, the difference disappears; the advantage is only in the "fresh machine, no privileged install, just clone and go" case.</p>
+<h4 id="642-explicit-low-level-deploy-operations">6.4.2. Explicit low-level deploy operations<a class="headerlink" href="#642-explicit-low-level-deploy-operations" title="Permanent link">&para;</a></h4>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<p><strong>Because the YAML manifest names each deploy op directly, dotbot can express knobs dodot has no convention slot for</strong></p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Where in dotbot</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hardlink instead of symlink</td>
+<td><code>type: hardlink</code></td>
+</tr>
+<tr>
+<td>Backup the existing target before overwriting</td>
+<td><code>backup: true</code></td>
+</tr>
+<tr>
+<td>Write a relative symlink path instead of absolute</td>
+<td><code>relative: true</code></td>
+</tr>
+<tr>
+<td>Resolve target through existing symlinks before linking</td>
+<td><code>canonicalize: true</code></td>
+</tr>
+<tr>
+<td>Batch-link with glob + exclude patterns</td>
+<td><code>glob</code>/<code>exclude</code> on <code>link:</code></td>
+</tr>
+<tr>
+<td>Explicit "ensure this empty directory exists"</td>
+<td><code>create:</code> directive</td>
+</tr>
+<tr>
+<td>Garbage-collect dead symlinks under a path</td>
+<td><code>clean:</code> directive</td>
+</tr>
+<tr>
+<td>Inline shell command with per-call stdin/stdout/stderr knobs</td>
+<td><code>shell:</code> directive</td>
+</tr>
+</tbody>
+</table>
+<p>None of these have a dodot analog because dodot's convention dispatch doesn't have filenames that mean "hardlink" or "backup-on-overwrite." The dotbot user gets that expressive surface; the dodot user trades it for not having to maintain the manifest in the first place. Neither is strictly more powerful — they answer different questions.</p>
+<h4 id="643-plugin-ecosystem">6.4.3. Plugin ecosystem<a class="headerlink" href="#643-plugin-ecosystem" title="Permanent link">&para;</a></h4>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<h5 id="the-dotbot-wiki-lists-80-community-plugins-the-ones-that-show-up-in-real-world-repos-cluster-into-four-buckets-and-the-bucket-map-is-illuminating-each-cluster-closes-a-gap-dotbots-core-leaves-open-dodots-first-class-handler-set-homebrew-install-shell-path-template-secret-plist-covers-roughly-the-same-ground-built-in">The dotbot wiki lists ~80 community plugins. The ones that show up in real-world repos cluster into four buckets, and the bucket map is illuminating: each cluster closes a gap dotbot's core leaves open. dodot's first-class handler set (homebrew, install, shell, path, template, secret, plist) covers roughly the same ground built in.<a class="headerlink" href="#the-dotbot-wiki-lists-80-community-plugins-the-ones-that-show-up-in-real-world-repos-cluster-into-four-buckets-and-the-bucket-map-is-illuminating-each-cluster-closes-a-gap-dotbots-core-leaves-open-dodots-first-class-handler-set-homebrew-install-shell-path-template-secret-plist-covers-roughly-the-same-ground-built-in" title="Permanent link">&para;</a></h5>
+<p>| Bucket                | Plugins                                                          | dodot equivalent          | | Package managers      | dotbot-brew, dotbot-apt, dotbot-yum, dotbot-dnf, dotbot-yay,    | homebrew handler          | |                       | dotbot-paru, dotbot-pacaur, dotbot-pip                          | + install handler         | | Templating            | dotbot-template (Jinja2), dotbot-tera, dotbot-jsonnet           | built-in template handler | | Secrets               | dotbot-age, dotbot-sops, dotbot-gitcrypt                        | built-in age/gpg + 6 providers | | Misc                  | dotbot-git (external repos), dotbot-vscode, dotbot-crontab,     | install.sh handler         | |                       | dotbot-firefox, dotbot-conditional / dotbot-if                  | gates / conditional        |</p>
+<p>The pattern: dotbot's "core + plugins" decomposition is roughly the same surface as dodot's "core + handlers," but with the plugins published separately by different authors with different maintenance posture, and the wiring up to the user. dotbot-git is the closest analog to chezmoi's external files (and dodot's structural gap from §3.4).</p>
+<h3 id="65-migration-cost">6.5. Migration cost<a class="headerlink" href="#65-migration-cost" title="Permanent link">&para;</a></h3>
+<p>Off dotbot: light. Delete the <code>dotbot/</code> submodule and the <code>install</code> shim. Files in the repo are plain files. The YAML is dotbot-specific but is documentation, not deployed artifact.</p>
+<p>Off dodot: light. Same.</p>
+<h2 id="7-home-manager">7. Home Manager<a class="headerlink" href="#7-home-manager" title="Permanent link">&para;</a></h2>
+<p>Home Manager (https://github.com/nix-community/home-manager) is the Nix-based user-environment manager. The most philosophically different tool in this comparison.</p>
+<h3 id="71-how-home-manager-works">7.1. How Home Manager works<a class="headerlink" href="#71-how-home-manager-works" title="Permanent link">&para;</a></h3>
+<p>You write your user environment in the Nix language: <code>programs.git.enable = true; programs.git.userName = "Arthur";</code>, <code>home.packages = [ pkgs.ripgrep pkgs.fd ];</code>, <code>home.file."some/path".text = '' ... '';</code>. <code>home-manager switch</code> evaluates the Nix expression, builds an immutable artifact in <code>/nix/store</code>, and atomically swaps activation symlinks so your <code>$HOME</code> files point into that store path. Each switch is a numbered <em>generation</em>; <code>home-manager generations</code> lists them; <code>home-manager switch --rollback</code> reverts to the previous one. The Nix store is the state.</p>
+<h3 id="72-where-home-manager-and-dodot-agree">7.2. Where Home Manager and dodot agree<a class="headerlink" href="#72-where-home-manager-and-dodot-agree" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Source of truth is git (your Nix files). </li>
+<li>First-class conditional logic (Nix <code>if</code>/<code>mkIf</code>/<code>mkMerge</code> vs dodot gates). </li>
+<li>First-class package installation. </li>
+<li>First-class shell integration (<code>programs.zsh</code>, <code>sessionVariables</code>, <code>home.sessionPath</code>). </li>
+<li>Per-host modules for multi-machine setups. </li>
+</ul>
+<h3 id="73-where-they-differ-and-they-differ-a-lot">7.3. Where they differ — and they differ a lot<a class="headerlink" href="#73-where-they-differ-and-they-differ-a-lot" title="Permanent link">&para;</a></h3>
+<p>Workflow change. This is the load-bearing one. With Home Manager you <em>stop hand-editing config files</em>. <code>~/.zshrc</code> is a read-only symlink into <code>/nix/store</code>. Editing your zsh config means editing <code>programs.zsh.initExtra = '' ... '';</code> in Nix and rebuilding. dodot's central promise — edit files the way you already do; the symlink chain makes the edit live — is exactly the property Home Manager trades away for reproducibility.</p>
+<p>Apply step. Home Manager has one — <code>home-manager switch</code> — and it is non-trivial. It evaluates Nix (can be slow), builds derivations, and rewrites symlinks. dodot has <code>dodot up</code> once at setup; after that, edits go live without re-running.</p>
+<p>Language. You learn Nix. The schema for <code>programs.git.*</code> is a Nix-typed surface that hides the underlying <code>.gitconfig</code> syntax; coverage is wide but not total, so you fall back to <code>extraConfig</code> strings for the long tail.</p>
+<p>Lock-in. Every Home Manager-deployed file is a symlink into <code>/nix/store</code>. Remove Nix and every managed file goes dangling. Migrating off requires <code>cp -L</code> to materialize each file as a real file before uninstalling. dodot's footprint is a directory of legible symlinks in <code>~/.local/share/dodot/</code>; uninstalling dodot leaves a working system because the symlinks resolve directly into your dotfiles repo.</p>
+<p>Adopt. Home Manager has no adoption workflow. You translate existing files into Nix expressions by hand, or stuff them verbatim into <code>home.file."...".text = '' ... '';</code>. Existing files in <code>$HOME</code> either get clobbered (<code>backupFileExtension</code> is set) or block activation.</p>
+<p>macOS plists. Home Manager itself doesn't own macOS system surfaces — its sibling project nix-darwin does. The pair (nix-darwin + Home Manager) covers plists; Home Manager alone doesn't. dodot's plist filter pipeline is self-contained.</p>
+<p>Command surface. ~10 verbs, but the cognitive load is mostly in the Nix expression language, not the verbs.</p>
+<h3 id="74-things-home-manager-can-do-that-dodot-doesnt">7.4. Things Home Manager can do that dodot doesn't<a class="headerlink" href="#74-things-home-manager-can-do-that-dodot-doesnt" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<h4 id="three-of-these-four-are-intentional-non-goals-for-dodot-features-that-would-require-accepting-the-nix-tax-a-6-gb-package-manager-a-workflow-shift-away-from-hand-edited-config-files-deployed-files-that-become-read-only-store-symlinks-the-remaining-one-is-a-structural-choice-with-a-small-workaround">Three of these four are intentional non-goals for dodot — features that would require accepting the Nix tax (a 6-GB package manager, a workflow shift away from hand-edited config files, deployed files that become read-only store symlinks). The remaining one is a structural choice with a small workaround.<a class="headerlink" href="#three-of-these-four-are-intentional-non-goals-for-dodot-features-that-would-require-accepting-the-nix-tax-a-6-gb-package-manager-a-workflow-shift-away-from-hand-edited-config-files-deployed-files-that-become-read-only-store-symlinks-the-remaining-one-is-a-structural-choice-with-a-small-workaround" title="Permanent link">&para;</a></h4>
+<p>| Item                                       | Kind                              | | Byte-identical reproducibility (flake.lock) | Intentional non-goal             | | Atomic rollback to a prior generation       | Intentional non-goal             | | Typed per-program schemas                   | Intentional non-goal             | | Unified package install (<code>home.packages</code>)   | Architectural difference         |</p>
+<ul>
+<li><strong>Reproducibility (intentional non-goal).</strong> A pinned <code>flake.lock</code> plus <code>home.nix</code> reproduces the same environment on another machine, byte for byte. dodot offers reproducibility-by-convention (your dotfiles repo + a stable system) but not byte-identical guarantees — that property requires content-addressed package storage, which requires <a href="./philosophy.lex">Nix.</a> §7 ("no central orchestration") and the broader anti-DSL stance imply dodot won't go there. </li>
+<li><strong>Atomic rollback (intentional non-goal).</strong> <code>home-manager switch --rollback</code> reverses to the previous generation in one command. dodot's philosophy §7 explicitly takes the other side: "git keeps history of your configs; that is the history you want." Adding generation-based rollback would mean dodot owning a history of past deployments, which is exactly the bespoke-state-representation the design rules out. </li>
+<li><strong>Typed per-program schemas (intentional non-goal).</strong> <code>programs.git.signing.key = "...";</code> is type-checked, discoverable in the module registry, and composable across hosts. The trade-off: you author the schema's Nix surface, not the program's native config language; coverage is wide but lags upstream features. dodot reads existing files in their native formats and stays out of the schema-wrapping business — same posture as "no DSL" in philosophy §2. </li>
+<li><strong>Unified package install (architectural difference).</strong> <code>home.packages = [ ... ];</code> lives in the same declarative tree as everything else; there's no separate Brewfile concept. dodot keeps the boundaries between handlers crisp: <code>Brewfile</code> → homebrew handler, <code>install.sh</code> → install handler. The result is two manifests instead of one, but each speaks its native language (Brewfile syntax for brew, shell for one-shot setup) rather than going through a unified Nix expression. This is a different design choice rather than a capability gap; the surface area on dodot's side is the same, just split. </li>
+</ul>
+<h3 id="75-migration-cost">7.5. Migration cost<a class="headerlink" href="#75-migration-cost" title="Permanent link">&para;</a></h3>
+<p>Off Home Manager: non-trivial. <code>cp -L</code> every symlink into a real file before removing Nix, then audit for missed pieces. Or migrate to another tool that can ingest your now-materialized files. Users have written posts about this; the consensus is "do the work or stay."</p>
+<p>Off dodot: trivial. <code>dodot down</code> and walk away.</p>
+<h2 id="8-dotter">8. dotter<a class="headerlink" href="#8-dotter" title="Permanent link">&para;</a></h2>
+<p>dotter (https://github.com/SuperCuber/dotter) is a small Rust-based templater + symlink manager. Less feature-rich than chezmoi by design.</p>
+<h3 id="81-how-dotter-works">8.1. How dotter works<a class="headerlink" href="#81-how-dotter-works" title="Permanent link">&para;</a></h3>
+<p>Two TOML files: <code>.dotter/global.toml</code> (committed) declares packages with <code>files</code> (source → target maps) and <code>variables</code>. <code>.dotter/local.toml</code> (per-machine, gitignored) selects which packages to deploy and overrides variables. <code>dotter deploy</code> either symlinks each file or, if the file contains <code>{{</code>, renders it as a Handlebars template and writes the rendered output. Detection is content-based: presence of <code>{{</code> flips the file to template mode.</p>
+<p>Per-file Complex Targets let you force <code>symbolic</code> / <code>template</code>, set <code>if = "(eq shell 'bash')"</code> predicates, and override paths. Four hook scripts (<code>pre_deploy.sh</code>, <code>post_deploy.sh</code>, and the undeploy pair) run on each lifecycle event. A small cache at <code>.dotter/cache.toml</code> tracks deployment state.</p>
+<h3 id="82-where-dotter-and-dodot-agree">8.2. Where dotter and dodot agree<a class="headerlink" href="#82-where-dotter-and-dodot-agree" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Rust binary, single static install. </li>
+<li>Symlinks by default. </li>
+<li>Vanilla git for source control. </li>
+<li>Cache/state is small and visible. </li>
+</ul>
+<h3 id="83-where-they-differ">8.3. Where they differ<a class="headerlink" href="#83-where-they-differ" title="Permanent link">&para;</a></h3>
+<p>Mapping is mandatory, in TOML. Every file you want deployed has to appear under <code>[default.files]</code> (or another package's <code>files</code>) with explicit <code>src</code> → <code>target</code>. dodot's filename-convention dispatch covers the same ground without any per-file declaration.</p>
+<p>Template detection. dotter sniffs content for <code>{{</code>; dodot uses filename suffix (<code>.tmpl</code> / <code>.template</code>). The content sniff is more magic and has the failure mode where any file that legitimately contains <code>{{</code> (e.g. Vim configs, Mustache examples) accidentally becomes a template.</p>
+<p>Conditional deployment. dotter's <code>local.toml</code> selects whole <em>packages</em>; finer-grained gating is via Complex Target <code>if = "..."</code> predicates. dodot has filename suffixes, directory segments, pack-level <code>[pack] os</code>, and a glob table — multiple surfaces matched to different granularities.</p>
+<p>No secrets, no encryption. Not in scope.</p>
+<p>No shell handler, no PATH handler, no install handler, no Brewfile handler. dotter's deployment is "deploy each file"; anything past that goes into <code>post_deploy.sh</code>, which you write.</p>
+<p>No adopt workflow. Move files into the repo by hand; <code>dotter deploy -f</code> then replaces the existing target files with symlinks.</p>
+<p>macOS plists. No special handling.</p>
+<h3 id="84-things-dotter-can-do-that-dodot-doesnt">8.4. Things dotter can do that dodot doesn't<a class="headerlink" href="#84-things-dotter-can-do-that-dodot-doesnt" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<p>| Item                                                  | Kind                     | | Custom Handlebars helpers in Rhai                      | Adoption-driven          | | Per-machine target path overrides (<code>local.toml</code>)       | Adoption-driven          |</p>
+<ul>
+<li><strong>Custom helpers (adoption-driven).</strong> dotter lets you write <code>name = "path/to/script.rhai"</code> under <code>[helpers]</code> and call the function from a Handlebars template. dodot's MiniJinja templates ship a built-in filter set and don't accept user-supplied helpers; adding a hook for it is a small extension, not a structural change. </li>
+<li><strong>Per-machine target overrides (adoption-driven).</strong> dotter's <code>local.toml</code> is gitignored and overrides target paths per host (useful when <code>init.vim</code> lives at different paths on Linux vs Windows). dodot's <code>[symlink.targets]</code> is the equivalent surface but lives in committed config; per-machine overrides today go through template-rendered config or hostname-gated alternate files. A gitignored local-overlay file (a kind of <code>.dodot.local.toml</code>) would close this cleanly. </li>
+</ul>
+<h3 id="85-migration-cost">8.5. Migration cost<a class="headerlink" href="#85-migration-cost" title="Permanent link">&para;</a></h3>
+<p>Off dotter: light. <code>dotter undeploy</code> removes the deployed symlinks; the repo is plain files (with Handlebars <code>{{ }}</code> markers in templated ones).</p>
+<p>Off dodot: trivial.</p>
+<h2 id="9-dotdrop">9. dotdrop<a class="headerlink" href="#9-dotdrop" title="Permanent link">&para;</a></h2>
+<p>dotdrop (https://github.com/deadc0de6/dotdrop) is a Python-based dotfile manager with first-class profile support and Jinja2 templating.</p>
+<h3 id="91-how-dotdrop-works">9.1. How dotdrop works<a class="headerlink" href="#91-how-dotdrop-works" title="Permanent link">&para;</a></h3>
+<p>Config is a YAML file (<code>config.yaml</code>) with sections: <code>dotfiles:</code> (each entry has <code>src</code>, <code>dst</code>, <code>link</code>, <code>actions</code>, transformations, ignore globs); <code>profiles:</code> (per-host or per-role selections of dotfile keys); <code>actions:</code> (named shell pre/post commands); <code>trans_install</code> / <code>trans_update</code> (decrypt / encrypt command pairs, typically gpg); <code>variables</code>, <code>dynvariables</code> (shell-executed). Files live under a <code>dotpath</code> directory (default <code>dotfiles/</code>). <code>dotdrop install</code> materializes each dotfile to its <code>dst</code> — either copied (with template render), or symlinked. <code>dotdrop import</code> is the inverse: ingest an existing file from <code>$HOME</code> into the repo, generating a dotfile key.</p>
+<h3 id="92-where-dotdrop-and-dodot-agree">9.2. Where dotdrop and dodot agree<a class="headerlink" href="#92-where-dotdrop-and-dodot-agree" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Vanilla git. </li>
+<li>Templates (Jinja2) for per-host variation. </li>
+<li>First-class adopt-existing (<code>dotdrop import</code>). </li>
+<li>Per-machine differentiation (profiles). </li>
+<li>Secrets via external tools (dodot: pass/op/bw/sops/keychain/secret-tool + age/gpg; dotdrop: gpg-via-transformations + env vars). </li>
+<li>Low lock-in. </li>
+</ul>
+<h3 id="93-where-they-differ">9.3. Where they differ<a class="headerlink" href="#93-where-they-differ" title="Permanent link">&para;</a></h3>
+<p>Mapping is mandatory, in YAML. Every dotfile is an entry under <code>dotfiles:</code>; every profile lists which dotfile keys it includes. Importing through <code>dotdrop import</code> generates the entry for you, but the entry is still the configuration. dodot's convention-based dispatch has no equivalent registry.</p>
+<p>Profiles. dotdrop has first-class profiles — multiple distinct configurations selected by name (default = hostname). dodot is explicitly single-config-per-machine <a href="./philosophy.lex">(</a> §7); hostname-based gates are the closest analog. If you want "work" and "home" on the same laptop and <code>dotdrop -p work</code> / <code>dotdrop -p home</code> switching them, dotdrop wins.</p>
+<p>Templating triggers. dotdrop templates <em>every</em> file by default (controlled by <code>template: false</code> or global <code>template_dotfile_default</code>). dodot opts in via <code>.tmpl</code>/<code>.template</code> extension. The dotdrop default makes accidental templating possible in files that contain <code>{{@@</code> or unusual Jinja-adjacent syntax; the custom <code>{{@@ … @@}}</code> delimiters reduce but don't eliminate that.</p>
+<p>Shell integration / PATH / Brewfile. No first-class handlers. <code>actions:</code> (pre/post shell commands) cover everything beyond file deployment — package installs, sourcing setups, etc., all become custom action lines.</p>
+<p>Install gating. <code>actions:</code> run on every install unless wired through state-checking shell logic by hand. dodot's install handler is content-hashed and skipped automatically when nothing changed.</p>
+<p>macOS plists. None.</p>
+<p>Deployment mode. dotdrop's <code>link</code> directive picks per-dotfile: <code>nolink</code> (copy), <code>absolute</code>, <code>relative</code>, <code>link_children</code>. Default is <code>nolink</code> — copy semantics, with the same "edits at the deployed location don't flow back to source" issue chezmoi has. Flip <code>link:</code> to opt into the dodot-like model.</p>
+<h3 id="94-things-dotdrop-can-do-that-dodot-doesnt">9.4. Things dotdrop can do that dodot doesn't<a class="headerlink" href="#94-things-dotdrop-can-do-that-dodot-doesnt" title="Permanent link">&para;</a></h3>
+<!-- lex:table align=ll -->
+
+<!-- /lex:table -->
+
+<p>| Item                                                 | Kind                  | | Multi-profile-per-machine (<code>-p</code> switching)            | Intentional non-goal  | | Profile inheritance + cross-profile composition       | Intentional non-goal  | | Dynamic vars (<code>dynvariables</code> from shell commands)     | Adoption-driven       | | Symlink-of-children (<code>link_children</code>)                 | Possible enhancement  |</p>
+<ul>
+<li><strong>Multi-profile (intentional non-goal).</strong> dotdrop's <code>-p work</code> / <code>-p home</code> switching is its strongest feature for users who want different configurations on the same machine. dodot is explicitly single-config-per-machine <a href="./philosophy.lex">—</a> §7: "no profiles. One configuration per machine. For work-vs-home, use separate packs and enable different subsets." The hostname-based gate is the deliberate stopping point. </li>
+<li><strong>Profile inheritance / composition (intentional non-goal).</strong> Falls out of the same decision. Without profiles as a first-class concept, <code>include</code> chains and cross-profile composition have nothing to compose. </li>
+<li><strong>Dynamic variables (adoption-driven).</strong> dotdrop's <code>dynvariables</code> execute a shell command at render time and capture stdout as the variable value. dodot has <code>env.X</code> lookups in templates (resolved at <code>dodot up</code> time) but not arbitrary shell-command-as-value. Could be added as a new template function (<code>shell("date +%Y")</code> or similar) without disturbing other principles; just hasn't been needed yet. </li>
+<li><strong>link_children (possible enhancement).</strong> dotdrop's <code>link_children</code> symlinks each child of a directory independently, so the parent stays a real directory shared with non-managed siblings. dodot today links whole directories wholesale when the pack supplies a directory; per-child linking would be a small extension to the symlink handler. </li>
+</ul>
+<h3 id="95-migration-cost">9.5. Migration cost<a class="headerlink" href="#95-migration-cost" title="Permanent link">&para;</a></h3>
+<p>Off dotdrop: light. <code>dotdrop uninstall</code> removes deployed files. <code>dotpath/</code> is plain files (with Jinja delimiters in templated ones).</p>
+<p>Off dodot: trivial.</p>
+<h2 id="10-summary-tables">10. Summary tables<a class="headerlink" href="#10-summary-tables" title="Permanent link">&para;</a></h2>
+<p>Rows are features; columns are tools. "yes" means the tool supports the feature out of the box. Annotations explain conditions.</p>
+<!-- lex:table align=lllllllll -->
+
+<!-- /lex:table -->
+
+<h3 id="101-source-layout-deployment">10.1. Source layout &amp; deployment<a class="headerlink" href="#101-source-layout-deployment" title="Permanent link">&para;</a></h3>
+<p>| Feature                                                | dodot                                  | chezmoi                                | yadm                          | Stow                          | dotbot                        | Home Manager                       | dotter                         | dotdrop                       | | Edit your files at their normal paths                  | yes (symlinks)                         | no (apply rewrites them)               | yes (live in $HOME)           | yes (symlinks)                | yes (symlinks)                | no (read-only Nix store)           | yes (symlinks)                 | yes if <code>link:</code> set; else no   | | No apply step (edits go live)                          | yes                                    | no (<code>apply</code> required)                  | yes                           | yes                           | yes                           | no (<code>switch</code> required)             | yes (symlink mode)             | yes (link mode) / no (copy)   | | Zero-config for conventional dotfiles                  | yes                                    | no (rename to <code>dot_X</code>)                 | yes                           | no (mirror tree)              | no (YAML entries)             | no (Nix module)                    | no (TOML entries)              | no (YAML entries) / yes via import | | Filename remap required                                | no                                     | yes (<code>dot_</code>, <code>private_</code>, …)            | no                            | no                            | no                            | no (Nix attr)                      | no                             | no                            | | Source files keep their normal contents (no markup)    | yes (except <code>.tmpl</code>)                   | yes (except <code>.tmpl</code>)                   | yes (except alt suffix files) | yes                           | yes                           | no (Nix language)                  | yes (except <code>{{</code>-bearing)      | yes (except templated)        |</p>
+<!-- lex:table align=lllllllll -->
+
+<!-- /lex:table -->
+
+<h3 id="102-source-control-posture">10.2. Source-control posture<a class="headerlink" href="#102-source-control-posture" title="Permanent link">&para;</a></h3>
+<p>| Feature                                | dodot              | chezmoi              | yadm                            | Stow              | dotbot           | Home Manager       | dotter           | dotdrop            | | Plain <code>git</code> works alongside the tool   | yes                | yes                  | yes (with --git-dir flags)      | yes               | yes              | yes                | yes              | yes                | | Tool wraps git commands                | no                 | optional (auto-commit) | yes (primary surface)         | no                | no               | no                 | no               | no                 | | Tool offers its own diff/status verbs  | no                 | yes                  | passthrough only                | no                | no               | yes (generations)  | no               | yes (<code>compare</code>)    |</p>
+<!-- lex:table align=lllllllll -->
+
+<!-- /lex:table -->
+
+<h3 id="103-features-built-in">10.3. Features (built-in)<a class="headerlink" href="#103-features-built-in" title="Permanent link">&para;</a></h3>
+<p>| Feature                                | dodot                          | chezmoi                          | yadm                                | Stow      | dotbot                       | Home Manager                       | dotter                       | dotdrop                              | | Templates                              | yes (MiniJinja, <code>.tmpl</code>)       | yes (Go text/template, <code>.tmpl</code>)  | yes (default awk, esh, j2, envtpl)  | no        | no (plugins exist)           | no template engine (use Nix)       | yes (Handlebars, content-sniff) | yes (Jinja2, default-on)          | | Per-OS/host conditionals               | yes (filename + config)        | yes (template if)                | yes (alt suffix)                    | no        | yes (per-entry shell <code>if:</code>)  | yes (Nix <code>mkIf</code>)                   | yes (<code>if =</code> predicates)      | yes (profiles)                       | | Profiles on same machine               | no (single config)             | template branches                | class                               | no (split packages) | multi-config files     | per-host modules                   | local.toml                   | yes (first-class)                    | | Shell sourcing handler                 | yes (<code>*.sh|.bash|.zsh</code> at root)| no                               | no                                  | no        | no (shell directive)         | yes (<code>programs.zsh.initExtra</code>)     | no                           | no                                   | | $PATH handler                          | yes (<code>bin/</code> dirs)              | no                               | no                                  | no        | no                           | yes (<code>home.sessionPath</code>)           | no                           | no                                   | | Run-once install script                | yes (<code>install.sh</code>, hashed)     | yes (<code>run_once_</code>)                | yes (single <code>bootstrap</code>)            | no        | no (every run, hand-idempotent) | yes (<code>home.activation</code>)         | no (every run via hooks)     | partial (actions; not auto-hashed)   | | Brewfile / package install             | yes (<code>Brewfile</code> handler)       | run_onchange pattern (manual)    | bootstrap (manual)                  | no        | shell directive / plugin     | yes (<code>home.packages</code>)              | no                           | no (actions)                         | | Secrets — value injection              | yes (pass, op, bw, sops, keychain, secret-tool) | yes (~15+ providers)        | no                                  | no        | no (plugins)                 | no native (sops-nix/agenix module) | no                           | partial (env var, gpg via trans)     | | Whole-file encryption                  | yes (age, gpg)                 | yes (age, gpg)                   | yes (gpg tar, transcrypt, git-crypt) | no       | no (plugins)                 | sops-nix / agenix                  | no                           | yes (gpg via <code>trans_install</code>)        | | macOS plist diff/review                | yes (clean/smudge filters)     | no (modify-script pattern)       | no                                  | no        | no                           | nix-darwin (sibling project)       | no                           | no                                   | | Adopt existing files                   | yes (<code>dodot adopt</code>)            | yes (<code>chezmoi add</code>)              | trivial (already in $HOME)          | yes (<code>--adopt</code>, but inverted) | no (manual)         | no                                 | no                           | yes (<code>dotdrop import</code>)               | | External files (URL / git ref)         | no                             | yes (<code>chezmoiexternal</code>)          | no                                  | no        | plugin (<code>dotbot-git</code>)        | yes (<code>fetchurl</code> / <code>fetchFromGitHub</code>) | no                         | partial (config imports)             |</p>
+<!-- lex:table align=lllllllll -->
+
+<!-- /lex:table -->
+
+<h3 id="104-cognitive-load-portability">10.4. Cognitive load &amp; portability<a class="headerlink" href="#104-cognitive-load-portability" title="Permanent link">&para;</a></h3>
+<p>| Feature                                | dodot                  | chezmoi              | yadm                          | Stow                | dotbot                   | Home Manager                       | dotter             | dotdrop              | | Core command count                     | 3 (<code>status</code>/<code>up</code>/<code>down</code>) | ~20+               | ~17 + git passthrough         | 1 modal             | 1 (<code>./install</code>)          | ~10                                | 6                  | ~10                  | | State storage                          | datastore symlinks     | BoltDB               | git repo                      | none                | none                     | Nix store generations              | <code>.dotter/cache.toml</code> | workdir + optional backups | | Runtime dependency                     | rust binary (~5MB)     | go binary            | bash + git                    | perl                | python                   | nix (multi-GB)                     | rust binary        | python + libmagic + diff | | Migration off the tool                 | <code>dodot down</code> + delete repo dir | un-rename <code>dot_</code> + edits stick | nothing (already in place) | <code>stow -D</code> or <code>rm</code>   | delete submodule         | <code>cp -L</code> every symlink first        | <code>dotter undeploy</code>  | <code>dotdrop uninstall</code>  | | Files dangling if tool uninstalled     | no (link directly to repo) | no (real files)  | n/a (real files)              | no (real symlinks)  | no                       | YES (point into <code>/nix/store</code>)      | no                 | no                   |</p>
+<h2 id="11-the-shape-of-the-choice">11. The shape of the choice<a class="headerlink" href="#11-the-shape-of-the-choice" title="Permanent link">&para;</a></h2>
+<p>A few patterns fall out of the table.</p>
+<ul>
+<li>If you want "edit normally, symlinks make it live, conventional names just work" with nothing else: dodot or Stow. Stow can't go past plain symlinks; dodot covers the next layer (shell, PATH, install, Brewfile, plist, templates, secrets, conditional running) without breaking the contract. </li>
+<li>If you want one source of truth that produces byte-identical environments across machines: Home Manager. Pay the Nix tax. </li>
+<li>If you want files to literally <em>be</em> at their canonical paths with git as the only abstraction: yadm. </li>
+<li>If you want the largest feature surface and don't mind an apply step plus filename renames: chezmoi. </li>
+<li>If you want explicit YAML/TOML manifests that read like a deployment script: dotbot, dotter, or dotdrop. dotdrop has the strongest profile story; dotbot is the most minimal; dotter sits between. </li>
+</ul>
+<p>dodot's distinguishing claim, restated: the principles in §2 hold <em>all the way through</em> the advanced surface. Templates, secrets, plists, conditional running, install scripts — all integrated without an apply step, without git wrapping, without a renamed source tree, without a database, and without growing the command set past three for routine use.</p>
+<h2 id="12-holding-dodots-principles-constant-whats-actually-missing">12. Holding dodot's principles constant: what's actually missing<a class="headerlink" href="#12-holding-dodots-principles-constant-whats-actually-missing" title="Permanent link">&para;</a></h2>
+<p>§11 is the positive selection guide ("which tool for which need"). This section answers the inverse: aggregating every "X can do this, dodot can't" item from the per-tool sections, then filtering out the ones that conflict with dodot's principles (§2) or are intentional non-goals (§13), what's the residual list? These are the items where dodot could grow without violating its own contract.</p>
+<!-- lex:table align=llll -->
+
+<!-- /lex:table -->
+
+<p><strong>Each row carries a kind tag explaining what it would take to close</strong></p>
+<p>Two of these — external files and one-command bootstrap — are <strong>structural</strong>: a real capability dodot doesn't have today, principle-compatible, with a clear use case driven by real user workflows. They are tracked as issues #152 and #153 respectively. The rest will ship when demand surfaces or remain reasonable not-yet-built items.</p>
+<h3 id="121-whats-not-on-this-list-and-why">12.1. What's <strong>not</strong> on this list and why<a class="headerlink" href="#121-whats-not-on-this-list-and-why" title="Permanent link">&para;</a></h3>
+<p>The per-tool sections also surfaced features that are <strong>intentionally</strong> absent from dodot. They're not gaps; they're consequences of dodot's principles or of design choices dodot deliberately rejected. They live in §13.</p>
+<h2 id="13-when-dodot-isnt-for-you">13. When dodot isn't for you<a class="headerlink" href="#13-when-dodot-isnt-for-you" title="Permanent link">&para;</a></h2>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<h3 id="the-other-side-of-the-coin-if-the-features-below-are-central-to-your-workflow-dodot-is-the-wrong-tool-these-items-cant-close-inside-dodot-without-changing-what-dodot-is">The other side of the coin. If the features below are central to your workflow, dodot is the wrong tool. These items <em>can't</em> close inside dodot without changing what dodot is.<a class="headerlink" href="#the-other-side-of-the-coin-if-the-features-below-are-central-to-your-workflow-dodot-is-the-wrong-tool-these-items-cant-close-inside-dodot-without-changing-what-dodot-is" title="Permanent link">&para;</a></h3>
+<p>| Need                                                         | Better tool       | Why dodot can't                                                     | | Files at canonical paths, no symlinks anywhere                | yadm              | Data layer <a href="./data-layer.lex">(</a>) is the double-link; symlinks are load-bearing, not incidental. | | Byte-identical reproducibility (lockfile-grade)              | Home Manager      | Requires content-addressed package store; Nix tax. Philosophy §2 + §7. | | Atomic rollback to a prior deployment in one command         | Home Manager      | Philosophy §7: "git keeps history of your configs; that is the history you want." | | Typed per-program schemas (write Nix instead of dotfiles)    | Home Manager      | Philosophy §2: anti-DSL. dodot reads the program's native config in its native syntax. | | Multiple profiles switchable on the same machine             | dotdrop           | Philosophy §7: single-configuration-per-machine.                    | | Windows support                                              | chezmoi           | Unix-first by design; macOS plists + XDG/Library path resolution sit at the center. | | Plugin ecosystem (add capabilities without core changes)     | dotbot            | Design choice: first-class handlers in core, consistent quality, single security surface. |</p>
+<p>Worth noting where the boundary is for some of these. dodot's "no profiles" stance still accommodates "different machines do different things" through hostname/OS gates and pack subsets; what it refuses is "two distinct deploy intents on the same host, switched at command time." dodot's "no rollback" stance still lets you <code>git checkout</code> a prior commit and re-<code>up</code>; what it refuses is owning a separate deployment history. dodot's "no plugins" stance is about the core surface, not about <strong>extending the conventions</strong> — you can add a custom handler today by overriding mappings in <code>.dodot.toml</code>; what dodot refuses is loading user code at runtime through a plugin loader.</p>
+<p>The framing for both §12 and §13: features that <strong>could</strong> live inside dodot's principles go in §12 and might get built; features that <strong>would require</strong> changing dodot's principles go in §13 and are pointers to where to go instead. The doc's job is to make that boundary legible so users can self-select.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

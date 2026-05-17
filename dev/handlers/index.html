@@ -1,0 +1,1346 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/dev/handlers/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Handlers - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#handlers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Handlers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handlers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-module-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Module Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-handler-trait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Handler Trait
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-classification-axes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Classification Axes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Classification Axes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-executionphase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. ExecutionPhase
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-handlercategory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. HandlerCategory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-matchmode-and-handlerscope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3. MatchMode and HandlerScope
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-built-in-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Built-in Handlers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Built-in Handlers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-symlinkhandler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. SymlinkHandler
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.1. SymlinkHandler">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#target-resolution-is-centralized-in-resolve_targetpack-rel_path-config-paths-priority-highest-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target resolution is centralized in resolve_target(pack, rel_path, config, paths). Priority, highest first:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-shellhandler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. ShellHandler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-pathhandler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. PathHandler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-installhandler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4. InstallHandler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-homebrewhandler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5. HomebrewHandler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-ignorehandler-and-skiphandler-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.6. IgnoreHandler and SkipHandler (filter)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#47-gatehandler-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.7. GateHandler (filter)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The Registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-default-rule-mappings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Default Rule Mappings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-datastore-layout-per-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Datastore Layout per Handler
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-handler-relevant-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Handler-Relevant Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-adding-a-new-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Adding a New Handler
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/dev/handlers.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Handlers</h1>
+
+<!-- lex:note -->
+
+<p><a href="./../reference/terms-and-concepts.lex">See</a> for terminology used throughout.</p>
+<!-- /lex:note -->
+
+<h2 id="handlers">Handlers<a class="headerlink" href="#handlers" title="Permanent link">&para;</a></h2>
+<p>This document is the contributor reference for the handler subsystem: the trait, the classification axes, the execution-order machinery, the data layout each handler writes to the datastore, and the registry. For the user-facing summary of which handler claims what, <a href="./../user/handlers/mappings.lex">see</a>. For the conceptual overview of how handlers fit between rules and execution, <a href="./../reference/handlers.lex">see</a>.</p>
+<h2 id="1-module-layout">1. Module Layout<a class="headerlink" href="#1-module-layout" title="Permanent link">&para;</a></h2>
+<p><strong>Handlers live in `crates/dodot-lib/src/handlers/`</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>handlers/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>+-- mod.rs           # Handler trait + classification enums + registry
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>+-- filter.rs        # IgnoreHandler, SkipHandler (Filter phase)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>+-- gate.rs          # GateHandler (Filter phase, dynamic rules)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>+-- symlink.rs       # SymlinkHandler (catchall, Link phase)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>+-- shell.rs         # ShellHandler (ShellInit phase)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>+-- path.rs          # PathHandler (PathExport phase)
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>+-- install.rs       # InstallHandler (Setup phase, code execution)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>+-- homebrew.rs      # HomebrewHandler (Provision phase, code execution)
+</code></pre></div>
+<p>Each handler is a small struct (often zero-sized) that implements the [`Handler`] trait. The trait is object-safe — handlers are stored as <code>Box&lt;dyn Handler&gt;</code> in a <code>HashMap&lt;String, Box&lt;dyn Handler&gt;&gt;</code> registry and dispatched by name at runtime.</p>
+<h2 id="2-the-handler-trait">2. The <code>Handler</code> Trait<a class="headerlink" href="#2-the-handler-trait" title="Permanent link">&para;</a></h2>
+<p><strong>Handler trait</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">pub</span><span class="w"> </span><span class="k">trait</span><span class="w"> </span><span class="n">Handler</span><span class="p">:</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kp">&amp;</span><span class="kt">str</span><span class="p">;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">phase</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">ExecutionPhase</span><span class="p">;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">category</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">HandlerCategory</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">phase</span><span class="p">().</span><span class="n">category</span><span class="p">()</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">match_mode</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">MatchMode</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">MatchMode</span><span class="p">::</span><span class="n">Precise</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">scope</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">HandlerScope</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">HandlerScope</span><span class="p">::</span><span class="n">Exclusive</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">to_intents</span><span class="p">(</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">        </span><span class="n">matches</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="p">[</span><span class="n">RuleMatch</span><span class="p">],</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">        </span><span class="n">config</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">HandlerConfig</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">        </span><span class="n">paths</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">dyn</span><span class="w"> </span><span class="n">Pather</span><span class="p">,</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">        </span><span class="n">fs</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">dyn</span><span class="w"> </span><span class="n">Fs</span><span class="p">,</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">HandlerIntent</span><span class="o">&gt;&gt;</span><span class="p">;</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">check_status</span><span class="p">(</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="w">        </span><span class="n">file</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">Path</span><span class="p">,</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">        </span><span class="n">pack</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="kt">str</span><span class="p">,</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="w">        </span><span class="n">datastore</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">dyn</span><span class="w"> </span><span class="n">DataStore</span><span class="p">,</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">HandlerStatus</span><span class="o">&gt;</span><span class="p">;</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="p">}</span>
+</code></pre></div>
+<p>Handlers are <strong>intent planners</strong>. <code>to_intents</code> reads matched files and produces a list of [`HandlerIntent`] values that the executor will turn into operations. The <code>fs</code> argument is read-only — handlers may stat or enumerate matched directories, but must not write, delete, or rename anything. Mutations belong to the executor, which keeps planning idempotent and safe to re-run.</p>
+<p><code>check_status</code> reports whether a single file has been deployed by this handler. It receives the datastore but no <code>Pather</code>, so it cannot recompute deploy paths; status reporting that needs the resolved user-side path calls into handler-specific helpers (e.g. <code>symlink::resolve_target</code>) directly.</p>
+<h2 id="3-classification-axes">3. Classification Axes<a class="headerlink" href="#3-classification-axes" title="Permanent link">&para;</a></h2>
+<p>Three enums classify a handler. Together they decide where it runs, how matches flow to it, and how it gets tracked.</p>
+<h3 id="31-executionphase">3.1. <code>ExecutionPhase</code><a class="headerlink" href="#31-executionphase" title="Permanent link">&para;</a></h3>
+<p>Each handler belongs to exactly one phase. The enum's <strong>declaration order</strong> is the execution order — <code>derive(Ord)</code> does the rest, and [`rules::handler_execution_order`] sorts handler-name groups by looking up each name's phase in the registry.</p>
+<p><strong>ExecutionPhase</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">ExecutionPhase</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="n">Filter</span><span class="p">,</span><span class="w">       </span><span class="c1">// ignore, skip (drop files before any deploying handler)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">Provision</span><span class="p">,</span><span class="w">    </span><span class="c1">// homebrew</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="n">Setup</span><span class="p">,</span><span class="w">        </span><span class="c1">// install</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="n">PathExport</span><span class="p">,</span><span class="w">   </span><span class="c1">// path</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="n">ShellInit</span><span class="p">,</span><span class="w">    </span><span class="c1">// shell</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="n">Link</span><span class="p">,</span><span class="w">         </span><span class="c1">// symlink (catchall, always last)</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
+</code></pre></div>
+<p>Adding a handler is a deliberate design choice: which phase does it belong to? There is no alphabetical fallback between known handlers. The three invariants pinning the order:</p>
+<ul>
+<li>The filter phase is always first. <code>ignore</code> and <code>skip</code> exist to keep matched files away from deploying handlers; running them later would let a precise mapping or the catchall claim a file the user said to drop. </li>
+<li>The catchall phase is always last. <code>symlink</code> is the only <code>MatchMode::Catchall</code> handler — running it before any precise handler would let it claim files that belong elsewhere. </li>
+<li>Code-execution phases run before configuration phases. <code>Provision</code> and <code>Setup</code> produce filesystem state (installed binaries, formulae, generated files) that later phases may reference. </li>
+</ul>
+<h3 id="32-handlercategory">3.2. <code>HandlerCategory</code><a class="headerlink" href="#32-handlercategory" title="Permanent link">&para;</a></h3>
+<p>Derived from phase: <code>Provision</code> and <code>Setup</code> are <code>CodeExecution</code>; the rest are <code>Configuration</code>.</p>
+<p><strong>HandlerCategory</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">HandlerCategory</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="n">Configuration</span><span class="p">,</span><span class="w">   </span><span class="c1">// symlink, shell, path</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">CodeExecution</span><span class="p">,</span><span class="w">   </span><span class="c1">// install, homebrew</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">}</span>
+</code></pre></div>
+<p>The category drives two behaviors:</p>
+<ul>
+<li><code>--no-provision</code> skips <code>CodeExecution</code> handlers for one run. <code>Configuration</code> handlers still run. </li>
+<li><code>dodot up</code> wipes per-pack state for <code>Configuration</code> handlers before re-applying current source, so a deleted source file no longer leaves an orphan link. <code>CodeExecution</code> handler state (sentinels) must persist across <code>up</code> runs so install scripts and <code>brew bundle</code> aren't re-executed every time. [`configuration_handler_names`] is the helper that filters the registry by category. </li>
+</ul>
+<h3 id="33-matchmode-and-handlerscope">3.3. <code>MatchMode</code> and <code>HandlerScope</code><a class="headerlink" href="#33-matchmode-and-handlerscope" title="Permanent link">&para;</a></h3>
+<p>Two orthogonal classification axes for matching.</p>
+<p><strong>MatchMode and HandlerScope</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">MatchMode</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">Precise</span><span class="p">,</span><span class="w"> </span><span class="n">Catchall</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">HandlerScope</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">Exclusive</span><span class="p">,</span><span class="w"> </span><span class="n">Shared</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p><code>Precise</code> handlers claim only whitelisted patterns (<code>install.sh</code>, <code>Brewfile</code>, <code>bin/</code>). <code>Catchall</code> handlers take whatever precise handlers didn't.</p>
+<p><code>Exclusive</code> handlers consume their match — no other handler sees the entry. <code>Shared</code> is reserved for future observer-style handlers (audit, indexing) that watch without deploying.</p>
+<p>At most one handler may be simultaneously <code>Catchall</code> and <code>Exclusive</code>. Two such handlers would race over leftovers with no principled tie-breaker. [`validate_registry`] enforces this with <code>debug_assert!</code> so the panic surfaces in dev builds; release builds tolerate the misconfiguration silently because the built-in registry is hard-coded and third-party handlers aren't loaded at runtime.</p>
+<p>Today's defaults: every built-in handler is <code>Exclusive</code>. Only <code>symlink</code> is <code>Catchall</code>.</p>
+<h2 id="4-built-in-handlers">4. Built-in Handlers<a class="headerlink" href="#4-built-in-handlers" title="Permanent link">&para;</a></h2>
+<p>Eight handlers ship in the registry. The table below is the canonical mapping of phase → category → match mode → scope.</p>
+<!-- lex:table align=llllll -->
+
+<!-- /lex:table -->
+
+<p><strong>Handler classification</strong></p>
+<table>
+<thead>
+<tr>
+<th>Handler</th>
+<th>Phase</th>
+<th>Category</th>
+<th>Match mode</th>
+<th>Scope</th>
+<th>Output intent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ignore</td>
+<td>Filter</td>
+<td>Configuration</td>
+<td>Precise</td>
+<td>Exclusive</td>
+<td>(none)</td>
+</tr>
+<tr>
+<td>skip</td>
+<td>Filter</td>
+<td>Configuration</td>
+<td>Precise</td>
+<td>Exclusive</td>
+<td>(none)</td>
+</tr>
+<tr>
+<td>gate</td>
+<td>Filter</td>
+<td>Configuration</td>
+<td>Precise</td>
+<td>Exclusive</td>
+<td>(none)</td>
+</tr>
+<tr>
+<td>homebrew</td>
+<td>Provision</td>
+<td>CodeExecution</td>
+<td>Precise</td>
+<td>Exclusive</td>
+<td><code>Run</code></td>
+</tr>
+<tr>
+<td>install</td>
+<td>Setup</td>
+<td>CodeExecution</td>
+<td>Precise</td>
+<td>Exclusive</td>
+<td><code>Run</code></td>
+</tr>
+<tr>
+<td>path</td>
+<td>PathExport</td>
+<td>Configuration</td>
+<td>Precise</td>
+<td>Exclusive</td>
+<td><code>Stage</code></td>
+</tr>
+<tr>
+<td>shell</td>
+<td>ShellInit</td>
+<td>Configuration</td>
+<td>Precise</td>
+<td>Exclusive</td>
+<td><code>Stage</code></td>
+</tr>
+<tr>
+<td>symlink</td>
+<td>Link</td>
+<td>Configuration</td>
+<td>Catchall</td>
+<td>Exclusive</td>
+<td><code>Link</code></td>
+</tr>
+</tbody>
+</table>
+<p>Filter handlers (<code>ignore</code>, <code>skip</code>, <code>gate</code>) claim matches but emit no <code>HandlerIntent</code> — <code>to_intents</code> returns <code>Ok(vec![])</code>. Their effect comes entirely from being matched first: <code>ignore</code> and <code>skip</code> use static <code>[mappings]</code> patterns surfaced as priority-100 / priority-50 rules (above precise mappings at 10 and the catchall at 0); <code>gate</code> matches are produced at scan time by <code>crate::gates</code> based on host facts (filename <code>._&lt;label&gt;</code>, dirname <code>_&lt;label&gt;/</code>, or <code>[mappings.gates]</code> glob hits) and stamped onto entries before rule matching runs. Once any of the three claims a file, no deploying handler sees it. All three are real registered handlers, not synthetic-name dispatch, so the matching model and config grammar stay uniform.</p>
+<h3 id="41-symlinkhandler">4.1. <code>SymlinkHandler</code><a class="headerlink" href="#41-symlinkhandler" title="Permanent link">&para;</a></h3>
+<p>File: <code>handlers/symlink.rs</code>. Catchall. Reads <code>RuleMatch::is_dir</code> to decide between wholesale (one link for the whole directory) and per-file mode (recurse and emit one link per file).</p>
+<p>Per-file mode is triggered by either:</p>
+<ul>
+<li>The matched directory contains any file whose relative path matches a <code>protected_paths</code> entry, OR </li>
+<li>The matched directory has any file whose relative path is a key in <code>[symlink.targets]</code>, OR </li>
+<li>The matched directory is one of the escape-prefix dirs <code>_home</code> or <code>_xdg</code> (wholesale-linking these would bake the prefix into the deploy path). </li>
+</ul>
+<p>Per-file recursion uses <code>Fs::read_dir</code> (read-only) and applies <code>crate::rules::should_skip_entry</code> against <code>pack_ignore</code> so <code>.DS_Store</code>, <code>.git</code>, <code>*.swp</code> etc. don't slip through the fallback.</p>
+<h4 id="target-resolution-is-centralized-in-resolve_targetpack-rel_path-config-paths-priority-highest-first">Target resolution is centralized in <code>resolve_target(pack, rel_path, config, paths)</code>. Priority, highest first:<a class="headerlink" href="#target-resolution-is-centralized-in-resolve_targetpack-rel_path-config-paths-priority-highest-first" title="Permanent link">&para;</a></h4>
+<ol>
+<li>Custom target from <code>[symlink.targets]</code> (absolute → as-is, relative → resolved from <code>$XDG_CONFIG_HOME</code>) </li>
+<li><code>home.X</code> prefix (top-level files only) → <code>$HOME/.X</code> </li>
+<li><code>_home/&lt;rest&gt;</code> → <code>$HOME/.&lt;rest&gt;</code>; <code>_xdg/&lt;rest&gt;</code> → <code>$XDG_CONFIG_HOME/&lt;rest&gt;</code> (escape hatches that skip pack namespacing) </li>
+<li><code>force_home</code> config list — first path segment matched without leading dot </li>
+<li>Default: <code>$XDG_CONFIG_HOME/&lt;display_name&gt;/&lt;rel_path&gt;</code> </li>
+</ol>
+<p>The pack name is run through [`packs::display_name_for`] before being used in the default rule, so a pack <code>010-nvim</code> deploys to <code>~/.config/nvim/</code>, not <code>~/.config/010-nvim/</code>. The ordering prefix is on-disk only.</p>
+<p>for the user-facing version of these rules.<a href="./../reference/symlink-paths.lex">See</a></p>
+<h3 id="42-shellhandler">4.2. <code>ShellHandler</code><a class="headerlink" href="#42-shellhandler" title="Permanent link">&para;</a></h3>
+<p>File: <code>handlers/shell.rs</code>. Stages files (not dirs) into <code>packs/&lt;pack&gt;/shell/</code>. The init script picks them up.</p>
+<p>Filters out directory entries (<code>!m.is_dir</code>) — the rule patterns are file globs but a <code>RuleMatch</code> carrying <code>is_dir</code> could only happen if a user wrote a pattern like <code>aliases/</code>, which the shell handler isn't designed to handle.</p>
+<h3 id="43-pathhandler">4.3. <code>PathHandler</code><a class="headerlink" href="#43-pathhandler" title="Permanent link">&para;</a></h3>
+<p>File: <code>handlers/path.rs</code>. Stages directories (not files) into <code>packs/&lt;pack&gt;/path/</code>. The init script prepends them to <code>$PATH</code>.</p>
+<p>Inverse filter: keeps only <code>m.is_dir</code> — a <code>bin</code> <strong>file</strong> in a pack root is meaningless to this handler. The default rule pattern is <code>bin/</code> (trailing slash forces directory-only matching at the rules layer); the file filter here is defense in depth.</p>
+<h3 id="44-installhandler">4.4. <code>InstallHandler</code><a class="headerlink" href="#44-installhandler" title="Permanent link">&para;</a></h3>
+<p>File: <code>handlers/install.rs</code>. Holds an <code>&amp;dyn Fs</code> reference because checksumming the script content is part of intent generation. Emits one <code>HandlerIntent::Run</code> per matched file; the <code>executable</code> is picked from the script's extension by <code>interpreter_for(path)</code>:</p>
+<ul>
+<li><code>.zsh</code> → <code>"zsh"</code> </li>
+<li><code>.sh</code>, <code>.bash</code>, missing, or unknown extension → <code>"bash"</code> </li>
+</ul>
+<p>The arguments are <code>["--", "&lt;absolute_path&gt;"]</code>. The <code>--</code> ends option parsing so a script path that happens to start with <code>-</code> doesn't get interpreted as a flag.</p>
+<p>Sentinel format: <code>&lt;filename&gt;-&lt;checksum&gt;</code>, where <code>&lt;filename&gt;</code> is the script's basename (e.g. <code>install.sh</code>) and <code>&lt;checksum&gt;</code> is the first 16 hex chars of <code>SHA-256(file_contents)</code>. Editing the script changes the checksum, which produces a new sentinel name, which causes the handler to re-run automatically.</p>
+<p>Output handling lives in the runner, not the handler. [`ShellCommandRunner`] (<code>crates/dodot-lib/src/datastore/mod.rs</code>) spawns the child with piped stdio, drains stderr in a worker thread, and scans stdout line-by-line — surfacing <code># status: &lt;message&gt;</code> lines as live progress markers, passing the rest through only when the runner is constructed with <code>verbose: true</code> (wired from the CLI <code>--verbose</code> flag through [`ExecutionContext::production`]). The leading comment block is read by [`FilesystemDataStore::run_and_record`] before the runner is invoked, via the <code>extract_header_block</code> helper. On non-zero exit, captured stderr is dumped to the user's stderr even when not verbose, so failures stay debuggable.</p>
+<h3 id="45-homebrewhandler">4.5. <code>HomebrewHandler</code><a class="headerlink" href="#45-homebrewhandler" title="Permanent link">&para;</a></h3>
+<p>File: <code>handlers/homebrew.rs</code>. Same shape as install — holds an <code>&amp;dyn Fs</code> for content hashing, emits <code>HandlerIntent::Run</code>. The executable is hardcoded to <code>"brew"</code> and the arguments are <code>["bundle", "--file", "&lt;absolute_path&gt;"]</code>. Sentinel format matches install (<code>&lt;filename&gt;-&lt;checksum&gt;</code>); editing the Brewfile re-runs <code>brew bundle</code>.</p>
+<h3 id="46-ignorehandler-and-skiphandler-filter">4.6. <code>IgnoreHandler</code> and <code>SkipHandler</code> (filter)<a class="headerlink" href="#46-ignorehandler-and-skiphandler-filter" title="Permanent link">&para;</a></h3>
+<p>File: <code>handlers/filter.rs</code>. Both are zero-sized structs whose <code>to_intents</code> returns <code>Ok(vec![])</code> — they claim matches but emit no work. The whole effect is positional: rules tagged with handler <code>"ignore"</code> carry priority 100 and rules tagged <code>"skip"</code> carry priority 50, so during scanning either filter rule matches before any precise mapping (10) or the catchall (0) gets a chance.</p>
+<p>Both <code>check_status</code> impls return a placeholder <code>HandlerStatus { deployed: false, message: "", handler: "ignore"|"skip", file }</code> to satisfy the trait, but nothing reads them. Filter status is computed <strong>directly from rule matches</strong> in [`commands::status`]: matches under handler <code>"ignore"</code> are dropped from the output entirely, matches under <code>"skip"</code> are rendered with <code>Health::Skipped</code> (label <code>"skipped"</code>, style <code>skipped</code>). This visibility split is the entire reason for the two handlers — the matching contract is identical.</p>
+<p>Both are <code>MatchMode::Precise</code> and <code>Configuration</code> category. They have no datastore footprint: <code>dodot up</code> does not wipe per-pack <code>ignore/</code>/<code>skip/</code> directories because those directories never exist.</p>
+<h3 id="47-gatehandler-filter">4.7. <code>GateHandler</code> (filter)<a class="headerlink" href="#47-gatehandler-filter" title="Permanent link">&para;</a></h3>
+<p>File: <code>handlers/gate.rs</code>. Same shape as <code>IgnoreHandler</code> / <code>SkipHandler</code>: zero-sized struct, <code>Filter</code> phase, <code>Configuration</code> category, <code>MatchMode::Precise</code>, <code>to_intents</code> returns <code>Ok(vec![])</code>. The difference is <strong>where</strong> matches come from: the scanner / <code>filter_pre_preprocess_gates</code> consult <code>crate::gates</code> (basename <code>._&lt;label&gt;</code> parsing, directory <code>_&lt;label&gt;/</code> segments, <code>[mappings.gates]</code> globs) against the resolved <code>GateTable</code> and <code>HostFacts</code>, and stamp <code>handler = "gate"</code> plus diagnostic options (<code>gate_label</code>, <code>gate_predicate</code>, <code>gate_host</code>) on entries whose predicate evaluated false. The handler itself never runs gate evaluation — it only exists in the registry as the dispatch target so status can render "gated out" rows uniformly with the rest of the filter family.</p>
+<p>Status renders gate matches via <code>Health::Gated { label, expected, actual }</code> — see <code>commands::status::Health::footnote_reason</code> for the "expected …; got …" footnote that's stamped from the <code>options</code> map. Like <code>ignore</code>/<code>skip</code>, no datastore footprint: <code>dodot up</code> does not wipe per-pack <code>gate/</code> directories because they never exist.</p>
+<p>Pack-level OS gating (<code>[pack] os = [...]</code>) is a <strong>separate</strong> mechanism that fires earlier — at pack discovery / orchestration — and produces no <code>RuleMatch</code> at all (the pack short-circuits before scanning). Inactive packs surface in <code>dodot status</code> via <code>PackStatusResult.inactive_packs</code>, not via the gate handler. See <code>crate::gates::pack_os_active</code>.</p>
+<h2 id="5-the-registry">5. The Registry<a class="headerlink" href="#5-the-registry" title="Permanent link">&para;</a></h2>
+<p>[`create_registry(fs)`] builds a <code>HashMap&lt;String, Box&lt;dyn Handler&gt;&gt;</code> keyed by handler name. The <code>fs</code> reference is needed by <code>install</code> and <code>homebrew</code> for checksumming.</p>
+<p><strong>Registry construction</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">registry</span><span class="p">:</span><span class="w"> </span><span class="nc">HashMap</span><span class="o">&lt;</span><span class="nb">String</span><span class="p">,</span><span class="w"> </span><span class="nb">Box</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">Handler</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">HashMap</span><span class="p">::</span><span class="n">new</span><span class="p">();</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">registry</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">HANDLER_IGNORE</span><span class="p">.</span><span class="n">into</span><span class="p">(),</span><span class="w">  </span><span class="nb">Box</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">filter</span><span class="p">::</span><span class="n">IgnoreHandler</span><span class="p">));</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">registry</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">HANDLER_SKIP</span><span class="p">.</span><span class="n">into</span><span class="p">(),</span><span class="w">    </span><span class="nb">Box</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">filter</span><span class="p">::</span><span class="n">SkipHandler</span><span class="p">));</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">registry</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">HANDLER_GATE</span><span class="p">.</span><span class="n">into</span><span class="p">(),</span><span class="w">    </span><span class="nb">Box</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">gate</span><span class="p">::</span><span class="n">GateHandler</span><span class="p">));</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">registry</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">HANDLER_SYMLINK</span><span class="p">.</span><span class="n">into</span><span class="p">(),</span><span class="w"> </span><span class="nb">Box</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">symlink</span><span class="p">::</span><span class="n">SymlinkHandler</span><span class="p">));</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">registry</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">HANDLER_SHELL</span><span class="p">.</span><span class="n">into</span><span class="p">(),</span><span class="w">   </span><span class="nb">Box</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">shell</span><span class="p">::</span><span class="n">ShellHandler</span><span class="p">));</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">registry</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">HANDLER_PATH</span><span class="p">.</span><span class="n">into</span><span class="p">(),</span><span class="w">    </span><span class="nb">Box</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">path</span><span class="p">::</span><span class="n">PathHandler</span><span class="p">));</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="n">registry</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">HANDLER_INSTALL</span><span class="p">.</span><span class="n">into</span><span class="p">(),</span><span class="w"> </span><span class="nb">Box</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">install</span><span class="p">::</span><span class="n">InstallHandler</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">fs</span><span class="p">)));</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="n">registry</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">HANDLER_HOMEBREW</span><span class="p">.</span><span class="n">into</span><span class="p">(),</span><span class="nb">Box</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">homebrew</span><span class="p">::</span><span class="n">HomebrewHandler</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">fs</span><span class="p">)));</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="n">validate_registry</span><span class="p">(</span><span class="o">&amp;</span><span class="n">registry</span><span class="p">);</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="n">registry</span>
+</code></pre></div>
+<p>Well-known names are exported as constants — <code>HANDLER_IGNORE</code>, <code>HANDLER_SKIP</code>, <code>HANDLER_GATE</code>, <code>HANDLER_SYMLINK</code>, <code>HANDLER_SHELL</code>, <code>HANDLER_PATH</code>, <code>HANDLER_INSTALL</code>, <code>HANDLER_HOMEBREW</code>. Use these everywhere instead of string literals.</p>
+<p>The registry is hard-coded. Third-party handlers would be added via code, not user input. There is no plugin mechanism today — the trait is stable enough that writing a custom handler is straightforward, but loading them at runtime is an explicit non-goal.</p>
+<h2 id="6-default-rule-mappings">6. Default Rule Mappings<a class="headerlink" href="#6-default-rule-mappings" title="Permanent link">&para;</a></h2>
+<p>The default file-pattern → handler map lives in <code>config::MappingsSection</code>. [`config::mappings_to_rules`] converts it into the [`Rule`] set the scanner uses.</p>
+<!-- lex:table align=llll -->
+
+<!-- /lex:table -->
+
+<p><strong>Default mappings</strong></p>
+<table>
+<thead>
+<tr>
+<th>Handler</th>
+<th>Default pattern(s)</th>
+<th>Priority</th>
+<th>Case-insensitive</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ignore</td>
+<td>each <code>[mappings] ignore</code> entry (default <code>[]</code>)</td>
+<td>100</td>
+<td>no</td>
+</tr>
+<tr>
+<td>skip</td>
+<td><code>README</code>, <code>README.*</code>, <code>LICENSE</code>, <code>LICENSE.*</code>, <code>CHANGELOG</code>, <code>CHANGELOG.*</code>, …</td>
+<td>50</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>path</td>
+<td><code>bin/</code> (directory; trailing slash auto-added)</td>
+<td>10</td>
+<td>no</td>
+</tr>
+<tr>
+<td>install</td>
+<td><code>install.sh</code>, <code>install.bash</code>, <code>install.zsh</code></td>
+<td>20</td>
+<td>no</td>
+</tr>
+<tr>
+<td>shell</td>
+<td><code>*.sh</code>, <code>*.bash</code>, <code>*.zsh</code> (any shell-extension file at pack root)</td>
+<td>10</td>
+<td>no</td>
+</tr>
+<tr>
+<td>homebrew</td>
+<td><code>Brewfile</code></td>
+<td>10</td>
+<td>no</td>
+</tr>
+<tr>
+<td>symlink</td>
+<td><code>*</code> (catchall)</td>
+<td>0</td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<p>Priorities decide rule-evaluation order at the scanner: filter rules (<code>ignore</code> 100, <code>skip</code> 50) run before precise rules (10), and the symlink catchall (0) runs last. The "first match wins" rule then routes each entry to exactly one handler — so a file that hits an <code>ignore</code> pattern is dropped before any deploying handler sees it.</p>
+<p>Only <code>skip</code>'s default rules are case-insensitive (so <code>Readme</code> and <code>readme</code> hit the same rule as <code>README</code>). [`Scanner::match_entries`] checks the compiled rule set once per scan and only allocates a per-entry lowercased basename when at least one rule has <code>case_insensitive = true</code> — so a user who clears <code>mappings.skip = []</code> and adds no other CI rules pays nothing; the default config exercises the CI path because the <code>skip</code> defaults populate it. See [`Rule::case_insensitive`].</p>
+<p>User overrides come through <code>[mappings]</code> in <code>.dodot.toml</code>. The handler list is fixed (you can't add a new handler from config), but the patterns each handler claims are fully replaceable. <a href="./config-system.lex">See</a> for resolution layering.</p>
+<h2 id="7-datastore-layout-per-handler">7. Datastore Layout per Handler<a class="headerlink" href="#7-datastore-layout-per-handler" title="Permanent link">&para;</a></h2>
+<p>Each handler's state lives under <code>$XDG_DATA_HOME/dodot/packs/&lt;pack&gt;/&lt;handler&gt;/</code>. The shape of that directory is determined by which intent the handler emits.</p>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<p><strong>Per-handler state</strong></p>
+<table>
+<thead>
+<tr>
+<th>Handler</th>
+<th>Intent</th>
+<th>Datastore contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>symlink</td>
+<td><code>Link</code></td>
+<td>one symlink per source: <code>packs/&lt;pack&gt;/symlink/&lt;filename&gt; -&gt; &lt;source&gt;</code></td>
+</tr>
+<tr>
+<td>shell</td>
+<td><code>Stage</code></td>
+<td>one symlink per source: <code>packs/&lt;pack&gt;/shell/&lt;filename&gt; -&gt; &lt;source&gt;</code></td>
+</tr>
+<tr>
+<td>path</td>
+<td><code>Stage</code></td>
+<td>one symlink per source dir: <code>packs/&lt;pack&gt;/path/&lt;dirname&gt; -&gt; &lt;source&gt;</code></td>
+</tr>
+<tr>
+<td>install</td>
+<td><code>Run</code></td>
+<td>one sentinel per executed script: <code>packs/&lt;pack&gt;/install/&lt;filename&gt;-&lt;checksum&gt;</code></td>
+</tr>
+<tr>
+<td>homebrew</td>
+<td><code>Run</code></td>
+<td>one sentinel per Brewfile: <code>packs/&lt;pack&gt;/homebrew/Brewfile-&lt;checksum&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p>For configuration handlers, the directory IS the state — writing into it enables the handler for that pack, deleting from it disables it. There is no separate ledger.</p>
+<p>For code-execution handlers, the sentinel IS the "did this run with this content?" record. Sentinel content is <code>completed|&lt;unix_ts&gt;</code> (one line); the filename carries the content-hash key. Deleting a sentinel by hand is a supported way to force one re-run.</p>
+<p>Symlink emits both halves of the double-link (data link + user-side link); shell and path emit only the data link, and the generated <code>dodot-init.sh</code> walks <code>packs/*/shell/</code> and <code>packs/*/path/</code> at shell startup. <a href="./storage.lex">See</a> for the full datastore reference <a href="./../reference/data-layer.lex">and</a> for the conceptual model.</p>
+<h2 id="8-handler-relevant-configuration">8. Handler-Relevant Configuration<a class="headerlink" href="#8-handler-relevant-configuration" title="Permanent link">&para;</a></h2>
+<p>Handlers don't see <code>DodotConfig</code> directly. They see [`HandlerConfig`], a narrow subset built by <code>DodotConfig::to_handler_config()</code>.</p>
+<p><strong>HandlerConfig</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">HandlerConfig</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">force_home</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span><span class="w">        </span><span class="c1">// [symlink] force_home</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">protected_paths</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span><span class="w">   </span><span class="c1">// [symlink] protected_paths</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">targets</span><span class="p">:</span><span class="w"> </span><span class="nc">HashMap</span><span class="o">&lt;</span><span class="nb">String</span><span class="p">,</span><span class="w"> </span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span><span class="c1">// [symlink.targets]</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">auto_chmod_exec</span><span class="p">:</span><span class="w"> </span><span class="kt">bool</span><span class="p">,</span><span class="w">          </span><span class="c1">// [path] auto_chmod_exec</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">pack_ignore</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span><span class="w">       </span><span class="c1">// [pack] ignore</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="p">}</span>
+</code></pre></div>
+<p>Only <code>symlink</code> and <code>path</code> actually read this struct today. <code>shell</code>, <code>install</code>, <code>homebrew</code>, <code>ignore</code>, and <code>skip</code> accept it for trait uniformity but ignore the contents — their behavior is fully determined by the matched files. The narrow surface keeps handlers from coupling to config keys they don't need.</p>
+<h2 id="9-adding-a-new-handler">9. Adding a New Handler<a class="headerlink" href="#9-adding-a-new-handler" title="Permanent link">&para;</a></h2>
+<p><strong>The mechanical steps</strong></p>
+<p>``` note :: The trait surface is small</p>
+<ol>
+<li>Create <code>handlers/&lt;name&gt;.rs</code> with a struct implementing [<code>Handler</code>]. Pick a phase based on what the handler does — drop-only filtering belongs in <code>Filter</code>; code execution belongs in <code>Provision</code> or <code>Setup</code>; configuration belongs in <code>PathExport</code>, <code>ShellInit</code>, or <code>Link</code>.</li>
+<li>Export a name constant in <code>handlers/mod.rs</code> (<code>pub const HANDLER_&lt;NAME&gt;: &amp;str = "&lt;name&gt;";</code>).</li>
+<li>Register it in [<code>create_registry</code>].</li>
+<li>If the handler should claim files by default, add a pattern to [<code>config::MappingsSection</code>] and emit the corresponding rule from [<code>config::mappings_to_rules</code>]. If the handler is opt-in (user must add a rule explicitly), skip this step.</li>
+<li>Decide whether <code>validate_registry</code> still passes. Two <code>Catchall</code> + <code>Exclusive</code> handlers will trip the <code>debug_assert!</code>.</li>
+<li>Update the user-facing handler docs (add a new snippet under <code>docs/user/handlers/</code> and link it from [./../user/handlers.lex]; update the defaults table in [./../user/handlers/mappings.lex]) and the reference ([./../reference/handlers.lex]) — the phase enum is contributor-visible, but the handler itself surfaces in user docs as soon as it ships.
+```</li>
+</ol>
+<h2 id="10-testing">10. Testing<a class="headerlink" href="#10-testing" title="Permanent link">&para;</a></h2>
+<p>Two patterns dominate.</p>
+<p>Unit tests against mocks.</p>
+<p>Handlers that do pure intent generation (symlink target resolution, install interpreter selection) are tested with hand-built <code>RuleMatch</code> values and <code>HandlerConfig</code> overrides. No filesystem needed.</p>
+<p>Integration tests against <code>TempEnvironment</code>.</p>
+<p>Anything that reads the filesystem (symlink per-file recursion, install/homebrew checksumming) uses [`testing::TempEnvironment`] which builds a real temp directory with isolated home and datastore. The pattern is fluent: <code>.pack("vim").file("vimrc", "x").done().build()</code>. <a href="./types-and-structure.lex">See</a> §6 for details.</p>
+<p>The handler trait itself has compile-time object-safety checks in <code>mod.rs</code> (<code>assert_object_safe</code>, <code>assert_boxable</code>) plus tests asserting the registry has exactly one exclusive catchall and that phase ordering matches declaration order.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

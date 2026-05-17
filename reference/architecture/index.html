@@ -1,0 +1,1178 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/reference/architecture/">
+      
+      
+        <link rel="prev" href="../philosophy/">
+      
+      
+        <link rel="next" href="../terms-and-concepts/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Architecture - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-unified-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Unified Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-what-each-phase-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What Each Phase Does
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. What Each Phase Does">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-pack-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. Pack Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-rule-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. Rule Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-preprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. Preprocessing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-handler-grouping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4. Handler Grouping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-intents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5. Intents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6. Operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-datastore-dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7. Datastore Dispatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-layers-and-their-responsibilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Layers and Their Responsibilities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-commands-and-the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Commands and the Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-execution-properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Execution Properties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-what-lives-where" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. What Lives Where
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-unified-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Unified Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-what-each-phase-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What Each Phase Does
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. What Each Phase Does">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-pack-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. Pack Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-rule-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. Rule Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-preprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. Preprocessing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-handler-grouping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4. Handler Grouping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-intents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5. Intents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6. Operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-datastore-dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7. Datastore Dispatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-layers-and-their-responsibilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Layers and Their Responsibilities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-commands-and-the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Commands and the Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-execution-properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Execution Properties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-what-lives-where" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. What Lives Where
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/reference/architecture.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Architecture</h1>
+
+<!-- lex:note -->
+
+<p><a href="./terms-and-concepts.lex">See</a> for terminology used throughout.</p>
+<!-- /lex:note -->
+
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<p>This document describes how dodot is organized — the pipeline each command flows through, the layers that do the work, and the boundaries between them. It is the conceptual view. For concrete types, crate layout, and trait signatures, <a href="./../dev/types-and-structure.lex">see</a>.</p>
+<h2 id="1-the-unified-pipeline">1. The Unified Pipeline<a class="headerlink" href="#1-the-unified-pipeline" title="Permanent link">&para;</a></h2>
+<p>Every pack-based dodot command — <code>up</code>, <code>down</code>, <code>status</code>, and friends — runs through the same pipeline. Commands differ in what they do at each phase, not in which phases they visit. This is deliberate: it means <code>status</code> truly predicts what <code>up</code> will do, because they follow the same path and <code>status</code> simply stops short of executing.</p>
+<p><strong>Pipeline phases</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>discover packs
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>-&gt; match rules against pack files
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>-&gt; run preprocessors on matched template/plist/encrypted files
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>-&gt; group matches by handler
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>-&gt; ask each handler for intents
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>-&gt; convert intents to operations
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>-&gt; dispatch operations to the datastore
+</code></pre></div>
+<p>Each arrow is a layer boundary. The phases before the arrow produce data; the phase after consumes that data and produces new data. There are no back-edges — no phase reaches backward into an earlier one. This is what <code>--dry-run</code> exploits: you stop the flow before the last arrow, and you have a complete picture of what <em>would</em> have happened.</p>
+<h2 id="2-what-each-phase-does">2. What Each Phase Does<a class="headerlink" href="#2-what-each-phase-does" title="Permanent link">&para;</a></h2>
+<h3 id="21-pack-discovery">2.1. Pack Discovery<a class="headerlink" href="#21-pack-discovery" title="Permanent link">&para;</a></h3>
+<p>dodot enumerates top-level directories of the dotfiles root, skipping any that contain <code>.dodotignore</code> (the pack-ignore marker) and any that match global ignore patterns (<code>.git</code>, <code>node_modules</code>, etc.). The result is the set of packs to process. When a command is invoked with explicit pack names (<code>dodot up git nvim</code>), only those are discovered.</p>
+<h3 id="22-rule-matching">2.2. Rule Matching<a class="headerlink" href="#22-rule-matching" title="Permanent link">&para;</a></h3>
+<p>Each pack's top-level entries (files and directories immediately under the pack root) are matched against the rule set. Rules declare patterns, the handler that should claim a match, and a priority. Higher priority wins; first match wins at equal priority. The two filter handlers (<code>ignore</code>, <code>skip</code>) sit at the highest priority tier so a file the user wants dropped never gets claimed by a precise mapping or the catchall.</p>
+<p>The scanner is top-level only. It does <em>not</em> recurse into subdirectories. A handler that receives a directory entry decides for itself what to do with the contents.</p>
+<h3 id="23-preprocessing">2.3. Preprocessing<a class="headerlink" href="#23-preprocessing" title="Permanent link">&para;</a></h3>
+<p>After rule matching, the set of matches is partitioned into preprocessor candidates (files with preprocessor extensions like <code>.tmpl</code>, <code>.plist.xml</code>, <code>.age</code>) and everything else. Preprocessor candidates are transformed — rendered, converted, decrypted — and their outputs are written to the datastore. Each output appears back in the pipeline as a virtual match for the stripped filename, which re-enters rule matching to determine the downstream handler.</p>
+<p>Collisions (e.g., a pack containing both <code>config.toml</code> and <code>config.toml.tmpl</code>) are detected here and raised as errors before any handler runs.</p>
+<h3 id="24-handler-grouping">2.4. Handler Grouping<a class="headerlink" href="#24-handler-grouping" title="Permanent link">&para;</a></h3>
+<p>Matches are grouped by the handler that claimed them. Each group is handed to its handler as a batch. This lets handlers make decisions that span multiple files — the symlink handler, for example, can reason about whether a whole directory should be linked wholesale or per-file based on whether any nested path was independently claimed.</p>
+<p>The groups are processed in a fixed order: <code>Provision</code> → <code>Setup</code> → <code>PathExport</code> → <code>ShellInit</code> → <code>Link</code>. The order is encoded as an <code>ExecutionPhase</code> enum declared in execution order, so it's explicit and type-checked rather than an accident of handler naming. <a href="./handlers.lex">See</a> §3 for the phase list and the rationale behind each slot.</p>
+<h3 id="25-intents">2.5. Intents<a class="headerlink" href="#25-intents" title="Permanent link">&para;</a></h3>
+<p>Each handler inspects its group and produces a list of intents. An intent is a declaration: "I want this file linked to that target"; "I want this script executable and sourced at login"; "I want this command run once, keyed by this sentinel." Intents are shape-limited to three kinds — link, stage, run — so the executor has a small surface to handle.</p>
+<p>Handlers never touch the filesystem. They read matches and write intents.</p>
+<h3 id="26-operations">2.6. Operations<a class="headerlink" href="#26-operations" title="Permanent link">&para;</a></h3>
+<p>Intents are converted to operations by the executor. An operation is a concrete filesystem-level verb: create a data link, create a user link, run a command, check a sentinel. A single intent can produce multiple operations (a <code>Link</code> intent produces one <code>CreateDataLink</code> plus one <code>CreateUserLink</code>). Operations are what actually get dispatched.</p>
+<p>This is the layer that implements <code>--dry-run</code>: the operation list is printed instead of executed.</p>
+<h3 id="27-datastore-dispatch">2.7. Datastore Dispatch<a class="headerlink" href="#27-datastore-dispatch" title="Permanent link">&para;</a></h3>
+<p>Operations are routed to the datastore, which executes them. The datastore is responsible for everything under <code>$XDG_DATA_HOME/dodot/</code> — creating intermediate symlinks, writing sentinel files, running commands, cleaning up on <code>down</code>. The datastore is an abstraction with a small API surface; the rest of the codebase does not know how state is stored.</p>
+<h2 id="3-layers-and-their-responsibilities">3. Layers and Their Responsibilities<a class="headerlink" href="#3-layers-and-their-responsibilities" title="Permanent link">&para;</a></h2>
+<p>The pipeline maps to a stack of layers, each with one job.</p>
+<dl>
+<dt>Commands</dt>
+<dd>
+<p>Parse arguments, build an execution context, call into the orchestration layer. Commands know nothing about handlers, rules, or the filesystem.</p>
+</dd>
+<dt>Orchestration</dt>
+<dd>
+<p>Run the pipeline for a command across the selected packs. This is the single entry point for any pack-based work.</p>
+</dd>
+<dt>Rules and Scanner</dt>
+<dd>
+<p>Walk a pack, apply rules, produce matches. Deterministic, stateless.</p>
+</dd>
+<dt>Preprocessing</dt>
+<dd>
+<p>Transform source files before handler dispatch. Declares the three transform shapes (generative, representational, opaque). <a href="./pre-processors.lex">See</a>.</p>
+</dd>
+<dt>Handlers</dt>
+<dd>
+<p>Convert matches into intents. One handler per concern. Small; focused; no filesystem access.</p>
+</dd>
+<dt>Executor</dt>
+<dd>
+<p>Convert intents into operations and dispatch them. Handles <code>--dry-run</code> by short-circuiting dispatch.</p>
+</dd>
+<dt>DataStore</dt>
+<dd>
+<p>Execute operations against the on-disk state. The single component that touches the datastore directory.</p>
+</dd>
+<dt>Filesystem (Fs) and Pather</dt>
+<dd>
+<p>Low-level abstractions for filesystem access and path resolution. Swappable for testing.</p>
+</dd>
+</dl>
+<p>Each layer depends only on the layers below it. A handler can't reach into the orchestration layer; an operation can't look up a rule.</p>
+<h2 id="4-commands-and-the-pipeline">4. Commands and the Pipeline<a class="headerlink" href="#4-commands-and-the-pipeline" title="Permanent link">&para;</a></h2>
+<p>Most commands are thin wrappers around a specific shape of pipeline traversal.</p>
+<ul>
+<li><code>up</code>: runs the full pipeline, executes operations. </li>
+<li><code>down</code>: skips rule matching and handlers entirely; asks the datastore to remove all state for the pack. </li>
+<li><code>status</code>: runs through intents, asks each handler to report its current deployment state against the datastore, stops before executing. </li>
+<li><code>list</code>: pack discovery only. </li>
+<li><code>adopt</code>, <code>fill</code>, <code>init</code>, <code>addignore</code>: operate on pack content directly, not on deployment state. They use a smaller, pack-scoped API rather than the full pipeline. </li>
+</ul>
+<p>Two commands sit outside the pack pipeline entirely:</p>
+<ul>
+<li><code>config</code>: inspects resolved configuration. </li>
+<li><code>init-sh</code>: generates the shell integration script from the current datastore. </li>
+</ul>
+<h2 id="5-execution-properties">5. Execution Properties<a class="headerlink" href="#5-execution-properties" title="Permanent link">&para;</a></h2>
+<p>The pipeline gives you several properties that are worth naming explicitly.</p>
+<ul>
+<li><em>Deterministic.</em> Given the same inputs (pack files, rules, config), the operation list is identical across runs and machines. </li>
+<li><em>Idempotent at the boundary.</em> Running <code>dodot up</code> a second time produces the same operations but yields no change, because configuration handlers use idempotent filesystem operations and code-execution handlers are gated by sentinels. </li>
+<li><em>Previewable.</em> <code>--dry-run</code> reports the exact operation list that would have run. </li>
+<li><em>Fail-fast.</em> The pipeline stops on the first error in execution and reports it with context. Partial state is allowed (and legible, via the datastore); silent drift is not. </li>
+<li><em>Per-pack isolation.</em> Packs are processed independently. A failure in one pack does not prevent other packs from succeeding, though the command's exit code still reflects the failure. </li>
+</ul>
+<h2 id="6-what-lives-where">6. What Lives Where<a class="headerlink" href="#6-what-lives-where" title="Permanent link">&para;</a></h2>
+<p>For the mapping from this conceptual architecture to actual crates, modules, and types, <a href="./../dev/types-and-structure.lex">see</a>. For the DataStore API surface, <a href="./../dev/storage.lex">see</a>. For config resolution internals, <a href="./../dev/config-system.lex">see</a>. For the standout-based output layer, <a href="./../dev/cli-output.lex">see</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

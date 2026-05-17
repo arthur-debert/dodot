@@ -1,0 +1,1523 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/proposals/shipped/template-expansion/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Template expansion - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-specification-template-expansion" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Template expansion
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#design-specification-template-expansion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Specification: Template Expansion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Overview
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-the-use-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1. The Use Case
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.1. The Use Case">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-user-has-a-config-file-that-needs-machine-specific-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A user has a config file that needs machine-specific values:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-dodot-up-this-is-rendered-and-deployed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On dodot up, this is rendered and deployed:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-composition-with-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2. Composition with Handlers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.2. Composition with Handlers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#template-expansion-composes-with-all-existing-handlers-the-preprocessor-renders-the-file-the-downstream-handler-deploys-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template expansion composes with all existing handlers. The preprocessor renders the file; the downstream handler deploys it:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-template-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Template Engine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Template Engine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-minijinja" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. MiniJinja
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-rust-dependency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. Rust Dependency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-variable-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Variable System
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Variable System">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-built-in-variables-dodot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. Built-in Variables: dodot.*
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.1. Built-in Variables: dodot.*">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#computed-from-the-runtime-environment-always-available-read-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Computed from the runtime environment. Always available, read-only.
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-environment-variables-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. Environment Variables: env.*
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.2. Environment Variables: env.*">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#direct-passthrough-to-the-process-environment-any-environment-variable-is-accessible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct passthrough to the process environment. Any environment variable is accessible:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-undefined-environment-variable-produces-a-clear-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An undefined environment variable produces a clear error:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-user-defined-variables-bare-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3. User-Defined Variables: bare names
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.3. User-Defined Variables: bare names">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#defined-in-dodottoml-under-preprocessortemplatevars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defined in .dodot.toml under [preprocessor.template.vars]:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#used-in-templates-without-a-namespace-prefix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Used in templates without a namespace prefix:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-collision-prevention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4. Collision Prevention
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.4. Collision Prevention">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#if-a-user-defined-variable-name-matches-a-reserved-namespace-dodot-or-env-config-loading-produces-an-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If a user-defined variable name matches a reserved namespace (dodot or env), config loading produces an error:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-rendering-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Rendering Flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Rendering Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-during-dodot-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. During dodot up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-sentinel-hashing-for-executable-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Sentinel Hashing for Executable Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.2. Sentinel Hashing for Executable Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#for-templates-that-route-to-the-install-or-homebrew-handler-eg-installshtmpl-the-sentinel-must-track-both-the-template-content-hash-and-the-variable-context-hash-if-either-changes-the-script-re-runs-this-extends-the-existing-sentinel-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For templates that route to the install or homebrew handler (e.g., install.sh.tmpl), the sentinel must track both the template content hash AND the variable context hash. If either changes, the script re-runs. This extends the existing sentinel format:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. Error Handling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.3. Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#template-errors-produce-actionable-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template errors produce actionable messages:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-reverse-merge-heuristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Reverse Merge Heuristics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Reverse Merge Heuristics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-the-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. The Algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-line-correspondence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Line Correspondence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-applied-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Applied Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-scope-and-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4. Scope and Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-full-configuration-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. Full Configuration Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-configuration-inheritance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. Configuration Inheritance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-dodot-transform-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. dodot transform check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-dodot-transform-install-hook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. dodot transform install-hook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-dodot-transform-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3. dodot transform status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.3. dodot transform status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shows-the-current-state-of-all-preprocessed-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shows the current state of all preprocessed files:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-implementation-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Implementation Phases
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/proposals/shipped/template-expansion.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Template expansion</h1>
+
+<h2 id="design-specification-template-expansion">Design Specification: Template Expansion<a class="headerlink" href="#design-specification-template-expansion" title="Permanent link">&para;</a></h2>
+<!-- lex:note -->
+
+<p><strong>Status: implemented and shipped.</strong> The template preprocessor (Phase T1), reverse-merge framework (Phase T2 via burgertocow + diffy), and configuration / status surface (Phase T3) all landed across PRs #100–#107. The user-facing reference is at [./../reference/pre-processors.lex] §6 and [./../reference/template-magic.lex]. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree, the reference docs are authoritative.</p>
+<!-- /lex:note -->
+
+<p>This document specifies the template expansion preprocessor for dodot. It is a concrete implementation of a Generative (One-Way) transformation as defined in the Preprocessing Pipeline <a href="./preprocessing-pipeline.lex">design</a>.</p>
+<p>Template expansion is the first preprocessor to be implemented. It renders Jinja2-style template files into final configuration files during deployment, enabling environment-specific settings while keeping the template source under version control.</p>
+<h2 id="1-overview">1. Overview<a class="headerlink" href="#1-overview" title="Permanent link">&para;</a></h2>
+<h3 id="11-the-use-case">1.1. The Use Case<a class="headerlink" href="#11-the-use-case" title="Permanent link">&para;</a></h3>
+<h4 id="a-user-has-a-config-file-that-needs-machine-specific-values">A user has a config file that needs machine-specific values:<a class="headerlink" href="#a-user-has-a-config-file-that-needs-machine-specific-values" title="Permanent link">&para;</a></h4>
+<dl>
+<dt>~/dotfiles/app/config.toml.tmpl</dt>
+<dd>
+<p>[database] host = "{{ env.DB_HOST }}" port = 5432 data_dir = "{{ dodot.home }}/data"</p>
+</dd>
+</dl>
+<h4 id="on-dodot-up-this-is-rendered-and-deployed">On <code>dodot up</code>, this is rendered and deployed:<a class="headerlink" href="#on-dodot-up-this-is-rendered-and-deployed" title="Permanent link">&para;</a></h4>
+<dl>
+<dt>~/.config/app/config.toml</dt>
+<dd>
+<p>[database] host = "localhost" port = 5432 data_dir = "/home/alice/data"</p>
+</dd>
+</dl>
+<p>The template source stays in git. The rendered file lives in the datastore. The user location symlinks to the datastore file.</p>
+<h3 id="12-composition-with-handlers">1.2. Composition with Handlers<a class="headerlink" href="#12-composition-with-handlers" title="Permanent link">&para;</a></h3>
+<h4 id="template-expansion-composes-with-all-existing-handlers-the-preprocessor-renders-the-file-the-downstream-handler-deploys-it">Template expansion composes with all existing handlers. The preprocessor renders the file; the downstream handler deploys it:<a class="headerlink" href="#template-expansion-composes-with-all-existing-handlers-the-preprocessor-renders-the-file-the-downstream-handler-deploys-it" title="Permanent link">&para;</a></h4>
+<p>config.toml.tmpl    -&gt; symlink handler  -&gt; symlinked to user location aliases.sh.tmpl     -&gt; shell handler    -&gt; sourced via init script install.sh.tmpl     -&gt; install handler  -&gt; executed with sentinel tracking Brewfile.tmpl       -&gt; homebrew handler  -&gt; executed with sentinel tracking bin/mytool.tmpl     -&gt; path handler     -&gt; exposed via $PATH, auto-chmod</p>
+<p>The downstream handler is determined by rule-matching the stripped filename (e.g., <code>aliases.sh</code>) against the normal mapping rules. The template preprocessor does not need to know which handler will process the result.</p>
+<h2 id="2-template-engine">2. Template Engine<a class="headerlink" href="#2-template-engine" title="Permanent link">&para;</a></h2>
+<h3 id="21-minijinja">2.1. MiniJinja<a class="headerlink" href="#21-minijinja" title="Permanent link">&para;</a></h3>
+<p>The rendering engine is MiniJinja, a Rust-native Jinja2 implementation by the creator of Jinja2 (Armin Ronacher).</p>
+<dl>
+<dt>Syntax</dt>
+<dd>
+<p>Variable substitution: {{ variable }} Conditionals:          {% if condition %} ... {% endif %} Loops:                 {% for item in list %} ... {% endfor %} Comments:              {# comment #} Filters:               {{ value | upper }}</p>
+</dd>
+<dt>MiniJinja is chosen for</dt>
+<dd>
+<ul>
+<li>Jinja2 syntax is widely known (Ansible, Cookiecutter, Hugo, etc.) </li>
+<li>Lightweight with fast compile times (dodot is a CLI tool) </li>
+<li>First-class Rust support with custom functions and filters </li>
+<li>Supports template introspection (needed for reverse merge heuristics) </li>
+</ul>
+</dd>
+</dl>
+<h3 id="22-rust-dependency">2.2. Rust Dependency<a class="headerlink" href="#22-rust-dependency" title="Permanent link">&para;</a></h3>
+<p>minijinja = "2"</p>
+<h2 id="3-variable-system">3. Variable System<a class="headerlink" href="#3-variable-system" title="Permanent link">&para;</a></h2>
+<p>Three namespaces, strictly separated. No collisions possible.</p>
+<h3 id="31-built-in-variables-dodot">3.1. Built-in Variables: <code>dodot.*</code><a class="headerlink" href="#31-built-in-variables-dodot" title="Permanent link">&para;</a></h3>
+<h4 id="computed-from-the-runtime-environment-always-available-read-only">Computed from the runtime environment. Always available, read-only.<a class="headerlink" href="#computed-from-the-runtime-environment-always-available-read-only" title="Permanent link">&para;</a></h4>
+<p>{{ dodot.os }}              "macos", "linux", "windows" {{ dodot.arch }}            "aarch64", "x86_64" {{ dodot.hostname }}        gethostname() result {{ dodot.username }}        current user {{ dodot.home }}            $HOME {{ dodot.dotfiles_root }}   dotfiles repo path</p>
+<p>These map directly to values already available via the Pather trait and standard library calls. Computed once per <code>dodot up</code> invocation and shared across all template renders.</p>
+<h3 id="32-environment-variables-env">3.2. Environment Variables: <code>env.*</code><a class="headerlink" href="#32-environment-variables-env" title="Permanent link">&para;</a></h3>
+<h4 id="direct-passthrough-to-the-process-environment-any-environment-variable-is-accessible">Direct passthrough to the process environment. Any environment variable is accessible:<a class="headerlink" href="#direct-passthrough-to-the-process-environment-any-environment-variable-is-accessible" title="Permanent link">&para;</a></h4>
+<p>{{ env.SHELL }} {{ env.EDITOR }} {{ env.DB_HOST }} {{ env.MY_CUSTOM_VAR }}</p>
+<p>Implemented via MiniJinja's dynamic lookup function (calls std::env::var at render time). No enumeration needed.</p>
+<h4 id="an-undefined-environment-variable-produces-a-clear-error">An undefined environment variable produces a clear error:<a class="headerlink" href="#an-undefined-environment-variable-produces-a-clear-error" title="Permanent link">&para;</a></h4>
+<p>error: undefined variable <code>env.DB_HOST</code> in app/config.toml.tmpl</p>
+<p>set the DB_HOST environment variable or use a default:    {{ env.DB_HOST | default("localhost") }}</p>
+<p>Cache invalidation: env-var references are read live at render time and are intentionally not part of the cache-invalidation signal — see <code>preprocessing-pipeline.lex</code> §6.4. Rotating an env var that a template references will not by itself trigger a re-deploy; users pick up the new value with <code>dodot up --force</code>. Stable values that should participate in invalidation belong in <code>[preprocessor.template.vars]</code> (the <code>user_vars</code> namespace, §3.3), not <code>env.*</code>.</p>
+<h3 id="33-user-defined-variables-bare-names">3.3. User-Defined Variables: bare names<a class="headerlink" href="#33-user-defined-variables-bare-names" title="Permanent link">&para;</a></h3>
+<h4 id="defined-in-dodottoml-under-preprocessortemplatevars">Defined in <code>.dodot.toml</code> under <code>[preprocessor.template.vars]</code>:<a class="headerlink" href="#defined-in-dodottoml-under-preprocessortemplatevars" title="Permanent link">&para;</a></h4>
+<p>[preprocessor.template.vars] name = "Alice" email = "alice@example.com" theme = "dark"</p>
+<h4 id="used-in-templates-without-a-namespace-prefix">Used in templates without a namespace prefix:<a class="headerlink" href="#used-in-templates-without-a-namespace-prefix" title="Permanent link">&para;</a></h4>
+<p>git_name = "{{ name }}" git_email = "{{ email }}"</p>
+<p>These follow the 3-layer config hierarchy (compiled defaults \&lt; root .dodot.toml \&lt; pack .dodot.toml), so per-pack variable overrides work naturally.</p>
+<h3 id="34-collision-prevention">3.4. Collision Prevention<a class="headerlink" href="#34-collision-prevention" title="Permanent link">&para;</a></h3>
+<h4 id="if-a-user-defined-variable-name-matches-a-reserved-namespace-dodot-or-env-config-loading-produces-an-error">If a user-defined variable name matches a reserved namespace (<code>dodot</code> or <code>env</code>), config loading produces an error:<a class="headerlink" href="#if-a-user-defined-variable-name-matches-a-reserved-namespace-dodot-or-env-config-loading-produces-an-error" title="Permanent link">&para;</a></h4>
+<p>error: variable name "dodot" in [preprocessor.template.vars] is reserved</p>
+<p>use a different name</p>
+<h2 id="4-rendering-flow">4. Rendering Flow<a class="headerlink" href="#4-rendering-flow" title="Permanent link">&para;</a></h2>
+<h3 id="41-during-dodot-up">4.1. During <code>dodot up</code><a class="headerlink" href="#41-during-dodot-up" title="Permanent link">&para;</a></h3>
+<p>For each template file matched by the preprocessor:</p>
+<ol>
+<li>Read the template source from the pack directory </li>
+<li>Build the variable context: <ol>
+<li>dodot.* from Pather + system calls (computed once, reused) </li>
+<li>env.* via dynamic lookup </li>
+<li>bare names from merged config </li>
+</ol>
+</li>
+<li>Render via MiniJinja </li>
+<li>Check for dodot-conflict markers in the source (refuse if found) </li>
+<li>Write the rendered content to the datastore as a regular file </li>
+<li>Store the baseline in the cache (rendered hash, source hash, context hash) </li>
+<li>The virtual RuleMatch (with datastore path) enters the handler pipeline </li>
+<li>The downstream handler creates the user symlink (or stages, or executes) </li>
+</ol>
+<h3 id="42-sentinel-hashing-for-executable-templates">4.2. Sentinel Hashing for Executable Templates<a class="headerlink" href="#42-sentinel-hashing-for-executable-templates" title="Permanent link">&para;</a></h3>
+<h4 id="for-templates-that-route-to-the-install-or-homebrew-handler-eg-installshtmpl-the-sentinel-must-track-both-the-template-content-hash-and-the-variable-context-hash-if-either-changes-the-script-re-runs-this-extends-the-existing-sentinel-format">For templates that route to the install or homebrew handler (e.g., <code>install.sh.tmpl</code>), the sentinel must track both the template content hash AND the variable context hash. If either changes, the script re-runs. This extends the existing sentinel format:<a class="headerlink" href="#for-templates-that-route-to-the-install-or-homebrew-handler-eg-installshtmpl-the-sentinel-must-track-both-the-template-content-hash-and-the-variable-context-hash-if-either-changes-the-script-re-runs-this-extends-the-existing-sentinel-format" title="Permanent link">&para;</a></h4>
+<p>sentinel = "{filename}-{hash(template_content + context_hash)}"</p>
+<h3 id="43-error-handling">4.3. Error Handling<a class="headerlink" href="#43-error-handling" title="Permanent link">&para;</a></h3>
+<h4 id="template-errors-produce-actionable-messages">Template errors produce actionable messages:<a class="headerlink" href="#template-errors-produce-actionable-messages" title="Permanent link">&para;</a></h4>
+<dl>
+<dt>Undefined variable</dt>
+<dd>
+<p>error: undefined variable <code>database_host</code> in app/config.toml.tmpl</p>
+</dd>
+</dl>
+<p>add it to [preprocessor.template.vars] in .dodot.toml    or set it as an environment variable: {{ env.DATABASE_HOST }}</p>
+<dl>
+<dt>Syntax error</dt>
+<dd>
+<p>error: template syntax error in app/config.toml.tmpl line 5</p>
+</dd>
+<dd>
+<p>unexpected end of block, expected <code>endif</code></p>
+</dd>
+<dt>Render failure</dt>
+<dd>
+<p>error: template render failed for app/config.toml.tmpl</p>
+</dd>
+<dd>
+<p>filter <code>upper</code> received an incompatible type</p>
+</dd>
+</dl>
+<h2 id="5-reverse-merge-heuristics">5. Reverse Merge Heuristics<a class="headerlink" href="#5-reverse-merge-heuristics" title="Permanent link">&para;</a></h2>
+<p>When a deployed file has been modified (divergence detected), template expansion applies heuristics to map changes back to the template source. This is best-effort by design: an exact reverse is mathematically impossible for generative transforms.</p>
+<h3 id="51-the-algorithm">5.1. The Algorithm<a class="headerlink" href="#51-the-algorithm" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>Given three versions</dt>
+<dd>
+<p>Template:  the .tmpl source file (under version control) Baseline:  the rendered output cached at last deployment Current:   the deployed file as it exists now (possibly modified)</p>
+</dd>
+<dt>Steps</dt>
+<dd>
+<ol>
+<li>Diff baseline vs current to identify the user's changes </li>
+<li>For each changed line, find the corresponding template line </li>
+<li>Classify the template line as static or dynamic: 
+    Static:  no {{ }}, {% %}, or {# #} syntax Dynamic: contains template expressions</li>
+<li>For static lines:  apply the change directly to the template source </li>
+<li>For dynamic lines: insert dodot-conflict markers </li>
+</ol>
+</dd>
+</dl>
+<h3 id="52-line-correspondence">5.2. Line Correspondence<a class="headerlink" href="#52-line-correspondence" title="Permanent link">&para;</a></h3>
+<p>For simple templates (variable substitution only), there is a 1:1 line correspondence between template source and rendered output. Line N of the template produces line N of the output.</p>
+<dl>
+<dt>For templates with conditionals ({% if %})</dt>
+<dd>
+<p>Lines inside a false branch do not appear in the output. They are preserved in the template unchanged. The line mapping shifts, but the algorithm can track this by walking both files in parallel.</p>
+</dd>
+<dt>For templates with loops ({% for %})</dt>
+<dd>
+<p>One template line produces N output lines. If the user changed one iteration's output, the mapping is ambiguous. The entire loop body is flagged as a conflict.</p>
+</dd>
+<dt>For complex templates where line tracking fails</dt>
+<dd>
+<p>Fall back to section-level conflict markers encompassing the ambiguous region.</p>
+</dd>
+</dl>
+<h3 id="53-applied-example">5.3. Applied Example<a class="headerlink" href="#53-applied-example" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>Template source (config.toml.tmpl)</dt>
+<dd>
+<p>[database] host = "{{ env.DB_HOST }}" port = 5432 max_connections = 10</p>
+</dd>
+<dt>Baseline (rendered at deploy time)</dt>
+<dd>
+<p>[database] host = "localhost" port = 5432 max_connections = 10</p>
+</dd>
+<dt>Current (user/app modified)</dt>
+<dd>
+<p>[database] host = "production.db.internal" port = 5432 max_connections = 50</p>
+</dd>
+<dt>After <code>dodot transform check</code> modifies the template</dt>
+<dd>
+<p>[database] &gt;&gt;&gt;&gt;&gt;&gt; dodot-conflict (template) host = "{{ env.DB_HOST }}" ====== dodot-conflict (deployed) host = "production.db.internal" \&lt;\&lt;\&lt;\&lt;\&lt;\&lt; dodot-conflict port = 5432 max_connections = 50</p>
+</dd>
+</dl>
+<p>Line "host": dynamic (contains {{ }}), so conflict markers are inserted — five lines bracketing the original template line and the user's deployed-side edit, structurally analogous to git's merge-conflict markers but with the angle direction inverted. Line "max_connections": static, changed from 10 to 50, applied directly. Line "port": unchanged, left alone.</p>
+<p>The user runs <code>git diff</code> and sees both the assertive change (max_connections) and the conflict (host). They resolve the conflict by choosing one side, then <code>git add</code> and <code>git commit</code>.</p>
+<h3 id="54-scope-and-limitations">5.4. Scope and Limitations<a class="headerlink" href="#54-scope-and-limitations" title="Permanent link">&para;</a></h3>
+<p>This heuristic targets the common case: config files with mostly static content and a few template variables. It will handle the majority of real-world dotfile templates well.</p>
+<dl>
+<dt>Known limitations</dt>
+<dd>
+<ul>
+<li>Templates that are mostly dynamic (more {{ }} than static text) will produce more conflict markers than assertive changes. The heuristic degrades gracefully. </li>
+<li>Complex Jinja2 features (macros, includes, inheritance) are not tracked for line correspondence. Changes near these features will be flagged as conflicts. </li>
+<li>Multiline template expressions are treated as a single dynamic block. </li>
+</ul>
+</dd>
+<dt>Users can opt out of the reverse merge for specific files</dt>
+<dd>
+<p>[preprocessor.template] no_reverse = ["complex-config.toml.tmpl"]</p>
+</dd>
+</dl>
+<p>These files still get divergence detection (warning that the file changed) but no source modification is attempted.</p>
+<h2 id="6-configuration">6. Configuration<a class="headerlink" href="#6-configuration" title="Permanent link">&para;</a></h2>
+<h3 id="61-full-configuration-schema">6.1. Full Configuration Schema<a class="headerlink" href="#61-full-configuration-schema" title="Permanent link">&para;</a></h3>
+<p>[preprocessor.template] enabled = true                        # enable/disable template preprocessing extensions = ["tmpl", "template"]     # file extensions that trigger rendering no_reverse = []                       # files to skip reverse merge heuristics</p>
+<p>[preprocessor.template.vars] # user-defined variables, available as bare names in templates name = "Alice" email = "alice@example.com"</p>
+<h3 id="62-configuration-inheritance">6.2. Configuration Inheritance<a class="headerlink" href="#62-configuration-inheritance" title="Permanent link">&para;</a></h3>
+<p>The 3-layer config hierarchy applies:</p>
+<dl>
+<dt>Root .dodot.toml</dt>
+<dd>
+<p>[preprocessor.template.vars] name = "Alice"</p>
+</dd>
+<dt>Pack .dodot.toml (e.g., git/.dodot.toml)</dt>
+<dd>
+<p>[preprocessor.template.vars] name = "Alice (Work)"     # overrides root for this pack only</p>
+</dd>
+</dl>
+<h2 id="7-commands">7. Commands<a class="headerlink" href="#7-commands" title="Permanent link">&para;</a></h2>
+<h3 id="71-dodot-transform-check">7.1. <code>dodot transform check</code><a class="headerlink" href="#71-dodot-transform-check" title="Permanent link">&para;</a></h3>
+<p>Non-interactive divergence detection and reverse-merge application.</p>
+<dl>
+<dt>Behavior</dt>
+<dd>
+<ol>
+<li>Scan all preprocessed files for divergence </li>
+<li>For generative transforms: apply reverse merge heuristics to source files </li>
+<li>For representational transforms: apply reverse conversion automatically </li>
+<li>For opaque transforms: report divergence only </li>
+<li>Exit 0 if no divergence, exit 1 if divergence was found/applied </li>
+</ol>
+</dd>
+<dt>Usage</dt>
+<dd>
+<p>dodot transform check           # check all preprocessed files dodot transform check app       # check a specific pack</p>
+</dd>
+</dl>
+<h3 id="72-dodot-transform-install-hook">7.2. <code>dodot transform install-hook</code><a class="headerlink" href="#72-dodot-transform-install-hook" title="Permanent link">&para;</a></h3>
+<p>Installs a pre-commit hook that runs <code>dodot transform check</code>.</p>
+<dl>
+<dt>Behavior</dt>
+<dd>
+<ul>
+<li>No existing hook: creates one </li>
+<li>Existing hook: appends dodot check (with guard comment, idempotent) </li>
+<li>User declines: remembers choice, does not nag again </li>
+</ul>
+</dd>
+</dl>
+<h3 id="73-dodot-transform-status">7.3. <code>dodot transform status</code><a class="headerlink" href="#73-dodot-transform-status" title="Permanent link">&para;</a></h3>
+<h4 id="shows-the-current-state-of-all-preprocessed-files">Shows the current state of all preprocessed files:<a class="headerlink" href="#shows-the-current-state-of-all-preprocessed-files" title="Permanent link">&para;</a></h4>
+<p>$ dodot transform status app/config.toml.tmpl   -&gt; config.toml     deployed, clean zsh/zshrc.tmpl         -&gt; .zshrc           deployed, modified (3 lines) vim/vimrc.tmpl         -&gt; .vimrc           not deployed</p>
+<h2 id="8-implementation-phases">8. Implementation Phases<a class="headerlink" href="#8-implementation-phases" title="Permanent link">&para;</a></h2>
+<p>Template expansion depends on the preprocessing pipeline (Phase 1 of that proposal). Once the pipeline is in place:</p>
+<p>Phase T1: Core Rendering</p>
+<ul>
+<li>MiniJinja integration </li>
+<li>TemplatePreprocessor implementing the Preprocessor trait </li>
+<li>Variable context building (dodot.*, env.*, user vars) </li>
+<li>Basic render + deploy via the pipeline </li>
+<li>Unit tests for rendering, variable resolution, error messages </li>
+</ul>
+<p>Phase T2: Reverse Merge</p>
+<ul>
+<li>Line correspondence tracking </li>
+<li>Static vs dynamic classification </li>
+<li>Assertive change application </li>
+<li>Dodot conflict marker insertion </li>
+<li>Integration with <code>dodot transform check</code> </li>
+</ul>
+<p>Phase T3: Configuration and Polish</p>
+<ul>
+<li>[preprocessor.template] config section </li>
+<li>no_reverse per-file opt-out </li>
+<li>Onboarding hint on first template deployment </li>
+<li>dodot transform status for template files </li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,987 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/user/paths/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Paths - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#paths" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Paths
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paths
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-when-you-reach-for-this-doc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. When you reach for this doc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-three-roots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The three roots
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-default-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The default rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-escape-hatches-by-what-you-want-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Escape hatches, by what you want to do
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Escape hatches, by what you want to do">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-one-file-to-x-unix-canon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. One file to ~/.X (Unix canon)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-a-subtree-to-home" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. A subtree to $HOME
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-a-subtree-to-xdg-without-your-pack-name-in-the-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. A subtree to XDG without your pack name in the path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-a-macos-gui-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4. A macOS GUI app
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-a-macos-library-subtree-that-isnt-application-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5. A macOS Library subtree that isn't Application Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-anywhere-else-absolute-or-arbitrary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.6. Anywhere else, absolute or arbitrary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-resolution-priority-in-one-paragraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The resolution priority, in one paragraph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-watch-out-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Watch out for
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-live-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Live edits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/user/paths.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Paths</h1>
+
+<!-- lex:verified -->
+
+<!-- /lex:verified -->
+
+<!-- lex:note -->
+
+<p>Terminology — this doc uses [pack], [handler], and [dotfiles root]. If any of those are unfamiliar, <a href="./glossary/">see</a>.</p>
+<!-- /lex:note -->
+
+<h2 id="paths">Paths<a class="headerlink" href="#paths" title="Permanent link">&para;</a></h2>
+<p>When you run <code>dodot up</code>, every file in your packs lands somewhere on disk. This document is about the <strong>somewhere</strong> — how dodot decides, what the defaults give you for free, and what knobs you reach for when the defaults aren't right.</p>
+<p>The short version: dodot deploys to <code>$XDG_CONFIG_HOME/&lt;pack&gt;/...</code> by default. The handful of files that don't belong there — Unix-tradition holdouts like <code>.ssh</code> and <code>.bashrc</code>, macOS GUI app config, the occasional one-off custom path — have explicit escape hatches that read at a glance.</p>
+<h2 id="1-when-you-reach-for-this-doc">1. When you reach for this doc<a class="headerlink" href="#1-when-you-reach-for-this-doc" title="Permanent link">&para;</a></h2>
+<ul>
+<li>You ran <code>dodot status</code> and a file landed somewhere unexpected. You want to understand why. </li>
+<li>You have a Unix-tradition file (<code>.bashrc</code>, <code>.ssh/config</code>) that needs to be at <code>~/.X</code> rather than under <code>~/.config/</code>. </li>
+<li>You have a directory of files that should not have your pack's name in their deployed path. </li>
+<li>You're adding a macOS pack and need to deploy to <code>~/Library/Application Support/</code>. </li>
+<li>You need one file at a fully custom absolute path (<code>/etc/...</code>, <code>/opt/...</code>). </li>
+</ul>
+<h2 id="2-the-three-roots">2. The three roots<a class="headerlink" href="#2-the-three-roots" title="Permanent link">&para;</a></h2>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<p><strong>Every path dodot computes is <code>&lt;root&gt;/&lt;rest&gt;</code>, where <code>&lt;root&gt;</code> is one of three filesystem coordinates</strong></p>
+<p>On Linux, the second and third coordinates point at the same place. That's deliberate: a portable pack written with <code>_app/</code> prefixes (§4.4) routes correctly on both platforms without per-OS branches inside the pack. On macOS the third root diverges, and the <code>_app/</code> machinery starts to matter.</p>
+<p>The dotfiles root — where dodot <strong>reads</strong> from — is a separate concern. dodot picks it from <code>$DOTFILES_ROOT</code>, then <code>git rev-parse --show-toplevel</code>, then the current directory. <a href="./glossary/dotfiles-root.lex">See</a>.</p>
+<h2 id="3-the-default-rule">3. The default rule<a class="headerlink" href="#3-the-default-rule" title="Permanent link">&para;</a></h2>
+<p>Pack-root entries — files or directories — deploy to <code>$XDG_CONFIG_HOME/&lt;pack&gt;/&lt;rel_path&gt;</code>. The pack name namespaces things under XDG, matching how nvim, helix, ghostty, kitty, alacritty, lazygit, starship, and most other modern tools read their configuration: from <code>~/.config/&lt;tool&gt;/</code>.</p>
+<p><strong>Default rule</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>nvim/init.lua          -&gt;  ~/.config/nvim/init.lua
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>nvim/lua/              -&gt;  ~/.config/nvim/lua/      (whole dir, one symlink)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>warp/themes/dark.yaml  -&gt;  ~/.config/warp/themes/dark.yaml
+</code></pre></div>
+<p>A pack with an ordering prefix has the prefix stripped from the deployed name: <code>010-nvim/init.lua</code> deploys to <code>~/.config/nvim/init.lua</code>, not <code>~/.config/010-nvim/init.lua</code>. The numeric prefix governs <code>dodot up</code> execution order, not the deployed path.</p>
+<p>Anything not claimed by a more specific handler (shell, path, install, homebrew) flows through the symlink handler and the rules below.</p>
+<h2 id="4-escape-hatches-by-what-you-want-to-do">4. Escape hatches, by what you want to do<a class="headerlink" href="#4-escape-hatches-by-what-you-want-to-do" title="Permanent link">&para;</a></h2>
+<p>The cases where the default isn't right map onto specific mechanisms. Pick the one that matches your goal — they compose, but reaching for the simplest one that works keeps your packs readable.</p>
+<h3 id="41-one-file-to-x-unix-canon">4.1. One file to <code>~/.X</code> (Unix canon)<a class="headerlink" href="#41-one-file-to-x-unix-canon" title="Permanent link">&para;</a></h3>
+<p><strong>For Unix-tradition files (`bashrc`, `zshrc`, `ssh`, …) the convention demands `$HOME/.X`. Two ways to ask for that</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>- *Rely on the defaults.* dodot ships a `force_home` list that auto-routes the canonical names: `ssh`, `aws`, `kube`, `bashrc`, `zshrc`, `profile`, `bash_profile`, `bash_login`, `bash_logout`, `inputrc`. A pack-root file or directory whose name matches lands at `$HOME/.&lt;name&gt;` without any prefix in your pack tree.
+</code></pre></div>
+<p>The prefix is <code>home.</code> (a word, not a bare <code>.</code>) so editors and <code>ls</code> don't hide your pack's source files behind dotfile-hiding. The leading <code>.</code> is added back on the deployed side automatically.</p>
+<p>Top-level only — a nested <code>subdir/home.X</code> is treated as a literal filename and goes through the default rule.</p>
+<h3 id="42-a-subtree-to-home">4.2. A subtree to <code>$HOME</code><a class="headerlink" href="#42-a-subtree-to-home" title="Permanent link">&para;</a></h3>
+<p><strong>If a whole directory of files belongs under `$HOME/.X` rather than `$XDG_CONFIG_HOME/\&lt;pack&gt;/X`, use the `_home/` directory prefix</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>&lt;pack&gt;/_home/vim/vimrc      -&gt;  ~/.vim/vimrc
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>&lt;pack&gt;/_home/.local/bin/x   -&gt;  ~/.local/bin/x
+</code></pre></div>
+<p>Like every directory prefix, <code>_home/</code> skips pack namespacing — the pack name doesn't appear in the deployed path.</p>
+<h3 id="43-a-subtree-to-xdg-without-your-pack-name-in-the-path">4.3. A subtree to XDG without your pack name in the path<a class="headerlink" href="#43-a-subtree-to-xdg-without-your-pack-name-in-the-path" title="Permanent link">&para;</a></h3>
+<p><strong>Sometimes a single pack holds config for several tools, and you don't want the pack name to show up at the deploy site. The `_xdg/` directory prefix solves that</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>term-config/_xdg/ghostty/config            -&gt;  ~/.config/ghostty/config
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>term-config/_xdg/kitty/kitty.conf          -&gt;  ~/.config/kitty/kitty.conf
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>term-config/_xdg/alacritty/alacritty.toml  -&gt;  ~/.config/alacritty/alacritty.toml
+</code></pre></div>
+<p>The pack name (<code>term-config</code>) plays no role inside <code>_xdg/</code>. Each first-level child is the deploy directory under <code>$XDG_CONFIG_HOME</code>.</p>
+<p>For a single file, <code>xdg.X</code> is the per-file equivalent: <code>pack/xdg.foo.list</code> deploys to <code>$XDG_CONFIG_HOME/foo.list</code>, also skipping pack namespacing.</p>
+<h3 id="44-a-macos-gui-app">4.4. A macOS GUI app<a class="headerlink" href="#44-a-macos-gui-app" title="Permanent link">&para;</a></h3>
+<p><strong>macOS GUI apps read configuration from `~/Library/Application Support/\&lt;App&gt;/`, a third coordinate beyond `$HOME` and `$XDG_CONFIG_HOME`. There are three ways to route there, in increasing order of explicitness</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>- *`force_app` defaults.* dodot ships a small curated list (`Code`, `Cursor`, `Zed`, `Emacs`) so a pack-root entry whose name matches deploys directly to `&lt;app_support_dir&gt;/&lt;name&gt;/...`. Matching is case-sensitive — Library folder names are case-sensitive on macOS.
+</code></pre></div>
+<p>The same pack tree works on both platforms — <code>_app/</code> routes through <code>app_support_dir</code>, which is the Library path on macOS and <code>$XDG_CONFIG_HOME</code> on Linux.</p>
+<p><strong>- *`[symlink.app_aliases]` for natural pack names.* If you want a lowercase, terminal-friendly pack name (`vscode`) to deploy to a GUI-app folder name (`Code`), declare the rewrite in the root config</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">[symlink.app_aliases]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">vscode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Code&quot;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">warp</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;dev.warp.Warp-Stable&quot;</span>
+</code></pre></div>
+<p>With this in place, the pack <code>vscode</code> deploys via the default rule but to <code>&lt;app_support_dir&gt;/Code/&lt;rel_path&gt;</code> instead of <code>$XDG_CONFIG_HOME/vscode/&lt;rel_path&gt;</code>. The pack tree stays clean — no <code>_app/</code> prefixes everywhere.</p>
+<p>Per-file form: <code>app.X</code> deploys a single file to <code>&lt;app_support_dir&gt;/X</code>.</p>
+<h3 id="45-a-macos-library-subtree-that-isnt-application-support">4.5. A macOS Library subtree that isn't Application Support<a class="headerlink" href="#45-a-macos-library-subtree-that-isnt-application-support" title="Permanent link">&para;</a></h3>
+<p><strong>For `~/Library/LaunchAgents/`, `~/Library/Fonts/`, `~/Library/Services/`, etc., use `_lib/`</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>&lt;pack&gt;/_lib/LaunchAgents/com.example.foo.plist  -&gt;  ~/Library/LaunchAgents/com.example.foo.plist
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>&lt;pack&gt;/_lib/Fonts/MyFont.otf                    -&gt;  ~/Library/Fonts/MyFont.otf
+</code></pre></div>
+<p><code>_lib/</code> is macOS-only. On Linux it produces a soft warning and skips the file; the rest of the pack deploys normally. The matching per-file form is <code>lib.X</code> for top-level files (also macOS-only, also warns and skips on Linux).</p>
+<h3 id="46-anywhere-else-absolute-or-arbitrary">4.6. Anywhere else, absolute or arbitrary<a class="headerlink" href="#46-anywhere-else-absolute-or-arbitrary" title="Permanent link">&para;</a></h3>
+<p><strong>`[symlink.targets]` is the catch-all. It maps a pack-relative source path to any destination</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">[symlink.targets]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="s2">&quot;mysterious.conf&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/mysterious.conf&quot;</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="s2">&quot;home-bound.conf&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;my-documents/home-bound.conf&quot;</span>
+</code></pre></div>
+<p>Absolute paths are used as-is. Relative paths are resolved from <code>$XDG_CONFIG_HOME</code>. <code>[symlink.targets]</code> overrides every other rule — except for the conflict case in §6.</p>
+<h2 id="5-the-resolution-priority-in-one-paragraph">5. The resolution priority, in one paragraph<a class="headerlink" href="#5-the-resolution-priority-in-one-paragraph" title="Permanent link">&para;</a></h2>
+<p>When more than one rule could apply to a file, dodot resolves in this order: a <code>[symlink.targets]</code> entry wins absolutely; then file-level prefixes (<code>home.X</code>, <code>app.X</code>, <code>xdg.X</code>, <code>lib.X</code>); then directory prefixes (<code>_home/</code>, <code>_xdg/</code>, <code>_app/</code>, <code>_lib/</code>); then the <code>force_home</code> and <code>force_app</code> lists; then <code>[symlink.app_aliases]</code>; then the default XDG rule. Higher-priority rules skip pack namespacing; lower-priority rules apply <strong>after</strong> the pack name is in the deployed path.</p>
+<p>For the full ladder with corner cases, <a href="./../reference/symlink-paths.lex">see</a>.</p>
+<h2 id="6-watch-out-for">6. Watch out for<a class="headerlink" href="#6-watch-out-for" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Routing override conflict.</strong> Declaring a file in <code>[symlink.targets]</code> <strong>and</strong> giving it a routing prefix (<code>home.X</code>, <code>_home/X</code>, <code>app.X</code>, <code>_app/X</code>, …) raises a hard error rather than silently picking one. Two ways to say where one file goes is bug-bait — pick one. Other files in the pack continue to deploy. </li>
+<li><strong>Filename prefixes are top-level only.</strong> <code>home.bashrc</code> at the pack root deploys to <code>~/.bashrc</code>. <code>subdir/home.bashrc</code> deploys to <code>~/.config/&lt;pack&gt;/subdir/home.bashrc</code> literally — no rewrite. Same for <code>app.X</code>, <code>xdg.X</code>, <code>lib.X</code>. </li>
+<li><strong><code>_lib/</code> and <code>lib.X</code> are macOS-only.</strong> On Linux they warn and skip. Other entries in the same pack deploy normally. </li>
+<li><strong>Per-file mode for directories.</strong> By default, a pack-root directory is wholesale-linked: one symlink for the entire directory. Listing a file inside it in <code>[symlink.targets]</code>, or having one match <code>protected_paths</code>, flips that directory into per-file mode — one symlink per file, each resolved independently. </li>
+<li><strong>Empty remainders fall through.</strong> A literal filename <code>home.</code> (nothing after the dot) is treated as the default rule, not as "deploy to bare <code>$HOME/</code>". Same for <code>app.</code>, <code>xdg.</code>, <code>lib.</code>. </li>
+<li><strong>Pack ordering prefixes are stripped.</strong> <code>010-nvim/init.lua</code> deploys to <code>~/.config/nvim/init.lua</code>. The numeric prefix governs execution order, not the deployed path. </li>
+<li><strong>Protected paths refuse to deploy.</strong> dodot ships a default list (SSH private keys, <code>.gnupg</code>, AWS credentials, <code>.kube/config</code>, etc.) that the symlink handler refuses to touch. Override under <code>[symlink] protected_paths</code> if you have a justified case. </li>
+</ul>
+<h2 id="7-live-edits">7. Live edits<a class="headerlink" href="#7-live-edits" title="Permanent link">&para;</a></h2>
+<p>Once a file is symlinked, the deployed path <strong>is</strong> your source via the symlink chain — edits to either end show up at the other immediately. Whether the program reading the config picks up the change is up to the program: shells re-read on next launch, file-watching editors (nvim with <code>autoread</code>, vscode) reload immediately, daemons and window managers usually need an explicit reload. Adding or removing a source file in your pack still requires another <code>dodot up</code> to update the symlink set.</p>
+<h2 id="8-see-also">8. See also<a class="headerlink" href="#8-see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="./handlers/symlink.lex">—</a> the symlink handler from the handler side. </li>
+<li><a href="./../reference/symlink-paths.lex">—</a> full priority ladder, all edge cases, adopt inference. </li>
+<li><a href="./adopting.lex">—</a> the inverse direction: deployed path back into a pack. </li>
+<li><a href="./plists.lex">—</a> macOS plist clean/smudge filters; the third-coordinate use case in detail. </li>
+<li><a href="./configuration.lex">—</a> the <code>[symlink]</code> section schema. </li>
+<li><a href="./glossary/dotfiles-root.lex">.</a> <a href="./glossary/pack.lex">,</a><a href="./glossary/handler.lex">,</a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

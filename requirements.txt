@@ -1,0 +1,3 @@
+mkdocs==1.6.1
+mkdocs-material==9.7.6
+mkdocs-lex-plugin==0.2.0

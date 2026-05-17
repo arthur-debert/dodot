@@ -1,0 +1,1194 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/reference/handlers/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Handlers - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#handlers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Handlers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handlers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-built-in-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Built-in Handlers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. The Built-in Handlers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-symlink" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1. Symlink
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-shell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2. Shell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3. path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4. install
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-homebrew" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5. homebrew
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-ignore-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6. ignore (filter)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-skip-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7. skip (filter)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#18-gate-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.8. gate (filter)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-matching-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Matching Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-execution-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Execution Order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-cross-pack-ordering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Cross-Pack Ordering
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Cross-Pack Ordering">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-few-cases-do-care" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A few cases do care:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#41-the-prefix-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. The Prefix Grammar
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.1. The Prefix Grammar">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-a-pack-directory-matches-d-_-that-is-a-run-of-digits-followed-by-or-_-followed-by-a-non-empty-stem-dodot-treats-the-prefix-as-ordering-metadata-not-as-part-of-the-packs-logical-name-three-things-follow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a pack directory matches ^(\d+)[-_](.+)$ — that is, a run of digits followed by - or _ followed by a non-empty stem — dodot treats the prefix as ordering metadata, not as part of the pack's logical name. Three things follow:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#three-classes-of-collision-are-rejected-at-scan-time-with-both-offending-paths-in-the-error-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three classes of collision are rejected at scan time, with both offending paths in the error message:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-configuration-vs-code-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Configuration vs Code Execution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Configuration vs Code Execution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-configuration-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. Configuration handlers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-code-execution-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Code execution handlers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-why-handlers-look-the-way-they-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Why Handlers Look the Way They Do
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/reference/handlers.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Handlers</h1>
+
+<h2 id="handlers">Handlers<a class="headerlink" href="#handlers" title="Permanent link">&para;</a></h2>
+<p>A handler is the thing that decides what to do with a file once dodot has decided to process it. Each handler has exactly one job: link configs, source shell scripts, add directories to <code>$PATH</code>, run install scripts once, or install Brewfiles. This document describes the handlers dodot ships, the rules for how matches flow to them, and the distinction between handlers that always run and handlers that run once.</p>
+<p>for terminology used throughout.<a href="./terms-and-concepts.lex">See</a></p>
+<h2 id="1-the-built-in-handlers">1. The Built-in Handlers<a class="headerlink" href="#1-the-built-in-handlers" title="Permanent link">&para;</a></h2>
+<p>dodot ships with eight handlers: five that deploy files (symlink, shell, path, install, homebrew) and three that drop files from processing (ignore, skip, gate). All eight share the same <code>Handler</code> trait and run from the same registry.</p>
+<h3 id="11-symlink">1.1. Symlink<a class="headerlink" href="#11-symlink" title="Permanent link">&para;</a></h3>
+<p>Creates a symlink from a deployed location back to a file or directory in your pack. This is the default for any file that no other handler claims — anything that looks like plain configuration flows through here.</p>
+<p>Path resolution is smart: every pack-root entry — file or directory — defaults to <code>$XDG_CONFIG_HOME/&lt;pack&gt;/&lt;name&gt;</code> (so <code>nvim/init.lua</code> → <code>~/.config/nvim/init.lua</code>, <code>warp/themes/</code> → <code>~/.config/warp/themes/</code>). A small list of exceptions force <code>$HOME</code> placement regardless of XDG (<code>ssh</code>, <code>bashrc</code>, <code>zshrc</code>, etc.); the per-file <code>home.X</code> prefix and per-subtree <code>_home/</code> directory route opt-in single files or whole subtrees to <code>$HOME/.X</code>. For the full path rules, <a href="./symlink-paths.lex">see</a>.</p>
+<h3 id="12-shell">1.2. Shell<a class="headerlink" href="#12-shell" title="Permanent link">&para;</a></h3>
+<p>Arranges for shell scripts to be sourced at login. Matches <code>*.{sh,bash,zsh}</code> at the pack root by default — any shell-extension file at the top of a pack gets sourced. (<code>install.{sh,bash,zsh}</code> is claimed by the install handler first, at a higher priority, so install scripts are never accidentally sourced.) Add more patterns via <code>[mappings] shell</code> in <code>.dodot.toml</code>. The mechanism is a single <code>eval "$(dodot init-sh)"</code> line in your shell rc; the generated init script walks the datastore <a href="./data-layer.lex">(see</a>) and emits <code>source</code> lines for every matched shell file.</p>
+<p>The extension convention is load-bearing: sourced files run in <strong>your</strong> shell, so <code>.zsh</code> files only parse cleanly in zsh sessions and <code>.bash</code> files in bash sessions. <code>.sh</code> is the portable bucket — use it for snippets that work in either. In practice most users run one shell, and the mismatch simply doesn't come up; users who switch shells occasionally can split their shell config by extension.</p>
+<h3 id="13-path">1.3. path<a class="headerlink" href="#13-path" title="Permanent link">&para;</a></h3>
+<p>Exposes a directory on your <code>$PATH</code>. The conventional match is a <code>bin/</code> directory inside a pack; its contents become directly executable from any shell. Like shell, this rides on the dodot init script — the datastore records which directories should be on PATH, and the init script prepends them.</p>
+<h3 id="14-install">1.4. install<a class="headerlink" href="#14-install" title="Permanent link">&para;</a></h3>
+<p>Runs an arbitrary shell script once, tracked by a sentinel file so it doesn't re-run on every deploy. Matches <code>install.sh</code>, <code>install.bash</code>, and <code>install.zsh</code> by convention. Use this for machine-specific setup that isn't covered by the other handlers: installing language toolchains, configuring window managers, creating directories, setting system defaults.</p>
+<p>The script's extension picks the interpreter — <code>.sh</code> and <code>.bash</code> run under <code>bash</code>, <code>.zsh</code> runs under <code>zsh</code> — not the user's login shell. An install script runs in a fresh subprocess, so the user's interactive shell state (aliases, functions, options) is not visible to it regardless; only the interpreter choice matters, and the extension is the contract the pack author declares.</p>
+<p>A pack with more than one matched install file (say, both <code>install.sh</code> and <code>install.zsh</code>) runs <strong>all</strong> of them, each tracked by its own sentinel. There is no "pick the best one" logic — if you only want one to run, only ship one.</p>
+<p>Output is quiet by default — start/end markers, the script's leading comment block, and any <code># status: &lt;message&gt;</code> lines the script emits on stdout are surfaced live; everything else is captured and discarded unless the script fails (in which case stderr is dumped) or <code>dodot up --verbose</code> is passed (which streams the raw output). The <code># status:</code> convention is tool-agnostic — the markers are plain shell comments when the script is run by hand. <a href="./../user/handlers/install.lex">See</a> for the user-facing details and examples.</p>
+<h3 id="15-homebrew">1.5. homebrew<a class="headerlink" href="#15-homebrew" title="Permanent link">&para;</a></h3>
+<p>Runs <code>brew bundle</code> against a <code>Brewfile</code>, once per content-hash. macOS-only in practice. Functionally a specialization of install, but more ergonomic for its common case.</p>
+<h3 id="16-ignore-filter">1.6. ignore (filter)<a class="headerlink" href="#16-ignore-filter" title="Permanent link">&para;</a></h3>
+<p>Claims matches and drops them silently — same contract as <code>.gitignore</code>. No executable intent, no entry in <code>dodot status</code>. Configured via <code>[mappings] ignore</code> (default empty). Useful for build artifacts, scratch files, anything you don't want dodot to know about.</p>
+<h3 id="17-skip-filter">1.7. skip (filter)<a class="headerlink" href="#17-skip-filter" title="Permanent link">&para;</a></h3>
+<p>Claims matches, surfaces them in <code>dodot status</code> as <code>skipped</code>, but produces no executable intent. Configured via <code>[mappings] skip</code>. Defaults cover the common documentation/legal files (<code>README</code>, <code>LICENSE</code>, <code>CHANGELOG</code>, <code>CONTRIBUTING</code>, <code>AUTHORS</code>, <code>NOTICE</code>, <code>COPYING</code> and their <code>.*</code> variants), matched case-insensitively. Override per-pack with <code>skip = []</code> to deploy a README intentionally.</p>
+<h3 id="18-gate-filter">1.8. gate (filter)<a class="headerlink" href="#18-gate-filter" title="Permanent link">&para;</a></h3>
+<p>Claims matches whose host predicate evaluates false on the current host — e.g. <code>install._darwin.sh</code> on a linux box, or any file inside <code>_darwin/</code> when running on linux. Surfaces in <code>dodot status</code> as <code>gated out (&lt;label&gt;)</code> with a footnote showing what the predicate expected vs what the host has. Produces no executable intent; the file stays on disk and will deploy on a matching host.</p>
+<p>Unlike <code>ignore</code> and <code>skip</code>, gate matches are <strong>dynamic</strong> — they depend on host facts (OS, arch, hostname, …) and on the filename grammar (<code>._&lt;label&gt;</code>, <code>_&lt;label&gt;/</code>) plus the <code>[mappings.gates]</code> config. The full surface is <a href="./../user/conditional-running.lex">in</a> and the design proposal <a href="./../proposals/conditional-running.lex">at</a> (or its shipped sibling). The matching infrastructure is shared with <code>ignore</code> and <code>skip</code>: gate evaluation runs at scan time and produces a <code>RuleMatch</code> whose <code>handler</code> is <code>"gate"</code>, with predicate / host metadata stashed in <code>options</code> for the status renderer.</p>
+<p>The three filter handlers exist because four things were previously different mechanisms — a pack-level marker, a silent skip, a visible "excluded", and host-conditional dispatch — and unifying the intra-pack cases into real handlers means there's one matching model and one config grammar instead of four. Pack-level <code>.dodotignore</code> (the "pack-ignore" mechanism) and pack-level <code>[pack] os</code> (the conditional-running mechanism) stay separate at the discovery layer.</p>
+<h2 id="2-matching-model">2. Matching Model<a class="headerlink" href="#2-matching-model" title="Permanent link">&para;</a></h2>
+<p>Handlers are classified along two axes that together decide how matches flow.</p>
+<dl>
+<dt>Match mode</dt>
+<dd>
+<p><em>Precise</em> handlers claim specific names or patterns: <code>install.sh</code>, <code>aliases.sh</code>, <code>Brewfile</code>, <code>bin/</code>. <em>Catchall</em> handlers claim anything precise handlers didn't touch. Precise handlers run first and consume their matches; the catchall sees only what's left.</p>
+</dd>
+</dl>
+<p>At most one handler may be catchall in a given pack. Today that role is played by <code>symlink</code>. This isn't a rule of the matching system so much as a practical consequence: two catchalls would race for every unclaimed file.</p>
+<dl>
+<dt>Scope</dt>
+<dd>
+<p><em>Exclusive</em> matches are consumed on first claim — no other handler sees that entry. <em>Shared</em> matches remain available after a claim, so multiple handlers can act on the same entry. All current handlers are exclusive. Shared scope is reserved for future observer-style handlers (an audit handler, a stats handler) that watch without deploying.</p>
+</dd>
+</dl>
+<p>The scanner that produces matches works only at the pack's top level — it does not recurse. A handler that receives a directory entry decides how to treat its contents. The path handler stages the whole directory into <code>$PATH</code>; the symlink handler creates one symlink for the directory as a whole. If you want a nested path handled independently, you declare it explicitly in <code>.dodot.toml</code> (via <code>[symlink.targets]</code> or by naming a file inside it in <code>[symlink] protected_paths</code>).</p>
+<h2 id="3-execution-order">3. Execution Order<a class="headerlink" href="#3-execution-order" title="Permanent link">&para;</a></h2>
+<p>Within a single pack, handlers run in a fixed, documented order. The order is driven by an <code>ExecutionPhase</code> enum whose variants are declared in execution order — adding or moving a phase is a visible, deliberate code change, not an accident of alphabetical sort.</p>
+<!-- lex:table align=lll -->
+
+<!-- /lex:table -->
+
+<p><strong>Phases, in order</strong></p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Handler</th>
+<th>Why here</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Filter</code></td>
+<td>ignore, skip, gate</td>
+<td>Drop files before any deploying handler can claim them.</td>
+</tr>
+<tr>
+<td><code>Provision</code></td>
+<td>homebrew</td>
+<td>Installs packages. Anything later may depend on tools it exposes.</td>
+</tr>
+<tr>
+<td><code>Setup</code></td>
+<td>install</td>
+<td>User-authored scripts that can lean on Provision completing first.</td>
+</tr>
+<tr>
+<td><code>PathExport</code></td>
+<td>path</td>
+<td>Stages <code>bin/</code> onto PATH; runs before ShellInit.</td>
+</tr>
+<tr>
+<td><code>ShellInit</code></td>
+<td>shell</td>
+<td>Shell startup files that may reference binaries from PathExport.</td>
+</tr>
+<tr>
+<td><code>Link</code></td>
+<td>symlink</td>
+<td>Catchall; must be last so precise handlers claim their files.</td>
+</tr>
+</tbody>
+</table>
+<p>Three design invariants pin this order down.</p>
+<p>The filter phase is always first.</p>
+<p><code>ignore</code> and <code>skip</code> exist to keep matched files away from deploying handlers. If they ran later, a precise mapping (priority 10) or the catchall (priority 0) could already have claimed the file and emitted intents — so filter handlers sit at the highest priority tier (100, 50) and run before anything else has a chance.</p>
+<p>The catchall phase is always last.</p>
+<p><code>symlink</code> is the only catchall handler (<code>MatchMode::Catchall</code>). Running it before any precise handler would let it claim files that belong elsewhere. <code>Link</code> sitting at the bottom of the enum is not a convention — it's the shape of "precise before catchall" written into the type.</p>
+<p>Code-execution phases run before configuration phases.</p>
+<p><code>Provision</code> and <code>Setup</code> produce a filesystem a user's shell needs to see (installed binaries, <code>brew</code> formulae, generated files). <code>PathExport</code>, <code>ShellInit</code>, and <code>Link</code> deploy configuration that may reference those outputs. Reversing them would let a shell rc file try to source a program that hasn't been installed yet.</p>
+<p>The preprocessing layer (<code>.tmpl</code>, <code>.plist.xml</code>, <code>.age</code>) sits <strong>upstream</strong> of this ordering — templates are rendered before rules match, so by the time the phase order kicks in every match is a concrete file. <a href="./pre-processors.lex">See</a> for how preprocessors fit into the pipeline.</p>
+<h2 id="4-cross-pack-ordering">4. Cross-Pack Ordering<a class="headerlink" href="#4-cross-pack-ordering" title="Permanent link">&para;</a></h2>
+<p>Within a pack, handlers run in the phase order above. <strong>Across</strong> packs, dodot processes packs in lexicographic order of their on-disk directory names — and that order determines every cross-pack effect: shell init source order, <code>$PATH</code> entry order, install and homebrew execution order.</p>
+<p>Most users never have to think about this. The <code>nvim</code> pack and the <code>git</code> pack don't care whose shell snippets are sourced first, and lex order over readable names lands somewhere sensible.</p>
+<h3 id="a-few-cases-do-care">A few cases do care:<a class="headerlink" href="#a-few-cases-do-care" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The Homebrew shell environment must be set up before any pack that calls <code>brew</code>. </li>
+<li><code>compinit</code> must run after completion-providing plugins but before <code>fzf-tab</code>. </li>
+<li>On a fresh install, baseline setup (xcode-select, license acceptance) must precede anything that compiles. </li>
+</ul>
+<p>For those, dodot's stance is the one borrowed from <code>/etc/init.d</code> and <code>/etc/cron.d</code>: name your directories so lex order produces the order you want. Prefixing a few directories with three digits and a separator — <code>010-brew</code>, <code>100-zsh</code>, <code>900-starship</code> — works, and is the recommended pattern for the small minority of packs where ordering actually matters. Most setups get away with a handful of <code>0NN-</code>-prefixed baseline packs at the front; the rest stays unprefixed.</p>
+<!-- lex:note -->
+
+<p>dodot does not have, and is not planning to add, a formal dependency graph or <code>before</code> / <code>after</code> declarations. The cost of getting those right is high, and the lex-order escape hatch handles the real cases.</p>
+<!-- /lex:note -->
+
+<h3 id="41-the-prefix-grammar">4.1. The Prefix Grammar<a class="headerlink" href="#41-the-prefix-grammar" title="Permanent link">&para;</a></h3>
+<h4 id="when-a-pack-directory-matches-d-_-that-is-a-run-of-digits-followed-by-or-_-followed-by-a-non-empty-stem-dodot-treats-the-prefix-as-ordering-metadata-not-as-part-of-the-packs-logical-name-three-things-follow">When a pack directory matches <code>^(\d+)[-_](.+)$</code> — that is, a run of digits followed by <code>-</code> or <code>_</code> followed by a non-empty stem — dodot treats the prefix as ordering metadata, not as part of the pack's logical name. Three things follow:<a class="headerlink" href="#when-a-pack-directory-matches-d-_-that-is-a-run-of-digits-followed-by-or-_-followed-by-a-non-empty-stem-dodot-treats-the-prefix-as-ordering-metadata-not-as-part-of-the-packs-logical-name-three-things-follow" title="Permanent link">&para;</a></h4>
+<ul>
+<li>The full directory name is the <strong>sort key</strong>: <code>010-brew</code> \&lt; <code>020-zsh</code> \&lt; <code>nvim</code> \&lt; <code>starship</code>. Prefixed packs interleave with unprefixed ones via lex order, no special casing. </li>
+<li>The <strong>display name</strong> is the stripped stem: <code>010-brew</code> → <code>brew</code>. That's what <code>dodot status</code>, <code>dodot list</code>, error messages, generated shell-init comments, and log lines all use. The prefix is invisible to every user-facing surface. </li>
+<li>CLI arguments resolve against the display name first and fall back to the raw on-disk directory: <code>dodot up brew</code> and <code>dodot up 010-brew</code> find the same pack. The display form is the recommended one; the raw form keeps muscle-memory and scripts working. </li>
+</ul>
+<p>Symlink targets follow the display name too: a <code>010-nvim/init.lua</code> deploys to <code>~/.config/nvim/init.lua</code> (where <code>nvim</code> actually reads its config), not <code>~/.config/010-nvim/init.lua</code>. The prefix lives on disk and on the sort axis; it does not leak into the user's filesystem.</p>
+<p>The 10/20/30 gap convention from <code>/etc/init.d</code> carries over: leave room between numbers so you can insert without renumbering. Three digits with leading zeros (<code>010</code>, <code>020</code>, <code>100</code>, <code>900</code>) keeps lex order matching numeric order past the 99 → 100 boundary; two digits work but break sort once you cross.</p>
+<h4 id="three-classes-of-collision-are-rejected-at-scan-time-with-both-offending-paths-in-the-error-message">Three classes of collision are rejected at scan time, with both offending paths in the error message:<a class="headerlink" href="#three-classes-of-collision-are-rejected-at-scan-time-with-both-offending-paths-in-the-error-message" title="Permanent link">&para;</a></h4>
+<ul>
+<li>A pack <code>nvim</code> and a pack <code>010-nvim</code> both exist — the display name <code>nvim</code> is ambiguous. </li>
+<li>Both <code>010-nvim</code> and <code>020-nvim</code> exist — the display name <code>nvim</code> resolves to two packs. </li>
+<li>A directory like <code>010-</code> or <code>010_</code> with no stem after the separator — a pack must have a name. </li>
+</ul>
+<p>Two packs with the same prefix and different stems (<code>010-brew</code> and <code>010-zsh</code>) are fine; lex order on the stem decides between them.</p>
+<p>(Shell Integration) for what belongs <a href="./../user/getting-started.lex">See</a><strong>above</strong> the dodot init line in your shell rc — the small set of bootstrap concerns that have to exist before dodot itself can run, and therefore can't live in a pack at all.</p>
+<h2 id="5-configuration-vs-code-execution">5. Configuration vs Code Execution<a class="headerlink" href="#5-configuration-vs-code-execution" title="Permanent link">&para;</a></h2>
+<p>Handlers fall into two categories that behave differently at deploy time. Category is derived from phase (<code>Provision</code> and <code>Setup</code> are Code Execution; the rest are Configuration).</p>
+<h3 id="51-configuration-handlers">5.1. Configuration handlers<a class="headerlink" href="#51-configuration-handlers" title="Permanent link">&para;</a></h3>
+<p>symlink, shell, and path. Their operations are idempotent filesystem work: create a link, stage a file. Running them a second time produces the same result as running them once; no special tracking is required. <code>dodot up</code> always runs them in full.</p>
+<h3 id="52-code-execution-handlers">5.2. Code execution handlers<a class="headerlink" href="#52-code-execution-handlers" title="Permanent link">&para;</a></h3>
+<p>install and homebrew. Their operations run user-authored shell commands. These are assumed <em>not</em> to be idempotent in general — <code>install.sh</code> might install packages, write files, mutate the system — and re-running them on every <code>dodot up</code> would be slow, surprising, or both. Even Brewfile processing, though nominally idempotent, can take many seconds per pack.</p>
+<p>dodot solves this with sentinels. When a code-execution handler runs, it writes a small marker file to the datastore keyed by pack, handler, and a content hash of the command. On subsequent deploys, the presence of that sentinel causes the handler to skip. To override:</p>
+<ul>
+<li><code>--no-provision</code> skips code-execution handlers entirely for this run. Configuration handlers still run. </li>
+<li><code>--provision-rerun</code> forces code-execution handlers to run even when sentinels exist. Use after changing an install script, or to re-run <code>brew bundle</code> after adding a formula. </li>
+</ul>
+<p>When the content of a code-execution input changes (you edited <code>install.sh</code>, or the rendered output of <code>install.sh.tmpl</code> changed), the sentinel's content hash no longer matches, and the handler re-runs automatically. You only need <code>--provision-rerun</code> when you want to re-run without an input change.</p>
+<h2 id="6-quick-reference">6. Quick Reference<a class="headerlink" href="#6-quick-reference" title="Permanent link">&para;</a></h2>
+<!-- lex:table align=lllll -->
+
+<!-- /lex:table -->
+
+<p><strong>Handler summary (rows in execution order)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Handler</th>
+<th>Phase</th>
+<th>Category</th>
+<th>Default claims</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ignore</td>
+<td>Filter</td>
+<td>Configuration</td>
+<td>None (user-configured via <code>[mappings] ignore</code>)</td>
+<td>Silently drop; no status entry</td>
+</tr>
+<tr>
+<td>skip</td>
+<td>Filter</td>
+<td>Configuration</td>
+<td><code>README.*</code>, <code>LICENSE.*</code>, <code>CHANGELOG.*</code>, etc.</td>
+<td>List in status as <code>skipped</code></td>
+</tr>
+<tr>
+<td>homebrew</td>
+<td>Provision</td>
+<td>Code Execution</td>
+<td><code>Brewfile</code></td>
+<td><code>brew bundle</code> once per content hash</td>
+</tr>
+<tr>
+<td>install</td>
+<td>Setup</td>
+<td>Code Execution</td>
+<td><code>install.{sh,bash,zsh}</code></td>
+<td>Run once per content hash</td>
+</tr>
+<tr>
+<td>path</td>
+<td>PathExport</td>
+<td>Configuration</td>
+<td><code>bin/</code></td>
+<td>Prepended to <code>$PATH</code></td>
+</tr>
+<tr>
+<td>shell</td>
+<td>ShellInit</td>
+<td>Configuration</td>
+<td><code>*.{sh,bash,zsh}</code> at pack root</td>
+<td>Sourced at shell login</td>
+</tr>
+<tr>
+<td>symlink</td>
+<td>Link</td>
+<td>Configuration</td>
+<td>Anything else (catchall)</td>
+<td>Link to <code>~</code> or <code>~/.config/</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-why-handlers-look-the-way-they-do">7. Why Handlers Look the Way They Do<a class="headerlink" href="#7-why-handlers-look-the-way-they-do" title="Permanent link">&para;</a></h2>
+<p>A few design decisions worth naming.</p>
+<p>Handlers do not touch the filesystem.</p>
+<p>They read matches and produce intents. The actual work of creating links, running commands, and writing sentinels happens in layers below (executor, datastore). This keeps handlers small — each is a few dozen lines — and trivially testable without a real filesystem.</p>
+<p>Handlers are replaceable but not pluggable.</p>
+<p>The trait they implement is stable enough that writing a custom handler is not hard, but dodot does not load third-party handlers at runtime. The built-in set is deliberately small; we'd rather add handlers carefully than ship a plugin system we have to maintain.</p>
+<p>The catchall is always symlink.</p>
+<p>This is a convention rather than a hard rule of the code, but it's the only combination that preserves the "just name it sensibly" promise. If no precise handler matched, we know the user wanted the file deployed somewhere sensible, and a link is the right default.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

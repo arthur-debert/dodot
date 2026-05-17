@@ -1,0 +1,1121 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/proposals/shipped/magic/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Magic - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proposal-the-magical-git-experience-with-pre-processed-files" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Magic
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#proposal-the-magical-git-experience-with-pre-processed-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposal: The Magical Git Experience with Pre Processed Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-source-control-and-dodot-git-always-wins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Source Control and dodot: git always wins
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-overbearing-solutions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Overbearing Solutions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-when-source-files-and-deploy-files-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. When Source Files and Deploy Files Differ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-dodot-have-your-cake-and-eat-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. dodot: have your cake and eat it
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. dodot: have your cake and eat it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-representational-transformations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. Representational Transformations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-generative-transformations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Generative Transformations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-magical-burgertocow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Magical BurgerToCow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-cache-that-makes-it-cheap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Cache That Makes It Cheap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-user-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The User Experience
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The User Experience">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-the-git-data-bit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Git Data Bit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-the-update-trigger-bit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Update Trigger Bit
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The Update Trigger Bit">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-the-commit-tier-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. The Commit Tier (default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-the-interactive-shell-tier-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. The Interactive-Shell Tier (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-the-external-watcher-tier-out-of-scope-but-supported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. The External-Watcher Tier (out of scope, but supported)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-conflicts-honestly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Conflicts, Honestly
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-what-this-costs-the-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What This Costs the User
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-implementation-phased" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Implementation, Phased
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-implementation-notes-vs-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Implementation Notes vs. Spec
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Implementation Notes vs. Spec">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-phased-rollout-was-r0r8-not-phases-134" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. Phased rollout was R0–R8, not Phases 1/3/4
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-hook-command-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. Hook command shape
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-tier-2-alias-supports-bash-and-zsh-errors-on-others" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3. Tier 2 alias supports bash and zsh, errors on others
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-dodot-git-install-alias-shipped-in-r7-not-deferred" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4. dodot git-install-alias shipped in R7, not deferred
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65-per-file-no_reverse-opt-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5. Per-file no_reverse opt-out
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#66-consolidated-post-up-install-ladder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.6. Consolidated post-up install ladder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#67-cfprefsd-cache-invalidation-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.7. cfprefsd cache-invalidation prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/proposals/shipped/magic.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Magic</h1>
+
+<!-- lex:note -->
+
+<p><strong>Status: implemented and shipped.</strong> Phases 1, 3, and 4 of this proposal landed in PRs #100 (R1, baseline cache + tracker swap), #101 (R2, conflict markers + safety gate), #102 (R3, `dodot transform check`), #103 (R4, install-hook), #104 (R5, `dodot refresh`), #105 (R6, template clean filter + filter installer + hook upgrade), #106 (R7, `transform status` + `git-show-alias` + `git-install-alias`), and #107 (R8, full-stack e2e). Phase 2 (plist clean/smudge) shipped earlier on its own track per [./plists.lex]. The user-facing reference for the resulting feature lives in [./../reference/template-magic.lex] and [./../reference/pre-processors.lex] §6. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom for the deviations that were accepted during implementation.</p>
+<!-- /lex:note -->
+
+<h2 id="proposal-the-magical-git-experience-with-pre-processed-files">Proposal: The Magical Git Experience with Pre Processed Files<a class="headerlink" href="#proposal-the-magical-git-experience-with-pre-processed-files" title="Permanent link">&para;</a></h2>
+<p>This file is not a feature proposal per se, but the user-facing conceptual document that captures what we see as the ideal design for future dodot — one that lets us uphold our goals and principles while imposing minimal cost on users to make it all work. See @../proposals/template-expansion.lex and @../proposals/preprocessing-pipeline.lex for context.</p>
+<p>This is a revised version of an earlier draft. Two things changed our thinking. First, we pulled encrypted files out of this story entirely — users already grok that you can't round-trip plaintext through a ciphertext, and the reference spec already says dodot does not own encryption. Second, we realized that the baseline cache the preprocessing pipeline already plans to keep (for divergence detection) turns out to be the structural trick that makes everything else cheap, honest, and compatible with the secrets design. Both changes are walked through in the sections below.</p>
+<h2 id="1-source-control-and-dodot-git-always-wins">1. Source Control and dodot: git always wins<a class="headerlink" href="#1-source-control-and-dodot-git-always-wins" title="Permanent link">&para;</a></h2>
+<p>Dotfile managers are <strong>primarily</strong> about collecting files from many locations and centralizing them for proper source control. That is the primary point, and everything else flows from it: reproducibility, recovery, history tracking. These are what source control gives you — not what the dotfile manager gives you. So it's a sensible way to define such a program as software that facilitates getting your configuration under source control.</p>
+<h2 id="2-the-overbearing-solutions">2. The Overbearing Solutions<a class="headerlink" href="#2-the-overbearing-solutions" title="Permanent link">&para;</a></h2>
+<p>The more advanced dotfile managers, in a combination of complicated designs and an ambition to handle things themselves, often overstep and take over parts of source control. Sometimes it's just a specific use case; sometimes they want you to execute git calls through them, or through a special sub-shell. The point is that in some scenario the answer to "how do I do task X (a source-control task)" changes from your vanilla git answer. This is a core principle of dodot: thou shalt not fuck around with source control. git does its job very well, and for whatever shortcomings one may see, there is an ecosystem of tools to augment it. Dotfile management is something you want for the long haul — probably the kind of thing you'll carry with you for decades. Coupling your data, workflows, and tooling to one particular solution is bound to cause you more work. Sure, git is itself such a coupling, but it's reasonable to expect git's shelf life to be much longer than any given dotfile manager's, and any newcomer is likely to be git-compatible anyway. That's why in dodot, nothing in source control is done outside git, ever. <code>git diff</code> tells you what has changed, as do history, checkout, and everything else. But what about the things that aren't really in git, or aren't entirely?</p>
+<h2 id="3-when-source-files-and-deploy-files-differ">3. When Source Files and Deploy Files Differ<a class="headerlink" href="#3-when-source-files-and-deploy-files-differ" title="Permanent link">&para;</a></h2>
+<p>In some situations, the thing you keep under source control is not the thing that gets deployed. In these cases you may still keep the source snugly under git, but <code>git diff</code> tells you what has changed in the <strong>source</strong>, not in the <strong>deployed</strong> file (nor easily could it). There are a handful of common use cases: template-expanded files; cases like our plist solution, where you transform the plain-text version of the format into the binary one for deployment, keeping both source control and the application happy; and secrets injected at render time (to avoid keeping sensitive data in source control). The question is: if the source file is fine in git and you've made a change to the deployed file, how does that change propagate back to the git source? Many tools solve this by forcing a workflow change on how you edit your configs, usually with further restrictions on which tool you use, and/or requiring an "apply" step — a change in your workflow, really. These were strict no-gos for dodot: no apply step, no workflow change, no forcing of config-editing tools. That works as long as you can keep source → deployed one-to-one, because then the deployed file can be a symlink, which has the nice properties we want. But for transformed files that breaks down. You can't have your cake and eat it too: if the two don't match, something has to mediate changes — hence the workflow imposition, the apply step, the tooling requirements. One scoping clarification before we go further: this document is specifically about files where a <strong>useful</strong> reverse path exists. That covers representational transforms (plist XML ↔ binary) and generative transforms (templates with variables and injected secrets). It does <strong>not</strong> cover encrypted files. The ciphertext you store in git and the plaintext you deploy are deliberately unrelated from git's point of view, and the whole point of encryption is that the write-back direction should be an explicit, authenticated operation — not a git hook firing silently. For those, the existing story stands: edit the plaintext manually, re-encrypt, commit the new ciphertext. That's what the reference spec already says, and we're not walking it back.</p>
+<h2 id="4-dodot-have-your-cake-and-eat-it">4. dodot: have your cake and eat it<a class="headerlink" href="#4-dodot-have-your-cake-and-eat-it" title="Permanent link">&para;</a></h2>
+<p>We wanted to support the two remaining transformation use cases but not give up on our principles: no workflow changes, no tool requirements, git is the source of truth. Other dotfile managers are correctly framing the situation: you can't have all of these at once. What dodot does isn't about breaking logical facts — it's about making a few trade-offs that, we hope, feel like the magical keepable-and-eatable cake. The answer does require a bit of reality-bending, but it works and is true <strong>in spirit</strong> to both our principles and the user's needs. The solution takes some clever bits and a willingness to add a little tooling to git. The answer is git itself. By using clean and smudge filters, plus some clever diffing, we can make this work.</p>
+<h3 id="41-representational-transformations">4.1. Representational Transformations<a class="headerlink" href="#41-representational-transformations" title="Permanent link">&para;</a></h3>
+<p>For perfectly revertible transforms, clean and smudge filters are all you need. They can deterministically describe their files, and hence produce correct <code>git diff</code> and <code>git status</code> output with no ambiguity. Plists are the canonical example: XML and binary round-trip losslessly via the <code>plist</code> Rust crate (with recursive dict-key sort applied for byte-stable output). Git stores the canonical XML (diffable); the working tree holds the binary (what the application actually reads). The clean filter converts binary → XML on <code>git add</code>; the smudge filter converts XML → binary on <code>git checkout</code>. The user never sees the transform happen; <code>git diff</code> shows a sensible XML diff of what is otherwise a binary file. The full design lives <a href="./plists.lex">in</a>. This case is clean, low-risk, and high-value. It's also logically independent of the rest of this proposal, so we plan to ship it on its own track.</p>
+<h3 id="42-generative-transformations">4.2. Generative Transformations<a class="headerlink" href="#42-generative-transformations" title="Permanent link">&para;</a></h3>
+<p>For non-revertible transformations, such as template expansions — which include secret injection — there is no deterministically correct way to reverse them, because more than one input change can produce the same expanded output. However, when we think about what dodot actually does and what the user actually needs, it's possible to lean on simple heuristics that let users have the benefit without effort. And when a genuinely ambiguous situation arises, we ask the user to confirm the right call. This stems from an observation: if, at generation time, you can tell which parts of the rendered output came from expansion versus static template content, then you can ignore the "expansion" parts when diffing, and still produce a meaningful diff of the interesting bits that should go back into source control. For lines that don't touch injected content, we can very reliably detect changes and state the reverse diff assertively. For lines that <strong>do</strong> touch injected content, we can't. In those cases, we pre-fill the file with both the original line and the changed line, and let the user decide which is right. It's a sort of merge conflict, except nothing is being merged, because the changes aren't committed yet. We believe that's a good compromise: it does the expected thing almost all the time — producing the magical outcome — with only a small cost at the genuinely ambiguous corners.</p>
+<h2 id="the-magical-burgertocow">The Magical BurgerToCow<a class="headerlink" href="#the-magical-burgertocow" title="Permanent link">&para;</a></h2>
+<p>The formal truth holds: the reverse-templating problem is unsolvable in a deterministic and general way. But we don't need to cover every possible form or be fully generalizable. We can leverage the information we already have — the source text and the values used in expansion — along with knowledge of the templating engine (minijinja) to produce diffs against the original template for the common cases, and be explicit about the ambiguous ones, asking the user to resolve them. This is done by our burgertocow <a href="https://github.com/arthur-debert/burgertocow">crate</a>, using a shadow-map approach: every variable emission is wrapped in invisible marker bytes during rendering, and the markers let us later tell which chars in the output came from which part of the template. The crate produces either an honest template-space diff or a conflict block flagging the lines it couldn't reliably reverse. Its assertiveness can be greatly enhanced with a simple best practice: hoist each expansion into a dedicated variable assignment at the top of the file. In a shell file:</p>
+<p><strong>Hoisted expansion in shell</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">GH_TOKEN</span><span class="o">=</span><span class="s2">&quot;{{ secret(&#39;op://Personal/GitHub/token&#39;) }}&quot;</span>
+</code></pre></div>
+<p><strong>Or equivalently, using minijinja's `set` tag</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>
+</code></pre></div>
+<p>This isolates expansions into dedicated lines — which is good practice regardless, because it makes the template easier to understand and change. After doing so, very few cases remain that can't be reliably diffed.</p>
+<h2 id="the-cache-that-makes-it-cheap">The Cache That Makes It Cheap<a class="headerlink" href="#the-cache-that-makes-it-cheap" title="Permanent link">&para;</a></h2>
+<p>When we first sketched this architecture, we had a real worry: if a clean filter runs on every <code>git status</code>, every <code>git diff</code>, every editor gitgutter poll, every shell prompt refresh — and it has to re-render a template that contains <code>secret()</code> calls — then every one of those now prompts for Touch ID or a 1Password unlock. That is severe auth fatigue, and it contradicts exactly the passive/active split that the secrets design carefully laid out. It was close to a dealbreaker. The way out came from noticing we already planned to keep a baseline cache for divergence detection (see preprocessing-pipeline.lex §5.2 and §6.1). The cache holds, per deployed file: a hash of the source, a hash of the render context, a hash of the rendered output, and the rendered output itself. Add one more field — the <strong>tracked render</strong>, which is the rendered output with burgertocow's one-byte markers around each variable emission — and the clean filter becomes nearly free.</p>
+<p><strong>Clean filter, fast path (the common case)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>1. hash the current deployed file
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>2. compare to baseline.rendered_hash
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>3. if equal: emit the template unchanged and exit
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>   — no burgertocow, no provider calls, microseconds
+</code></pre></div>
+<p>The vast majority of <code>git status</code> invocations fire while the deployed file is still in sync with its last <code>dodot up</code>. Nothing needs to be recomputed; the clean filter returns immediately. When the deployed file <strong>has</strong> been edited — the interesting case — we still don't need to re-render:</p>
+<p><strong>Clean filter, slow path (the user edited their deployed file)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>1. load baseline.tracked_render (cached, with markers)
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>2. run burgertocow with (template, cached_tracked_render, current_deployed)
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>3. emit the resulting patched template
+</code></pre></div>
+<p>No provider calls. The tracked render was computed and cached on the last <code>dodot up</code>, when the user authenticated once for the whole run. <code>git status</code> never prompts. The security posture of caching the tracked render is the same as caching the rendered output, which the reference spec already does: the plaintext is already on disk, visible to the user; adding a marker-annotated twin in the same directory, under the same permissions, doesn't meaningfully expand the attack surface. This is the small structural insight that makes the whole vision viable. Without it, clean filters are hostile to the secrets design. With it, they slot in cleanly.</p>
+<h2 id="the-user-experience">The User Experience<a class="headerlink" href="#the-user-experience" title="Permanent link">&para;</a></h2>
+<p>We want to be honest that the magical outcome does have user-visible costs — they're small, one-time, and per machine, but they're real. We think the best way to introduce them is incrementally, so that each step ships value on its own and the user opts into more magic only if they want it.</p>
+<h3 id="1-the-git-data-bit">1. The Git Data Bit<a class="headerlink" href="#1-the-git-data-bit" title="Permanent link">&para;</a></h3>
+<p>There are two things to wire into git: the filters themselves, and the commit-time safety net. Filters live in <code>.git/config</code> and aren't carried by the repository, so they have to be installed once per clone, per machine. <code>dodot git-install-filters</code> installs them; <code>dodot git-show-filters</code> prints the configuration so you can inspect or install it by hand. On the first <code>dodot up</code> of a pack that uses a preprocessor, dodot checks whether the filters are installed. If they aren't, it asks you whether to install them, print the script for you to run yourself, or skip (and nag next time). One Y/n per machine.</p>
+<h3 id="2-the-update-trigger-bit">2. The Update Trigger Bit<a class="headerlink" href="#2-the-update-trigger-bit" title="Permanent link">&para;</a></h3>
+<p>The last hurdle is getting git to actually <strong>use</strong> the filters. git doesn't scan every file's content on every check — instead, it only re-reads content when the file's modification time is newer than the cached version. This is a sensible optimization that normally keeps git snappy. But in our case, it poses a problem: when you update the deployed file, the deployed file's mtime changes, but the <strong>source</strong> file's mtime (the template) doesn't. git looks at the source, sees an unchanged mtime, and skips the filter — so the reverse-diff never runs. The fix for mtime itself is trivial: we copy the deployed file's mtime onto the source, so git will re-read it on the next invocation. With the cache in place, deciding <strong>which</strong> sources need a touch is cheap — we hash the deployed files and compare against the baseline, and only touch sources that are genuinely out of sync. A full <code>dodot refresh</code> over a realistic dotfile repo runs in well under a second. The interesting question is <strong>when</strong> to trigger that refresh. We see this as a ladder the user can climb as far as they want. Everyone gets tier 1 for free; tier 2 is opt-in for folks who want the fullest magic; tier 3 is there if you already have a file watcher and want to plug dodot into it.</p>
+<h4 id="21-the-commit-tier-default">2.1. The Commit Tier (default)<a class="headerlink" href="#21-the-commit-tier-default" title="Permanent link">&para;</a></h4>
+<p>The always-available answer is a pre-commit hook. <code>dodot git-install-hook</code> installs one; it runs <code>dodot refresh</code> just before the commit, so the commit snapshot always contains the right template-space changes. <code>git diff --cached</code> right before committing shows the right thing. <code>git log -p</code> shows the right thing. PR reviews show the right thing. The trade-off is that <code>git status</code> and <code>git diff HEAD</code> <strong>before</strong> you try to commit will show the template as unchanged, even if you have edits sitting in the deployed file. We think this is an acceptable default: the moment template-space diffs really matter is at commit time, and that's when the hook fires. Everyone gets this tier out of the box.</p>
+<h4 id="22-the-interactive-shell-tier-opt-in">2.2. The Interactive-Shell Tier (opt-in)<a class="headerlink" href="#22-the-interactive-shell-tier-opt-in" title="Permanent link">&para;</a></h4>
+<p><strong>For users who want `git status` and `git diff` in their interactive shell to always reflect the latest template state, we offer a shell alias or function that runs `dodot refresh` before delegating to git. Something like</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>
+</code></pre></div>
+<p>Because the refresh is cache-backed, the added latency is small enough not to feel intrusive. dodot will print the alias for your shell on request (<code>dodot git-show-alias</code>), or add it to your shell's rc file with your consent. This tier only affects your interactive shell — scripts, editors, and CI that shell out to <code>git</code> directly are unaffected, which is exactly what we want: non-interactive callers get predictable behavior, interactive use gets the magic. If this tier rocks your boat, great. If it doesn't, skip it — you still get the commit-time magic from tier 1.</p>
+<h4 id="23-the-external-watcher-tier-out-of-scope-but-supported">2.3. The External-Watcher Tier (out of scope, but supported)<a class="headerlink" href="#23-the-external-watcher-tier-out-of-scope-but-supported" title="Permanent link">&para;</a></h4>
+<p>If you already have a file watcher set up — a direnv hook, a Nix rebuild watcher, your editor's onSave handler — you can plug <code>dodot refresh</code> into it yourself. <code>dodot refresh --list-paths</code> enumerates the source templates that need to be watched, so the integration is straightforward. We don't ship a daemon of our own: it's out of scope, more invasive than we'd like, and you probably already have opinions about what watcher you use.</p>
+<h3 id="3-conflicts-honestly">3. Conflicts, Honestly<a class="headerlink" href="#3-conflicts-honestly" title="Permanent link">&para;</a></h3>
+<p>When burgertocow can't reliably reverse a change — typically because the edited line touches an expansion — it emits a conflict block into the reversed template. The block contains the original template line, the user's deployed-file edit, and clear markers around both. In the clean-filter fast/slow path these markers surface in <code>git diff</code> and <code>git status</code> exactly as you'd expect — you see them, you resolve them. The one thing we <strong>don't</strong> do is let them get committed silently: the pre-commit hook (tier 1 above) detects the markers and refuses the commit until they're resolved. So even if you're deep in a rebase and the clean filter is emitting conflict-marker-bearing templates into intermediate git operations, the only way they land in a real commit is if you yourself edit them out.</p>
+<h3 id="4-what-this-costs-the-user">4. What This Costs the User<a class="headerlink" href="#4-what-this-costs-the-user" title="Permanent link">&para;</a></h3>
+<p>Being honest about the price tag, per machine:</p>
+<ul>
+<li>one Y/n to install the clean/smudge filters and the pre-commit hook (tier 1) </li>
+<li>optionally, one Y/n to install the interactive-shell alias (tier 2) </li>
+<li>re-running the install on each new clone, because filters aren't stored in the repo (git doesn't carry them) </li>
+</ul>
+<p>Being honest about what this does <strong>not</strong> cost:</p>
+<ul>
+<li>no new CLI commands the user has to remember in daily use </li>
+<li>no workflow changes — you commit, diff, and status with vanilla git </li>
+<li>no auth prompts from passive git commands, ever </li>
+<li>no dodot-owned shell, editor, or daemon </li>
+</ul>
+<p>We think that's a good deal. The user's effort is bounded, the solution isn't too intrusive, and once installed, the magic works every time.</p>
+<h2 id="5-implementation-phased">5. Implementation, Phased<a class="headerlink" href="#5-implementation-phased" title="Permanent link">&para;</a></h2>
+<p>The phased path falls out naturally from the architecture. Each phase ships value on its own; later phases build on the cache that earlier phases already require.</p>
+<p>Phase 1: the foundation.</p>
+<p>Ship the preprocessing pipeline, the baseline cache (including the tracked-render field), burgertocow integration, <code>dodot transform check</code>, and the pre-commit hook (tier 1 above). At this point, users who adopt preprocessors get correct template-space diffs at commit time with no filter installed. This is the minimum viable magic.</p>
+<p>Phase 2: plist clean/smudge.</p>
+<p>Ship plist support as an independent track — clean/smudge filters for binary↔canonical-XML conversion (via the <code>plist</code> crate, with recursive key sorting), with their own install flow shared with phase 3. Doesn't depend on anything in phase 1; can ship in parallel. Full spec <a href="./plists.lex">in</a>.</p>
+<p>Phase 3: the template clean filter.</p>
+<p>Layer the clean filter on top of the phase-1 cache. This is the thin wrapper: hash-compare, fast-path, burgertocow on the slow path. The commit-time gate from phase 1 handles conflict markers. Opt-in filter install (the Y/n prompt on first deploy).</p>
+<p>Phase 4: the interactive-shell alias.</p>
+<p>Ship <code>dodot git-show-alias</code> and the install flow for the opt-in tier-2 alias. Purely additive over phase 3.</p>
+<p>Re-opening phase 3 or 4 is always possible if the commit-tier magic from phase 1 turns out to be sufficient in practice. We don't think it will be — the pull of <code>git status</code> telling the truth is strong — but it's good to know the earlier phases stand on their own if the later ones never ship.</p>
+<h2 id="6-implementation-notes-vs-spec">6. Implementation Notes vs. Spec<a class="headerlink" href="#6-implementation-notes-vs-spec" title="Permanent link">&para;</a></h2>
+<p>The implementation deviates from the spec above in a few places. Listed here so future readers don't mistake the spec for the source of truth:</p>
+<h3 id="61-phased-rollout-was-r0r8-not-phases-134">6.1. Phased rollout was R0–R8, not Phases 1/3/4<a class="headerlink" href="#61-phased-rollout-was-r0r8-not-phases-134" title="Permanent link">&para;</a></h3>
+<p>The phased path that actually shipped was finer-grained: R0 (burgertocow <code>from_tracked_string</code> constructor, in the burgertocow repo), R1 (baseline cache + Tracker swap), R2 (conflict markers + safety gate), R3 (<code>dodot transform check</code>), R4 (<code>dodot transform install-hook</code> + post-up prompt), R5 (<code>dodot refresh</code>), R6 (clean filter + filter installer + hook upgrade), R7 (<code>transform status</code> + <code>git-show-alias</code> + <code>git-install-alias</code>), R8 (full-stack e2e). The spec's Phase 1 corresponds roughly to R1–R4, Phase 3 to R5–R6, Phase 4 to R7. R8 was a pure-tests phase that didn't appear in the original spec; R9 was a docs-and-config phase (this update).</p>
+<h3 id="62-hook-command-shape">6.2. Hook command shape<a class="headerlink" href="#62-hook-command-shape" title="Permanent link">&para;</a></h3>
+<p>Spec says the pre-commit hook calls <code>dodot refresh</code> (Tier 1). The shipped form is two lines: <code>dodot refresh --quiet || exit 1</code> followed by <code>dodot transform check --strict || exit 1</code>. Splitting refresh and check across two shell statements rather than a single chained command lets users diagnose failure in either step independently from the hook output. The R4 install initially shipped just the strict-check line; R6 added the refresh line and the upgrade path that rewrites stale R4-shape blocks when <code>install-hook</code> is re-run.</p>
+<h3 id="63-tier-2-alias-supports-bash-and-zsh-errors-on-others">6.3. Tier 2 alias supports bash and zsh, errors on others<a class="headerlink" href="#63-tier-2-alias-supports-bash-and-zsh-errors-on-others" title="Permanent link">&para;</a></h3>
+<p>Spec proposes "your shell" generally. The shipped form supports bash and zsh; fish/nu/etc. get a clear error from <code>dodot git-show-alias --shell &lt;unsupported&gt;</code> pointing at the supported shells, and <code>Shell::detect()</code> returns <code>None</code> for unsupported <code>$SHELL</code> values rather than silently falling back to bash. Users on other shells run <code>dodot git-show-alias --shell bash</code> and adapt the snippet manually.</p>
+<h3 id="64-dodot-git-install-alias-shipped-in-r7-not-deferred">6.4. <code>dodot git-install-alias</code> shipped in R7, not deferred<a class="headerlink" href="#64-dodot-git-install-alias-shipped-in-r7-not-deferred" title="Permanent link">&para;</a></h3>
+<p>Spec §"Interactive-Shell Tier" says <code>dodot git-show-alias</code> (print only). R7 shipped both <code>git-show-alias</code> and <code>git-install-alias</code> (writes to ~/.bashrc or ~/.zshrc with idempotent guard block, mirroring the hook installer's pattern). The user-confirmation step happens through the standard install Y/n/show flow on the next post-<code>up</code> prompt rather than a separate consent screen.</p>
+<h3 id="65-per-file-no_reverse-opt-out">6.5. Per-file <code>no_reverse</code> opt-out<a class="headerlink" href="#65-per-file-no_reverse-opt-out" title="Permanent link">&para;</a></h3>
+<p>Not in the original spec. R9 added <code>[preprocessor.template] no_reverse = ["pattern", ...]</code> for templates whose content is mostly dynamic — burgertocow's heuristic produces more conflict markers than usable diffs on those, so the user opts the file out of reverse-merge while keeping divergence detection. Per-file glob patterns; pack-level <code>.dodot.toml</code> overrides root.</p>
+<h3 id="66-consolidated-post-up-install-ladder">6.6. Consolidated post-<code>up</code> install ladder<a class="headerlink" href="#66-consolidated-post-up-install-ladder" title="Permanent link">&para;</a></h3>
+<p>The original R4 / R6 install paths shipped as three sequential post-<code>up</code> prompts (plist filter, hook, template filter), each with its own Y/n. That violated the §4 promise of "one Y/n to install the clean/smudge filters and the pre-commit hook." Issue #112 tracked the reconciliation; the shipped form is a single Y/n covering whichever rungs apply, with `show` walking each component's preview block individually and `no` dismissing every applicable component at once. Each rung still has its own catalog dismissal key (`template.install_hook`, `plist.install_filters`, `template.install_filter`) so users can resurface a single rung via `dodot prompts reset \&lt;key&gt;` after a global "no". The umbrella prompt is `magic.install_ladder`.</p>
+<h3 id="67-cfprefsd-cache-invalidation-prompt">6.7. cfprefsd cache-invalidation prompt<a class="headerlink" href="#67-cfprefsd-cache-invalidation-prompt" title="Permanent link">&para;</a></h3>
+<p>Not in the original spec. Issue #109 added a separate post-`up` prompt that fires (macOS only) when `dodot up` detects a plist file in any active pack with mtime newer than the previous successful `up`. Offers `killall cfprefsd` so running GUI apps re-read fresh plist values. The detection is mtime-based via a marker file (`\&lt;data_dir&gt;/cfprefsd-needs-invalidation`) written by `up` and consumed by the prompt. Catalog key: `plist.cfprefsd_invalidate`. cfprefsd respawns immediately so there's no data-loss window.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

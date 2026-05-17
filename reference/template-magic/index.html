@@ -1,0 +1,1232 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/reference/template-magic/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Template magic - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#template-magic" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Template magic
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#template-magic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template Magic
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-setup-ladder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Setup Ladder
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. The Setup Ladder">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-tier-1-the-pre-commit-hook-always-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1. Tier 1 — the pre-commit hook (always recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-tier-2-the-template-clean-filter-recommended-once-youve-used-tier-1-for-a-bit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2. Tier 2 — the template clean filter (recommended once you've used Tier 1 for a bit)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-tier-3-the-interactive-shell-alias-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3. Tier 3 — the interactive shell alias (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-day-to-day-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Day-to-Day Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The Day-to-Day Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-edit-through-the-deployed-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. Edit through the deployed file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-inspect-with-vanilla-git" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. Inspect with vanilla git
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. Commit
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Conflicts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-inspecting-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Inspecting State
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Inspecting State">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-dodot-transform-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. dodot transform status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-dodot-transform-check-strict-dry-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. dodot transform check [--strict] [--dry-run]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-dodot-refresh-quiet-list-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. dodot refresh [--quiet] [--list-paths]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-dodot-up-and-divergent-deployed-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4. dodot up and divergent deployed files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-opting-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Opting Out
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Opting Out">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-disable-preprocessing-entirely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. Disable preprocessing entirely
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-disable-template-rendering-specifically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Disable template rendering specifically
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-per-file-skip-reverse-merge-while-keeping-rendering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Per-file: skip reverse-merge while keeping rendering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-roll-back-the-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4. Roll back the install
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-the-cost-ladder-honestly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. The Cost Ladder, Honestly
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. The Cost Ladder, Honestly">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per machine:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-paid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not paid:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-where-things-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Where Things Live
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Where Things Live">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-baseline-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. Baseline cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-hook-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. Hook block
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-filter-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3. Filter config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-alias-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4. Alias block
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-when-to-reach-for-each-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. When To Reach For Each Command
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. When To Reach For Each Command">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-daily-use-answer-is-none-of-them-git-is-the-interface-but-the-manual-escape-hatches-matter-when-somethings-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The daily-use answer is "none of them — git is the interface." But the manual escape hatches matter when something's off:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/reference/template-magic.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Template magic</h1>
+
+<h2 id="template-magic">Template Magic<a class="headerlink" href="#template-magic" title="Permanent link">&para;</a></h2>
+<p>dodot turns templates from "files you have to render manually" into files you edit live and commit normally. Once set up, your daily workflow stays vanilla git — <code>git status</code>, <code>git diff</code>, <code>git commit</code> all see the right thing without you running any dodot-specific commands.</p>
+<p>This is the user-facing walkthrough. The architectural reasoning lives <a href="./../proposals/magic.lex">at</a>.</p>
+<h2 id="1-the-setup-ladder">1. The Setup Ladder<a class="headerlink" href="#1-the-setup-ladder" title="Permanent link">&para;</a></h2>
+<p>Three install steps, in order. Each one buys a tier of correctness. You can stop at any rung — Tier 1 is the no-cost path that gives you correct commits; Tiers 2 and 3 add ambient <code>git status</code> truthfulness for users who want it.</p>
+<h3 id="11-tier-1-the-pre-commit-hook-always-recommended">1.1. Tier 1 — the pre-commit hook (always recommended)<a class="headerlink" href="#11-tier-1-the-pre-commit-hook-always-recommended" title="Permanent link">&para;</a></h3>
+<p>After your first <code>dodot up</code> that deploys a template file, dodot offers to install the pre-commit hook. Accept it once per clone, per machine, and forget about it.</p>
+<p><strong>Manual install</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>dodot<span class="w"> </span>transform<span class="w"> </span>install-hook
+</code></pre></div>
+<p><strong>What it does: writes `\&lt;dotfiles_root&gt;/.git/hooks/pre-commit` with two lines</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>dodot refresh --quiet || exit 1
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>dodot transform check --strict || exit 1
+</code></pre></div>
+<p>On every <code>git commit</code>, the hook refuses the commit if any deployed template has drifted from its baseline (running <code>dodot transform check</code>'s 4-state matrix and applying reverse-merge diffs back to source on the unambiguous cases) or if any source file carries unresolved <code>dodot-conflict</code> markers. Re-run <code>git add</code> after a refused commit and try again.</p>
+<p>Idempotent: re-running <code>install-hook</code> on a current block is a no-op, on an older block rewrites it in place, and on a hook file with non-dodot content appends our block while preserving everything else.</p>
+<h3 id="12-tier-2-the-template-clean-filter-recommended-once-youve-used-tier-1-for-a-bit">1.2. Tier 2 — the template clean filter (recommended once you've used Tier 1 for a bit)<a class="headerlink" href="#12-tier-2-the-template-clean-filter-recommended-once-youve-used-tier-1-for-a-bit" title="Permanent link">&para;</a></h3>
+<p>Tier 1 catches drift at commit time. Tier 2 makes it visible at <code>git status</code> time too.</p>
+<p><strong>Manual install</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>dodot<span class="w"> </span>template<span class="w"> </span>install-filter
+</code></pre></div>
+<p><strong>Plus one line in the repo's `.gitattributes`</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>*.tmpl filter=dodot-template
+</code></pre></div>
+<p>What it does: writes a <code>[filter "dodot-template"]</code> block to <code>.git/config</code> with <code>clean = dodot template clean --path %f</code>, <code>smudge = cat</code>, <code>required = true</code>. From then on, every <code>git status</code> / <code>git diff</code> invocation that re-reads a <code>.tmpl</code> source goes through the filter — which compares the current deployed file to the cached baseline and emits the patched template (or the original, on a fast path when nothing's changed).</p>
+<p>The filter never re-renders the template. That matters specifically because a re-render would re-trigger any <code>secret(...)</code> provider auth. Your password manager doesn't pop up every time you hit Enter in a shell.</p>
+<p>Note that Tier 2 by itself isn't enough — git's stat-cache uses mtimes to decide whether to re-read a working-tree file at all, so without Tier 3 (or a manual <code>dodot refresh</code>), a deployed-side edit doesn't trigger the filter on <code>git status</code>. Either install Tier 3 or run <code>dodot refresh</code> before the git command.</p>
+<h3 id="13-tier-3-the-interactive-shell-alias-opt-in">1.3. Tier 3 — the interactive shell alias (opt-in)<a class="headerlink" href="#13-tier-3-the-interactive-shell-alias-opt-in" title="Permanent link">&para;</a></h3>
+<p><strong>Manual install</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>dodot<span class="w"> </span>git-install-alias<span class="w">       </span><span class="c1"># auto-detects from $SHELL</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>dodot<span class="w"> </span>git-install-alias<span class="w"> </span>--shell<span class="w"> </span>zsh
+</code></pre></div>
+<p><strong>What it does: writes a managed block to `~/.bashrc` or `~/.zshrc`</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>alias git=&#39;dodot refresh --quiet &amp;&amp; command git&#39;
+</code></pre></div>
+<p>Now every <code>git</code> invocation in your interactive shell runs <code>dodot refresh</code> first — touches source mtimes for any deployed-side edits, so git re-reads through the filter and <code>git status</code> reflects the truth.</p>
+<p>Print without writing: <code>dodot git-show-alias</code>. Use this if you want to inspect the block first or paste it into a non-standard rc file. fish / nu / other shells aren't auto-supported — the show command can produce a bash snippet for adaptation.</p>
+<h2 id="2-the-day-to-day-workflow">2. The Day-to-Day Workflow<a class="headerlink" href="#2-the-day-to-day-workflow" title="Permanent link">&para;</a></h2>
+<p>Once installed, you don't run dodot directly during normal editing.</p>
+<h3 id="21-edit-through-the-deployed-file">2.1. Edit through the deployed file<a class="headerlink" href="#21-edit-through-the-deployed-file" title="Permanent link">&para;</a></h3>
+<p>Open <code>~/.config/app/cfg.toml</code> (the deployed symlink) in your editor; change <code>port = 5432</code> to <code>port = 9999</code>; save. That's it.</p>
+<h3 id="22-inspect-with-vanilla-git">2.2. Inspect with vanilla git<a class="headerlink" href="#22-inspect-with-vanilla-git" title="Permanent link">&para;</a></h3>
+<p><code>git status</code> shows <code>app/cfg.toml.tmpl</code> as modified.</p>
+<p><strong>`git diff` shows the template-space change</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>-port = 5432
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>+port = 9999
+</code></pre></div>
+<p>The <code>{{ name }}</code> line in the template stays untouched; only the static line that you actually edited propagates back.</p>
+<h3 id="23-commit">2.3. Commit<a class="headerlink" href="#23-commit" title="Permanent link">&para;</a></h3>
+<p><code>git add</code> and <code>git commit</code> like normal. The pre-commit hook runs <code>dodot transform check --strict</code> — on a clean state this is silent and the commit proceeds; on unresolved conflict markers it refuses.</p>
+<h2 id="3-conflicts">3. Conflicts<a class="headerlink" href="#3-conflicts" title="Permanent link">&para;</a></h2>
+<p><strong>burgertocow (the engine that builds template-space diffs) is honest about what it can't safely auto-merge. When you edit a line that overlaps a `{{ var }}` region, or different lines of a `{% for %}` loop differently, the reverse-merge can't pick a single template-space replacement. In those cases dodot inserts a conflict block</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>&gt;&gt;&gt;&gt;&gt;&gt; dodot-conflict (template)
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>host = &quot;{{ env.DB_HOST }}&quot;
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>====== dodot-conflict (deployed)
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>host = &quot;production.db.internal&quot;
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>&lt;&lt;&lt;&lt;&lt;&lt; dodot-conflict
+</code></pre></div>
+<p>Resolve by editing — keep one side, remove the markers — then <code>git add</code> and commit. The pre-commit hook refuses to commit while markers are still present, so you can't ship a template with a half-resolved block by accident.</p>
+<h2 id="4-inspecting-state">4. Inspecting State<a class="headerlink" href="#4-inspecting-state" title="Permanent link">&para;</a></h2>
+<h3 id="41-dodot-transform-status">4.1. <code>dodot transform status</code><a class="headerlink" href="#41-dodot-transform-status" title="Permanent link">&para;</a></h3>
+<p><strong>Read-only view. Walks the baseline cache and reports per-file state</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>$ dodot transform status
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>1 synced, 1 diverged, 0 missing
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>· synced app/cfg.toml.tmpl
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>· output_changed app/greeting.tmpl (deployed edited; run dodot transform check)
+</code></pre></div>
+<p>States: <code>synced</code> (clean), <code>input_changed</code> (source edited; next <code>up</code> re-renders), <code>output_changed</code> (deployed edited; reverse-merge can apply), <code>both_changed</code> (both sides edited; conflict likely), <code>missing_source</code> (cache stale), <code>missing_deployed</code> (rendered file gone). Always exits 0 — informational.</p>
+<h3 id="42-dodot-transform-check-strict-dry-run">4.2. <code>dodot transform check [--strict] [--dry-run]</code><a class="headerlink" href="#42-dodot-transform-check-strict-dry-run" title="Permanent link">&para;</a></h3>
+<p>Active form. Walks the cache and either:</p>
+<ul>
+<li>Applies a reverse-merge diff back to the source when burgertocow + diffy produce an unambiguous unified patch — <code>Patched</code>. Exit 0; nothing for the user to review. The patched source surfaces as modified on the next <code>git status</code>; the user runs <code>git add</code> and lands a follow-up commit (or amends). </li>
+<li>Surfaces a conflict block in the source for the ambiguous cases — <code>Conflict</code>. Exit 1; user picks a side and resolves the markers, the same way they would resolve a <code>git merge</code> conflict. </li>
+<li>Reports <code>MissingSource</code> / <code>MissingDeployed</code> / <code>NeedsRebaseline</code> (cache invariant broken). Exit 1. </li>
+</ul>
+<p><code>--dry-run</code> reports without writing. <code>--strict</code> additionally fails on unresolved markers in any source. The pre-commit hook calls <code>transform check --strict</code>; the exit-code split above means the hook lets the original commit proceed when reverse-merge succeeds cleanly, and refuses only when human review is genuinely needed.</p>
+<h3 id="43-dodot-refresh-quiet-list-paths">4.3. <code>dodot refresh [--quiet] [--list-paths]</code><a class="headerlink" href="#43-dodot-refresh-quiet-list-paths" title="Permanent link">&para;</a></h3>
+<p>Touches source mtimes for any deployed-side divergence so git's stat-cache invalidates. The Tier 3 alias calls this with <code>--quiet</code>. The <code>--list-paths</code> mode prints divergent source paths and exits without writing — for editor / file-watcher integrations that want to drive the touch themselves.</p>
+<h3 id="44-dodot-up-and-divergent-deployed-files">4.4. <code>dodot up</code> and divergent deployed files<a class="headerlink" href="#44-dodot-up-and-divergent-deployed-files" title="Permanent link">&para;</a></h3>
+<p><strong>`dodot up` will not overwrite a deployed file whose bytes have diverged from the cached baseline — that is, a deployed file you've edited in place since the last successful `up`. The render is skipped and a one-line warning surfaces</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>preserved ~/.config/app/cfg.toml (deployed file was edited since the last `dodot up`).
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>Run `dodot transform check` to reconcile, or re-run with --force to overwrite.
+</code></pre></div>
+<p>Two resolution paths:</p>
+<p>- <code>dodot transform check</code> — runs the 4-state matrix (§4.2) and applies a reverse-merge diff back to the source on the unambiguous case. Then <code>dodot up</code> proceeds normally on the next run.</p>
+<p>- <code>dodot up --force</code> — overwrites the deployed file with the rendered output, discarding the in-place edit. The escape hatch when a user knows they want the freshly-rendered output (most commonly: an env var that a template references has rotated, and the user wants the new value to land).</p>
+<p>Staleness is defined from file content, not from the runtime environment. Env vars referenced via <code>{{ env.X }}</code> are read live at render time and are intentionally <strong>not</strong> part of the cache-invalidation signal — <a href="./../proposals/preprocessing-pipeline.lex">see</a> §6.4. Stable values that should participate in invalidation belong in <code>[preprocessor.template.vars]</code> (the <code>user_vars</code> namespace), not <code>env.*</code>.</p>
+<h2 id="5-opting-out">5. Opting Out<a class="headerlink" href="#5-opting-out" title="Permanent link">&para;</a></h2>
+<p>Three opt-out levels (in addition to the standard <code>[mappings] ignore = [...]</code> for silent drop, or <code>[mappings] skip = [...]</code> for visible-but-undeployed):</p>
+<h3 id="51-disable-preprocessing-entirely">5.1. Disable preprocessing entirely<a class="headerlink" href="#51-disable-preprocessing-entirely" title="Permanent link">&para;</a></h3>
+<p>[preprocessor] enabled = false</p>
+<!-- lex:toml -->
+
+<!-- /lex:toml -->
+
+<p>All <code>.tmpl</code> files deploy verbatim with no rendering, no cache, no filter activity.</p>
+<h3 id="52-disable-template-rendering-specifically">5.2. Disable template rendering specifically<a class="headerlink" href="#52-disable-template-rendering-specifically" title="Permanent link">&para;</a></h3>
+<p>[preprocessor.template] enabled = false</p>
+<!-- lex:toml -->
+
+<!-- /lex:toml -->
+
+<p>Templates skipped; other preprocessors still run.</p>
+<h3 id="53-per-file-skip-reverse-merge-while-keeping-rendering">5.3. Per-file: skip reverse-merge while keeping rendering<a class="headerlink" href="#53-per-file-skip-reverse-merge-while-keeping-rendering" title="Permanent link">&para;</a></h3>
+<p>[preprocessor.template] no_reverse = ["complex-config.toml.tmpl", "*.gen.tmpl"]</p>
+<!-- lex:toml -->
+
+<!-- /lex:toml -->
+
+<p>Glob patterns. Files matching are still rendered on <code>dodot up</code> and tracked in the divergence cache, but <code>transform check</code> and the clean filter both skip the reverse-merge step (echo stdin / report-only). Useful for templates whose content is mostly dynamic — burgertocow's heuristic degrades on those and produces more conflict markers than usable diffs.</p>
+<p>Divergence is still detected; only auto-merge is skipped.</p>
+<h3 id="54-roll-back-the-install">5.4. Roll back the install<a class="headerlink" href="#54-roll-back-the-install" title="Permanent link">&para;</a></h3>
+<p>Filters: edit <code>.git/config</code> and remove the <code>[filter "dodot-template"]</code> block (and the <code>*.tmpl filter=dodot-template</code> line in <code>.gitattributes</code>). Hook: edit <code>.git/hooks/pre-commit</code> and delete the block between <code># &gt;&gt;&gt; dodot transform check --strict (managed by ...)</code> and <code># &lt;&lt;&lt; dodot transform check --strict &lt;&lt;&lt;</code>. Alias: edit <code>~/.bashrc</code> or <code>~/.zshrc</code> and delete the block between <code># &gt;&gt;&gt; dodot git alias (managed by ...)</code> and <code># &lt;&lt;&lt; dodot git alias &lt;&lt;&lt;</code>.</p>
+<p>Each block is grep-detectable by the <code>(managed by</code> token, so a one-liner <code>sed</code> suffices for scripted rollback.</p>
+<h2 id="6-the-cost-ladder-honestly">6. The Cost Ladder, Honestly<a class="headerlink" href="#6-the-cost-ladder-honestly" title="Permanent link">&para;</a></h2>
+<h3 id="per-machine">Per machine:<a class="headerlink" href="#per-machine" title="Permanent link">&para;</a></h3>
+<ul>
+<li>one Y/n to install the pre-commit hook (Tier 1) </li>
+<li>one Y/n to install the clean filter (Tier 2; offered after Tier 1 is in place) </li>
+<li>optionally, one Y/n to install the interactive alias (Tier 3) </li>
+<li>re-running each install on each new clone, because none of these live in the repo </li>
+</ul>
+<h3 id="not-paid">Not paid:<a class="headerlink" href="#not-paid" title="Permanent link">&para;</a></h3>
+<ul>
+<li>no new CLI commands the user has to remember in daily use </li>
+<li>no workflow changes — you commit, diff, and status with vanilla git </li>
+<li>no auth prompts from passive git commands, ever </li>
+<li>no dodot-owned shell, editor, or daemon </li>
+</ul>
+<h2 id="7-where-things-live">7. Where Things Live<a class="headerlink" href="#7-where-things-live" title="Permanent link">&para;</a></h2>
+<h3 id="71-baseline-cache">7.1. Baseline cache<a class="headerlink" href="#71-baseline-cache" title="Permanent link">&para;</a></h3>
+<p><code>&lt;XDG_CACHE_HOME&gt;/dodot/preprocessor/&lt;pack&gt;/preprocessed/&lt;filename&gt;.json</code></p>
+<p>One JSON per processed file. Fields: <code>version</code>, <code>source_path</code>, <code>rendered_hash</code>, <code>rendered_content</code>, <code>source_hash</code>, <code>context_hash</code>, <code>tracked_render</code>, <code>timestamp</code>. Re-derivable — losing the cache forces the next <code>dodot up</code> to re-baseline. The cache is what makes the clean filter cheap (fast-path is a hash compare; slow-path is <code>TrackedRender::from_tracked_string</code> + diffy, never a re-render).</p>
+<h3 id="72-hook-block">7.2. Hook block<a class="headerlink" href="#72-hook-block" title="Permanent link">&para;</a></h3>
+<p><code>&lt;dotfiles_root&gt;/.git/hooks/pre-commit</code>, between guard lines <code># &gt;&gt;&gt; dodot transform check --strict (managed by ...)</code> and <code># &lt;&lt;&lt; dodot transform check --strict &lt;&lt;&lt;</code>.</p>
+<h3 id="73-filter-config">7.3. Filter config<a class="headerlink" href="#73-filter-config" title="Permanent link">&para;</a></h3>
+<p><code>&lt;dotfiles_root&gt;/.git/config</code>, the <code>[filter "dodot-template"]</code> block.</p>
+<h3 id="74-alias-block">7.4. Alias block<a class="headerlink" href="#74-alias-block" title="Permanent link">&para;</a></h3>
+<p><code>~/.bashrc</code> or <code>~/.zshrc</code>, between guard lines <code># &gt;&gt;&gt; dodot git alias (managed by ...)</code> and <code># &lt;&lt;&lt; dodot git alias &lt;&lt;&lt;</code>.</p>
+<h2 id="8-when-to-reach-for-each-command">8. When To Reach For Each Command<a class="headerlink" href="#8-when-to-reach-for-each-command" title="Permanent link">&para;</a></h2>
+<h3 id="the-daily-use-answer-is-none-of-them-git-is-the-interface-but-the-manual-escape-hatches-matter-when-somethings-off">The daily-use answer is "none of them — git is the interface." But the manual escape hatches matter when something's off:<a class="headerlink" href="#the-daily-use-answer-is-none-of-them-git-is-the-interface-but-the-manual-escape-hatches-matter-when-somethings-off" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>dodot transform status</code> — quick read on what's diverged. Doesn't change anything. </li>
+<li><code>dodot transform check</code> — propagate deployed-side edits back to source manually (e.g. when you don't have the hook installed yet). </li>
+<li><code>dodot transform check --strict</code> — what the hook runs. </li>
+<li><code>dodot transform check --dry-run</code> — preview what would change without writing. </li>
+<li><code>dodot refresh</code> — bump source mtimes after editing the deployed file. The Tier 3 alias does this automatically. </li>
+<li><code>dodot transform install-hook</code> — install or upgrade the hook block. </li>
+<li><code>dodot template install-filter</code> — register the clean filter. </li>
+<li><code>dodot git-install-alias</code> — wire git through <code>dodot refresh</code>. </li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

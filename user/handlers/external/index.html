@@ -1,0 +1,1007 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/user/handlers/external/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>The external handler - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-external-handler" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              The external handler
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-trigger-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The trigger file
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. The trigger file">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#minimal-pack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal pack:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-entry-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Entry types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-type-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. type = "file"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-type-git-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. type = "git-repo"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-type-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. type = "archive"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-type-archive-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. type = "archive-file"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-datastore-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Datastore layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-status-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Status output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-drift-detection-check-drift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Drift detection (--check-drift)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-failure-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Failure posture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-live-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Live edits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/user/handlers/external.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="the-external-handler">The external handler<a class="headerlink" href="#the-external-handler" title="Permanent link">&para;</a></h1>
+<p>Deploys content that isn't authored by you but comes from upstream and should be refreshed over time — shell frameworks, plugin-manager bootstraps, community theme repos, single shared snippets. Declared per-pack via an <code>externals.toml</code> file at the pack root; each section declares one external resource.</p>
+<h2 id="1-the-trigger-file">1. The trigger file<a class="headerlink" href="#1-the-trigger-file" title="Permanent link">&para;</a></h2>
+<p>A pack opts in by placing <code>externals.toml</code> at its root. Each <code>[section]</code> is one external entry. The section name is the entry name.</p>
+<h3 id="minimal-pack">Minimal pack:<a class="headerlink" href="#minimal-pack" title="Permanent link">&para;</a></h3>
+<p>my-shared/</p>
+<p>externals.toml</p>
+<p>A pack can also ship regular dotfiles alongside the externals — they go through the symlink / shell / install handlers as usual.</p>
+<h2 id="2-entry-types">2. Entry types<a class="headerlink" href="#2-entry-types" title="Permanent link">&para;</a></h2>
+<p>Four <code>type</code> values are recognized:</p>
+<ul>
+<li><code>file</code> — one file from an HTTP(S) URL. </li>
+<li><code>git-repo</code> — a shallow git clone. </li>
+<li><code>archive</code> — a downloaded archive, extracted whole. </li>
+<li><code>archive-file</code> — one named member extracted from an archive. </li>
+</ul>
+<p>Every entry needs a <code>target</code> — the path where the deployed copy should appear. <code>~/...</code> is the typical form and <code>~</code> expands to <code>$HOME</code>, but absolute paths (<code>/etc/foo</code>, <code>/usr/local/share/...</code>) are accepted too. The deployed copy is always a symlink into the datastore; the source of truth lives in <code>externals.toml</code> and the upstream URL.</p>
+<h2 id="3-type-file">3. type = "file"<a class="headerlink" href="#3-type-file" title="Permanent link">&para;</a></h2>
+<p>Fetches one file from an HTTP(S) URL, verifies its sha256, and symlinks the configured target at it.</p>
+<p><strong>Example</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">[shared-aliases]</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">type</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;file&quot;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">url</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://example.com/aliases.sh&quot;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">target</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;~/.config/shared/aliases.sh&quot;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">sha256</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;abc123...&quot;</span>
+</code></pre></div>
+<p><code>sha256</code> is mandatory — an unpinned remote file has no integrity story. Bumping the value in the TOML invalidates the sentinel and forces a re-fetch.</p>
+<p>Supported URL schemes: <code>http://</code>, <code>https://</code>, and <code>file://</code> (handy for local mirrors and tests).</p>
+<h2 id="4-type-git-repo">4. type = "git-repo"<a class="headerlink" href="#4-type-git-repo" title="Permanent link">&para;</a></h2>
+<p>A shallow clone (<code>git clone --depth=1 --filter=blob:none</code>) into the datastore. Per-run freshness is upstream-driven: each <code>dodot up</code> runs <code>git ls-remote</code> to see whether the remote SHA has moved, and only re-fetches when it has.</p>
+<p><strong>Minimal entry</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">[oh-my-zsh]</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">type</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;git-repo&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">url</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://github.com/ohmyzsh/ohmyzsh.git&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">target</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;~/.oh-my-zsh&quot;</span>
+</code></pre></div>
+<p>Three optional fields tune the behavior:</p>
+<!-- lex:toml -->
+
+<!-- /lex:toml -->
+
+<dl>
+<dt><code>subpath</code></dt>
+<dd>
+<p>Sparse-checkout cone-mode pattern. Only that subtree is materialized on disk, and the target symlink points at it (not the whole clone).</p>
+</dd>
+</dl>
+<p>[p10k] type    = "git-repo" url     = "https://github.com/romkatv/powerlevel10k.git" target  = "~/.config/zsh/themes/p10k" subpath = "themes"</p>
+<!-- lex:toml -->
+
+<!-- /lex:toml -->
+
+<dl>
+<dt><code>ref</code></dt>
+<dd>
+<p>Tracking reference (tag or branch). <code>ls-remote</code> polls this reference instead of <code>HEAD</code>; refresh fires when its SHA changes.</p>
+</dd>
+</dl>
+<p>[omz-stable] type   = "git-repo" url    = "https://github.com/ohmyzsh/ohmyzsh.git" target = "~/.oh-my-zsh" ref    = "v1.0.0"</p>
+<!-- lex:toml -->
+
+<!-- /lex:toml -->
+
+<dl>
+<dt><code>commit</code></dt>
+<dd>
+<p>Frozen commit SHA. Skips <code>ls-remote</code> entirely — the local clone is compared against the configured commit and only refreshes when the user edits the TOML.</p>
+</dd>
+</dl>
+<p>[tpm] type   = "git-repo" url    = "https://github.com/tmux-plugins/tpm.git" target = "~/.tmux/plugins/tpm" commit = "3a8b3f4a5b8d1c2e3f4a5b6c7d8e9f0a1b2c3d4e"</p>
+<p><code>ref</code> and <code>commit</code> are mutually exclusive — setting both is a hard error at parse time.</p>
+<p><code>git</code> must be on <code>$PATH</code>. A missing <code>git</code> is a hard failure (the user has to fix it); other git errors (<code>ls-remote</code> flakes, fetch failures) are treated as transient and leave the cached clone in place.</p>
+<h2 id="5-type-archive">5. type = "archive"<a class="headerlink" href="#5-type-archive" title="Permanent link">&para;</a></h2>
+<p>Downloads an archive, sha256-verifies, and extracts the whole tree into the datastore. The target symlink points at the extracted directory.</p>
+<p><strong>Example</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">[theme-pack]</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">type</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;archive&quot;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">url</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://github.com/foo/themes/archive/refs/tags/v1.0.tar.gz&quot;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">target</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;~/.config/themes&quot;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">sha256</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;deadbeef...&quot;</span>
+</code></pre></div>
+<p>Supported formats: gzipped tar (<code>.tar.gz</code>, <code>.tgz</code>) and zip (<code>.zip</code>). Format is inferred from the URL filename — anything else needs an explicit <code>format = "tar-gz"</code> or <code>format = "zip"</code>.</p>
+<p>Archive entries with unsafe paths (absolute paths, <code>..</code> components) are rejected at extraction time.</p>
+<h2 id="6-type-archive-file">6. type = "archive-file"<a class="headerlink" href="#6-type-archive-file" title="Permanent link">&para;</a></h2>
+<p>Same fetch+verify pipeline as <code>archive</code>, but only one named member is extracted. The target symlink points at the single deployed file.</p>
+<p><strong>Example</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">[setup-script]</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">type</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;archive-file&quot;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">url</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://github.com/foo/bar/archive/refs/heads/main.tar.gz&quot;</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">target</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;~/.local/bin/foo-setup&quot;</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">sha256</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;feedface...&quot;</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">member</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;bar-main/scripts/setup.sh&quot;</span>
+</code></pre></div>
+<p>Useful when an archive ships many files but you only want one deployed.</p>
+<h2 id="7-datastore-layout">7. Datastore layout<a class="headerlink" href="#7-datastore-layout" title="Permanent link">&para;</a></h2>
+<p><strong>All externals land under one per-pack directory inside dodot's XDG data dir</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>$XDG_DATA_HOME/dodot/packs/&lt;pack&gt;/external/
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    &lt;entry-name&gt;/         # the fetched content
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    &lt;entry-name&gt;-...      # sentinel files
+</code></pre></div>
+<p><code>$XDG_DATA_HOME</code> defaults to <code>~/.local/share</code>, so on a stock setup the path resolves to <code>~/.local/share/dodot/packs/&lt;pack&gt;/external/</code>. If you've set <code>XDG_DATA_HOME</code> to something else, that takes precedence.</p>
+<p>For a <code>file</code> entry, <code>&lt;entry-name&gt;/&lt;basename&gt;</code> is the single fetched file. For a <code>git-repo</code> entry, <code>&lt;entry-name&gt;/</code> is the cloned tree. For <code>archive</code>, <code>&lt;entry-name&gt;/</code> is the extracted tree. For <code>archive-file</code>, <code>&lt;entry-name&gt;/&lt;basename-of-member&gt;</code> is the single extracted file.</p>
+<p>The deployed target is a symlink into this tree.</p>
+<h2 id="8-status-output">8. Status output<a class="headerlink" href="#8-status-output" title="Permanent link">&para;</a></h2>
+<p><code>dodot status</code> shows one coarse row per pack that has an <code>externals.toml</code>: deployed or pending. Per-entry detail — which entries have drifted, which couldn't be checked, which need a refresh — surfaces through <code>--check-drift</code> (next section) and through the sentinel filenames in the datastore, which encode the content signature:</p>
+<ul>
+<li><code>file</code>: <code>&lt;entry-name&gt;-&lt;sha-prefix&gt;</code> </li>
+<li><code>git-repo</code>: <code>&lt;entry-name&gt;-git-&lt;sha-prefix&gt;</code> </li>
+<li><code>archive</code>: <code>&lt;entry-name&gt;-archive-&lt;sha-prefix&gt;</code> </li>
+<li><code>archive-file</code>: <code>&lt;entry-name&gt;-archive-&lt;sha-prefix&gt;-&lt;member-hash&gt;</code> </li>
+</ul>
+<p><code>dodot probe show-data-dir</code> (or just listing the datastore directly) is the fastest way to read those off if you need to confirm which version is live for a specific entry.</p>
+<h2 id="9-drift-detection-check-drift">9. Drift detection (--check-drift)<a class="headerlink" href="#9-drift-detection-check-drift" title="Permanent link">&para;</a></h2>
+<p>Pass <code>dodot status --check-drift</code> to ask "did the user edit the deployed copy?" — a different question than upstream-freshness, which fires automatically on every <code>up</code>.</p>
+<p>Per-type behaviour:</p>
+<ul>
+<li><code>file</code> — sha256 of the deployed copy vs the configured sha256. Drift = bytes differ. </li>
+<li><code>git-repo</code> — <code>git status --porcelain</code> on the local clone. Drift = non-empty output. </li>
+<li><code>archive</code> / <code>archive-file</code> — surfaced as "not implemented" for now; silence would suggest "clean" and is misleading. </li>
+</ul>
+<p>Drift is opt-in because hashing every deployed external on every <code>status</code> invocation is wrong for big trees like <code>oh-my-zsh</code>. Edits at the deployed location will be clobbered on the next upstream refresh — externals are upstream-tracking, not authorship targets.</p>
+<h2 id="10-failure-posture">10. Failure posture<a class="headerlink" href="#10-failure-posture" title="Permanent link">&para;</a></h2>
+<p>Failures fall into two categories:</p>
+<ul>
+<li><strong>Integrity failure</strong> (sha256 mismatch on <code>file</code> / <code>archive</code>) is fatal. The bytes are refused and nothing is written. </li>
+<li><strong>Network failure</strong> is soft: the cached copy stays in place, the failure is surfaced as a non-success result, and other intents in the pack still run. <code>dodot up</code> on a plane will keep deploying everything else. </li>
+</ul>
+<h2 id="11-live-edits">11. Live edits<a class="headerlink" href="#11-live-edits" title="Permanent link">&para;</a></h2>
+<p>The deployed copy is a symlink into the datastore — so any "edit" you make at <code>~/.oh-my-zsh/...</code> lands on the datastore file, which the handler will overwrite on the next refresh.</p>
+<dl>
+<dt>What auto-propagates</dt>
+<dd>
+<p>Nothing on the source side, because there is no source on your machine. The TOML is the source.</p>
+</dd>
+<dt>What needs another <code>dodot up</code></dt>
+<dd>
+<p>Editing <code>externals.toml</code> itself — adding entries, bumping <code>sha256</code>, changing <code>ref</code> / <code>commit</code> / <code>subpath</code>, switching <code>target</code>. The next <code>up</code> re-evaluates the file and refreshes anything that moved.</p>
+</dd>
+<dt>Program-reload caveats</dt>
+<dd>
+<p>Shell frameworks like oh-my-zsh need a new shell session to pick up the deployed content (or <code>source</code> the relevant file). dodot can put the symlink in place but can't reload your running shell for you.</p>
+</dd>
+</dl>
+<p>The handler will <strong>not</strong> preserve your edits at the deployed location. If you want to customize a fetched file, copy it into your dotfiles repo and let the symlink handler deploy it from there — externals are for tracking upstream, not for editing.</p>
+<h2 id="12-configuration">12. Configuration<a class="headerlink" href="#12-configuration" title="Permanent link">&para;</a></h2>
+<p><strong>Under `[mappings]` (root or per-pack `.dodot.toml`)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">[mappings]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">externals</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;externals.toml&quot;</span><span class="p">]</span>
+</code></pre></div>
+<p>Default is <code>["externals.toml"]</code>. Override the filename if you have a strong reason; the default reads cleanly outside dodot context ("list of externals this pack pulls in") so renaming is rarely worth it.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

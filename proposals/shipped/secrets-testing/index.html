@@ -1,0 +1,1253 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/proposals/shipped/secrets-testing/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Secrets testing - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-specification-testing-strategy-for-secret-handling" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Secrets testing
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#design-specification-testing-strategy-for-secret-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Specification: Testing Strategy for Secret Handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-why-a-sibling-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Why a Sibling Spec
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-testing-seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Testing Seam
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The Testing Seam">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-single-trait-separates-dodot-logic-from-what-subprocess-we-shell-out-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A single trait separates "dodot logic" from "what subprocess we shell out to":
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-tier-0-unit-tests-default-cargo-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Tier 0 — Unit Tests (default cargo test)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Tier 0 — Unit Tests (default cargo test)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. Coverage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-mock-discipline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. Mock Discipline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-tier-1-self-contained-integration-default-ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Tier 1 — Self-Contained Integration (default CI)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Tier 1 — Self-Contained Integration (default CI)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-hermetic-fixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. Hermetic Fixtures
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-provider-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Provider Coverage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-end-to-end-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. End-to-End Tests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.3. End-to-End Tests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#beyond-per-provider-unit-style-tests-three-full-pipeline-bats-files-exercise-dodot-from-the-users-perspective" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Beyond per-provider unit-style tests, three full-pipeline bats files exercise dodot from the user's perspective:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-ci-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4. CI Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.4. CI Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-the-default-linux-runner-tier-1-needs-four-binaries-gpg-pass-age-sops-two-acceptable-install-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On the default Linux runner, tier 1 needs four binaries: gpg, pass, age, sops. Two acceptable install paths:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-tier-2-service-backed-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Tier 2 — Service-Backed Integration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Tier 2 — Service-Backed Integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-stub-first-default-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. Stub-First Default Coverage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.1. Stub-First Default Coverage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#for-op-and-bw-the-two-cloud-vault-providers-the-default-ci-runs-against-a-stub-binary-placed-on-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For op and bw — the two cloud-vault providers — the default CI runs against a stub binary placed on PATH:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-real-provider-opt-in-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Real-Provider Opt-In Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-os-level-providers-s4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. OS-Level Providers (S4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-test-doubles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Test Doubles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Test Doubles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-mocksecretprovider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. MockSecretProvider
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-panickingprovider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. PanickingProvider
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-stub-binaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3. Stub Binaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-ai-agent-local-developer-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. AI Agent / Local Developer Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. AI Agent / Local Developer Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-dev-shellsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. dev-shell.sh
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.1. dev-shell.sh">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-new-helper-testse2ebatshelpersdev-shellsh-fixture-name-reuses-the-same-setup-functions-a-bats-file-would-source-then-drops-the-user-agent-into-an-interactive-subshell-with-all-the-env-vars-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A new helper tests/e2e/bats/helpers/dev-shell.sh &lt;fixture-name&gt; reuses the same setup functions a .bats file would source, then drops the user / agent into an interactive subshell with all the env vars set:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-decisions-and-open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Decisions and Open Questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-cross-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Cross-References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/proposals/shipped/secrets-testing.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Secrets testing</h1>
+
+<h2 id="design-specification-testing-strategy-for-secret-handling">Design Specification: Testing Strategy for Secret Handling<a class="headerlink" href="#design-specification-testing-strategy-for-secret-handling" title="Permanent link">&para;</a></h2>
+<!-- lex:note -->
+
+<p><strong>Status: implemented and shipped alongside [./secrets.lex].</strong> Tier 0 (unit tests with <code>MockSecretProvider</code>) and Tier 1 (hermetic real-binary tests in <code>tests/e2e/bats/test_secrets_*.bats</code> for <code>pass</code>, <code>age</code>, <code>gpg</code>) shipped across PRs dodot#128–#132. Tier 2 (op / bw stub binaries on PATH for default CI; opt-in real-provider workflow) shipped its stub side via `tests/e2e/bats/helpers/secrets_stubs.bash`; the real-provider workflow is deferred. Tier-0 tests for AST pre-walk and per-provider batching are deferred — those features didn't ship in S2 (see [./secrets.lex] §9.1). The macOS / Linux dedicated CI runners for `keychain` and `secret-tool` per §5.3 are also deferred — those providers ship with tier-0 unit tests only; see [./secrets.lex] §9.1 for the rationale (real OS keystores aren't safe to write from automated tests without infra). This proposal is preserved as historical design context — *not* a maintained spec. The user-facing testing notes live alongside the providers in [./../../dev/secret.lex] §6.</p>
+<!-- /lex:note -->
+
+<p>This document is the testing companion <a href="./secrets.lex">to</a>. It specifies how the secrets work is unit-tested, how integrations with external tooling (provider CLIs, gpg, age, sops) are exercised, and how the same tests run both locally and in CI without per-developer setup. <a href="./secrets.lex">Read</a> first for the feature design; this document only covers verification.</p>
+<h2 id="1-why-a-sibling-spec">1. Why a Sibling Spec<a class="headerlink" href="#1-why-a-sibling-spec" title="Permanent link">&para;</a></h2>
+<p>The secrets work is unusually integration-heavy. Above the dodot/burgertocow seam everything is rust-native and unit-testable. Below it, every supported provider is a subprocess against a tool dodot does not own (<code>gpg</code>, <code>age</code>, <code>sops</code>, <code>op</code>, <code>bw</code>, <code>pass</code>, <code>secret-tool</code>, <code>security</code>). Glue code is the dominant failure surface: command syntax drift, output-parsing changes between tool versions, error-mapping mismatches, auth-state assumptions that hold on the developer's box but not in CI.</p>
+<p>Testing for this kind of glue requires a different discipline from "unit-test the function." Bundling the strategy <a href="./secrets.lex">into</a> would either bloat that document or hide the integration discipline behind feature design. The sibling shape lets each document stay focused: secrets.lex defines what we ship; this document defines how we know it works.</p>
+<h2 id="2-the-testing-seam">2. The Testing Seam<a class="headerlink" href="#2-the-testing-seam" title="Permanent link">&para;</a></h2>
+<h3 id="a-single-trait-separates-dodot-logic-from-what-subprocess-we-shell-out-to">A single trait separates "dodot logic" from "what subprocess we shell out to":<a class="headerlink" href="#a-single-trait-separates-dodot-logic-from-what-subprocess-we-shell-out-to" title="Permanent link">&para;</a></h3>
+<p>trait SecretProvider {</p>
+<p>fn scheme(\&amp;self)  -&gt; \&str; fn resolve(\&amp;self, reference: \&amp;str) -&gt; Result\&lt;SecretString&gt;; fn probe(\&amp;self) -&gt; ProbeResult;</p>
+<p>}</p>
+<dl>
+<dt>Above the trait — <strong>everything</strong> the tests of section 3 cover — is pure dodot</dt>
+<dd>
+<ul>
+<li>Reference parsing per scheme </li>
+<li>The <code>secret()</code> MiniJinja function and its caching </li>
+<li>AST pre-walk for batched provider calls </li>
+<li>Sidecar serialisation </li>
+<li>Sentinel construction </li>
+<li><code>PreprocessMode::Active</code> / <code>Passive</code> gating (see secrets.lex §7.4) </li>
+<li>Error UX (mapping <code>probe()</code> results to user-facing messages) </li>
+<li>Multi-line refusal at render time (secrets.lex §3.4) </li>
+</ul>
+</dd>
+</dl>
+<p>Below the trait — what section 4 covers — is the per-provider subprocess work: command shape, env-var handling, output parsing, exit-code mapping.</p>
+<p>This is the same shape as our existing <code>Fs</code> and <code>CommandRunner</code> traits in dodot, and it carries the same testability discipline: above-trait code is unit-tested with a mock; below-trait code is integration-tested with the real binary.</p>
+<h2 id="3-tier-0-unit-tests-default-cargo-test">3. Tier 0 — Unit Tests (default <code>cargo test</code>)<a class="headerlink" href="#3-tier-0-unit-tests-default-cargo-test" title="Permanent link">&para;</a></h2>
+<p>Pure dodot logic. Runs on every PR. No external binaries. No environment dependencies. The mock provider used here is <code>MockSecretProvider</code>, a test-only impl that returns canned values from a <code>HashMap&lt;reference, value&gt;</code> and counts invocations.</p>
+<h3 id="31-coverage">3.1. Coverage<a class="headerlink" href="#31-coverage" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Reference parsing: <code>op://Vault/Item/Field</code>, <code>pass:path/to/x</code>, <code>sops:f.yaml#k.path</code>, two-arg form for raw age. </li>
+<li><code>SecretString</code> zero-on-drop, refuses Debug / Display formatting. </li>
+<li>Sidecar serialise / deserialise round-trip; missing-sidecar treated as "no secret ranges to skip" (empty mask). </li>
+<li>The <code>secret()</code> MiniJinja function: dispatches to the right mock by scheme, returns the mocked value, caches within a single render pass (each unique reference resolves once even if used N times). </li>
+<li>AST pre-walk: produces the expected reference set for a given template. </li>
+<li>Batching: same-provider references collapse into one provider call per <code>dodot up</code>. </li>
+<li>Mode gating: <code>secret()</code> invoked under <code>PreprocessMode::Passive</code> returns the §7.4 <code>[SECRET: &lt;reference&gt;]</code> placeholder and never invokes a provider. Pin this with a <code>PanickingProvider</code> mock that aborts on <code>resolve()</code>; status / dry-run runs against a templated pack must not panic. Same shape as the existing tests for <code>up_dry_run_does_not_write_to_datastore</code> (commands/tests.rs). </li>
+<li>Multi-line refusal: a mock returning <code>"a\nb"</code> produces the documented render-time error (secrets.lex §3.4); whole-file path is suggested in the error body. </li>
+<li>Sentinel: rendered-bytes hash changes when the mock returns a different value across runs; secret rotation flows through. </li>
+<li>Error UX: each <code>probe()</code> outcome (<code>NotInstalled</code>, <code>NotAuthenticated</code>, <code>ReferenceNotFound</code>) maps to the documented user-facing message in secrets.lex §5.4. </li>
+</ul>
+<h3 id="32-mock-discipline">3.2. Mock Discipline<a class="headerlink" href="#32-mock-discipline" title="Permanent link">&para;</a></h3>
+<p><code>MockSecretProvider</code> is the only mock allowed in tier 0. Tests must NOT shell out, must NOT touch the network, must NOT depend on <code>$HOME</code> contents. A tier-0 test that needs a real provider belongs in tier 1.</p>
+<h2 id="4-tier-1-self-contained-integration-default-ci">4. Tier 1 — Self-Contained Integration (default CI)<a class="headerlink" href="#4-tier-1-self-contained-integration-default-ci" title="Permanent link">&para;</a></h2>
+<p>Real provider impls + real binaries + hermetic per-test fixtures. Runs on every PR on the Linux CI runner. No accounts, no network, no developer-machine config bleed-through.</p>
+<h3 id="41-hermetic-fixtures">4.1. Hermetic Fixtures<a class="headerlink" href="#41-hermetic-fixtures" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>Each test gets a sandbox with isolated environment</dt>
+<dd>
+<p>$SANDBOX/gnupg                -&gt; $GNUPGHOME $SANDBOX/password-store       -&gt; $PASSWORD_STORE_DIR $SANDBOX/sops-keys/age.txt    -&gt; $SOPS_AGE_KEY_FILE $SANDBOX/dotfiles             -&gt; $DOTFILES_ROOT $SANDBOX/data                 -&gt; $XDG_DATA_HOME $SANDBOX/cache                -&gt; $XDG_CACHE_HOME $SANDBOX/config               -&gt; $XDG_CONFIG_HOME</p>
+</dd>
+<dt>Fixture setup runs in <code>setup()</code></dt>
+<dd>
+<ul>
+<li>Generate a no-passphrase test gpg keypair via <code>gpg --batch --gen-key</code> with a deterministic UID like <code>dodot-test@example.invalid</code>. </li>
+<li>Initialise pass: <code>pass init &lt;key-id&gt;</code>; insert known fixture entries. </li>
+<li>Generate an age keypair via <code>age-keygen</code>; write to <code>$SOPS_AGE_KEY_FILE</code>. </li>
+<li>Encrypt a fixture YAML with sops to exercise the sops provider. </li>
+</ul>
+</dd>
+</dl>
+<p>Fixture teardown runs in <code>teardown()</code>: <code>rm -rf $SANDBOX</code>. No state survives between tests.</p>
+<p>Helpers live in <code>tests/e2e/bats/helpers/secrets_fixtures.bash</code>. The brew muzzle pattern from PR dodot#120 is the precedent: reusable bash functions, sourced from each <code>.bats</code> file's <code>setup()</code>.</p>
+<h3 id="42-provider-coverage">4.2. Provider Coverage<a class="headerlink" href="#42-provider-coverage" title="Permanent link">&para;</a></h3>
+<!-- lex:table -->
+
+<!-- /lex:table -->
+
+<p>| Provider              | Binary                  | Hermetic? | What gets tested                                                                                    | | pass                  | <code>pass</code>, <code>gpg</code>           | Yes       | Reference resolution, missing-entry error, gpg-agent passphrase-less unlock                         | | sops                  | <code>sops</code>, <code>age</code>           | Yes       | YAML key extraction (<code>sops:file.yaml#path.to.key</code>), missing-key error, decrypt failure              | | age (whole-file)      | <code>age</code>                   | Yes       | Decrypt, mode 0600 enforcement, plaintext-passes-through-symlink                                    | | gpg (whole-file)      | <code>gpg</code>                   | Yes       | Same shape as age, different cipher; uses the shared test keypair                                   |</p>
+<p>These four providers cover the full secrets.lex story for value-injection (pass, sops) and whole-file deploy (age, gpg). They are the secrets work's primary regression net.</p>
+<h3 id="43-end-to-end-tests">4.3. End-to-End Tests<a class="headerlink" href="#43-end-to-end-tests" title="Permanent link">&para;</a></h3>
+<h4 id="beyond-per-provider-unit-style-tests-three-full-pipeline-bats-files-exercise-dodot-from-the-users-perspective">Beyond per-provider unit-style tests, three full-pipeline <code>bats</code> files exercise dodot from the user's perspective:<a class="headerlink" href="#beyond-per-provider-unit-style-tests-three-full-pipeline-bats-files-exercise-dodot-from-the-users-perspective" title="Permanent link">&para;</a></h4>
+<p>test_secrets_value_injection.bats   - dodot up renders a templated config with <code>{{ secret("pass:...") }}</code> and <code>{{ secret("sops:...") }}</code>, deploys via symlink, asserts the rendered file contains the resolved value. test_secrets_wholefile.bats         - dodot up deploys ssh/id_ed25519.age and a Brewfile.gpg, asserts symlinks land at the right paths with mode 0600. test_secrets_passive_contract.bats  - status + up --dry-run against a templated pack with the panicking-provider crate-level test fixture (see §6.1) — no provider invoked, no datastore writes.</p>
+<p>These run with the real provider binaries against fixture data. Pin the §7.4 contract end-to-end in addition to the trait-level tests in tier 0.</p>
+<h3 id="44-ci-setup">4.4. CI Setup<a class="headerlink" href="#44-ci-setup" title="Permanent link">&para;</a></h3>
+<h4 id="on-the-default-linux-runner-tier-1-needs-four-binaries-gpg-pass-age-sops-two-acceptable-install-paths">On the default Linux runner, tier 1 needs four binaries: <code>gpg</code>, <code>pass</code>, <code>age</code>, <code>sops</code>. Two acceptable install paths:<a class="headerlink" href="#on-the-default-linux-runner-tier-1-needs-four-binaries-gpg-pass-age-sops-two-acceptable-install-paths" title="Permanent link">&para;</a></h4>
+<ol>
+<li><code>apt install gnupg pass age</code> + manual <code>sops</code> from a release tarball (sops isn't in Debian stable). One-liner in the workflow. </li>
+<li><code>mise install</code> against a pinned <code>.tool-versions</code> file. Survives ubuntu-image bumps better; costs ~30s of CI per run. </li>
+</ol>
+<p>Recommendation: (b). The version-pinning matters because tier 1 catches output-parsing drift, and an ubuntu-image bump that quietly rotates one of the binaries could surface as a flaky test rather than as the upgrade signal it is. (a) is the fallback if <code>mise</code> infra is more friction than the version-pin is worth.</p>
+<h2 id="5-tier-2-service-backed-integration">5. Tier 2 — Service-Backed Integration<a class="headerlink" href="#5-tier-2-service-backed-integration" title="Permanent link">&para;</a></h2>
+<p>Real provider CLIs that need an account or system service.</p>
+<h3 id="51-stub-first-default-coverage">5.1. Stub-First Default Coverage<a class="headerlink" href="#51-stub-first-default-coverage" title="Permanent link">&para;</a></h3>
+<h4 id="for-op-and-bw-the-two-cloud-vault-providers-the-default-ci-runs-against-a-stub-binary-placed-on-path">For <code>op</code> and <code>bw</code> — the two cloud-vault providers — the default CI runs against a <strong>stub binary</strong> placed on PATH:<a class="headerlink" href="#for-op-and-bw-the-two-cloud-vault-providers-the-default-ci-runs-against-a-stub-binary-placed-on-path" title="Permanent link">&para;</a></h4>
+<p>tests/fixtures/stubs/op tests/fixtures/stubs/bw</p>
+<p>Each stub is a small bash script that accepts the subset of the real CLI's command shape dodot uses, reads from a fixture file under <code>$SANDBOX/stub-vault/</code>, and exits with the same codes the real binary would (0 for success, distinct non-zero codes for "not authenticated", "ref not found", etc.).</p>
+<p><code>tests/e2e/bats/helpers/secrets_stubs.bash</code> prepends <code>tests/fixtures/stubs</code> to PATH for tier-2 tests. The same pattern shipped in PR dodot#120 (the brew muzzle); it's known to work.</p>
+<dl>
+<dt>What this gets us</dt>
+<dd>
+<ul>
+<li>Coverage of dodot's op / bw provider implementations against a representative command shape on every PR. </li>
+<li>No account dependency, no flakiness from cloud-service availability. </li>
+<li>When the real binary's CLI shape drifts (a major version bumps a flag), the stub model goes stale — caught by §5.2's opt-in workflow. </li>
+</ul>
+</dd>
+</dl>
+<h3 id="52-real-provider-opt-in-workflow">5.2. Real-Provider Opt-In Workflow<a class="headerlink" href="#52-real-provider-opt-in-workflow" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>A separate workflow (<code>.github/workflows/secrets-real-providers.yml</code>) runs the same <code>.bats</code> files with the stubs <strong>removed</strong> from PATH and the real CLIs in their place, authenticated against fixture vaults via</dt>
+<dd>
+<ul>
+<li><code>op</code>: <code>OP_SERVICE_ACCOUNT_TOKEN</code> (GitHub repo secret, scoped to a dedicated test vault) </li>
+<li><code>bw</code>: <code>BW_CLIENT_ID</code> + <code>BW_CLIENT_SECRET</code> (API-key auth, dedicated test vault) </li>
+</ul>
+</dd>
+</dl>
+<p>Trigger: weekly cron + manual <code>workflow_dispatch</code>. Not on every PR — keeps PR latency down and avoids burning provider rate limits on every push.</p>
+<p>The same assertions run against both stub and real-binary modes. A test that passes against the stub but fails against the real binary tells us the stub model is stale; a test that passes against the real binary but fails against the stub tells us the stub is over-permissive. Both are valuable failure shapes.</p>
+<h3 id="53-os-level-providers-s4">5.3. OS-Level Providers (S4)<a class="headerlink" href="#53-os-level-providers-s4" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>macOS Keychain (via <code>security</code>) and the freedesktop Secret Service (via <code>secret-tool</code> against <code>dbus-daemon</code> + <code>gnome-keyring</code> or <code>keepassxc</code>) are deferred to Phase S4 of secrets.lex. When that phase ships</dt>
+<dd>
+<ul>
+<li>Keychain: dedicated macOS CI runner, since the <code>security</code> command isn't usefully mockable across platforms. Manual interactive prompts can't run hermetically; tests gate on a pre-unlocked keychain set up by the workflow. </li>
+<li>Secret Service: dedicated Linux CI job that brings up <code>dbus-daemon</code> + a headless secret backend. Self-contained but heavier than tier 1. </li>
+</ul>
+</dd>
+</dl>
+<p>Until S4, neither provider has a test target. Mark the providers as "manual testing only" in their probe output.</p>
+<h2 id="6-test-doubles">6. Test Doubles<a class="headerlink" href="#6-test-doubles" title="Permanent link">&para;</a></h2>
+<h3 id="61-mocksecretprovider">6.1. <code>MockSecretProvider</code><a class="headerlink" href="#61-mocksecretprovider" title="Permanent link">&para;</a></h3>
+<p>Test-only <code>SecretProvider</code> impl. Exposed under <code>#[cfg(test)]</code>. Constructor takes a <code>HashMap&lt;String, String&gt;</code> of <code>reference -&gt; value</code> pairs and an optional <code>Vec&lt;String&gt;</code> of "panic on these references" entries. Tracks invocation count for batching assertions. Lives in <code>crates/dodot-lib/src/secret/test_support.rs</code> alongside the real registry.</p>
+<h3 id="62-panickingprovider">6.2. <code>PanickingProvider</code><a class="headerlink" href="#62-panickingprovider" title="Permanent link">&para;</a></h3>
+<p>A <code>SecretProvider</code> whose <code>resolve()</code> calls <code>panic!()</code>. Used to pin the §7.4 Passive contract: a status / dry-run flow that touches a templated pack with this provider registered must complete without panicking — proves no provider call happened.</p>
+<h3 id="63-stub-binaries">6.3. Stub Binaries<a class="headerlink" href="#63-stub-binaries" title="Permanent link">&para;</a></h3>
+<p>Bash scripts under <code>tests/fixtures/stubs/</code>. Self-contained, reviewable as plain text. Each begins with a documentation block listing the subset of CLI shape it covers and the corresponding real-binary version it was modelled against. When a stub is updated to track a new real-binary version, the doc block is updated in the same commit. Easy review surface.</p>
+<h2 id="7-ai-agent-local-developer-workflow">7. AI Agent / Local Developer Workflow<a class="headerlink" href="#7-ai-agent-local-developer-workflow" title="Permanent link">&para;</a></h2>
+<p>Implementation work on this track will be split across long sessions, much of it driven by an AI coding agent. The agent needs to be able to drop into a sandbox with all fixtures initialised and explore against the real toolchain — running <code>dodot up</code>, <code>pass show</code>, <code>sops --decrypt</code>, etc., to debug behaviour. Bats's "set up sandbox per test" model is the right primitive but isn't directly invocable outside a test run.</p>
+<h3 id="71-dev-shellsh">7.1. dev-shell.sh<a class="headerlink" href="#71-dev-shellsh" title="Permanent link">&para;</a></h3>
+<h4 id="a-new-helper-testse2ebatshelpersdev-shellsh-fixture-name-reuses-the-same-setup-functions-a-bats-file-would-source-then-drops-the-user-agent-into-an-interactive-subshell-with-all-the-env-vars-set">A new helper <code>tests/e2e/bats/helpers/dev-shell.sh &lt;fixture-name&gt;</code> reuses the same setup functions a <code>.bats</code> file would source, then drops the user / agent into an interactive subshell with all the env vars set:<a class="headerlink" href="#a-new-helper-testse2ebatshelpersdev-shellsh-fixture-name-reuses-the-same-setup-functions-a-bats-file-would-source-then-drops-the-user-agent-into-an-interactive-subshell-with-all-the-env-vars-set" title="Permanent link">&para;</a></h4>
+<p>$ ./tests/e2e/bats/helpers/dev-shell.sh secrets-pass [sandbox: /tmp/dodot-dev-XXX] [gpg key id: \&lt;auto-generated&gt;] [pass entries seeded: db_password, github_token] $ pass show test-secrets/db_password hunter2-from-fixture $ dodot up ...</p>
+<dl>
+<dt>Available fixtures</dt>
+<dd>
+<p>secrets-pass         pass + gpg, no passphrase, fixture entries secrets-sops         sops + age, encrypted YAML secrets-age          age whole-file, fixture encrypted file secrets-gpg          gpg whole-file, fixture encrypted file secrets-op-stub      op stub binary on PATH, fixture vault secrets-bw-stub      bw stub binary on PATH, fixture vault secrets-op-real      requires OP_SERVICE_ACCOUNT_TOKEN; uses real op CLI secrets-bw-real      requires BW_CLIENT_ID + BW_CLIENT_SECRET</p>
+</dd>
+</dl>
+<p>Cleanup runs on subshell exit (<code>trap "rm -rf $SANDBOX" EXIT</code>). The agent never accumulates state.</p>
+<h2 id="8-decisions-and-open-questions">8. Decisions and Open Questions<a class="headerlink" href="#8-decisions-and-open-questions" title="Permanent link">&para;</a></h2>
+<dl>
+<dt>Decided up-front in this document</dt>
+<dd>
+<ul>
+<li>SecretProvider trait is the single mock seam. </li>
+<li>Tier 0 uses MockSecretProvider only — no real binaries. </li>
+<li>Tier 1 covers pass / sops / age / gpg with real binaries on default CI. </li>
+<li>Tier 2 (op / bw) ships stubs by default + opt-in real-provider workflow. </li>
+<li>Linux is the default CI substrate; macOS / dbus jobs land with their corresponding S4 phase. </li>
+</ul>
+</dd>
+<dt>Decisions still to make at implementation time</dt>
+<dd>
+<ul>
+<li>Pin tool versions via <code>mise</code> (recommended) or <code>apt</code> direct (fallback). </li>
+<li>Real-provider workflow trigger: weekly cron + workflow_dispatch (recommended) vs. nightly cron (more flake noise) vs. manual-only (fewer signals from drift). </li>
+<li>Stub binary model fidelity: how much of <code>op</code> / <code>bw</code> do we actually reproduce? Start with the read paths dodot uses (<code>op read</code>, <code>bw get item</code>); add commands as the implementation needs them. </li>
+</ul>
+</dd>
+</dl>
+<h2 id="9-cross-references">9. Cross-References<a class="headerlink" href="#9-cross-references" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="./secrets.lex">§5.1</a> — <code>SecretProvider</code> trait surface. </li>
+<li><a href="./secrets.lex">§7.4</a> — Passive contract; tier-0 mode-gating tests pin it. </li>
+<li><a href="./secrets.lex">§3.4</a> — Multi-line refusal; tier-0 test asserts the documented error. </li>
+<li><a href="./secrets.lex">§4.5</a> — Refusal of <code>dodot secret edit</code>; no test for this since the feature is permanently out of scope. </li>
+<li>dodot#120 (merged) — brew muzzle pattern; precedent for stub binaries on PATH in bats setup. </li>
+<li>dodot#126 (merged) — <code>PreprocessMode::{Active, Passive}</code>; the runtime contract tier-0 / tier-1 tests pin. </li>
+<li>burgertocow#13 — the masking API; integration tests for the mask path live in tier 1 once burgertocow v0.4.0 lands and the dodot side wires it up. </li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1808 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/proposals/shipped/preprocessing-pipeline/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Preprocessing pipeline - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-specification-preprocessing-pipeline" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Preprocessing pipeline
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#design-specification-preprocessing-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Specification: Preprocessing Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-core-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Core Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-transformation-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Transformation Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Transformation Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-generative-one-way-transformations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. Generative (One-Way) Transformations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-representational-two-way-transformations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2. Representational (Two-Way) Transformations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-opaque-write-only-transformations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3. Opaque (Write-Only) Transformations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-architecture-preprocessing-as-a-pipeline-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Architecture: Preprocessing as a Pipeline Phase
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Architecture: Preprocessing as a Pipeline Phase">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-pipeline-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. Pipeline Flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.1. Pipeline Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-current-dodot-execution-pipeline-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The current dodot execution pipeline is:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-new-pipeline-inserts-a-preprocessing-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The new pipeline inserts a preprocessing phase:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-why-not-a-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. Why Not a Handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-virtual-match-injection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3. Virtual Match Injection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.3. Virtual Match Injection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#after-a-preprocessor-expands-a-file-the-result-is-a-virtual-rulematch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After a preprocessor expands a file, the result is a virtual RuleMatch:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-collision-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4. Collision Detection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.4. Collision Detection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#at-the-merge-step-virtual-matches-are-checked-against-regular-matches-if-a-pack-contains-both-configtoml-and-configtomltmpl-the-expanded-form-would-clobber-the-regular-file-this-is-detected-and-rejected-with-a-clear-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        At the merge step, virtual matches are checked against regular matches. If a pack contains both config.toml and config.toml.tmpl, the expanded form would clobber the regular file. This is detected and rejected with a clear error:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-preprocessor-trait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The Preprocessor Trait
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The Preprocessor Trait">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-shared-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. Shared Interface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-shared-responsibilities-pipeline-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Shared Responsibilities (Pipeline Level)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-specialized-responsibilities-preprocessor-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. Specialized Responsibilities (Preprocessor Level)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Storage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Storage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-expanded-files-datastore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. Expanded Files: Datastore
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.1. Expanded Files: Datastore">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#expanded-files-are-written-as-regular-files-not-symlinks-in-the-datastore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expanded files are written as regular files (not symlinks) in the datastore:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-datastore-trait-gains-a-new-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The DataStore trait gains a new method:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-baselines-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Baselines: Cache
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.2. Baselines: Cache">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#baseline-data-for-divergence-detection-lives-in-the-xdg-cache-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baseline data for divergence detection lives in the XDG cache directory:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-divergence-detection-and-the-git-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Divergence Detection and the Git Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Divergence Detection and the Git Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. Detection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6.1. Detection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#divergence-is-detected-by-comparing-the-current-deployed-file-against-the-cached-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Divergence is detected by comparing the current deployed file against the cached baseline:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additionally-input-change-is-detected-by-comparing-source-and-context-hashes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Additionally, input change is detected by comparing source and context hashes:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#this-produces-a-4-state-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        This produces a 4-state matrix:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-the-git-integration-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. The Git Integration Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-dodot-conflict-markers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3. Dodot Conflict Markers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6.3. Dodot Conflict Markers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#for-ambiguous-changes-that-require-user-decision-dodot-inserts-its-own-conflict-markers-the-shipped-form-is-five-lines-three-marker-lines-bracketing-two-content-sections-structurally-analogous-to-gits-merge-conflict-markers-but-with-the-angle-direction-inverted-so-a-file-with-both-kinds-of-conflict-can-be-pattern-matched-independently" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For ambiguous changes that require user decision, dodot inserts its own conflict markers. The shipped form is five lines (three marker lines bracketing two content sections), structurally analogous to git's merge-conflict markers but with the angle direction inverted so a file with both kinds of conflict can be pattern-matched independently:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dodot-up-checks-source-files-for-unresolved-markers-before-expanding-if-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dodot up checks source files for unresolved markers before expanding. If found:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-re-deploy-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4. Re-deploy Behavior
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6.4. Re-deploy Behavior">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-dodot-up-encounters-a-previously-expanded-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When dodot up encounters a previously-expanded file:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-preprocessor-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. Preprocessor Section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7.1. Preprocessor Section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#preprocessor-configuration-lives-in-its-own-section-of-dodottoml-following-the-same-3-layer-hierarchy-defaults-root-pack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preprocessor configuration lives in its own section of .dodot.toml, following the same 3-layer hierarchy (defaults \&lt; root \&lt; pack):
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-opt-out-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. Opt-Out Levels
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-testability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Testability
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Testability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-mock-preprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1. Mock Preprocessor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.1. Mock Preprocessor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-test-only-mockpreprocessor-that-implements-the-preprocessor-trait-with-configurable-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A test-only MockPreprocessor that implements the Preprocessor trait with configurable behavior:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-virtual-match-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2. Virtual Match Helpers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.2. Virtual Match Helpers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-utilities-for-creating-virtual-rulematches-directly-bypassing-the-preprocessing-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test utilities for creating virtual RuleMatches directly, bypassing the preprocessing phase:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-tempenvironment-extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3. TempEnvironment Extensions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8.3. TempEnvironment Extensions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-existing-tempenvironment-builder-gains-methods-for-preprocessed-file-scenarios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The existing TempEnvironment builder gains methods for preprocessed file scenarios:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#and-assertion-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        And assertion helpers:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-concrete-use-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Concrete Use Cases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Concrete Use Cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-template-expansion-generative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1. Template Expansion (Generative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-plist-conversion-representational-but-not-through-this-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2. Plist Conversion — Representational, but Not Through This Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-encrypted-files-opaque" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3. Encrypted Files (Opaque)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-implementation-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Implementation Strategy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-implementation-notes-vs-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Implementation Notes vs. Spec
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Implementation Notes vs. Spec">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#111-64-four-state-matrix-collapsed-to-a-two-outcome-guard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.1. §6.4 four-state matrix collapsed to a two-outcome guard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-datastore-handler-segment-is-hard-coded-preprocessed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.2. Datastore handler segment is hard-coded "preprocessed"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-no-preprocessorcontract-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.3. No Preprocessor::contract() method
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#114-plist-support-is-not-in-the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.4. Plist support is not in the pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#115-phase-4-reverse-merge-framework-factored-out-to-an-external-crate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.5. Phase 4 reverse-merge framework factored out to an external crate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#116-mockpreprocessor-and-virtual-match-test-helpers-not-shipped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.6. MockPreprocessor and virtual-match test helpers not shipped
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/proposals/shipped/preprocessing-pipeline.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Preprocessing pipeline</h1>
+
+<h2 id="design-specification-preprocessing-pipeline">Design Specification: Preprocessing Pipeline<a class="headerlink" href="#design-specification-preprocessing-pipeline" title="Permanent link">&para;</a></h2>
+<!-- lex:note -->
+
+<p><strong>Status: implemented and shipped.</strong> The pipeline foundation, divergence detection, git integration, and reverse-merge framework all landed across the templates and plists tracks (PRs #95–#108). The §6.4 divergence guard for `dodot up` shipped via PR #118 (issue #110); PR #122 walked back a 1500-line cache-layout migration that #118 had bundled in, leaving the slim guard in main. The user-facing reference for the resulting feature lives in [./../reference/pre-processors.lex] (handler-agnostic surface) and [./../reference/template-magic.lex] (workflow). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom for the deviations that were accepted during implementation. §7.4 (passive-command contract for `status` / `up --dry-run`) is currently violated by the implementation; tracked separately as #121.</p>
+<!-- /lex:note -->
+
+<p>This document specifies the generic preprocessing pipeline for dodot. The pipeline provides a unified architecture for files where the version-controlled source must be transformed before deployment. Template expansion and secret decryption are concrete implementations of this design. Plist support, originally drafted as a Representational preprocessor, ships instead as a pair of git clean/smudge filters — <a href="./plists.lex">see</a> §2.3 for the rationale. The pipeline is still illustrated with plists in places below for didactic reasons (they remain a useful canonical example of a Representational transform), but the actual plist implementation does not flow through this pipeline.</p>
+<p>The preprocessing pipeline is a new phase in dodot's execution model, not a handler. It runs before handler dispatch, producing expanded files that downstream handlers (symlink, shell, path, install, homebrew) consume transparently.</p>
+<h2 id="1-the-core-problem">1. The Core Problem<a class="headerlink" href="#1-the-core-problem" title="Permanent link">&para;</a></h2>
+<p>dodot's strength is its symlink-based model: the file in the dotfiles repo IS the deployed file, linked through the datastore. However, many use cases require a transformation step where the version-controlled source differs from the deployed artifact:</p>
+<ul>
+<li>Templates: a <code>.tmpl</code> source is rendered with variables into a config file. </li>
+<li>Plists: a human-readable XML representation is converted to a binary plist. </li>
+<li>Secrets: an encrypted source is decrypted on deployment. </li>
+</ul>
+<p>These transformations share common infrastructure but differ in their safety models and reversal capabilities. The preprocessing pipeline provides the shared layer; individual preprocessors provide the specialization.</p>
+<h2 id="2-transformation-types">2. Transformation Types<a class="headerlink" href="#2-transformation-types" title="Permanent link">&para;</a></h2>
+<p>The pipeline recognizes two distinct types, each with a different safety model.</p>
+<h3 id="21-generative-one-way-transformations">2.1. Generative (One-Way) Transformations<a class="headerlink" href="#21-generative-one-way-transformations" title="Permanent link">&para;</a></h3>
+<p>The source generates a destination artifact. The process cannot be reliably reversed because the transformation removes information.</p>
+<dl>
+<dt>Example</dt>
+<dd>
+<p>Template rendering. <code>config.toml.tmpl</code> becomes <code>config.toml</code>. The rendered output does not contain enough information to reconstruct the template expressions.</p>
+</dd>
+<dt>Source of Truth</dt>
+<dd>
+<p>The source file (e.g., <code>.tmpl</code>) is the canonical source. The rendered output is a derived artifact.</p>
+</dd>
+<dt>Divergence Handling</dt>
+<dd>
+<p>Edits to the deployed file must be merged back into the source via heuristics and user review. This is best-effort by design.</p>
+</dd>
+</dl>
+<h3 id="22-representational-two-way-transformations">2.2. Representational (Two-Way) Transformations<a class="headerlink" href="#22-representational-two-way-transformations" title="Permanent link">&para;</a></h3>
+<p>The source and destination are different formats representing the same data. The transformation is lossless and perfectly reversible.</p>
+<dl>
+<dt>Example</dt>
+<dd>
+<p>Plist conversion. <code>plutil</code> converts between XML and binary without data loss.</p>
+</dd>
+<dt>Source of Truth</dt>
+<dd>
+<p>The live destination file (e.g., the binary plist) is the source of truth, as applications modify it directly. The source file (XML) is a git-friendly representation.</p>
+</dd>
+<dt>Divergence Handling</dt>
+<dd>
+<p>Edits to the deployed file can be automatically converted back to the source format. No heuristics needed.</p>
+</dd>
+</dl>
+<h3 id="23-opaque-write-only-transformations">2.3. Opaque (Write-Only) Transformations<a class="headerlink" href="#23-opaque-write-only-transformations" title="Permanent link">&para;</a></h3>
+<p>The source is decrypted or decoded on deployment, but the deployed file must never be written back to the source format (for security or practical reasons).</p>
+<dl>
+<dt>Example</dt>
+<dd>
+<p>GPG-encrypted files. The source <code>.gpg</code> file is decrypted on deployment. The plaintext must never be committed to git. Changes to the deployed file cannot be re-encrypted without key management that dodot should not own.</p>
+</dd>
+<dt>Source of Truth</dt>
+<dd>
+<p>The encrypted source file. The deployed plaintext is ephemeral.</p>
+</dd>
+<dt>Divergence Handling</dt>
+<dd>
+<p>No reverse path. Divergence detection reports changes but offers no merge. The user must manually update the source and re-encrypt.</p>
+</dd>
+</dl>
+<h2 id="3-architecture-preprocessing-as-a-pipeline-phase">3. Architecture: Preprocessing as a Pipeline Phase<a class="headerlink" href="#3-architecture-preprocessing-as-a-pipeline-phase" title="Permanent link">&para;</a></h2>
+<p>Preprocessing is NOT a handler. It is a separate phase that runs before handler dispatch and composes with all existing handlers.</p>
+<h3 id="31-pipeline-flow">3.1. Pipeline Flow<a class="headerlink" href="#31-pipeline-flow" title="Permanent link">&para;</a></h3>
+<h4 id="the-current-dodot-execution-pipeline-is">The current dodot execution pipeline is:<a class="headerlink" href="#the-current-dodot-execution-pipeline-is" title="Permanent link">&para;</a></h4>
+<p>scan(pack_dir) -&gt; match(rules) -&gt; group(handler) -&gt; to_intents() -&gt; execute()</p>
+<h4 id="the-new-pipeline-inserts-a-preprocessing-phase">The new pipeline inserts a preprocessing phase:<a class="headerlink" href="#the-new-pipeline-inserts-a-preprocessing-phase" title="Permanent link">&para;</a></h4>
+<p>scan(pack_dir)</p>
+<p>-&gt; partition(preprocessor_matches, regular_matches) -&gt; preprocess(preprocessor_matches) -&gt; expanded files in datastore -&gt; create virtual RuleMatches for expanded files -&gt; merge(virtual_matches, regular_matches) with collision detection -&gt; match(rules) -&gt; group(handler) -&gt; to_intents() -&gt; execute()</p>
+<p>After preprocessing, expanded files appear as virtual RuleMatches. The downstream handler pipeline sees them as regular files. Handlers do not know preprocessing occurred.</p>
+<h3 id="32-why-not-a-handler">3.2. Why Not a Handler<a class="headerlink" href="#32-why-not-a-handler" title="Permanent link">&para;</a></h3>
+<p>Three reasons:</p>
+<dl>
+<dt>Composition</dt>
+<dd>
+<p><code>aliases.sh.tmpl</code> must be rendered AND sourced. <code>install.sh.tmpl</code> must be rendered AND executed. If preprocessing were a handler, it would replace the downstream handler. As a pipeline phase, it composes with any handler.</p>
+</dd>
+<dt>Coupling</dt>
+<dd>
+<p>A preprocessing handler would need to internally re-match the stripped filename against the rule system to determine the downstream handler. This violates handler isolation and creates coupling that multiplies with each new preprocessor.</p>
+</dd>
+<dt>Extensibility</dt>
+<dd>
+<p>Future user-provided preprocessor plugins should not require awareness of the handler system. A clean preprocessing trait makes this possible.</p>
+</dd>
+</dl>
+<h3 id="33-virtual-match-injection">3.3. Virtual Match Injection<a class="headerlink" href="#33-virtual-match-injection" title="Permanent link">&para;</a></h3>
+<h4 id="after-a-preprocessor-expands-a-file-the-result-is-a-virtual-rulematch">After a preprocessor expands a file, the result is a virtual RuleMatch:<a class="headerlink" href="#after-a-preprocessor-expands-a-file-the-result-is-a-virtual-rulematch" title="Permanent link">&para;</a></h4>
+<p>relative_path:    "config.toml"       (the stripped, logical filename) absolute_path:    \&lt;datastore_path&gt;     (where the expanded file was written) pack:             "app" handler:          ""                   (determined by rule matching, not the preprocessor) template_source:  Some("config.toml.tmpl")  (pointer to the original source)</p>
+<p>This virtual match enters the normal rule-matching pipeline. The rule system determines which handler processes it (symlink, shell, path, etc.) based on the logical filename.</p>
+<h3 id="34-collision-detection">3.4. Collision Detection<a class="headerlink" href="#34-collision-detection" title="Permanent link">&para;</a></h3>
+<h4 id="at-the-merge-step-virtual-matches-are-checked-against-regular-matches-if-a-pack-contains-both-configtoml-and-configtomltmpl-the-expanded-form-would-clobber-the-regular-file-this-is-detected-and-rejected-with-a-clear-error">At the merge step, virtual matches are checked against regular matches. If a pack contains both <code>config.toml</code> and <code>config.toml.tmpl</code>, the expanded form would clobber the regular file. This is detected and rejected with a clear error:<a class="headerlink" href="#at-the-merge-step-virtual-matches-are-checked-against-regular-matches-if-a-pack-contains-both-configtoml-and-configtomltmpl-the-expanded-form-would-clobber-the-regular-file-this-is-detected-and-rejected-with-a-clear-error" title="Permanent link">&para;</a></h4>
+<p>error: collision in pack "app": config.toml.tmpl expands to config.toml,</p>
+<p>which already exists as a regular file. Remove one or the other.</p>
+<p>This check is a core responsibility of the preprocessing layer, not of individual preprocessors.</p>
+<h2 id="4-the-preprocessor-trait">4. The Preprocessor Trait<a class="headerlink" href="#4-the-preprocessor-trait" title="Permanent link">&para;</a></h2>
+<p>All preprocessors implement a shared trait. Individual preprocessors provide the transformation logic; the pipeline provides the orchestration.</p>
+<h3 id="41-shared-interface">4.1. Shared Interface<a class="headerlink" href="#41-shared-interface" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>trait Preprocessor</dt>
+<dd>
+<p>name()             -&gt; \&amp;str               ("template", "gpg", ...) transform_type()   -&gt; TransformType       (Generative, Representational, Opaque) matches_file()     -&gt; bool                (extension check against config) expanded_filename() -&gt; String             (strip .tmpl, .gpg, etc.) expand()           -&gt; Result\&lt;Vec\&lt;u8&gt;&gt;     (the core transformation) contract()         -&gt; Option\&lt;Vec\&lt;u8&gt;&gt;     (reverse, only for Representational)</p>
+</dd>
+</dl>
+<h3 id="42-shared-responsibilities-pipeline-level">4.2. Shared Responsibilities (Pipeline Level)<a class="headerlink" href="#42-shared-responsibilities-pipeline-level" title="Permanent link">&para;</a></h3>
+<p>These are handled by the preprocessing pipeline, not by individual preprocessors:</p>
+<ul>
+<li>Partitioning scanned files into preprocessor vs regular matches </li>
+<li>Calling expand() and writing the result to the datastore </li>
+<li>Creating virtual RuleMatches for expanded files </li>
+<li>Collision detection against regular files </li>
+<li>Caching baselines for divergence detection </li>
+<li>Divergence checking and the reverse-merge git workflow </li>
+</ul>
+<h3 id="43-specialized-responsibilities-preprocessor-level">4.3. Specialized Responsibilities (Preprocessor Level)<a class="headerlink" href="#43-specialized-responsibilities-preprocessor-level" title="Permanent link">&para;</a></h3>
+<p>Each preprocessor provides:</p>
+<ul>
+<li>The transformation engine (MiniJinja for templates, gpg for secrets, etc.) </li>
+<li>File extension matching rules </li>
+<li>Filename stripping logic </li>
+<li>For Representational: the reverse transformation (contract) </li>
+</ul>
+<h2 id="5-storage">5. Storage<a class="headerlink" href="#5-storage" title="Permanent link">&para;</a></h2>
+<h3 id="51-expanded-files-datastore">5.1. Expanded Files: Datastore<a class="headerlink" href="#51-expanded-files-datastore" title="Permanent link">&para;</a></h3>
+<h4 id="expanded-files-are-written-as-regular-files-not-symlinks-in-the-datastore">Expanded files are written as regular files (not symlinks) in the datastore:<a class="headerlink" href="#expanded-files-are-written-as-regular-files-not-symlinks-in-the-datastore" title="Permanent link">&para;</a></h4>
+<p>~/.local/share/dodot/packs/{pack}/{handler}/{expanded_filename}</p>
+<h4 id="the-datastore-trait-gains-a-new-method">The DataStore trait gains a new method:<a class="headerlink" href="#the-datastore-trait-gains-a-new-method" title="Permanent link">&para;</a></h4>
+<p>write_rendered_file(pack, handler, filename, content) -&gt; PathBuf</p>
+<p>This writes a regular file at handler_data_dir(pack, handler)/filename. The user symlink then points to this regular file, just as it would point to a data-link symlink for non-preprocessed files.</p>
+<h3 id="52-baselines-cache">5.2. Baselines: Cache<a class="headerlink" href="#52-baselines-cache" title="Permanent link">&para;</a></h3>
+<h4 id="baseline-data-for-divergence-detection-lives-in-the-xdg-cache-directory">Baseline data for divergence detection lives in the XDG cache directory:<a class="headerlink" href="#baseline-data-for-divergence-detection-lives-in-the-xdg-cache-directory" title="Permanent link">&para;</a></h4>
+<p>~/.cache/dodot/preprocessor/{pack}/{handler}/{filename}.json</p>
+<dl>
+<dt>Contents</dt>
+<dd>
+<p>rendered_hash:   SHA-256 of the expanded content rendered_content: the full expanded content (for diffing) source_hash:     SHA-256 of the source file context_hash:    SHA-256 of the transformation context (variables, etc.) timestamp:       when the baseline was created</p>
+</dd>
+</dl>
+<p>The cache is separate from the datastore because their lifecycles differ. Clearing the cache does not affect deployments. Removing deployment state does not lose divergence tracking.</p>
+<h2 id="6-divergence-detection-and-the-git-workflow">6. Divergence Detection and the Git Workflow<a class="headerlink" href="#6-divergence-detection-and-the-git-workflow" title="Permanent link">&para;</a></h2>
+<h3 id="61-detection">6.1. Detection<a class="headerlink" href="#61-detection" title="Permanent link">&para;</a></h3>
+<h4 id="divergence-is-detected-by-comparing-the-current-deployed-file-against-the-cached-baseline">Divergence is detected by comparing the current deployed file against the cached baseline:<a class="headerlink" href="#divergence-is-detected-by-comparing-the-current-deployed-file-against-the-cached-baseline" title="Permanent link">&para;</a></h4>
+<p>current_hash = hash(read(deployed_file))</p>
+<dl>
+<dt>if current_hash != baseline.rendered_hash</dt>
+<dd>
+<p>diverged</p>
+</dd>
+</dl>
+<h4 id="additionally-input-change-is-detected-by-comparing-source-and-context-hashes">Additionally, input change is detected by comparing source and context hashes:<a class="headerlink" href="#additionally-input-change-is-detected-by-comparing-source-and-context-hashes" title="Permanent link">&para;</a></h4>
+<p>source_changed  = hash(source_file) != baseline.source_hash context_changed = hash(context) != baseline.context_hash</p>
+<h4 id="this-produces-a-4-state-matrix">This produces a 4-state matrix:<a class="headerlink" href="#this-produces-a-4-state-matrix" title="Permanent link">&para;</a></h4>
+<p>Output same, Input same:     No action needed Output same, Input changed:  Re-expand (safe, no user edits to lose) Output changed, Input same:  Diverged (user edited the deployed file) Output changed, Input changed: Conflict (both sides changed)</p>
+<h3 id="62-the-git-integration-flow">6.2. The Git Integration Flow<a class="headerlink" href="#62-the-git-integration-flow" title="Permanent link">&para;</a></h3>
+<p>The workflow is designed to inject into the user's existing git workflow rather than building a parallel one.</p>
+<dl>
+<dt><code>dodot transform check</code></dt>
+<dd>
+<p>Scans all preprocessed files for divergence. For generative transforms with divergence, it applies reverse-merge heuristics directly to the source file in the working tree:</p>
+</dd>
+</dl>
+<ul>
+<li>Static lines (no preprocessing syntax): changes applied assertively </li>
+<li>Dynamic lines (contain preprocessing syntax): dodot conflict markers inserted </li>
+</ul>
+<p>The command then blocks (exit code 1) and instructs the user to review with git:</p>
+<p>dodot: syncing changes from deployed files back to sources:   app/config.toml.tmpl: 2 lines updated, 1 line needs review</p>
+<p>Review:  git diff app/config.toml.tmpl   Keep:    git add app/config.toml.tmpl   Discard: git checkout -- app/config.toml.tmpl</p>
+<p>For representational transforms, the reverse conversion is applied automatically (lossless).</p>
+<p>For opaque transforms, divergence is reported but no source modification occurs.</p>
+<dl>
+<dt><code>dodot transform install-hook</code></dt>
+<dd>
+<p>Installs a pre-commit hook that runs <code>dodot transform check</code>. On first preprocessed-file deployment, dodot prompts the user to install it.</p>
+</dd>
+</dl>
+<h3 id="63-dodot-conflict-markers">6.3. Dodot Conflict Markers<a class="headerlink" href="#63-dodot-conflict-markers" title="Permanent link">&para;</a></h3>
+<h4 id="for-ambiguous-changes-that-require-user-decision-dodot-inserts-its-own-conflict-markers-the-shipped-form-is-five-lines-three-marker-lines-bracketing-two-content-sections-structurally-analogous-to-gits-merge-conflict-markers-but-with-the-angle-direction-inverted-so-a-file-with-both-kinds-of-conflict-can-be-pattern-matched-independently">For ambiguous changes that require user decision, dodot inserts its own conflict markers. The shipped form is five lines (three marker lines bracketing two content sections), structurally analogous to git's merge-conflict markers but with the angle direction inverted so a file with both kinds of conflict can be pattern-matched independently:<a class="headerlink" href="#for-ambiguous-changes-that-require-user-decision-dodot-inserts-its-own-conflict-markers-the-shipped-form-is-five-lines-three-marker-lines-bracketing-two-content-sections-structurally-analogous-to-gits-merge-conflict-markers-but-with-the-angle-direction-inverted-so-a-file-with-both-kinds-of-conflict-can-be-pattern-matched-independently" title="Permanent link">&para;</a></h4>
+<p>&gt;&gt;&gt;&gt;&gt;&gt; dodot-conflict (template) host = "{{ env.DB_HOST }}" ====== dodot-conflict (deployed) host = "production.db.internal" \&lt;\&lt;\&lt;\&lt;\&lt;\&lt; dodot-conflict</p>
+<dl>
+<dt>These markers are</dt>
+<dd>
+<ul>
+<li>Format-agnostic (not a comment in any config language, works everywhere) </li>
+<li>Machine-detectable (<code>dodot up</code> greps for them and refuses to expand) </li>
+<li>Visible in <code>git diff</code> for user review </li>
+<li>Resolvable with standard editor search/replace </li>
+</ul>
+</dd>
+</dl>
+<h4 id="dodot-up-checks-source-files-for-unresolved-markers-before-expanding-if-found"><code>dodot up</code> checks source files for unresolved markers before expanding. If found:<a class="headerlink" href="#dodot-up-checks-source-files-for-unresolved-markers-before-expanding-if-found" title="Permanent link">&para;</a></h4>
+<p>error: unresolved conflict in app/config.toml.tmpl</p>
+<p>resolve with <code>git diff</code> and remove dodot-conflict markers before deploying</p>
+<h3 id="64-re-deploy-behavior">6.4. Re-deploy Behavior<a class="headerlink" href="#64-re-deploy-behavior" title="Permanent link">&para;</a></h3>
+<h4 id="when-dodot-up-encounters-a-previously-expanded-file">When <code>dodot up</code> encounters a previously-expanded file:<a class="headerlink" href="#when-dodot-up-encounters-a-previously-expanded-file" title="Permanent link">&para;</a></h4>
+<p>Output same, Input same:       Skip (already correct) Output same, Input changed:    Re-expand (safe) Output changed, Input same:    Warn and skip (user edits preserved) Output changed, Input changed: Warn and skip (conflict — user edits preserved)</p>
+<p><code>--force</code> overrides: always re-expands, discarding divergence.</p>
+<p>Staleness is defined from file content, not the runtime environment. The four-state matrix compares hashes of the source file and the deployed file against the cached baseline. Env vars referenced in templates (<code>{{ env.X }}</code>) are read live at render time and intentionally are not part of the staleness signal; rotating an env var does not invalidate the cache. Users who change a referenced env var pick up the new value with <code>dodot up --force</code>. This boundary is by design — see §11.1 for the implementation note on how rows 3 and 4 collapse in the shipped guard.</p>
+<p>Implementation note: rows 3 and 4 collapse to the same outcome — <code>dodot up</code> never overwrites a deployed file whose bytes have diverged from the cached baseline. The clever 3-way merge (apply user's deployed-file edits back into the new render) lives in <code>dodot transform check</code> and the git clean filter, not in <code>up</code>. This keeps <code>up</code>'s contract crisp ("I will not destroy your work") at the cost of pushing the merge step into the commit cycle. Users resolve a row-3/row-4 skip via <code>dodot transform check</code> (auto-merge through the clean filter) or <code>dodot up --force</code> (overwrite).</p>
+<p>Why env vars are out of scope:</p>
+<p>- Layer boundary. Env vars are ambient runtime state, not configuration. Tracking them couples the template engine to the cache-invalidation contract — a leaky abstraction.</p>
+<p>- User expectations. No standard Unix tool (git, make, shells) treats env-var changes as cache-invalidating inputs. A <code>dodot up</code> that re-rendered because <code>$EDITOR</code> flipped would feel like a bug.</p>
+<p>- Ergonomics. AST-walking templates to enumerate env references is fragile across template-engine versions; hashing a projection of the entire process env into the sentinel is noisy (PWD, SHELL_PID, terminal env all change between invocations).</p>
+<p>Users who want a value to be stable and tracked should put it in <code>[preprocessor.template.vars]</code> (the <code>user_vars</code> namespace) rather than reach for <code>env.*</code>. The <code>env.*</code> namespace is the explicitly-marked "live read, you're on your own for invalidation" zone, with <code>dodot up --force</code> as the discoverable escape hatch.</p>
+<h2 id="7-configuration">7. Configuration<a class="headerlink" href="#7-configuration" title="Permanent link">&para;</a></h2>
+<h3 id="71-preprocessor-section">7.1. Preprocessor Section<a class="headerlink" href="#71-preprocessor-section" title="Permanent link">&para;</a></h3>
+<h4 id="preprocessor-configuration-lives-in-its-own-section-of-dodottoml-following-the-same-3-layer-hierarchy-defaults-root-pack">Preprocessor configuration lives in its own section of <code>.dodot.toml</code>, following the same 3-layer hierarchy (defaults \&lt; root \&lt; pack):<a class="headerlink" href="#preprocessor-configuration-lives-in-its-own-section-of-dodottoml-following-the-same-3-layer-hierarchy-defaults-root-pack" title="Permanent link">&para;</a></h4>
+<p>[preprocessor] enabled = true                   # global kill switch (default: true)</p>
+<p>[preprocessor.template] extensions = ["tmpl", "template"] # which extensions trigger this preprocessor # ... preprocessor-specific config (variables, engine options, etc.)</p>
+<p># Note: plists do not appear here — they ship as git clean/smudge # filters, not as a preprocessor. <a href="./plists.lex">See</a> §2.3.</p>
+<h3 id="72-opt-out-levels">7.2. Opt-Out Levels<a class="headerlink" href="#72-opt-out-levels" title="Permanent link">&para;</a></h3>
+<dl>
+<dt>Global</dt>
+<dd>
+<p>[preprocessor] enabled = false</p>
+</dd>
+<dt>Per-preprocessor</dt>
+<dd>
+<p>[preprocessor.template] enabled = false</p>
+</dd>
+<dt>Per-pack</dt>
+<dd>
+<p>Pack-level .dodot.toml can override any of the above.</p>
+</dd>
+<dt>Per-file</dt>
+<dd>
+<p>[mappings] ignore = ["config.toml.tmpl"]</p>
+</dd>
+</dl>
+<p>The <code>mappings.ignore</code> filter handler runs in the Filter phase, before any preprocessor — matched files are dropped from the pipeline entirely.</p>
+<h2 id="8-testability">8. Testability<a class="headerlink" href="#8-testability" title="Permanent link">&para;</a></h2>
+<p>Testability of the preprocessing pipeline is a first-class concern. The existing codebase has strong patterns for this: the Fs trait for filesystem abstraction, TempEnvironment for integration tests, and mock CommandRunners.</p>
+<h3 id="81-mock-preprocessor">8.1. Mock Preprocessor<a class="headerlink" href="#81-mock-preprocessor" title="Permanent link">&para;</a></h3>
+<h4 id="a-test-only-mockpreprocessor-that-implements-the-preprocessor-trait-with-configurable-behavior">A test-only MockPreprocessor that implements the Preprocessor trait with configurable behavior:<a class="headerlink" href="#a-test-only-mockpreprocessor-that-implements-the-preprocessor-trait-with-configurable-behavior" title="Permanent link">&para;</a></h4>
+<p>MockPreprocessor::new("template")</p>
+<p>.extension("tmpl") .expand_fn(|source| Ok(source.replace("{{NAME}}", "Alice")))</p>
+<p>This allows testing the preprocessing pipeline (partitioning, collision detection, virtual match injection) without depending on MiniJinja, plutil, or gpg.</p>
+<h3 id="82-virtual-match-helpers">8.2. Virtual Match Helpers<a class="headerlink" href="#82-virtual-match-helpers" title="Permanent link">&para;</a></h3>
+<h4 id="test-utilities-for-creating-virtual-rulematches-directly-bypassing-the-preprocessing-phase">Test utilities for creating virtual RuleMatches directly, bypassing the preprocessing phase:<a class="headerlink" href="#test-utilities-for-creating-virtual-rulematches-directly-bypassing-the-preprocessing-phase" title="Permanent link">&para;</a></h4>
+<p>VirtualMatch::new("app", "config.toml")</p>
+<p>.from_template("config.toml.tmpl") .with_content("rendered content")</p>
+<p>This allows testing downstream handlers with preprocessed files without running the full pipeline.</p>
+<h3 id="83-tempenvironment-extensions">8.3. TempEnvironment Extensions<a class="headerlink" href="#83-tempenvironment-extensions" title="Permanent link">&para;</a></h3>
+<h4 id="the-existing-tempenvironment-builder-gains-methods-for-preprocessed-file-scenarios">The existing TempEnvironment builder gains methods for preprocessed file scenarios:<a class="headerlink" href="#the-existing-tempenvironment-builder-gains-methods-for-preprocessed-file-scenarios" title="Permanent link">&para;</a></h4>
+<p>TempEnvironment::builder()</p>
+<p>.pack("app")</p>
+<p>.file("config.toml.tmpl", "host = {{env.DB_HOST}}") .done()</p>
+<p>.build()</p>
+<h4 id="and-assertion-helpers">And assertion helpers:<a class="headerlink" href="#and-assertion-helpers" title="Permanent link">&para;</a></h4>
+<p>env.assert_rendered_file("app", "symlink", "config.toml", "host = localhost") env.assert_baseline_cached("app", "config.toml") env.assert_no_collision("app", "config.toml")</p>
+<h2 id="9-concrete-use-cases">9. Concrete Use Cases<a class="headerlink" href="#9-concrete-use-cases" title="Permanent link">&para;</a></h2>
+<p>The following are brief sketches of preprocessors this pipeline is designed to support. Each would have its own detailed proposal.</p>
+<h3 id="91-template-expansion-generative">9.1. Template Expansion (Generative)<a class="headerlink" href="#91-template-expansion-generative" title="Permanent link">&para;</a></h3>
+<p>Source: <code>config.toml.tmpl</code> with Jinja2-style expressions Expanded: <code>config.toml</code> with variables resolved Reverse: Heuristic line-matching, conflict markers for ambiguous lines Engine: MiniJinja (Rust)</p>
+<p>This is the most universal use case and the first to be implemented. See companion proposal: Template Expansion.</p>
+<h3 id="92-plist-conversion-representational-but-not-through-this-pipeline">9.2. Plist Conversion — Representational, but Not Through This Pipeline<a class="headerlink" href="#92-plist-conversion-representational-but-not-through-this-pipeline" title="Permanent link">&para;</a></h3>
+<p>Plists are the canonical Representational transform: <code>plutil</code> (and the <code>plist</code> Rust crate) round-trip XML and binary losslessly, so reverse is exact and no conflict markers are ever needed.</p>
+<p>Despite that fit on paper, plist support does <strong>not</strong> ship as a preprocessor in this pipeline. It ships as git clean/smudge filters instead. The reasoning is <a href="./plists.lex">in</a> §2.3; in summary: plists drift continuously (apps rewrite them on settings changes), and the pipeline's pre-commit-hook reverse path leaves drift invisible to <code>git status</code> between commits. Clean/smudge closes that gap by attaching the reverse to every git read, not just to commits.</p>
+<p>This pipeline retains plists as a didactic example of the Representational category, and the <code>Preprocessor::contract()</code> hook stays in the trait so that future Representational preprocessors with less continuous drift (one-off binary configs that don't rewrite themselves) can still go through it.</p>
+<h3 id="93-encrypted-files-opaque">9.3. Encrypted Files (Opaque)<a class="headerlink" href="#93-encrypted-files-opaque" title="Permanent link">&para;</a></h3>
+<p>Source: <code>credentials.conf.gpg</code> (GPG-encrypted) Expanded: <code>credentials.conf</code> (plaintext, deployed to user location) Reverse: None. dodot does not handle encryption. Divergence is reported but not actionable. Engine: system <code>gpg</code> command</p>
+<p>Key property: the expanded plaintext must never be written back to git. Divergence detection warns the user, but there is no merge path. The user must manually update the source and re-encrypt outside dodot.</p>
+<p>This is the simplest preprocessor: expand-only, no reverse, no merge. It demonstrates that the pipeline supports the full spectrum from "fully automatic" (plists) to "hands off" (GPG).</p>
+<h2 id="10-implementation-strategy">10. Implementation Strategy<a class="headerlink" href="#10-implementation-strategy" title="Permanent link">&para;</a></h2>
+<p>Phase 1: Core Pipeline</p>
+<ul>
+<li>Preprocessor trait definition </li>
+<li>Pipeline partitioning (preprocessor matches vs regular matches) </li>
+<li>Virtual match injection into the handler pipeline </li>
+<li>Collision detection </li>
+<li>DataStore.write_rendered_file() </li>
+<li>Baseline caching infrastructure </li>
+<li>Mock preprocessor and test helpers </li>
+</ul>
+<p>Phase 2: Divergence Detection</p>
+<ul>
+<li>Baseline comparison logic (4-state matrix) </li>
+<li><code>dodot transform check</code> command </li>
+<li>Re-deploy behavior (warn-and-skip, force override) </li>
+</ul>
+<p>Phase 3: Git Integration</p>
+<ul>
+<li>Dodot conflict markers (format, detection, safety gate) </li>
+<li><code>dodot transform install-hook</code> command </li>
+<li>Pre-commit hook script generation </li>
+<li>First-deployment onboarding hint </li>
+</ul>
+<p>Phase 4: Reverse Merge Framework</p>
+<ul>
+<li>Static vs dynamic line classification (generic, preprocessor-agnostic) </li>
+<li>Assertive change application </li>
+<li>Conflict marker insertion </li>
+<li>Integration with <code>dodot transform check</code> </li>
+</ul>
+<h2 id="11-implementation-notes-vs-spec">11. Implementation Notes vs. Spec<a class="headerlink" href="#11-implementation-notes-vs-spec" title="Permanent link">&para;</a></h2>
+<p>The implementation deviates from the spec above in a few places. Listed here so future readers don't mistake the spec for the source of truth.</p>
+<h3 id="111-64-four-state-matrix-collapsed-to-a-two-outcome-guard">11.1. §6.4 four-state matrix collapsed to a two-outcome guard<a class="headerlink" href="#111-64-four-state-matrix-collapsed-to-a-two-outcome-guard" title="Permanent link">&para;</a></h3>
+<p>Spec §6.4 describes a 4-cell matrix: rows 3 (<code>Output changed, Input same</code>) and 4 (<code>Output changed, Input changed</code>) call for distinct treatment. The shipped guard collapses both rows into a single outcome — <code>dodot up</code> preserves the deployed file and skips the render with a one-line warning naming <code>dodot transform check</code> and <code>--force</code> as resolution paths. The sharper 4-cell distinction lives in <code>dodot transform check</code> (the pre-commit hook), not in <code>up</code>. This keeps <code>up</code>'s contract crisp ("I will not destroy your work, period") at the cost of pushing the merge step into the commit cycle.</p>
+<p>Shipped via PR #118 (issue #110); slim base via PR #122 (which walked back a 1500-line cache-layout migration that #118 had bundled in).</p>
+<h3 id="112-datastore-handler-segment-is-hard-coded-preprocessed">11.2. Datastore handler segment is hard-coded <code>"preprocessed"</code><a class="headerlink" href="#112-datastore-handler-segment-is-hard-coded-preprocessed" title="Permanent link">&para;</a></h3>
+<p>Spec §5.1 said expanded files go to <code>…/{pack}/{handler}/{expanded_filename}</code>, where <code>{handler}</code> is the rule-determined downstream handler (symlink, shell, path, etc.). In practice every preprocessed file lives under <code>…/{pack}/preprocessed/…</code> regardless of which handler eventually consumes it. The downstream handler is still determined by rule-matching the stripped filename, but the on-disk layout uses a single shared segment. The constant lives in <code>crates/dodot-lib/src/preprocessing/pipeline.rs</code> (<code>PREPROCESSED_HANDLER</code>).</p>
+<h3 id="113-no-preprocessorcontract-method">11.3. No <code>Preprocessor::contract()</code> method<a class="headerlink" href="#113-no-preprocessorcontract-method" title="Permanent link">&para;</a></h3>
+<p>Spec §4.1 listed <code>expanded_filename()</code> and <code>contract()</code>; ship has <code>stripped_name()</code> and the reverse path is a standalone <code>reverse_merge</code> module rather than a per-preprocessor method. The trait additionally gained <code>supports_reverse_merge()</code> and <code>ExpandedFile.tracked_render</code> from the <code>magic.lex</code> cache work — both required by the clean-filter fast/slow path described in <code>magic.lex</code> "The Cache That Makes It Cheap."</p>
+<h3 id="114-plist-support-is-not-in-the-pipeline">11.4. Plist support is not in the pipeline<a class="headerlink" href="#114-plist-support-is-not-in-the-pipeline" title="Permanent link">&para;</a></h3>
+<p>Already documented <a href="./plists.lex">in</a> §2.3 <a href="./../reference/pre-processors.lex">and</a>. Plists ship as git clean/smudge filters because their drift profile (continuous, app-driven) requires reverse visibility on every <code>git status</code>, not only at commit time. The pipeline retains plists as a didactic example of the Representational category in §9.2 (and the <code>Preprocessor::contract()</code> hook conceptually stays in the trait surface) so future Representational preprocessors with less continuous drift can still go through it.</p>
+<h3 id="115-phase-4-reverse-merge-framework-factored-out-to-an-external-crate">11.5. Phase 4 reverse-merge framework factored out to an external crate<a class="headerlink" href="#115-phase-4-reverse-merge-framework-factored-out-to-an-external-crate" title="Permanent link">&para;</a></h3>
+<p><code>burgertocow</code> (https://github.com/arthur-debert/burgertocow) handles the static-vs-dynamic line classification and conflict-marker emission. The spec sketch in §10 Phase 4 ("static vs dynamic line classification, generic, preprocessor-agnostic") describes the conceptual shape; the implementation moved that work out of the dodot crate entirely. dodot's side is the integration: the baseline cache (with the <code>tracked_render</code> field), the <code>reverse_merge</code> module that calls into <code>burgertocow</code>, and the <code>dodot transform check</code> and template-clean-filter call sites.</p>
+<h3 id="116-mockpreprocessor-and-virtual-match-test-helpers-not-shipped">11.6. <code>MockPreprocessor</code> and virtual-match test helpers not shipped<a class="headerlink" href="#116-mockpreprocessor-and-virtual-match-test-helpers-not-shipped" title="Permanent link">&para;</a></h3>
+<p>Spec §8 sketched <code>MockPreprocessor</code>, <code>VirtualMatch::new</code>, and <code>TempEnvironment</code> extensions for testing the pipeline without a real preprocessor. Tests use the real <code>TemplatePreprocessor</code> directly; the helpers aren't needed at the current preprocessor cardinality (one shipped: templates). If a second preprocessor ships and end-to-end coverage gets unwieldy, the helpers can land then.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1320 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A dotfiles manager that adapts to you, rather than the other way around.">
+      
+      
+      
+        <link rel="canonical" href="https://dodot.sh/user/configuration/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Configuration - dodot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="dodot" class="md-header__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dodot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="dodot" class="md-nav__button md-logo" aria-label="dodot" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dodot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arthur-debert/dodot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arthur-debert/dodot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adopting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adopting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Handlers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/terms-and-concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terms & concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-where-configuration-lives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Where Configuration Lives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-pack-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The [pack] Section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The [pack] Section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-os" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1. os
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-symlink-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The [symlink] Section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The [symlink] Section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-force_home" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1. force_home
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-force_app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2. force_app
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-app_aliases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3. app_aliases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-app_uses_library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4. app_uses_library
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-protected_paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5. protected_paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6. targets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-plist_extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.7. plist_extensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-path-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The [path] Section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The [path] Section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-auto_chmod_exec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. auto_chmod_exec
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-mappings-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The [mappings] Section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. The [mappings] Section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-mappingsgates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. [mappings.gates]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-the-gates-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. The [gates] Section
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-the-preprocessor-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. The [preprocessor] Section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. The [preprocessor] Section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-global-kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1. Global kill switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-preprocessortemplate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2. [preprocessor.template]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-preprocessorage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3. [preprocessor.age]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-preprocessorgpg" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4. [preprocessor.gpg]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-the-profiling-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. The [profiling] Section
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-the-secret-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. The [secret] Section
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. The [secret] Section">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-global-kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1. Global kill switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-secretproviders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2. [secret.providers]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-inheritance-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Inheritance Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/arthur-debert/dodot/edit/main/docs/user/configuration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+  <h1>Configuration</h1>
+
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>One of dodot's principles is to minimize both adoption and migration cost (off dodot into the next dotfiles tool). One way it does that is by using the dotfiles themselves as the description of what to do: files grouped into packs, and filenames the scanner can infer behavior from. dodot is convention-based — given a name, it knows what to do with the file. Adding <code>bin/</code> directories to <code>$PATH</code>, running <code>brew</code> against <code>Brewfile</code>, sourcing <code>aliases.sh</code> at shell startup — all of it falls out of names you would pick anyway.</p>
+<p>The convention is rooted in common usage patterns, so for most people the default layout is the most natural approach, and is useful in its own right beyond dodot.</p>
+<p>When the convention doesn't fit, you can customize. For path-related behavior, most knobs are reachable two ways: a <code>.dodot.toml</code> entry, or a filename / directory naming convention like <code>_home/</code> or <code>home.X</code>. The two surfaces serve two preferences — a cleaner file tree with the choices captured in <code>.dodot.toml</code>, or an explicit setup where the names themselves carry the intent and no extra config file is needed.</p>
+<p>Scope is the other axis. Filesystem naming acts per file. <code>.dodot.toml</code> acts per pack, or repo-wide from the root config — so when many files need the same adjustment a config entry is usually the cleanest path.</p>
+<p><strong>dodot ships a small set of CLI helpers for working with config</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>$<span class="w"> </span>dodot<span class="w"> </span>config<span class="w"> </span>list<span class="w">                  </span><span class="c1"># show resolved values</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>$<span class="w"> </span>dodot<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>&lt;key&gt;<span class="w">             </span><span class="c1"># show one key with its inline doc</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>$<span class="w"> </span>dodot<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>&lt;key&gt;<span class="w"> </span>&lt;value&gt;
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>$<span class="w"> </span>dodot<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>&lt;key&gt;
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>$<span class="w"> </span>dodot<span class="w"> </span>config<span class="w"> </span>gen<span class="w"> </span>&gt;<span class="w"> </span>.dodot.toml<span class="w">     </span><span class="c1"># write a commented starter file</span>
+</code></pre></div>
+<h2 id="1-where-configuration-lives">1. Where Configuration Lives<a class="headerlink" href="#1-where-configuration-lives" title="Permanent link">&para;</a></h2>
+<p>Configuration is loaded from <code>.dodot.toml</code> files in two locations:</p>
+<ul>
+<li><em>Root config</em>: <code>$DOTFILES_ROOT/.dodot.toml</code>. Applies to every pack. </li>
+<li><em>Pack config</em>: <code>$DOTFILES_ROOT/&lt;pack&gt;/.dodot.toml</code>. Applies to that pack only. </li>
+</ul>
+<p>Both are optional. Every key has a compiled-in default; you only put into <code>.dodot.toml</code> the values you want to override. Pack configuration layers on top of root configuration, so you can set a sensible default at the root and override it per pack.</p>
+<p>Merge rules:</p>
+<ul>
+<li>Scalars and arrays: override (the later-layer value replaces the earlier one, no accumulation). </li>
+<li>Maps: deep-merge (nested keys combine across layers, but any scalar or array within still overrides). </li>
+</ul>
+<p>Some sections are <em>root-only</em> — they're read from the root <code>.dodot.toml</code> and per-pack overrides are ignored. <code>[secret]</code> and <code>[profiling]</code> fall in this bucket; <code>[pack] os</code> is the mirror image (pack-only — root-level entries are rejected).</p>
+<h2 id="2-the-pack-section">2. The <code>[pack]</code> Section<a class="headerlink" href="#2-the-pack-section" title="Permanent link">&para;</a></h2>
+<p>Controls pack-level behavior.</p>
+<p><strong>Pack ignore patterns</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">[pack]</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">ignore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="s2">&quot;.git&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="s2">&quot;.svn&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="s2">&quot;.hg&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="s2">&quot;node_modules&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="s2">&quot;.DS_Store&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="s2">&quot;*.swp&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="s2">&quot;*~&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="s2">&quot;#*#&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="s2">&quot;.env*&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">    </span><span class="s2">&quot;.terraform&quot;</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="p">]</span>
+</code></pre></div>
+<p><code>ignore</code> is glob patterns that dodot skips during pack discovery and file scanning. Matching files are not considered for any handler. The defaults cover version-control noise, editor swapfiles, and a few directories that are notoriously never meant to be deployed.</p>
+<p>Note: to skip an <em>entire pack</em>, drop a <code>.dodotignore</code> marker file in that pack's directory (the "pack-ignore" mechanism). <code>[pack] ignore</code> is for patterns within a pack.</p>
+<h3 id="21-os">2.1. <code>os</code><a class="headerlink" href="#21-os" title="Permanent link">&para;</a></h3>
+<p>OS allowlist for the pack. When set, the whole pack is short-circuited at scan time on hosts whose OS isn't in the list — no preprocessing, no handlers, no symlinks. Inactive packs surface in <code>dodot status</code> under "Inactive on this OS" rather than disappearing silently.</p>
+<p><strong>Pack-level OS gating</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">[pack]</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">os</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;darwin&quot;</span><span class="p">]</span>
+</code></pre></div>
+<p>The canonical OS value for macOS is <code>"darwin"</code>; <code>"macos"</code> is accepted as an alias that resolves to <code>"darwin"</code>. On Linux the canonical value is <code>"linux"</code>. Empty or absent means "all OSes" (today's default). Note: template variables expose <code>dodot.os</code> as <code>"macos"</code> on macOS — gate OS values and template OS values are not the same surface. <a href="./conditional-running.lex">See</a> §5.</p>
+<p>Only meaningful at pack level — root-level <code>[pack] os</code> is a configuration error (it would gate every pack against the current host, almost always unintended).</p>
+<h2 id="3-the-symlink-section">3. The <code>[symlink]</code> Section<a class="headerlink" href="#3-the-symlink-section" title="Permanent link">&para;</a></h2>
+<p>Controls how the symlink handler resolves targets. Full path-resolution rules live <a href="./../reference/symlink-paths.lex">in</a>; this section is the config knobs.</p>
+<p>By default, every pack-root entry deploys to <code>$XDG_CONFIG_HOME/&lt;pack&gt;/&lt;name&gt;</code> (so <code>nvim/init.lua</code> → <code>~/.config/nvim/init.lua</code>). The escape hatches come in pairs — a config list and a per-file naming convention:</p>
+<ul>
+<li><code>force_home</code> / <code>home.X</code> filename / <code>_home/</code> directory → <code>$HOME/.&lt;name&gt;</code> </li>
+<li><code>force_app</code> / <code>app.X</code> filename / <code>_app/</code> directory → <code>~/Library/Application Support/&lt;name&gt;</code> (macOS; falls back to XDG on Linux or when <code>app_uses_library = false</code>) </li>
+<li><code>xdg.X</code> filename / <code>_xdg/</code> directory → escape from a routing override back to plain XDG </li>
+<li><code>lib.X</code> filename / <code>_lib/</code> directory → <code>~/Library/&lt;name&gt;</code> (macOS only) </li>
+</ul>
+<h3 id="31-force_home">3.1. <code>force_home</code><a class="headerlink" href="#31-force_home" title="Permanent link">&para;</a></h3>
+<p>Files that must land in <code>$HOME/.&lt;name&gt;</code> regardless of the default XDG rule. These are decades-old conventions that precede XDG and are hardcoded by other tools (shell init, ssh interop, etc.).</p>
+<p><strong>Force home</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">[symlink]</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">force_home</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="s2">&quot;ssh&quot;</span><span class="p">,</span><span class="w">            </span><span class="c1"># .ssh/ - security critical</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="s2">&quot;aws&quot;</span><span class="p">,</span><span class="w">            </span><span class="c1"># .aws/ - credentials</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="s2">&quot;kube&quot;</span><span class="p">,</span><span class="w">           </span><span class="c1"># .kube/ - kubernetes config</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="s2">&quot;bashrc&quot;</span><span class="p">,</span><span class="w">         </span><span class="c1"># .bashrc - shell expects in $HOME</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="s2">&quot;zshrc&quot;</span><span class="p">,</span><span class="w">          </span><span class="c1"># .zshrc</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="s2">&quot;profile&quot;</span><span class="p">,</span><span class="w">        </span><span class="c1"># .profile</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="s2">&quot;bash_profile&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="s2">&quot;bash_login&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="s2">&quot;bash_logout&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">    </span><span class="s2">&quot;inputrc&quot;</span><span class="w">         </span><span class="c1"># readline config</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="p">]</span>
+</code></pre></div>
+<p>Override to add your own entries or remove ones you don't need. Equivalent per-file: prefix the filename with <code>home.</code> or place it under <code>_home/</code>.</p>
+<h3 id="32-force_app">3.2. <code>force_app</code><a class="headerlink" href="#32-force_app" title="Permanent link">&para;</a></h3>
+<p>macOS: GUI-app folder names that route a pack-root entry to <code>~/Library/Application Support/&lt;name&gt;/&lt;rest&gt;</code> automatically, without needing the <code>_app/</code> directory prefix. Matching is case-sensitive (Library folder names are case-sensitive on macOS) and only against the first path segment.</p>
+<p><strong>Force app</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">[symlink]</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">force_app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Code&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Cursor&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Zed&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Emacs&quot;</span><span class="p">]</span>
+</code></pre></div>
+<p>On Linux (or on macOS with <code>app_uses_library = false</code>), <code>app_support_dir</code> collapses to <code>$XDG_CONFIG_HOME</code> — but <code>force_app</code> is still applied. So <code>force_app = ["Code"]</code> on Linux routes <code>Code/init.json</code> to <code>$XDG_CONFIG_HOME/Code/init.json</code> (skipping the per-pack namespace), not to the macOS Application Support root. If you don't want that behavior on Linux, drop the entry from the list there (or override per-pack).</p>
+<p>The shipped defaults stay under a 100-entry budget — that's a build-time invariant on <code>force_app</code>'s seed, not a user validation. You can set a longer list yourself; it just won't be a sane thing to do.</p>
+<p>Equivalent per-file: prefix with <code>app.</code> or place under <code>_app/</code>.</p>
+<h3 id="33-app_aliases">3.3. <code>app_aliases</code><a class="headerlink" href="#33-app_aliases" title="Permanent link">&para;</a></h3>
+<p>macOS: pack-name → app-folder rewrites. When a pack's name matches a key, every entry in that pack reroutes from the default <code>&lt;xdg_config_home&gt;/&lt;pack&gt;/&lt;rest&gt;</code> to <code>&lt;app_support_dir&gt;/&lt;value&gt;/&lt;rest&gt;</code>. Useful when your pack directory and the app's Library folder have different names.</p>
+<p><strong>App aliases</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">[symlink.app_aliases]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="s2">&quot;vscode&quot;</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Code&quot;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="s2">&quot;cursor-editor&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Cursor&quot;</span>
+</code></pre></div>
+<p>Defaults empty. Same Linux fallback as <code>force_app</code>.</p>
+<h3 id="34-app_uses_library">3.4. <code>app_uses_library</code><a class="headerlink" href="#34-app_uses_library" title="Permanent link">&para;</a></h3>
+<p>macOS toggle. When <code>true</code> (the default), <code>_app/</code> directories, <code>app.X</code> filenames, <code>force_app</code>, and <code>app_aliases</code> route through <code>~/Library/Application Support</code>. When <code>false</code>, they all collapse to plain <code>~/.config</code> (Linux-style placement). <code>_lib/</code> and <code>lib.X</code> are unaffected — those explicitly target <code>~/Library/</code>.</p>
+<p><strong>App-uses-library toggle</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">[symlink]</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">app_uses_library</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">   </span><span class="c1"># opt out of Application Support routing on this Mac</span>
+</code></pre></div>
+<p>Ignored on non-macOS hosts (the resolver collapses <code>app_support_dir</code> to <code>xdg_config_home</code> everywhere except macOS).</p>
+<h3 id="35-protected_paths">3.5. <code>protected_paths</code><a class="headerlink" href="#35-protected_paths" title="Permanent link">&para;</a></h3>
+<p>Files dodot refuses to symlink by default, because doing so is almost always a mistake. Private SSH keys, GPG state, cloud credentials.</p>
+<p><strong>Protected paths</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">[symlink]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">protected_paths</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="s2">&quot;.ssh/id_rsa&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="s2">&quot;.ssh/id_ed25519&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="s2">&quot;.ssh/id_dsa&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="s2">&quot;.ssh/id_ecdsa&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="s2">&quot;.ssh/authorized_keys&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">    </span><span class="s2">&quot;.gnupg&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">    </span><span class="s2">&quot;.aws/credentials&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="s2">&quot;.password-store&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="s2">&quot;.config/gh/hosts.yml&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">    </span><span class="s2">&quot;.kube/config&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">    </span><span class="s2">&quot;.docker/config.json&quot;</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="p">]</span>
+</code></pre></div>
+<p>Remove an entry to allow dodot to symlink it anyway.</p>
+<h3 id="36-targets">3.6. <code>targets</code><a class="headerlink" href="#36-targets" title="Permanent link">&para;</a></h3>
+<p>Per-file symlink target overrides. Maps a pack-relative filename to an absolute or relative target path. Absolute paths are used as-is; relative paths resolve against <code>$XDG_CONFIG_HOME</code>.</p>
+<p><strong>Targets</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">[symlink.targets]</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="s2">&quot;mysterious.conf&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/var/etc/mysterious.conf&quot;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="s2">&quot;home-bound.conf&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;my-documents/home-bound.conf&quot;</span>
+</code></pre></div>
+<h3 id="37-plist_extensions">3.7. <code>plist_extensions</code><a class="headerlink" href="#37-plist_extensions" title="Permanent link">&para;</a></h3>
+<p>Filename suffixes (without leading dot) that `dodot git-install-filters` and the <code>.gitattributes</code> writer treat as plists. Some apps store plists with non-standard suffixes (<code>.binplist</code>, <code>.savedState</code>); register the extra extensions here to flow them through the same clean/smudge pipeline.</p>
+<p><strong>Plist extensions</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">[symlink]</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">plist_extensions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;plist&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;binplist&quot;</span><span class="p">]</span>
+</code></pre></div>
+<p>Default <code>["plist"]</code>. Comparison is case-insensitive, and the list honors the standard root → pack inheritance.</p>
+<h2 id="4-the-path-section">4. The <code>[path]</code> Section<a class="headerlink" href="#4-the-path-section" title="Permanent link">&para;</a></h2>
+<p>Settings for the PATH handler (the one that adds <code>bin/</code> directories to <code>$PATH</code>).</p>
+<h3 id="41-auto_chmod_exec">4.1. <code>auto_chmod_exec</code><a class="headerlink" href="#41-auto_chmod_exec" title="Permanent link">&para;</a></h3>
+<p>Whether <code>dodot up</code> automatically adds the execute bit (<code>+x</code>) to files inside <code>bin/</code> directories. Default <code>true</code>.</p>
+<p><strong>Auto-chmod</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">[path]</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">auto_chmod_exec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<p>Files in a <code>bin/</code> directory are there because they're meant to be commands on <code>$PATH</code>, but the execute bit gets lost easily — git on macOS defaults to <code>core.fileMode = false</code>, and manual file creation often forgets <code>chmod +x</code>. Without <code>+x</code> the shell finds the file via PATH lookup but fails with "permission denied", a confusing error when the file is clearly in the right place.</p>
+<p>Files that are already executable are left untouched; failures are reported as warnings rather than hard errors. Set to <code>false</code> if you have <code>bin/</code> files that intentionally should not be executable (data files, sourced library scripts).</p>
+<h2 id="5-the-mappings-section">5. The <code>[mappings]</code> Section<a class="headerlink" href="#5-the-mappings-section" title="Permanent link">&para;</a></h2>
+<p>Overrides the default filename-to-handler map. Each key is a handler name; each value is either a single pattern or a list of patterns.</p>
+<p><strong>Mappings</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">[mappings]</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;bin&quot;</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">install</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;install.sh&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;install.bash&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;install.zsh&quot;</span><span class="p">]</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*.sh&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;*.bash&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;*.zsh&quot;</span><span class="p">]</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">homebrew</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Brewfile&quot;</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">ignore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">skip</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;README&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;README.*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;LICENSE&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;LICENSE.*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;CHANGELOG&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;CHANGELOG.*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;CONTRIBUTING&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;CONTRIBUTING.*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;AUTHORS&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;AUTHORS.*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;NOTICE&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;NOTICE.*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;COPYING&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;COPYING.*&quot;</span><span class="p">]</span>
+</code></pre></div>
+<p>The shell wildcards match at depth-1 only — any <code>.sh</code>/<code>.bash</code>/<code>.zsh</code> file at the <strong>pack's root</strong> is sourced. A <code>.sh</code> script tucked inside a subdirectory of the pack (for example <code>hypr/scripts/foo.sh</code>) is not pulled in; nested files flow through the symlink handler the same way every other nested file does. That carve-out is what keeps window-manager and tmux helper scripts (which live at <code>~/.config/&lt;app&gt;/scripts/*.sh</code> and are invoked by other tools, not the shell) from being silently sourced into your login shell.</p>
+<p>Shell extensions (<code>.sh</code>, <code>.bash</code>, <code>.zsh</code>) carry real meaning in dodot. For <code>install</code>, the extension selects the interpreter that runs the script: <code>.sh</code> and <code>.bash</code> run under <code>bash</code>, <code>.zsh</code> runs under <code>zsh</code>. For <code>shell</code>, the files are sourced into whatever shell reads <code>dodot-init.sh</code> — put zsh-only syntax in <code>.zsh</code>, bash-only syntax in <code>.bash</code>, and portable snippets in <code>.sh</code>. The user's login shell does not affect which <code>install.*</code> interpreter is picked; the extension is the contract.</p>
+<p><code>install</code> is list-only: even a single install script must be written as a TOML array (<code>install = ["install.sh"]</code>). The older single-string form (<code>install = "install.sh"</code>) no longer parses — update any older configs that use it.</p>
+<p>Two of the keys map to <em>filter handlers</em> — real handlers that claim a match but produce no executable intent. Their job is to keep matching files away from the deploying handlers (precise mappings, catchall symlink):</p>
+<ul>
+<li><code>ignore</code> — claims matches and drops them silently, mirroring <code>.gitignore</code>. Nothing surfaces in <code>dodot status</code>. Priority 100. </li>
+<li><code>skip</code> — claims matches and surfaces them in <code>dodot status</code> as <code>skipped</code>, but does not deploy them. Defaults cover the documentation/legal files (<code>README</code>, <code>LICENSE</code>, <code>CHANGELOG</code>, <code>CONTRIBUTING</code>, <code>AUTHORS</code>, <code>NOTICE</code>, <code>COPYING</code> and their <code>.*</code> variants), matched case-insensitively. Override per-pack with <code>skip = []</code> to deploy a README intentionally. Priority 50. </li>
+</ul>
+<p><code>install</code> sits at priority 20, above the priority-10 shell wildcard, so as long as <code>install.sh</code> is in <code>mappings.install</code> (the default) it routes to the install handler rather than being claimed by the shell glob — the install hook never gets accidentally sourced. The other precise mappings (<code>shell</code>, <code>path</code>, <code>homebrew</code>) sit at priority 10; the catchall symlink at priority 0. So a file the user said to drop is dropped, full stop — <code>ignore</code> over <code>skip</code> over <code>install</code> over the rest of the precise mappings over catchall. (If you override <code>mappings.install</code> to drop <code>install.sh</code>, the shell wildcard <strong>will</strong> claim it — that's the user's choice.)</p>
+<p>Distinct from <code>[pack] ignore</code>: <code>[mappings] ignore</code>/<code>skip</code> apply only to handler dispatch within a known pack, while <code>[pack] ignore</code> affects pack discovery and scanning. To skip an entire pack, drop a <code>.dodotignore</code> marker file (the "pack-ignore" mechanism).</p>
+<h3 id="51-mappingsgates">5.1. <code>[mappings.gates]</code><a class="headerlink" href="#51-mappingsgates" title="Permanent link">&para;</a></h3>
+<p>Glob → gate-label map for repos that can't rename files. Each entry says "this glob inherits this gate"; on a non-matching host the file is dropped (same effect as a filename suffix).</p>
+<p><strong>Glob-based gating</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">[mappings.gates]</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="s2">&quot;install-mac.sh&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;darwin&quot;</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="s2">&quot;Brewfile&quot;</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;darwin&quot;</span>
+</code></pre></div>
+<p>Patterns match the top-level pack entries the scanner surfaces. A file carrying both a filename gate (<code>._&lt;label&gt;</code>) and a matching <code>[mappings.gates]</code> entry is a hard error — pick one source of truth. Invalid glob patterns are also a hard error at scan time. <a href="./conditional-running.lex">See</a> §7.</p>
+<h2 id="6-the-gates-section">6. The <code>[gates]</code> Section<a class="headerlink" href="#6-the-gates-section" title="Permanent link">&para;</a></h2>
+<p>User-defined gate labels. Each entry maps a label name to a table of <code>(dimension, value)</code> equality checks AND-ed together. Gates can then be referenced from filename suffixes (<code>install._&lt;label&gt;.sh</code>), directory segments (<code>_&lt;label&gt;/</code>), and the <code>[mappings.gates]</code> map.</p>
+<p><strong>User-defined labels</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">[gates]</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">laptop</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;mbp-arthur&quot;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">work</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;work-laptop&quot;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">arm-mac</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">os</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;darwin&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">arch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;aarch64&quot;</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Dimensions: <code>os</code>, <code>arch</code>, <code>hostname</code>, <code>username</code> — same set templates expose under <code>dodot.*</code>. Label names must match <code>[A-Za-z0-9_-]+</code> and must not collide with routing-prefix tokens (<code>home</code>/<code>xdg</code>/<code>app</code>/<code>lib</code>); both rules are hard errors at config load.</p>
+<p>User entries extend the built-in seed (<code>darwin</code>, <code>linux</code>, <code>macos</code>, <code>arm64</code>, <code>aarch64</code>, <code>x86_64</code>). Redefining an existing built-in label (e.g. <code>darwin = { … }</code> in <code>[gates]</code>) replaces its predicate entirely — it does not merge dimensions into the built-in. Shadowing a built-in is allowed but unusual; most user labels use names the seed doesn't claim. For the full surface and composition rules, <a href="./conditional-running.lex">see</a>.</p>
+<h2 id="7-the-preprocessor-section">7. The <code>[preprocessor]</code> Section<a class="headerlink" href="#7-the-preprocessor-section" title="Permanent link">&para;</a></h2>
+<p>Controls the preprocessing pipeline. For the concept, <a href="./../reference/pre-processors.lex">see</a>.</p>
+<h3 id="71-global-kill-switch">7.1. Global kill switch<a class="headerlink" href="#71-global-kill-switch" title="Permanent link">&para;</a></h3>
+<p><strong>Global preprocessor toggle</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">[preprocessor]</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<p>Set to <code>false</code> to disable <em>all</em> preprocessors. <code>.tmpl</code> files (and other preprocessor-matched files) will deploy verbatim.</p>
+<h3 id="72-preprocessortemplate">7.2. <code>[preprocessor.template]</code><a class="headerlink" href="#72-preprocessortemplate" title="Permanent link">&para;</a></h3>
+<p>Template engine configuration.</p>
+<p><strong>Template configuration</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="k">[preprocessor.template]</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="n">extensions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;tmpl&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;template&quot;</span><span class="p">]</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">no_reverse</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;complex-config.toml.tmpl&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;*.gen.tmpl&quot;</span><span class="p">]</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="k">[preprocessor.template.vars]</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="n">editor</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;nvim&quot;</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">host_tier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;workstation&quot;</span>
+</code></pre></div>
+<p><code>extensions</code> is the list of trigger extensions. Both <code>".j2"</code> and <code>"j2"</code> are tolerated (leading dot optional).</p>
+<p><code>[preprocessor.template.vars]</code> defines variables available in templates under their bare names. <a href="./templates.lex">See</a> for usage. Reserved: <code>dodot</code> and <code>env</code> are built-in namespaces, so using them as var names is a hard error at load time.</p>
+<p><code>no_reverse</code> is glob patterns (matched against the source file's basename) whose reverse-merge in <code>dodot transform check</code> is bypassed. Templates listed here still render normally on <code>dodot up</code> and stay in the divergence cache; they just skip the heuristic that tries to backport changes from the deployed copy into the source. Useful for templates that are mostly dynamic — the heuristic degrades there and produces more conflict markers than usable diffs.</p>
+<h3 id="73-preprocessorage">7.3. <code>[preprocessor.age]</code><a class="headerlink" href="#73-preprocessorage" title="Permanent link">&para;</a></h3>
+<p>Opt-in <code>*.age</code> whole-file decryption. Off by default so a fresh dodot install never shells out to <code>age</code> against random files.</p>
+<p><strong>Age decryption</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">[preprocessor.age]</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">enabled</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="n">extensions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;age&quot;</span><span class="p">]</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="n">identity</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w">    </span><span class="c1"># empty: defer to $AGE_IDENTITY, then ~/.config/age/identity.txt</span>
+</code></pre></div>
+<p><code>extensions</code> matches the same shape as <code>template.extensions</code>; add entries when your repo uses non-standard suffixes (e.g. <code>["age", "age.txt"]</code>). <code>identity</code> is the path to the age identity file used for decryption; leaving it empty defers to the runtime, which checks <code>$AGE_IDENTITY</code> first, then falls back to <code>~/.config/age/identity.txt</code> (the conventional <code>age-keygen</code> destination).</p>
+<!-- lex:warning -->
+
+<p>Do not add <code>asc</code> to <code>extensions</code> unless your repo only stores ASCII-armored <em>encrypted</em> payloads under that suffix. <code>.asc</code> is conventionally used for armored public keys and detached signatures (release signatures, package-manager keys), neither of which gpg will decrypt; routing them through <code>gpg --decrypt</code> produces confusing failures.</p>
+<!-- /lex:warning -->
+
+<h3 id="74-preprocessorgpg">7.4. <code>[preprocessor.gpg]</code><a class="headerlink" href="#74-preprocessorgpg" title="Permanent link">&para;</a></h3>
+<p>Opt-in <code>*.gpg</code> whole-file decryption. Same posture as <code>age</code>. gpg-agent supplies the identity, so there's no <code>identity</code> field — auth is your existing gpg setup, not dodot's job to configure.</p>
+<p><strong>Gpg decryption</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">[preprocessor.gpg]</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="n">enabled</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">extensions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;gpg&quot;</span><span class="p">]</span>
+</code></pre></div>
+<h2 id="8-the-profiling-section">8. The <code>[profiling]</code> Section<a class="headerlink" href="#8-the-profiling-section" title="Permanent link">&para;</a></h2>
+<p><em>Root-only</em>. Controls shell-init timing instrumentation. Per-pack overrides are ignored — the init script is one thing, you can't half-profile it.</p>
+<p><strong>Profiling configuration</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">[profiling]</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">enabled</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="n">keep_last_runs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+</code></pre></div>
+<p>When <code>enabled = true</code> (the default), the generated <code>dodot-init.sh</code> carries a timing wrapper around each <code>source</code> and PATH line. bash 5+ / zsh sessions emit one TSV per shell startup under <code>&lt;data_dir&gt;/probes/shell-init/</code>; older shells fall through to the no-op path even with the wrapper present. Set <code>enabled = false</code> to make the init script byte-identical to the pre-Phase-2 form.</p>
+<p><code>keep_last_runs</code> caps retained TSV files; older ones get pruned at the end of every <code>dodot up</code>. At ~4 KB per run, the default budget is roughly 400 KB on disk.</p>
+<h2 id="9-the-secret-section">9. The <code>[secret]</code> Section<a class="headerlink" href="#9-the-secret-section" title="Permanent link">&para;</a></h2>
+<p><em>Root-only</em>. Configuration for secret resolution in templates (the <code>secret(...)</code> template function). Per-pack overrides are ignored — secret tooling (binaries, env vars like <code>$PASSWORD_STORE_DIR</code>, <code>OP_SERVICE_ACCOUNT_TOKEN</code>) is a property of the host, not of any individual pack.</p>
+<p>All providers default to <code>enabled = false</code>. Templates that call <code>secret(...)</code> against an unregistered scheme surface a "no provider for scheme" render error at <code>dodot up</code> time.</p>
+<h3 id="91-global-kill-switch">9.1. Global kill switch<a class="headerlink" href="#91-global-kill-switch" title="Permanent link">&para;</a></h3>
+<p><strong>Master switch</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="k">[secret]</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<p>Default <code>true</code>. Setting <code>enabled = false</code> disables the entire secret subsystem without removing per-provider blocks.</p>
+<h3 id="92-secretproviders">9.2. <code>[secret.providers]</code><a class="headerlink" href="#92-secretproviders" title="Permanent link">&para;</a></h3>
+<p>One block per supported provider. Each is opt-in; flip <code>enabled = true</code> to register the scheme.</p>
+<p><strong>Providers</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">[secret.providers.pass]</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">enabled</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="n">store_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w">    </span><span class="c1"># optional: overrides $PASSWORD_STORE_DIR</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="k">[secret.providers.op]</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">    </span><span class="c1"># 1Password CLI, scheme `op://`</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="k">[secret.providers.bw]</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">   </span><span class="c1"># Bitwarden CLI, scheme `bw:`</span>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a><span class="k">[secret.providers.sops]</span>
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">   </span><span class="c1"># Mozilla SOPS, scheme `sops:`</span>
+<a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>
+<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a><span class="k">[secret.providers.keychain]</span>
+<a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">   </span><span class="c1"># macOS Keychain, scheme `keychain:` (macOS only)</span>
+<a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a>
+<a id="__codelineno-20-17" name="__codelineno-20-17" href="#__codelineno-20-17"></a><span class="k">[secret.providers.secret_tool]</span>
+<a id="__codelineno-20-18" name="__codelineno-20-18" href="#__codelineno-20-18"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">   </span><span class="c1"># freedesktop Secret Service, scheme `secret-tool:` (Linux-first)</span>
+</code></pre></div>
+<!-- lex:note -->
+
+<p>The TOML key is <code>secret_tool</code> (underscore), but the scheme prefix in <code>secret(...)</code> calls is <code>secret-tool:</code> (hyphen, matching the binary name). Error messages translate between the two so a "no provider for scheme <code>secret-tool</code>" hint points at the right <code>[secret.providers.secret_tool]</code> block.</p>
+<!-- /lex:note -->
+
+<p><code>pass.store_dir</code> overrides <code>$PASSWORD_STORE_DIR</code> for the <code>pass</code> provider. Empty (the default) leaves dodot reading the env var, which itself falls back to <code>$HOME/.password-store</code>.</p>
+<p>For details on schemes, providers, and the <code>secret(...)</code> template function, <a href="./secrets.lex">see</a>.</p>
+<h2 id="10-inheritance-model">10. Inheritance Model<a class="headerlink" href="#10-inheritance-model" title="Permanent link">&para;</a></h2>
+<p>Most sections follow the same three-layer model: compiled defaults, then root <code>.dodot.toml</code>, then pack <code>.dodot.toml</code>. The outermost layer that sets a key wins for scalars and arrays; for maps, the layers deep-merge. The exceptions: <code>[secret]</code> and <code>[profiling]</code> are root-only (per-pack entries are ignored), and <code>[pack] os</code> is pack-only (root-level entries are rejected).</p>
+<p>Example: you set <code>[preprocessor.template.vars] editor = "nvim"</code> at the root. In a pack for work configs, you set <code>[preprocessor.template.vars] editor = "vscode"</code>. That pack renders templates with <code>editor = "vscode"</code>; all others render with <code>editor = "nvim"</code>. All other keys under <code>[preprocessor.template]</code> (enabled, extensions) remain as defined at the root.</p>
+<p>To see the fully resolved configuration for a context, run <code>dodot config list</code>. To inspect a single key with its inline doc, run <code>dodot config get &lt;key&gt;</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
