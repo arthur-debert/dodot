@@ -7,11 +7,6 @@ on:
       - docs/**
       - mkdocs.yml
       - .github/workflows/docs.yml
-  pull_request:
-    paths:
-      - docs/**
-      - mkdocs.yml
-      - .github/workflows/docs.yml
   workflow_dispatch:
 
 concurrency:
@@ -19,26 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: docs/requirements.txt
-
-      - run: pip install -r docs/requirements.txt
-
-      - run: mkdocs build
-
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -47,12 +23,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: docs/requirements.txt
-
-      - run: pip install -r docs/requirements.txt
-
-      - run: mkdocs gh-deploy --force
+      - uses: mhausenblas/mkdocs-deploy-gh-pages@1.26
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUIREMENTS: docs/requirements.txt
+          CONFIG_FILE: mkdocs.yml
