@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Docs site infrastructure.** `mkdocs.yml` (Material theme + `mkdocs-lex-plugin`) renders the `.lex` files under `docs/` as a static site. `.github/workflows/docs.yml` builds on every push to `main` that touches `docs/**` or `mkdocs.yml` and deploys to GitHub Pages via `actions/deploy-pages@v4`. Custom domain `dodot.sh` wired in via `docs/CNAME` (Google Cloud DNS zone, A records pointing at GitHub Pages + apex AAAA + `www` CNAME). `docs/requirements.txt` pins the build deps. Content wiring is incremental — sample nav covers home + four user-guide pages + three reference pages; the rest of the existing `.lex` files build but aren't yet in the nav.
+
 ## [5.0.0] - 2026-05-15
 
 
