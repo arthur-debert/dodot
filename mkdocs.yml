@@ -36,8 +36,8 @@ theme:
         name: Switch to light mode
 
 plugins:
-  - search
   - lex
+  - search
 
 markdown_extensions:
   - admonition
