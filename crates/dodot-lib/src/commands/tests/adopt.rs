@@ -1491,6 +1491,22 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
     // copying, so a copy failure silently lost the old content.
     use std::os::unix::fs::PermissionsExt;
 
+    // Skip when DAC permissions don't block this process (e.g. running as
+    // root in a container/sandbox — CAP_DAC_READ_SEARCH bypasses chmod 000).
+    // The test fundamentally requires read() to fail on the source file.
+    let probe = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(probe.path(), b"x").unwrap();
+    std::fs::set_permissions(probe.path(), std::fs::Permissions::from_mode(0o000)).unwrap();
+    let can_be_blocked_by_chmod = std::fs::read(probe.path()).is_err();
+    let _ = std::fs::set_permissions(probe.path(), std::fs::Permissions::from_mode(0o644));
+    if !can_be_blocked_by_chmod {
+        eprintln!(
+            "skipping adopt_force_preserves_old_content_when_copy_fails: \
+             process bypasses DAC permissions (running as root?)"
+        );
+        return;
+    }
+
     let env = TempEnvironment::builder()
         .pack("vim")
         .file("home.vimrc", "OLD")
