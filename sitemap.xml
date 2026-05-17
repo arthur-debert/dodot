@@ -1,27 +1,115 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://dodot.sh/research/secret-handling-landscape/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
          <loc>https://dodot.sh/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/conditional-running/</loc>
+         <loc>https://dodot.sh/reference/data-layer/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/configuration/</loc>
+         <loc>https://dodot.sh/reference/pre-processors/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/filters/</loc>
+         <loc>https://dodot.sh/reference/terms-and-concepts/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/paths/</loc>
+         <loc>https://dodot.sh/reference/handlers/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/reference/symlink-paths/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/reference/architecture/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/reference/template-magic/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/reference/plists/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/reference/alternatives/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/reference/philosophy/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/magic/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/profiling/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/preprocessing-pipeline/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/secrets/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/conditional-running/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/plists/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/secrets-testing/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/template-expansion/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/nix/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/pack-ordering/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/proposals/shipped/macos-paths/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/dev/storage/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/dev/handlers/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/dev/cli-output/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/dev/types-and-structure/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/dev/secret/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/dev/config-system/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
@@ -29,7 +117,15 @@
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/adopting/</loc>
+         <loc>https://dodot.sh/user/paths/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/shell-integration/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/handlers/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
@@ -41,15 +137,19 @@
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
+         <loc>https://dodot.sh/user/configuration/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/filters/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/conditional-running/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
          <loc>https://dodot.sh/user/plists/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/handlers/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
@@ -57,111 +157,11 @@
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/shell-integration/</loc>
+         <loc>https://dodot.sh/user/commands/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/glossary/dodot-toml/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/glossary/datastore/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/glossary/dotfiles-root/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/glossary/handler/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/glossary/rule/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/glossary/dodotignore/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/glossary/pack/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/transform/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/prompts/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/down/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/plist/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/git-show-alias/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/config/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/tutorial/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/list/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/git-show-filters/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/addignore/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/init/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/init-sh/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/git-install-alias/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/adopt/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/up/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/secret/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/template/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/git-augmentation/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/commands/refresh/</loc>
+         <loc>https://dodot.sh/user/adopting/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
@@ -169,7 +169,31 @@
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/commands/status/</loc>
+         <loc>https://dodot.sh/user/commands/tutorial/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/adopt/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/prompts/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/init-sh/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/addignore/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/transform/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/git-show-filters/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
@@ -177,39 +201,59 @@
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
+         <loc>https://dodot.sh/user/commands/up/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/list/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/status/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/plist/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/template/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/config/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/init/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/down/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/secret/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/git-augmentation/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/commands/git-install-alias/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
          <loc>https://dodot.sh/user/commands/git-install-filters/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/handlers/nix/</loc>
+         <loc>https://dodot.sh/user/commands/refresh/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/user/handlers/path/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/handlers/controlling-activation/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/handlers/symlink/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/handlers/external/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/handlers/install/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/handlers/shell/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/user/handlers/mappings/</loc>
+         <loc>https://dodot.sh/user/commands/git-show-alias/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
@@ -217,115 +261,67 @@
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
+         <loc>https://dodot.sh/user/handlers/controlling-activation/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/handlers/shell/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/handlers/install/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/handlers/symlink/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/handlers/mappings/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dodot.sh/user/handlers/external/</loc>
+         <lastmod>2026-05-17</lastmod>
+    </url>
+    <url>
          <loc>https://dodot.sh/user/handlers/homebrew/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/dev/cli-output/</loc>
+         <loc>https://dodot.sh/user/handlers/path/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/dev/secret/</loc>
+         <loc>https://dodot.sh/user/handlers/nix/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/dev/handlers/</loc>
+         <loc>https://dodot.sh/user/glossary/pack/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/dev/storage/</loc>
+         <loc>https://dodot.sh/user/glossary/rule/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/dev/types-and-structure/</loc>
+         <loc>https://dodot.sh/user/glossary/dotfiles-root/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/dev/config-system/</loc>
+         <loc>https://dodot.sh/user/glossary/dodotignore/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/reference/pre-processors/</loc>
+         <loc>https://dodot.sh/user/glossary/datastore/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/reference/data-layer/</loc>
+         <loc>https://dodot.sh/user/glossary/dodot-toml/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
     <url>
-         <loc>https://dodot.sh/reference/philosophy/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/reference/alternatives/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/reference/symlink-paths/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/reference/template-magic/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/reference/terms-and-concepts/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/reference/plists/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/reference/handlers/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/reference/architecture/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/conditional-running/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/nix/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/template-expansion/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/macos-paths/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/preprocessing-pipeline/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/profiling/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/secrets-testing/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/secrets/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/plists/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/magic/</loc>
-         <lastmod>2026-05-17</lastmod>
-    </url>
-    <url>
-         <loc>https://dodot.sh/proposals/shipped/pack-ordering/</loc>
+         <loc>https://dodot.sh/user/glossary/handler/</loc>
          <lastmod>2026-05-17</lastmod>
     </url>
 </urlset>
