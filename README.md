@@ -207,12 +207,12 @@ Download from [GitHub Releases](https://github.com/arthur-debert/dodot/releases)
 
 ```sh
 # Run all checks (same as CI)
-scripts/check
+bin/check
 
 # Individual checks
-scripts/check-fmt
-scripts/check-lint
-scripts/check-tests
+bin/check-fmt
+bin/check-lint
+bin/check-tests
 
 # Install pre-commit hook (requires lefthook: `brew install lefthook`)
 lefthook install
