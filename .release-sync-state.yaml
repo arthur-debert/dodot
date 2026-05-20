@@ -1,8 +1,8 @@
 # Managed by release-sync. Do not edit.
 synced_from: arthur-debert/release
 ref: take-iii
-sha: 2b3fb9b2e48e6e253788d0a91d1ef93c3bc1a3b0
-synced_at: 2026-05-20T00:31:26Z
+sha: f2348f3c2b277809b5da54a407b236cb2ed5f0f9
+synced_at: 2026-05-20T00:36:23Z
 stack: rust
 components:
   - shell-quality
