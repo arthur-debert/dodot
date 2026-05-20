@@ -206,52 +206,57 @@ fi
 if [ "$(uname -s)" = "Linux" ] \
    && command -v certutil >/dev/null 2>&1 \
    && command -v openssl >/dev/null 2>&1; then
-  _ca_tmp="$(mktemp -d)"
-  _found=0
+  # Subshell scopes the EXIT trap so cleanup is reliable under `set -e`
+  # AND doesn't overwrite a process-wide EXIT trap. The subshell exits
+  # when this block finishes, the trap fires, the tmp dir is gone — no
+  # leak even if awk/cp/openssl error out below.
+  (
+    _ca_tmp="$(mktemp -d)"
+    trap 'rm -rf "${_ca_tmp}"' EXIT
+    _found=0
 
-  # Layout A: split the system bundle into per-cert PEMs if it contains
-  # any Anthropic CA. Cheap grep gate avoids the awk fork on non-cloud
-  # Linux boxes (where the bundle has no matches).
-  if [ -f /etc/ssl/certs/ca-certificates.crt ] \
-     && grep -q 'Anthropic' /etc/ssl/certs/ca-certificates.crt 2>/dev/null; then
-    awk '
-      /-----BEGIN CERTIFICATE-----/ { n++; fn = sandbox_dir "/bundle_" n ".pem"; in_cert = 1 }
-      in_cert                       { print > fn }
-      /-----END CERTIFICATE-----/   { in_cert = 0; close(fn) }
-    ' sandbox_dir="${_ca_tmp}" /etc/ssl/certs/ca-certificates.crt
-    _found=1
-  fi
-
-  # Layout B: copy standalone swp-ca-*.pem files into the scratch dir.
-  # The glob may be unexpanded if no file matches; guard with -f.
-  for _pem in /etc/ssl/certs/swp-ca-*.pem; do
-    [ -f "${_pem}" ] || continue
-    cp "${_pem}" "${_ca_tmp}/$(basename "${_pem}")"
-    _found=1
-  done
-
-  if [ "${_found}" = "1" ]; then
-    _nssdb="${HOME}/.pki/nssdb"
-    mkdir -p "${_nssdb}"
-    if [ ! -f "${_nssdb}/cert9.db" ]; then
-      certutil -d "sql:${_nssdb}" -N --empty-password >/dev/null 2>&1 || true
+    # Layout A: split the system bundle into per-cert PEMs if it contains
+    # any Anthropic CA. Cheap grep gate avoids the awk fork on non-cloud
+    # Linux boxes (where the bundle has no matches).
+    if [ -f /etc/ssl/certs/ca-certificates.crt ] \
+       && grep -q 'Anthropic' /etc/ssl/certs/ca-certificates.crt 2>/dev/null; then
+      awk -v sandbox_dir="${_ca_tmp}" '
+        /-----BEGIN CERTIFICATE-----/ { n++; fn = sandbox_dir "/bundle_" n ".pem"; in_cert = 1 }
+        in_cert                       { print > fn }
+        /-----END CERTIFICATE-----/   { in_cert = 0; close(fn) }
+      ' /etc/ssl/certs/ca-certificates.crt
+      _found=1
     fi
-    for _pem in "${_ca_tmp}"/*.pem; do
-      [ -f "${_pem}" ] || continue
-      _subject="$(openssl x509 -in "${_pem}" -noout -subject 2>/dev/null || true)"
-      case "${_subject}" in
-        *Anthropic*sandbox-egress*)
-          _nick="$(printf '%s' "${_subject}" | sed -nE 's/.*CN *= *([^,]+).*/\1/p')"
-          [ -n "${_nick}" ] || continue
-          if ! certutil -d "sql:${_nssdb}" -L -n "${_nick}" >/dev/null 2>&1; then
-            certutil -d "sql:${_nssdb}" -A -t "C,," -n "${_nick}" -i "${_pem}" >/dev/null 2>&1 || true
-          fi
-          ;;
-      esac
-    done
-  fi
 
-  rm -rf "${_ca_tmp}"
+    # Layout B: copy standalone swp-ca-*.pem files into the scratch dir.
+    # The glob may be unexpanded if no file matches; guard with -f.
+    for _pem in /etc/ssl/certs/swp-ca-*.pem; do
+      [ -f "${_pem}" ] || continue
+      cp "${_pem}" "${_ca_tmp}/$(basename "${_pem}")"
+      _found=1
+    done
+
+    if [ "${_found}" = "1" ]; then
+      _nssdb="${HOME}/.pki/nssdb"
+      mkdir -p "${_nssdb}"
+      if [ ! -f "${_nssdb}/cert9.db" ]; then
+        certutil -d "sql:${_nssdb}" -N --empty-password >/dev/null 2>&1 || true
+      fi
+      for _pem in "${_ca_tmp}"/*.pem; do
+        [ -f "${_pem}" ] || continue
+        _subject="$(openssl x509 -in "${_pem}" -noout -subject 2>/dev/null || true)"
+        case "${_subject}" in
+          *Anthropic*sandbox-egress*)
+            _nick="$(printf '%s' "${_subject}" | sed -nE 's/.*CN *= *([^,]+).*/\1/p')"
+            [ -n "${_nick}" ] || continue
+            if ! certutil -d "sql:${_nssdb}" -L -n "${_nick}" >/dev/null 2>&1; then
+              certutil -d "sql:${_nssdb}" -A -t "C,," -n "${_nick}" -i "${_pem}" >/dev/null 2>&1 || true
+            fi
+            ;;
+        esac
+      done
+    fi
+  )
 fi
 
 # --- 3. Pre-commit hook wiring -------------------------------------------
