@@ -1,0 +1,6 @@
+# Consumer override for release-sync. Adds the opt-in `bats` Component
+# on top of the rust Stack defaults.
+components:
+  - shell-quality
+  - rust-quality
+  - bats

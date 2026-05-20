@@ -1,12 +1,13 @@
 # Managed by release-sync. Do not edit.
 synced_from: arthur-debert/release
 ref: take-iii
-sha: c36c73a104d2b00db52de3770eeccc5237132a41
-synced_at: 2026-05-20T17:57:47Z
+sha: b0c9d5cba63f5258a92fb1a1c39390d583337943
+synced_at: 2026-05-20T22:20:10Z
 stack: rust
 components:
   - shell-quality
   - rust-quality
+  - bats
 files:
   - .claude/settings.json
   - .editorconfig
@@ -20,6 +21,7 @@ files:
   - .shellcheckrc
   - .yamllint
   - bin/check
+  - bin/check-e2e
   - bin/check-fmt
   - bin/check-lint
   - bin/check-tests

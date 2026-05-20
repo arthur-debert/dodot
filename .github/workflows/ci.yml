@@ -43,10 +43,15 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout tests
+      - name: Checkout
         uses: actions/checkout@v6
         with:
-          sparse-checkout: tests/e2e
+          # Need bin/check-e2e (synced from the canonical bats Component)
+          # alongside the tests themselves. Sparse-checkout keeps the job
+          # fast while pulling both paths.
+          sparse-checkout: |
+            tests/e2e
+            bin
 
       - name: Download binary
         uses: actions/download-artifact@v8
@@ -54,12 +59,14 @@ jobs:
           name: dodot-linux
 
       - name: Install BATS
-        run: |
-          git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats
-          sudo /tmp/bats/install.sh /usr/local
+        # Canonical install via the bats-core marketplace action. Replaces
+        # the prior `git clone bats-core/install.sh` boilerplate. See
+        # arthur-debert/release `bats` Component docs/per-component/bats.md.
+        uses: bats-core/bats-action@4.0.0
 
       - name: Run E2E tests
+        env:
+          DODOT_BIN: ${{ github.workspace }}/dodot
         run: |
           chmod +x dodot
-          export DODOT_BIN="$PWD/dodot"
-          bats tests/e2e/bats/
+          bin/check-e2e

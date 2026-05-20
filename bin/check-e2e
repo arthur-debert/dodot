@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Canonical e2e runner. Synced from arthur-debert/release@<ref>
+# (templates/components/bats/). Do not edit by hand.
+#
+# Discovers the consumer's bats layout by convention and runs it.
+# Order matters — first match wins, so consumers with custom needs can
+# drop a `scripts/check-e2e` override that takes priority over the
+# built-in discovery.
+#
+#   1. ./scripts/check-e2e            consumer override (full control)
+#   2. ./live-tests/run-tests         padz pattern (explicit bats runner)
+#   3. ./live-tests/run               too pattern (umbrella e2e driver)
+#   4. ./tests/integration/run.sh     supage pattern
+#   5. bats ./tests/e2e/bats/         dodot pattern (helpers/ subdir)
+#   6. bats ./tests/e2e/              generic flat layout (any *.bats)
+#   7. bats ./live-tests/tests/       padz fallback if run-tests vanishes
+#
+# Missing all: exit 0 with a notice. Repos without e2e tests should
+# not fail the umbrella `bin/check`.
+
+set -euo pipefail
+
+cd "$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ -x scripts/check-e2e ]; then
+  echo "Running e2e via scripts/check-e2e (consumer override)..."
+  exec scripts/check-e2e "$@"
+fi
+
+if [ -x live-tests/run-tests ]; then
+  echo "Running e2e via live-tests/run-tests..."
+  exec live-tests/run-tests "$@"
+fi
+
+if [ -x live-tests/run ]; then
+  echo "Running e2e via live-tests/run..."
+  exec live-tests/run "$@"
+fi
+
+if [ -x tests/integration/run.sh ]; then
+  echo "Running e2e via tests/integration/run.sh..."
+  exec tests/integration/run.sh "$@"
+fi
+
+if [ -d tests/e2e/bats ] && find tests/e2e/bats -maxdepth 2 -name '*.bats' -print -quit | grep -q .; then
+  if ! command -v bats >/dev/null 2>&1; then
+    echo "::error::bats not installed. Run \`brew install bats-core\` or use the canonical bats-e2e.yml CI workflow." >&2
+    exit 1
+  fi
+  echo "Running bats tests/e2e/bats/ ..."
+  exec bats tests/e2e/bats/ "$@"
+fi
+
+if find tests/e2e -maxdepth 2 -name '*.bats' -print -quit 2>/dev/null | grep -q .; then
+  if ! command -v bats >/dev/null 2>&1; then
+    echo "::error::bats not installed. Run \`brew install bats-core\` or use the canonical bats-e2e.yml CI workflow." >&2
+    exit 1
+  fi
+  echo "Running bats tests/e2e/ ..."
+  exec bats tests/e2e/ "$@"
+fi
+
+if find live-tests/tests -maxdepth 2 -name '*.bats' -print -quit 2>/dev/null | grep -q .; then
+  if ! command -v bats >/dev/null 2>&1; then
+    echo "::error::bats not installed. Run \`brew install bats-core\` or use the canonical bats-e2e.yml CI workflow." >&2
+    exit 1
+  fi
+  echo "Running bats live-tests/tests/ ..."
+  exec bats live-tests/tests/ "$@"
+fi
+
+echo "No e2e tests found (looked at scripts/check-e2e, live-tests/run{-tests,}, tests/integration/run.sh, tests/e2e/{bats/,*.bats}, live-tests/tests/*.bats). Skipping."
+exit 0

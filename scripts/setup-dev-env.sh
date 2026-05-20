@@ -45,6 +45,15 @@ if [ -f Cargo.toml ] && command -v cargo >/dev/null 2>&1; then
   cargo fetch --locked --quiet || true
 fi
 
+# Go: `go mod download` populates the module cache without building.
+# Cheap when the cache is already warm; ~free in steady state. Keep
+# stderr visible so module-resolution / auth failures surface during
+# debugging — `|| true` keeps us best-effort without silencing the why.
+if [ -f go.mod ] && command -v go >/dev/null 2>&1; then
+  go version
+  go mod download || true
+fi
+
 # Node (npm/yarn/pnpm). We deliberately do NOT guard on `! -d node_modules`:
 # the env-snapshot caches a node_modules paired with a previous branch's
 # lockfile, and a feature branch that bumps the lockfile (Playwright is
@@ -286,3 +295,11 @@ fi
 #
 # No trailing `exit 0` — bash exits 0 on EOF when `set -euo pipefail`
 # succeeded. Adding one here would make appended extras unreachable.
+#
+# Below: the `release-sync:marker-end` sentinel marks the end of the
+# canonical section. release-sync splits the consumer's file at this
+# sentinel — content at or above is replaced on every sync from
+# release/; content below is the consumer's project-local extras and is
+# preserved across syncs. The sentinel must be the LAST line of the
+# canonical (no trailing prose) so the splitter knows where to cut.
+# release-sync:marker-end
