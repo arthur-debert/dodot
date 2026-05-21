@@ -15,9 +15,10 @@ name: CI
 # installs bats-core, and runs `bin/check-e2e` with DODOT_BIN
 # set to the workspace-relative binary path.
 #
-# Pinned at @take-iii during integration; flips to @v1 after the
-# take-iii branch merges and the new workflow rides the next
-# release/ tag.
+# Pinned at the feature branch of release/'s PR #130 while
+# rust-ci.yml is in review. Flips to @take-iii once #130 merges,
+# then to @v1 after take-iii itself lands on main and rides the
+# next release/ tag.
 
 on:
   push:
@@ -29,7 +30,7 @@ permissions:
 
 jobs:
   ci:
-    uses: arthur-debert/release/.github/workflows/rust-ci.yml@take-iii
+    uses: arthur-debert/release/.github/workflows/rust-ci.yml@feat/rust-ci-reusable-workflow
     with:
       binary-name: dodot
       bats: true
