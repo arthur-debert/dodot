@@ -7,18 +7,13 @@ name: CI
 # See docs/per-stack/rust-ci.md in arthur-debert/release for the
 # full input reference. dodot is the reference adopter of this
 # workflow — closes the CI workflow reusability gap for the rust
-# fleet (called out in release/'s README and the
-# feedback_ci_reusability_gap memory).
+# fleet (see the "CI workflow reusability gap" section in
+# release/'s README.md).
 #
 # `binary-name: dodot` causes the check job to build and upload
 # `dodot-linux`; `bats: true` adds an e2e job that downloads it,
 # installs bats-core, and runs `bin/check-e2e` with DODOT_BIN
 # set to the workspace-relative binary path.
-#
-# Pinned at the feature branch of release/'s PR #130 while
-# rust-ci.yml is in review. Flips to @take-iii once #130 merges,
-# then to @v1 after take-iii itself lands on main and rides the
-# next release/ tag.
 
 on:
   push:
