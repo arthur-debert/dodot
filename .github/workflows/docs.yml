@@ -1,7 +1,6 @@
 # Thin caller of arthur-debert/release/.github/workflows/mkdocs.yml@v1.
-# The reusable workflow handles checkout + Python setup + mkdocs install
-# from `docs/requirements.txt` + `mkdocs build --strict` + deploy to
-# GitHub Pages on pushes to main.
+# Push-to-main only — PR-time docs validation lives in `docs-check.yml`
+# (which calls the same reusable workflow but skips deploy).
 
 name: Docs
 
@@ -12,8 +11,6 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - '.github/workflows/docs.yml'
-  pull_request:
-    paths: ['docs/**', 'mkdocs.yml']
   workflow_dispatch:
 
 permissions:
