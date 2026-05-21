@@ -1,5 +1,24 @@
 name: CI
 
+# Thin caller for the canonical reusable Rust CI workflow at
+# arthur-debert/release. Replaces the previously hand-rolled
+# setup-rust + nextest + bin/check + build + bats sequence.
+#
+# See docs/per-stack/rust-ci.md in arthur-debert/release for the
+# full input reference. dodot is the reference adopter of this
+# workflow — closes the CI workflow reusability gap for the rust
+# fleet (called out in release/'s README and the
+# feedback_ci_reusability_gap memory).
+#
+# `binary-name: dodot` causes the check job to build and upload
+# `dodot-linux`; `bats: true` adds an e2e job that downloads it,
+# installs bats-core, and runs `bin/check-e2e` with DODOT_BIN
+# set to the workspace-relative binary path.
+#
+# Pinned at @take-iii during integration; flips to @v1 after the
+# take-iii branch merges and the new workflow rides the next
+# release/ tag.
+
 on:
   push:
     branches: ['**']
@@ -8,65 +27,9 @@ on:
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Rust
-        uses: ./.github/actions/rust-setup
-        with:
-          rust-components: clippy, rustfmt
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
-
-      - name: Run checks
-        run: bin/check
-
-      - name: Build release binary
-        run: cargo build --release -p dodot
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v7
-        with:
-          name: dodot-linux
-          path: target/release/dodot
-
-  e2e:
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          # Need bin/check-e2e (synced from the canonical bats Component)
-          # alongside the tests themselves. Sparse-checkout keeps the job
-          # fast while pulling both paths.
-          sparse-checkout: |
-            tests/e2e
-            bin
-
-      - name: Download binary
-        uses: actions/download-artifact@v8
-        with:
-          name: dodot-linux
-
-      - name: Install BATS
-        # Canonical install via the bats-core marketplace action. Replaces
-        # the prior `git clone bats-core/install.sh` boilerplate. See
-        # arthur-debert/release `bats` Component docs/per-component/bats.md.
-        uses: bats-core/bats-action@4.0.0
-
-      - name: Run E2E tests
-        env:
-          DODOT_BIN: ${{ github.workspace }}/dodot
-        run: |
-          chmod +x dodot
-          bin/check-e2e
+  ci:
+    uses: arthur-debert/release/.github/workflows/rust-ci.yml@take-iii
+    with:
+      binary-name: dodot
+      bats: true
