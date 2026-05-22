@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 # Thin shim around the canonical release-cut CLI (arthur-debert/release/bin/release-cut).
+# release-cut handles arg parsing, semver bump, validation, and dispatches the
+# CI release workflow. Run `release-cut --help` for usage.
+#
 # This repo's workspace-only root Cargo.toml doesn't carry the version — it
-# lives in `crates/dodot-lib/Cargo.toml`. RELEASE_CUT_MANIFEST points at it.
-export RELEASE_CUT_MANIFEST=crates/dodot-lib/Cargo.toml
+# lives in crates/dodot-lib/Cargo.toml. Resolve the path against the repo
+# root via `git rev-parse --show-toplevel` so the shim works from any cwd.
+#
+# What CI does (all on GitHub):
+#   1. Bumps every workspace crate via `cargo set-version --workspace`
+#   2. Rolls ## [Unreleased] → ## [VERSION] - DATE in CHANGELOG.md
+#   3. Commits "chore: Release vX.Y.Z" + tag, creates GitHub Release
+#   4. Builds binaries (macOS arm64 signed+notarized, linux x64+arm64)
+#   5. Publishes dodot-lib and dodot to crates.io
+#   6. Renders + pushes Homebrew formula to arthur-debert/homebrew-tools
+#   7. Builds amd64+arm64 .debs, attaches to release
+
+if ! command -v release-cut >/dev/null 2>&1; then
+    echo "scripts/release: release-cut not found on \$PATH" >&2
+    echo "  install: cd ~/h/release && git pull (release-cut lives in bin/)" >&2
+    exit 1
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+export RELEASE_CUT_MANIFEST="${repo_root}/crates/dodot-lib/Cargo.toml"
 exec release-cut "$@"
