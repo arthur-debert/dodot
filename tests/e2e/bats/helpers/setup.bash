@@ -12,6 +12,10 @@
 _E2E_HELPERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _E2E_PROJECT_ROOT="$(cd "$_E2E_HELPERS_DIR/../../../.." && pwd)"
 
+# Canonical harness for workspace lifecycle
+# shellcheck source=../../../../lib/bats-harness.bash
+source "$_E2E_PROJECT_ROOT/lib/bats-harness.bash"
+
 # Where the compiled dodot binary lives.
 # Set DODOT_BIN externally to override (e.g. in CI or Docker).
 DODOT_BIN="${DODOT_BIN:-$_E2E_PROJECT_ROOT/target/release/dodot}"
@@ -25,7 +29,8 @@ source "$_E2E_HELPERS_DIR/assertions.bash"
 # ── Sandbox lifecycle ───────────────────────────────────────────
 
 sandbox_setup() {
-    SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/dodot-e2e-XXXXXXXXXX")"
+    harness_create_workspace_notrap
+    SANDBOX="$HARNESS_WORKSPACE"
 
     # Mirror TempEnvironment layout
     SANDBOX_HOME="$SANDBOX/home"
@@ -138,9 +143,7 @@ unhide_brew_for_test() {
 }
 
 sandbox_teardown() {
-    if [[ -n "${SANDBOX:-}" && -d "$SANDBOX" ]]; then
-        rm -rf "$SANDBOX"
-    fi
+    harness_cleanup
 }
 
 # ── dodot wrapper ───────────────────────────────────────────────
