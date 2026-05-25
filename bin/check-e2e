@@ -56,11 +56,14 @@ if [ -f tests/e2e/bats.conf ]; then
   if [[ "${ISOLATION:-per-test}" == "suite" ]]; then
     harness_create_workspace
     export SANDBOX="$HARNESS_WORKSPACE"
+    # shellcheck disable=SC2086
     harness_mkdir ${WORKSPACE_DIRS:-}
+    # shellcheck disable=SC2086
     harness_git_init ${GIT_INIT_DIRS:-}
     type -t e2e_env &>/dev/null && e2e_env
     if [[ -n "${FIXTURE_SCRIPT:-}" ]]; then
       _harness_status "Setting up fixtures..."
+      # shellcheck disable=SC1090
       ( cd "$HARNESS_WORKSPACE" && source "$HARNESS_ROOT/$FIXTURE_SCRIPT" ) >/dev/null 2>&1
     fi
   fi
