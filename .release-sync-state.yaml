@@ -1,8 +1,8 @@
 # Managed by release-sync. Do not edit.
 synced_from: arthur-debert/release
 ref: origin/main
-sha: 7946945e62535fa8f4c67eee81c2e0acda16fe1a
-synced_at: 2026-05-25T15:55:47Z
+sha: 178b0ba257af5acf6c471d900f8b658a7e8d378c
+synced_at: 2026-05-25T18:08:56Z
 stack: rust
 components:
   - shell-quality
@@ -42,3 +42,4 @@ files:
   - lefthook.yml
   - lib/bats-harness.bash
   - scripts/setup-dev-env.sh
+  - tests/e2e/bats/helpers/setup.bash

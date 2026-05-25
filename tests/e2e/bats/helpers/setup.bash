@@ -45,7 +45,9 @@ sandbox_setup() {
   if [[ "${ISOLATION:-per-test}" == "per-test" ]]; then
     harness_create_workspace_notrap
     export SANDBOX="$HARNESS_WORKSPACE"
+    # shellcheck disable=SC2086
     harness_mkdir ${WORKSPACE_DIRS:-}
+    # shellcheck disable=SC2086
     harness_git_init ${GIT_INIT_DIRS:-}
     if type -t e2e_env &>/dev/null; then
       e2e_env
