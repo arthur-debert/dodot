@@ -4,12 +4,12 @@ set -euo pipefail
 # E2E test runner for dodot.
 #
 # Usage:
-#   app-bin/e2e                    Run all E2E tests in Docker
-#   app-bin/e2e --shell            Drop into interactive container
-#   app-bin/e2e --local            Run locally (no Docker, uses temp-dir isolation)
-#   app-bin/e2e --rebuild          Force rebuild of Docker image
-#   app-bin/e2e test_up.bats       Run a specific test file
-#   app-bin/e2e --local test_up.bats   Run specific test file locally
+#   scripts/e2e                    Run all E2E tests in Docker
+#   scripts/e2e --shell            Drop into interactive container
+#   scripts/e2e --local            Run locally (no Docker, uses temp-dir isolation)
+#   scripts/e2e --rebuild          Force rebuild of Docker image
+#   scripts/e2e test_up.bats       Run a specific test file
+#   scripts/e2e --local test_up.bats   Run specific test file locally
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -38,7 +38,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "Usage: app-bin/e2e [OPTIONS] [TEST_FILE]"
+            echo "Usage: scripts/e2e [OPTIONS] [TEST_FILE]"
             echo ""
             echo "Options:"
             echo "  --explore   Pre-built sandbox with fixtures + pre-existing home files"
@@ -48,12 +48,12 @@ while [[ $# -gt 0 ]]; do
             echo "  -h, --help  Show this help"
             echo ""
             echo "Examples:"
-            echo "  app-bin/e2e                       Run all tests in Docker"
-            echo "  app-bin/e2e test_up.bats           Run specific test file in Docker"
-            echo "  app-bin/e2e --local                Run all tests locally"
-            echo "  app-bin/e2e --local test_up.bats   Run specific test file locally"
-            echo "  app-bin/e2e --explore              Explore sandbox with conflicts/adoptable files"
-            echo "  app-bin/e2e --shell                Bare container shell"
+            echo "  scripts/e2e                       Run all tests in Docker"
+            echo "  scripts/e2e test_up.bats           Run specific test file in Docker"
+            echo "  scripts/e2e --local                Run all tests locally"
+            echo "  scripts/e2e --local test_up.bats   Run specific test file locally"
+            echo "  scripts/e2e --explore              Explore sandbox with conflicts/adoptable files"
+            echo "  scripts/e2e --shell                Bare container shell"
             exit 0
             ;;
         *.bats)
