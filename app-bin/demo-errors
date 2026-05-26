@@ -14,9 +14,9 @@
 #   - Adopt on a non-dotted file       → surfaces an error from the CLI
 #
 # Usage:
-#   scripts/demo-errors              # run the demo, clean up at the end
-#   scripts/demo-errors --keep       # leave the sandbox on disk and print its path
-#   scripts/demo-errors --release    # use target/release/dodot (must be built first)
+#   app-bin/demo-errors              # run the demo, clean up at the end
+#   app-bin/demo-errors --keep       # leave the sandbox on disk and print its path
+#   app-bin/demo-errors --release    # use target/release/dodot (must be built first)
 
 set -euo pipefail
 
