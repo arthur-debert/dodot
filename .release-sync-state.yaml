@@ -1,8 +1,8 @@
 # Managed by release-sync. Do not edit.
 synced_from: arthur-debert/release
 ref: origin/main
-sha: 178b0ba257af5acf6c471d900f8b658a7e8d378c
-synced_at: 2026-05-25T18:08:56Z
+sha: 0d360eb3775a912e9e89e4a53f46b7e0a8139750
+synced_at: 2026-05-27T00:58:11Z
 stack: rust
 components:
   - shell-quality
@@ -35,11 +35,11 @@ files:
   - bin/check-lint
   - bin/check-tests
   - bin/diff-since-release
+  - bin/setup-dev-env.sh
   - bin/share/semver-tool/LICENSE
   - bin/share/semver-tool/README.md
   - bin/share/semver-tool/semver
   - CHANGELOG/README.txt
   - lefthook.yml
   - lib/bats-harness.bash
-  - scripts/setup-dev-env.sh
   - tests/e2e/bats/helpers/setup.bash
