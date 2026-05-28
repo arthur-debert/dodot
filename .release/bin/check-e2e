@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Canonical e2e runner. Synced from arthur-debert/release@<ref>
+# (templates/components/bats/). Do not edit by hand.
+#
+# Discovery order (first match wins):
+#
+#   1. ./scripts/check-e2e            consumer override (full control)
+#   2. ./tests/e2e/bats.conf          canonical bats.conf layout
+#   3. ./live-tests/run-tests         padz pattern (explicit runner)
+#   4. ./live-tests/run               too pattern (umbrella driver)
+#   5. ./tests/integration/run.sh     supage pattern
+#   6. bats ./tests/e2e/bats/         bare bats (helpers/ subdir)
+#   7. bats ./tests/e2e/              generic flat layout
+#   8. bats ./live-tests/tests/       padz fallback
+#
+# Missing all: exit 0 with a notice.
+
+set -euo pipefail
+
+cd "$(cd "$(dirname "$0")/.." && pwd)"
+
+# --- 1. Consumer full override -------------------------------------------
+
+if [ -x scripts/check-e2e ]; then
+  echo "Running e2e via scripts/check-e2e (consumer override)..."
+  exec scripts/check-e2e "$@"
+fi
+
+# --- 2. bats.conf canonical layout ---------------------------------------
+
+if [ -f tests/e2e/bats.conf ]; then
+  # shellcheck source=../lib/bats-harness.bash
+  source lib/bats-harness.bash
+  harness_require_bats
+  harness_set_root "$(pwd)"
+
+  # shellcheck source=/dev/null
+  source tests/e2e/bats.conf
+
+  # Build (skip if binaries already present, e.g. CI artifact)
+  _need_build=""
+  for _entry in ${BINS:-}; do
+    _name="${_entry%%=*}"
+    _path="${_entry#*=}"
+    _var="$(echo "$_name" | tr '[:lower:]-' '[:upper:]_')_BIN"
+    if [[ -z "${!_var:-}" ]]; then
+      [[ ! -x "$_path" ]] && _need_build=1
+      export "$_var=$(pwd)/$_path"
+    fi
+  done
+  if [[ -n "$_need_build" && -n "${BUILD_CMD:-}" ]]; then
+    harness_build "$BUILD_CMD"
+  fi
+
+  # Suite mode: workspace lifecycle here, before bats
+  if [[ "${ISOLATION:-per-test}" == "suite" ]]; then
+    harness_create_workspace
+    export SANDBOX="$HARNESS_WORKSPACE"
+    # shellcheck disable=SC2086
+    harness_mkdir ${WORKSPACE_DIRS:-}
+    # shellcheck disable=SC2086
+    harness_git_init ${GIT_INIT_DIRS:-}
+    type -t e2e_env &>/dev/null && e2e_env
+    if [[ -n "${FIXTURE_SCRIPT:-}" ]]; then
+      _harness_status "Setting up fixtures..."
+      # shellcheck disable=SC1090
+      ( cd "$HARNESS_WORKSPACE" && source "$HARNESS_ROOT/$FIXTURE_SCRIPT" ) >/dev/null 2>&1
+    fi
+  fi
+
+  echo "Running bats tests/e2e/bats/ (bats.conf)..."
+  harness_bats tests/e2e/bats "$@"
+  exit $?
+fi
+
+# --- 3-5. Legacy runner scripts ------------------------------------------
+
+if [ -x live-tests/run-tests ]; then
+  echo "Running e2e via live-tests/run-tests..."
+  exec live-tests/run-tests "$@"
+fi
+
+if [ -x live-tests/run ]; then
+  echo "Running e2e via live-tests/run..."
+  exec live-tests/run "$@"
+fi
+
+if [ -x tests/integration/run.sh ]; then
+  echo "Running e2e via tests/integration/run.sh..."
+  exec tests/integration/run.sh "$@"
+fi
+
+# --- 6-8. Bare bats discovery --------------------------------------------
+
+if [ -d tests/e2e/bats ] && find tests/e2e/bats -maxdepth 2 -name '*.bats' -print -quit | grep -q .; then
+  if ! command -v bats >/dev/null 2>&1; then
+    echo "::error::bats not installed. Run \`brew install bats-core\` or use the canonical bats-e2e.yml CI workflow." >&2
+    exit 1
+  fi
+  echo "Running bats tests/e2e/bats/ ..."
+  exec bats tests/e2e/bats/ "$@"
+fi
+
+if find tests/e2e -maxdepth 2 -name '*.bats' -print -quit 2>/dev/null | grep -q .; then
+  if ! command -v bats >/dev/null 2>&1; then
+    echo "::error::bats not installed. Run \`brew install bats-core\` or use the canonical bats-e2e.yml CI workflow." >&2
+    exit 1
+  fi
+  echo "Running bats tests/e2e/ ..."
+  exec bats tests/e2e/ "$@"
+fi
+
+if find live-tests/tests -maxdepth 2 -name '*.bats' -print -quit 2>/dev/null | grep -q .; then
+  if ! command -v bats >/dev/null 2>&1; then
+    echo "::error::bats not installed. Run \`brew install bats-core\` or use the canonical bats-e2e.yml CI workflow." >&2
+    exit 1
+  fi
+  echo "Running bats live-tests/tests/ ..."
+  exec bats live-tests/tests/ "$@"
+fi
+
+echo "No e2e tests found (looked at scripts/check-e2e, tests/e2e/bats.conf, live-tests/run{-tests,}, tests/integration/run.sh, tests/e2e/{bats/,*.bats}, live-tests/tests/*.bats). Skipping."
+exit 0

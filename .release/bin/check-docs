@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Canonical mkdocs build check. Synced from arthur-debert/release@<ref>
+# (templates/components/mkdocs/). Do not edit by hand.
+#
+# Runs `mkdocs build --strict` so broken refs / missing nav entries /
+# plugin errors fail loudly. Pure local convenience — CI runs the same
+# command via the canonical mkdocs.yml reusable workflow.
+#
+# Auto-discovers config:
+#   1. ./mkdocs.yml          (most consumers — dodot, standout)
+#   2. ./docs/mkdocs.yml     (alt layout)
+#
+# Plugin-agnostic: whatever's in the active mkdocs.yml + requirements
+# gets used. The Component does not opinionate on theme/plugin
+# selection — that lives with the consumer.
+
+set -euo pipefail
+
+cd "$(cd "$(dirname "$0")/.." && pwd)"
+
+config=""
+if [ -f mkdocs.yml ]; then
+  config="mkdocs.yml"
+elif [ -f docs/mkdocs.yml ]; then
+  config="docs/mkdocs.yml"
+else
+  echo "No mkdocs.yml found (looked at ./mkdocs.yml and ./docs/mkdocs.yml). Skipping."
+  exit 0
+fi
+
+if ! command -v mkdocs >/dev/null 2>&1; then
+  echo "::error::mkdocs not installed. Activate the docs venv or run \`pip install -r docs/requirements.txt\`." >&2
+  exit 1
+fi
+
+echo "Building docs (strict) via $config ..."
+mkdocs build --strict --config-file "$config" "$@"
+echo "Docs OK"
