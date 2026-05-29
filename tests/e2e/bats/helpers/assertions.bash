@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2154  # $output/$status injected by bats `run`
 # Custom assertion helpers for dodot E2E tests.
 #
 # Mirror the assertion API from TempEnvironment in the Rust test suite.
@@ -195,7 +196,8 @@ assert_output_not_contains() {
 assert_shell_loaded() {
     local pack="$1"
     local filename="$2"
-    local var_name="DODOT_LOADED_$(_normalize "$pack" "$filename")"
+    local var_name
+    var_name="DODOT_LOADED_$(_normalize "$pack" "$filename")"
 
     local val="${!var_name:-}"
     if [[ "$val" != "1" ]]; then
@@ -211,7 +213,8 @@ assert_shell_loaded() {
 assert_shell_not_loaded() {
     local pack="$1"
     local filename="$2"
-    local var_name="DODOT_LOADED_$(_normalize "$pack" "$filename")"
+    local var_name
+    var_name="DODOT_LOADED_$(_normalize "$pack" "$filename")"
 
     local val="${!var_name:-}"
     if [[ "$val" == "1" ]]; then
@@ -226,7 +229,8 @@ assert_shell_not_loaded() {
 assert_bin_available() {
     local pack="$1"
     local script_name="$2"
-    local marker="DODOT_BIN_$(_normalize "$pack" "$script_name")"
+    local marker
+    marker="DODOT_BIN_$(_normalize "$pack" "$script_name")"
 
     if ! command -v "$script_name" >/dev/null 2>&1; then
         echo "expected '$script_name' to be on PATH" >&2
