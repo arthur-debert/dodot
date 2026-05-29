@@ -39,6 +39,7 @@ install_brew_mock
 # ── Pre-populate HOME (simulating a real system) ────────────────
 
 # Existing dotfiles that will CONFLICT with dodot up
+# shellcheck disable=SC2016  # literal $PATH — expanded when the fixture .bashrc is sourced, not here
 create_home_file ".bashrc" '# System bashrc — pre-existing
 export PATH="/usr/local/bin:$PATH"
 echo "Welcome to the explore sandbox!"

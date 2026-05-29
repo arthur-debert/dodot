@@ -122,7 +122,8 @@ instrumented_shell() {
     local pack="$1"
     local filename="$2"
     local extra="${3:-}"
-    local var_name="DODOT_LOADED_$(_normalize "$pack" "$filename")"
+    local var_name
+    var_name="DODOT_LOADED_$(_normalize "$pack" "$filename")"
 
     local contents="export ${var_name}=1"
     [[ -n "$extra" ]] && contents="${contents}
@@ -142,7 +143,8 @@ instrumented_bin() {
     local pack="$1"
     local script_name="$2"
     local extra="${3:-}"
-    local marker="DODOT_BIN_$(_normalize "$pack" "$script_name")"
+    local marker
+    marker="DODOT_BIN_$(_normalize "$pack" "$script_name")"
 
     local contents="#!/bin/sh
 echo ${marker}"
@@ -162,6 +164,7 @@ instrumented_install() {
     local pack="$1"
     local extra="${2:-}"
 
+    # shellcheck disable=SC2016  # literal $HOME — expanded when the generated install.sh runs, not here
     local contents='#!/bin/sh
 mkdir -p "$HOME/.dodot-markers"
 echo "executed" > "$HOME/.dodot-markers/'"${pack}"'.install"'

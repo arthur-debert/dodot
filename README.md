@@ -50,7 +50,7 @@ First time on a repo? `dodot tutorial` walks you through deploying one pack inte
 
 dodot discovers directories in your dotfiles root as **packs** and uses file naming conventions to decide what to do with each file:
 
-```
+```text
 nvim/
 +-- Brewfile    -> homebrew installs neovim, ripgrep, fd
 +-- aliases.sh  -> sourced by shell
@@ -105,6 +105,7 @@ dodot matches files to handlers by name convention:
 | **nix**    | `packages.nix`                              | `nix profile install` (shape-agnostic wrapper); edits report `older version`, apply with `dodot up --provision-rerun` |
 
 Symlink targets are resolved smartly:
+
 - Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<rel_path>` (e.g. `nvim/init.lua` → `~/.config/nvim/init.lua`, `warp/themes/` → `~/.config/warp/themes/`)
 - `force_home` blacklist routes canonical legacy tools to `$HOME/.<name>` regardless (ssh, gpg, bashrc, zshrc, etc.)
 - Per-file `home.X` prefix opts a single file into `$HOME/.X` placement (e.g. `git/home.gitconfig` → `~/.gitconfig`)
@@ -126,9 +127,9 @@ dodot brings macOS GUI app preferences (binary `*.plist` files at `~/Library/Pre
 Setup is a one-liner per machine plus a single `.gitattributes` line in the repo:
 
 ```sh
-$ dodot git-install-filters
-$ echo '*.plist filter=dodot-plist' >> .gitattributes
-$ git add .gitattributes && git commit -m 'enable plist filters'
+dodot git-install-filters
+echo '*.plist filter=dodot-plist' >> .gitattributes
+git add .gitattributes && git commit -m 'enable plist filters'
 ```
 
 Adopt existing settings with `dodot adopt --into <pack> ~/Library/Preferences/com.app.plist`. The full reference is at `docs/reference/plists.lex`. macOS-only at deploy time; the CLI surface (`dodot plist clean/smudge`) is platform-agnostic.
