@@ -1,4 +1,4 @@
-# Thin caller of arthur-debert/release/.github/workflows/mkdocs.yml@v1.
+# Thin caller of arthur-debert/release/.github/workflows/mkdocs.yml@v2.
 # Push-to-main only — PR-time docs validation lives in `docs-check.yml`
 # (which calls the same reusable workflow but skips deploy).
 
@@ -23,6 +23,6 @@ permissions:
 
 jobs:
   docs:
-    uses: arthur-debert/release/.github/workflows/mkdocs.yml@v1
+    uses: arthur-debert/release/.github/workflows/mkdocs.yml@v2
     with:
       requirements: docs/requirements.txt
