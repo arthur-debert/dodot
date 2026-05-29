@@ -5,10 +5,6 @@ set -euo pipefail
 # release-cut handles arg parsing, semver bump, validation, and dispatches the
 # CI release workflow. Run `release-cut --help` for usage.
 #
-# This repo's workspace-only root Cargo.toml doesn't carry the version — it
-# lives in crates/dodot-lib/Cargo.toml. Resolve the path against the repo
-# root via `git rev-parse --show-toplevel` so the shim works from any cwd.
-#
 # What CI does (all on GitHub):
 #   1. Bumps every workspace crate via `cargo set-version --workspace`
 #   2. Rolls ## [Unreleased] → ## [VERSION] - DATE in CHANGELOG.md
@@ -24,6 +20,4 @@ if ! command -v release-cut >/dev/null 2>&1; then
     exit 1
 fi
 
-repo_root=$(git rev-parse --show-toplevel)
-export RELEASE_CUT_MANIFEST="${repo_root}/crates/dodot-lib/Cargo.toml"
 exec release-cut "$@"
