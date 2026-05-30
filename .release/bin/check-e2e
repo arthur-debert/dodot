@@ -29,7 +29,7 @@ fi
 # --- 2. bats.conf canonical layout ---------------------------------------
 
 if [ -f tests/e2e/bats.conf ]; then
-  # shellcheck source=../lib/bats-harness.bash
+  # shellcheck source=/dev/null  # harness path varies by synced layout (SC1091)
   source lib/bats-harness.bash
   harness_require_bats
   harness_set_root "$(pwd)"
