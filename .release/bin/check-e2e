@@ -4,7 +4,7 @@
 #
 # Discovery order (first match wins):
 #
-#   1. ./scripts/check-e2e            consumer override (full control)
+#   1. ./app-bin/check-e2e            consumer override (full control)
 #   2. ./tests/e2e/bats.conf          canonical bats.conf layout
 #   3. ./live-tests/run-tests         padz pattern (explicit runner)
 #   4. ./live-tests/run               too pattern (umbrella driver)
@@ -21,9 +21,9 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 # --- 1. Consumer full override -------------------------------------------
 
-if [ -x scripts/check-e2e ]; then
-  echo "Running e2e via scripts/check-e2e (consumer override)..."
-  exec scripts/check-e2e "$@"
+if [ -x app-bin/check-e2e ]; then
+  echo "Running e2e via app-bin/check-e2e (consumer override)..."
+  exec app-bin/check-e2e "$@"
 fi
 
 # --- 2. bats.conf canonical layout ---------------------------------------
@@ -119,5 +119,5 @@ if find live-tests/tests -maxdepth 2 -name '*.bats' -print -quit 2>/dev/null | g
   exec bats live-tests/tests/ "$@"
 fi
 
-echo "No e2e tests found (looked at scripts/check-e2e, tests/e2e/bats.conf, live-tests/run{-tests,}, tests/integration/run.sh, tests/e2e/{bats/,*.bats}, live-tests/tests/*.bats). Skipping."
+echo "No e2e tests found (looked at app-bin/check-e2e, tests/e2e/bats.conf, live-tests/run{-tests,}, tests/integration/run.sh, tests/e2e/{bats/,*.bats}, live-tests/tests/*.bats). Skipping."
 exit 0
