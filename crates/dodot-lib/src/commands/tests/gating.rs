@@ -1447,6 +1447,83 @@ fn down_sweeps_state_of_pack_ignored_after_deploy() {
 }
 
 #[test]
+fn filtered_up_sweeps_now_ignored_pack_outside_the_filter() {
+    // The init script is regenerated from the WHOLE datastore, so a
+    // filtered `dodot up vim` must still sweep a now-ignored `gpg` even
+    // though gpg isn't in the filter — otherwise gpg keeps being sourced.
+    let env = TempEnvironment::builder()
+        .pack("gpg")
+        .file("alias.zsh", "alias g='echo hi'")
+        .done()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+    assert!(!ctx.datastore.list_pack_handlers("gpg").unwrap().is_empty());
+
+    // Ignore gpg, then run a FILTERED up that names only vim.
+    env.fs
+        .write_file(&env.dotfiles_root.join("gpg/.dodotignore"), b"")
+        .unwrap();
+    let up = commands::up::up(Some(&["vim".to_string()]), &ctx).unwrap();
+
+    assert!(
+        ctx.datastore.list_pack_handlers("gpg").unwrap().is_empty(),
+        "filtered up must still sweep a now-ignored pack outside the filter"
+    );
+    let init = env
+        .fs
+        .read_to_string(&ctx.paths.init_script_path())
+        .unwrap();
+    assert!(
+        !init.contains("gpg/alias.zsh"),
+        "now-ignored pack must not survive a filtered up; init was:\n{init}"
+    );
+    // gpg is outside the filter, so it does NOT appear in this run's
+    // Ignored Packs section — reporting stays scoped to the request.
+    assert!(
+        !up.ignored_packs.contains(&"gpg".to_string()),
+        "filtered up should not report unrelated ignored packs"
+    );
+}
+
+#[test]
+fn down_dry_run_reports_deactivation_for_now_ignored_pack() {
+    // Gemini's dry-run discrepancy: `down --dry-run` must report the
+    // same "Packs deactivated." outcome a real run would, when a
+    // now-ignored pack still holds stale state.
+    let env = TempEnvironment::builder()
+        .pack("gpg")
+        .file("alias.zsh", "alias g='echo hi'")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+    env.fs
+        .write_file(&env.dotfiles_root.join("gpg/.dodotignore"), b"")
+        .unwrap();
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.dry_run = true;
+    let down = commands::down::down(None, &dry_ctx).unwrap();
+
+    assert_eq!(
+        down.message.as_deref(),
+        Some("Packs deactivated."),
+        "dry-run must report the same outcome a real run would"
+    );
+    // Dry-run must NOT actually mutate the datastore.
+    assert!(
+        !ctx.datastore.list_pack_handlers("gpg").unwrap().is_empty(),
+        "down --dry-run must not remove state"
+    );
+}
+
+#[test]
 fn up_mixed_selection_deploys_active_and_reports_ignored() {
     // A mixed `up vim gpg`: vim deploys, gpg is reported ignored — the
     // two outcomes coexist in one result.

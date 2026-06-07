@@ -203,8 +203,10 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // Regenerate shell init script and deployment map
     if !ctx.dry_run {
         // Tear down any stale state for packs that are now ignored, so
-        // the regenerated init script below stops sourcing them. (#222)
-        orchestration::sweep_ignored_state(&ignored.dir_names, ctx)?;
+        // the regenerated (global) init script below stops sourcing
+        // them — unfiltered, since the init script covers every pack
+        // regardless of this run's filter. (#222)
+        orchestration::sweep_ignored_state(&ignored.sweep_dir_names, ctx)?;
         info!("regenerating shell init script");
         let root_config = ctx.config_manager.root_config()?;
         shell::write_init_script(

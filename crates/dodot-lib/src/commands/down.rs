@@ -74,17 +74,19 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         }
     }
 
-    // Sweep stale state for now-ignored packs so the regenerated init
-    // script stops sourcing them. A pack deployed before it was ignored
-    // would otherwise linger in the datastore. (#222) Counts as removal
-    // so the message reflects that something was deactivated.
+    // Sweep stale state for now-ignored packs so the regenerated
+    // (global) init script stops sourcing them. A pack deployed before
+    // it was ignored would otherwise linger in the datastore. Unfiltered
+    // — the init script covers every pack regardless of this run's
+    // filter. (#222) Counts as removal so the message reflects that
+    // something was deactivated. The count is computed in both dry-run
+    // and real runs so `down --dry-run` reports the same outcome a real
+    // run would produce; only the mutation is gated on `!dry_run`.
+    if orchestration::ignored_packs_with_state(&ignored.sweep_dir_names, ctx)? > 0 {
+        any_removed = true;
+    }
     if !ctx.dry_run {
-        for dir in &ignored.dir_names {
-            if !ctx.datastore.list_pack_handlers(dir)?.is_empty() {
-                any_removed = true;
-            }
-        }
-        orchestration::sweep_ignored_state(&ignored.dir_names, ctx)?;
+        orchestration::sweep_ignored_state(&ignored.sweep_dir_names, ctx)?;
     }
 
     // Regenerate shell init script and deployment map (now reflecting

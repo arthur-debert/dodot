@@ -203,51 +203,56 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
     Ok(configured)
 }
 
-/// Result of [`scan_ignored`]: the raw on-disk directory names of
-/// pack-shaped directories skipped via `.dodotignore`, optionally
-/// narrowed to a name filter, plus those same names mapped to their
-/// user-facing display form.
+/// Result of [`scan_ignored`]: the `.dodotignore`-marked packs split by
+/// the two distinct jobs they serve.
+///
+/// Reporting (the "Ignored Packs" section) is scoped to what the user
+/// asked about, so it respects `pack_filter`. The stale-state sweep is
+/// **not** — the init script is regenerated from the *whole* datastore,
+/// so a filtered `dodot up <other-pack>` must still tear down every
+/// now-ignored pack's leftover state, or it would keep getting sourced.
 pub struct IgnoredScan {
-    /// Raw on-disk directory names (e.g. `gpg`, `010-old`). This is the
-    /// datastore key, used by [`sweep_ignored_state`].
-    pub dir_names: Vec<String>,
-    /// Display names (prefix stripped) for the rendered "Ignored Packs"
-    /// section — same form `status` surfaces.
+    /// Raw on-disk directory names (datastore keys) for **every** ignored
+    /// pack, ignoring `pack_filter`. Used by [`sweep_ignored_state`] so
+    /// the global init regeneration never re-sources a stale pack.
+    pub sweep_dir_names: Vec<String>,
+    /// Display names (prefix stripped) of the ignored packs that match
+    /// `pack_filter`, for the rendered "Ignored Packs" section — same
+    /// form and scope `status` surfaces.
     pub display_names: Vec<String>,
 }
 
-/// Scan the dotfiles root for `.dodotignore`-marked packs, applying the
-/// same name filter the active-pack path uses.
+/// Scan the dotfiles root for `.dodotignore`-marked packs.
 ///
 /// Centralises the ignored-pack discovery that `up`, `down`, and
 /// `status` all need so the three commands report (and sweep) the same
 /// set — the divergence that let `dodot up <ignored>` print a generic
 /// "Packs deployed." while `dodot status <ignored>` showed the pack in
-/// its "Ignored Packs" section (issue #222).
+/// its "Ignored Packs" section (issue #222). The returned
+/// [`IgnoredScan`] separates the filtered reporting set from the
+/// unfiltered sweep set; see its docs for why they differ.
 pub fn scan_ignored(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<IgnoredScan> {
     let root_config = ctx.config_manager.root_config()?;
-    let mut ignored = packs::scan_packs(
+    let all_ignored = packs::scan_packs(
         ctx.fs.as_ref(),
         ctx.paths.dotfiles_root(),
         &root_config.pack.ignore,
     )?
     .ignored;
 
-    if let Some(names) = pack_filter {
-        ignored.retain(|dir| {
-            names
-                .iter()
-                .any(|n| n == dir || n == packs::display_name_for(dir))
-        });
-    }
-
-    let display_names = ignored
+    let display_names = all_ignored
         .iter()
+        .filter(|dir| match pack_filter {
+            None => true,
+            Some(names) => names
+                .iter()
+                .any(|n| n == *dir || n == packs::display_name_for(dir)),
+        })
         .map(|d| packs::display_name_for(d).to_string())
         .collect();
 
     Ok(IgnoredScan {
-        dir_names: ignored,
+        sweep_dir_names: all_ignored,
         display_names,
     })
 }
@@ -264,17 +269,39 @@ pub fn scan_ignored(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> R
 /// the init script, makes "ignored" mean "nothing of this pack is read
 /// or deployed" across up/down.
 ///
-/// Datastore is keyed by on-disk directory name (`dir_names`), so this
-/// takes the raw names from [`scan_ignored`], not display names.
-pub fn sweep_ignored_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<()> {
+/// Pass the **unfiltered** [`IgnoredScan::sweep_dir_names`]: the init
+/// script is global, so even a filtered `up`/`down` must sweep every
+/// ignored pack or a now-ignored pack outside the filter would still be
+/// sourced. Datastore is keyed by on-disk directory name, not display
+/// name. Returns the dir names that actually had state removed, so the
+/// caller can reflect "something was deactivated" in its message.
+pub fn sweep_ignored_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<Vec<String>> {
+    let mut swept = Vec::new();
     for dir in dir_names {
         let handlers = ctx.datastore.list_pack_handlers(dir)?;
+        if handlers.is_empty() {
+            continue;
+        }
+        swept.push(dir.clone());
         for handler in handlers {
             debug!(pack = %dir, %handler, "sweeping state for now-ignored pack");
             ctx.datastore.remove_state(dir, &handler)?;
         }
     }
-    Ok(())
+    Ok(swept)
+}
+
+/// Count of ignored packs that currently hold datastore state, without
+/// removing anything. Lets `down --dry-run` report "would deactivate"
+/// consistently with what a real run would sweep.
+pub fn ignored_packs_with_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<usize> {
+    let mut n = 0;
+    for dir in dir_names {
+        if !ctx.datastore.list_pack_handlers(dir)?.is_empty() {
+            n += 1;
+        }
+    }
+    Ok(n)
 }
 
 /// Execute a pre-collected set of intents.
