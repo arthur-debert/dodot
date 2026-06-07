@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+## 5.1.0 - 2026-06-07
+
+- `up` and `down` now report ignored packs the same way `status` does (warning + "Ignored Packs" section) instead of a bare "Packs deployed.", and sweep stale datastore state from a pack that was deployed and then marked `.dodotignore` so its files stop being sourced on shell init (#222).
 - Migrate to fragment-directory changelog model (#201).
 
 ### Added
