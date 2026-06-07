@@ -52,6 +52,21 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         "starting up command"
     );
 
+    // Validate names up front so an explicitly-requested ignored pack
+    // surfaces the same "pack '…' is ignored, skipping" warning that
+    // `status`/`down` emit — prepare_packs discards these. (issue #222)
+    let mut planning_warnings: Vec<String> = match pack_filter {
+        Some(names) => orchestration::validate_pack_names(names, ctx)?,
+        None => Vec::new(),
+    };
+
+    // Discover `.dodotignore`-marked packs so we can both report them in
+    // the same "Ignored Packs" section `status` shows and sweep any
+    // stale datastore state they left behind. Without the sweep, a pack
+    // deployed before it was ignored keeps getting sourced from the
+    // regenerated init script. (issue #222)
+    let ignored = orchestration::scan_ignored(pack_filter, ctx)?;
+
     // Phase 1: Discover packs and collect intents
     let packs = orchestration::prepare_packs(pack_filter, ctx)?;
 
@@ -77,7 +92,6 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
 
     let mut pack_intents: Vec<(String, Vec<HandlerIntent>)> = Vec::with_capacity(packs.len());
     let mut intent_errors: Vec<PackResult> = Vec::new();
-    let mut planning_warnings: Vec<String> = Vec::new();
 
     for pack in &packs {
         // Active when actually deploying; Passive on `--dry-run`. The
@@ -188,6 +202,9 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
 
     // Regenerate shell init script and deployment map
     if !ctx.dry_run {
+        // Tear down any stale state for packs that are now ignored, so
+        // the regenerated init script below stops sourcing them. (#222)
+        orchestration::sweep_ignored_state(&ignored.dir_names, ctx)?;
         info!("regenerating shell init script");
         let root_config = ctx.config_manager.root_config()?;
         shell::write_init_script(
@@ -305,7 +322,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         warnings: planning_warnings,
         notes,
         conflicts: Vec::new(),
-        ignored_packs: Vec::new(),
+        ignored_packs: ignored.display_names,
         inactive_packs: Vec::new(),
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),

@@ -41,6 +41,11 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         all_packs.retain(|p| names.iter().any(|n| n == &p.display_name || n == &p.name));
     }
 
+    // Discover `.dodotignore`-marked packs so `down` reports them in the
+    // same "Ignored Packs" section `status` shows and sweeps any stale
+    // datastore state they left behind. (issue #222)
+    let ignored = orchestration::scan_ignored(pack_filter, ctx)?;
+
     let mut affected_packs = Vec::new();
     let mut dry_run_display: Vec<DisplayPack> = Vec::new();
     let mut any_removed = false;
@@ -67,6 +72,19 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
                 ctx.datastore.remove_state(&pack.name, handler)?;
             }
         }
+    }
+
+    // Sweep stale state for now-ignored packs so the regenerated init
+    // script stops sourcing them. A pack deployed before it was ignored
+    // would otherwise linger in the datastore. (#222) Counts as removal
+    // so the message reflects that something was deactivated.
+    if !ctx.dry_run {
+        for dir in &ignored.dir_names {
+            if !ctx.datastore.list_pack_handlers(dir)?.is_empty() {
+                any_removed = true;
+            }
+        }
+        orchestration::sweep_ignored_state(&ignored.dir_names, ctx)?;
     }
 
     // Regenerate shell init script and deployment map (now reflecting
@@ -103,7 +121,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         warnings,
         notes: Vec::new(),
         conflicts: Vec::new(),
-        ignored_packs: Vec::new(),
+        ignored_packs: ignored.display_names,
         inactive_packs: Vec::new(),
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),

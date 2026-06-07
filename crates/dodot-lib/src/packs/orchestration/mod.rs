@@ -203,6 +203,80 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
     Ok(configured)
 }
 
+/// Result of [`scan_ignored`]: the raw on-disk directory names of
+/// pack-shaped directories skipped via `.dodotignore`, optionally
+/// narrowed to a name filter, plus those same names mapped to their
+/// user-facing display form.
+pub struct IgnoredScan {
+    /// Raw on-disk directory names (e.g. `gpg`, `010-old`). This is the
+    /// datastore key, used by [`sweep_ignored_state`].
+    pub dir_names: Vec<String>,
+    /// Display names (prefix stripped) for the rendered "Ignored Packs"
+    /// section — same form `status` surfaces.
+    pub display_names: Vec<String>,
+}
+
+/// Scan the dotfiles root for `.dodotignore`-marked packs, applying the
+/// same name filter the active-pack path uses.
+///
+/// Centralises the ignored-pack discovery that `up`, `down`, and
+/// `status` all need so the three commands report (and sweep) the same
+/// set — the divergence that let `dodot up <ignored>` print a generic
+/// "Packs deployed." while `dodot status <ignored>` showed the pack in
+/// its "Ignored Packs" section (issue #222).
+pub fn scan_ignored(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<IgnoredScan> {
+    let root_config = ctx.config_manager.root_config()?;
+    let mut ignored = packs::scan_packs(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        &root_config.pack.ignore,
+    )?
+    .ignored;
+
+    if let Some(names) = pack_filter {
+        ignored.retain(|dir| {
+            names
+                .iter()
+                .any(|n| n == dir || n == packs::display_name_for(dir))
+        });
+    }
+
+    let display_names = ignored
+        .iter()
+        .map(|d| packs::display_name_for(d).to_string())
+        .collect();
+
+    Ok(IgnoredScan {
+        dir_names: ignored,
+        display_names,
+    })
+}
+
+/// Tear down any leftover datastore state for `.dodotignore`-marked
+/// packs.
+///
+/// A pack that was deployed and *then* marked ignored leaves its shell /
+/// path / symlink state in the datastore. Because the regenerated
+/// init script is driven entirely off the datastore `packs/` tree, that
+/// stale state keeps getting sourced on every shell startup even though
+/// the pack now reports as ignored — exactly the gpg `alias.zsh` error
+/// in issue #222. Removing the state here, before the caller regenerates
+/// the init script, makes "ignored" mean "nothing of this pack is read
+/// or deployed" across up/down.
+///
+/// Datastore is keyed by on-disk directory name (`dir_names`), so this
+/// takes the raw names from [`scan_ignored`], not display names.
+pub fn sweep_ignored_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<()> {
+    for dir in dir_names {
+        let handlers = ctx.datastore.list_pack_handlers(dir)?;
+        for handler in handlers {
+            debug!(pack = %dir, %handler, "sweeping state for now-ignored pack");
+            ctx.datastore.remove_state(dir, &handler)?;
+        }
+    }
+    Ok(())
+}
+
 /// Execute a pre-collected set of intents.
 ///
 /// This is the second half of the two-phase execution model.
