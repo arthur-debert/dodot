@@ -1,1 +1,0 @@
-../.release/lib/bats-harness.bash

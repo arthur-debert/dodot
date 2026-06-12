@@ -1,1 +1,0 @@
-../../../../.release/tests/e2e/bats/helpers/setup.bash
