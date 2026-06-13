@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   docs:
-    uses: arthur-debert/release/.github/workflows/mkdocs.yml@v2
+    uses: arthur-debert/release/.github/workflows/mkdocs.yml@v3
     with:
       requirements: docs/requirements.txt
       # 329 historical strict-mode warnings (broken refs, missing nav,
