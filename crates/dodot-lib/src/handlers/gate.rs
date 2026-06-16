@@ -61,7 +61,7 @@ impl Handler for GateHandler {
 mod tests {
     use super::*;
     use crate::datastore::{FilesystemDataStore, NoopCommandRunner};
-    use crate::handlers::HandlerConfig;
+    use crate::handlers::{HandlerConfig, HANDLER_SYMLINK};
     use crate::rules::RuleMatch;
     use crate::testing::TempEnvironment;
     use std::collections::HashMap;
@@ -139,7 +139,8 @@ mod tests {
         // GateHandler::check_status never consults the datastore, so any
         // existing state (related or not) must not flip `deployed`.
         let source = env.dotfiles_root.join("vim/vimrc");
-        ds.create_data_link("vim", "symlink", &source).unwrap();
+        ds.create_data_link("vim", HANDLER_SYMLINK, &source)
+            .unwrap();
 
         let status = GateHandler
             .check_status(Path::new("_linux"), "vim", &ds)

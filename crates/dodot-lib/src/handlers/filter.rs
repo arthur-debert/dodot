@@ -103,7 +103,7 @@ impl Handler for SkipHandler {
 mod tests {
     use super::*;
     use crate::datastore::{FilesystemDataStore, NoopCommandRunner};
-    use crate::handlers::HandlerConfig;
+    use crate::handlers::{HandlerConfig, HANDLER_SYMLINK};
     use crate::rules::RuleMatch;
     use crate::testing::TempEnvironment;
     use std::collections::HashMap;
@@ -194,7 +194,8 @@ mod tests {
         );
         // Seed unrelated state to prove check_status ignores it.
         let source = env.dotfiles_root.join("vim/vimrc");
-        ds.create_data_link("vim", "symlink", &source).unwrap();
+        ds.create_data_link("vim", HANDLER_SYMLINK, &source)
+            .unwrap();
 
         let status = IgnoreHandler
             .check_status(Path::new(".DS_Store"), "vim", &ds)
