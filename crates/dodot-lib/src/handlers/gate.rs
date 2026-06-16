@@ -135,8 +135,11 @@ mod tests {
             env.paths.clone(),
             Arc::new(NoopCommandRunner),
         );
+        // Seed state under a *different* handler — the property is that
+        // GateHandler::check_status never consults the datastore, so any
+        // existing state (related or not) must not flip `deployed`.
         let source = env.dotfiles_root.join("vim/vimrc");
-        ds.create_data_link("vim", HANDLER_GATE, &source).unwrap();
+        ds.create_data_link("vim", "symlink", &source).unwrap();
 
         let status = GateHandler
             .check_status(Path::new("_linux"), "vim", &ds)
