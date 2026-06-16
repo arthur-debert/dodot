@@ -56,3 +56,95 @@ impl Handler for GateHandler {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::datastore::{FilesystemDataStore, NoopCommandRunner};
+    use crate::handlers::HandlerConfig;
+    use crate::rules::RuleMatch;
+    use crate::testing::TempEnvironment;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn gated_match(pack: &str, rel: &str) -> RuleMatch {
+        RuleMatch {
+            relative_path: rel.into(),
+            absolute_path: format!("/dotfiles/{pack}/{rel}").into(),
+            pack: pack.into(),
+            handler: HANDLER_GATE.into(),
+            is_dir: true,
+            options: HashMap::new(),
+            preprocessor_source: None,
+            rendered_bytes: None,
+        }
+    }
+
+    #[test]
+    fn name_and_phase_identity() {
+        assert_eq!(GateHandler.name(), HANDLER_GATE);
+        assert_eq!(GateHandler.phase(), ExecutionPhase::Filter);
+    }
+
+    #[test]
+    fn to_intents_never_emits() {
+        // Gate-failed entries must never produce executable intent —
+        // they exist only so the status renderer can show "gated out".
+        let env = TempEnvironment::builder().build();
+        let matches = vec![gated_match("vim", "_linux"), gated_match("vim", "_macos")];
+
+        let intents = GateHandler
+            .to_intents(
+                &matches,
+                &HandlerConfig::default(),
+                env.paths.as_ref(),
+                env.fs.as_ref(),
+            )
+            .unwrap();
+
+        assert!(intents.is_empty());
+    }
+
+    #[test]
+    fn to_intents_empty_in_empty_out() {
+        let env = TempEnvironment::builder().build();
+        let intents = GateHandler
+            .to_intents(
+                &[],
+                &HandlerConfig::default(),
+                env.paths.as_ref(),
+                env.fs.as_ref(),
+            )
+            .unwrap();
+        assert!(intents.is_empty());
+    }
+
+    #[test]
+    fn check_status_is_invariant_and_silent() {
+        // Gate status is rendered from the rule match by the status
+        // renderer, so this trait impl must return a fixed shape and
+        // never consult the datastore — verify by seeding unrelated
+        // state and confirming `deployed` stays false.
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "x")
+            .done()
+            .build();
+        let ds = FilesystemDataStore::new(
+            env.fs.clone(),
+            env.paths.clone(),
+            Arc::new(NoopCommandRunner),
+        );
+        let source = env.dotfiles_root.join("vim/vimrc");
+        ds.create_data_link("vim", HANDLER_GATE, &source).unwrap();
+
+        let status = GateHandler
+            .check_status(Path::new("_linux"), "vim", &ds)
+            .unwrap();
+
+        assert_eq!(status.handler, HANDLER_GATE);
+        assert_eq!(status.file, "_linux");
+        assert!(!status.deployed);
+        assert!(status.message.is_empty());
+    }
+}
