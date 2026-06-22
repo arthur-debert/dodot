@@ -46,14 +46,17 @@ Two separate problems, two separate commands. Don't conflate them:
    so `git status` shows nothing. `dodot refresh` walks the baseline cache, finds
    deployed files whose bytes diverged, and touches the *source* mtime so git
    re-reads. It does **not** change source content — only visibility.
-2. **The source content is still stale.** `dodot transform check` actually
-   reverse-merges the deployed bytes back into the `.tmpl` source on disk. Where it
-   can't merge cleanly it inserts `dodot-conflict` markers for you to resolve.
-   `--strict` makes it exit 1 while markers remain (how the pre-commit hook blocks
-   bad commits). **It writes to your source files** — use `--dry-run` to preview.
+2. **The source content is still stale.** `dodot transform check` reverse-merges
+   the deployed bytes back into the `.tmpl` source on disk for any block it *can*
+   merge cleanly. Where the deployed edit overlaps a template expression it
+   **can't** merge: it prints a `dodot-conflict` block to its output, leaves that
+   block in the source **untouched**, and (under `--strict`) exits 1 — resolve the
+   source by hand. **It writes to your source files** for the clean parts — use
+   `--dry-run` to preview.
 
-`dodot transform status` is the read-only map: `synced` / `output_changed` (deployed
-edited) / `input_changed` (source edited) / `both` / `missing`.
+`dodot transform status` is the read-only map. States (snake_case, as printed):
+`synced`, `output_changed` (deployed edited), `input_changed` (source edited),
+`both_changed`, `missing_source`, `missing_deployed`.
 
 The canonical setup wires both into git so this is automatic:
 
@@ -115,8 +118,8 @@ commit by hand. See `SECRETS.md`.
 ```bash
 dodot transform status                 # confirm the file shows output-changed / both
 dodot transform check --dry-run        # preview the reverse-merge
-dodot transform check                  # write it back into the .tmpl source
-# resolve any dodot-conflict markers in the source, then commit
+dodot transform check                  # write clean merges back into the .tmpl source
+# for any dodot-conflict block it reports, edit that block in the source by hand, then commit
 ```
 
 ## Going deeper

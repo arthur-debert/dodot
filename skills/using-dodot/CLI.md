@@ -7,9 +7,12 @@ supports `--dry-run`.
 
 ### `dodot status [PACKS...]`
 
-Read-only. Per-file: handler symbol, live target, state (`pending` / `deployed` /
-`error`), plus `skipped` files. Symbols: `➞` symlink · `⚙` shell/homebrew · `+`
-`$PATH` · `×` install.
+Read-only. Per-file: handler symbol, live target, and a **handler-specific** label —
+`pending`/`deployed` (symlink), `sourced`/`not sourced` (shell), `in PATH` (path),
+`installed`/`never run`/`older version` (provisioning), `skipped`, `gated out`. Only
+the **pack-level rollup** is constrained to `pending`/`deployed`/`error`. Symbols:
+`➞` symlink · `⚙` shell/homebrew/nix · `+` `$PATH` · `×` install · `·` skip/gate
+(not deployed). The icon set in `status --help` lists only the first four.
 
 - `--check-drift` — hash deployed external files, report divergence (opt-in, slow).
 - `--diff` — for provisioning files reporting "older version", show the unified diff.

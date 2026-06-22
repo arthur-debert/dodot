@@ -15,8 +15,10 @@ from scratch.
 Four leading words carry everything:
 
 - **pack** — a top-level directory in the dotfiles repo (`vim/`, `git/`, `work/`).
-  The unit `up`/`down`/`status` act on. Every top-level dir is a pack unless it
-  holds a `.dodotignore` file.
+  The unit `up`/`down`/`status` act on. Every top-level dir is a pack *except*
+  hidden dirs (e.g. `.git/`), names matching the default ignore globs
+  (`node_modules`, `.DS_Store`, …), invalid pack names, and any dir holding a
+  `.dodotignore` marker. `dodot list` shows exactly what's discovered.
 - **handler** — what dodot does with a file once a rule matches it. The filename
   decides the handler (a `*.sh` is sourced, `bin/` joins `$PATH`, anything else is
   symlinked). See `HANDLERS.md`.
@@ -37,8 +39,10 @@ Always **status → act → status**. Never hand-create symlinks or edit the
 datastore; let dodot do the work and verify with `status`.
 
 1. **Orient.** Confirm the dotfiles root (`$DOTFILES_ROOT`, else the git toplevel,
-   else cwd). Run `dodot status` to see packs and their deployment state
-   (`pending` / `deployed` / `error`, plus `skipped` files).
+   else cwd). Run `dodot status` to see each pack's rollup
+   (`pending` / `deployed` / `error`) and its per-file labels — which are
+   handler-specific (`sourced`, `in PATH`, `installed`, `older version`,
+   `skipped`, `gated out`, …), not the same three words.
 2. **Act.** Run the workflow below. When unsure of the effect, run with
    `--dry-run` first — every mutating command supports it.
 3. **Verify.** Run `dodot status` again and confirm the change landed (`deployed`,
