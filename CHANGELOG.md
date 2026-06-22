@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+## 5.2.0 - 2026-06-22
+
+- remove dead-orphan homebrew render pair
+- Add unit tests for filter, gate, path, and shell handlers (the four lowest-coverage handlers).
+ci: migrate release reusable-workflow callers from @v2 to @v3 (rust-ci, rust-cli, mkdocs)
+- Add installable agent skills: using-dodot and dodot-templates
+
 ## 5.1.0 - 2026-06-07
 
 - `up` and `down` now report ignored packs the same way `status` does (warning + "Ignored Packs" section) instead of a bare "Packs deployed.", and sweep stale datastore state from a pack that was deployed and then marked `.dodotignore` so its files stop being sourced on shell init (#222).

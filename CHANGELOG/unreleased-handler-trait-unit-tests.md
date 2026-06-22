@@ -1,1 +1,0 @@
-- Add unit tests for filter, gate, path, and shell handlers (the four lowest-coverage handlers).
