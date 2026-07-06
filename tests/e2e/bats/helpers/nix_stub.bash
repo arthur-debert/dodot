@@ -27,11 +27,11 @@
 # `$SANDBOX/.nix-stub/install-log` so tests can assert on whether
 # (and how often) the install path fired.
 nix_stub_setup() {
-    local stub_dir="$SANDBOX/.nix-stub"
-    mkdir -p "$stub_dir"
-    : > "$stub_dir/install-log"
+	local stub_dir="$SANDBOX/.nix-stub"
+	mkdir -p "$stub_dir"
+	: >"$stub_dir/install-log"
 
-    cat > "$stub_dir/nix" <<'STUB'
+	cat >"$stub_dir/nix" <<'STUB'
 #!/usr/bin/env bash
 # Stub `nix` for dodot e2e tests.
 DIR="$(dirname "$0")"
@@ -75,17 +75,17 @@ case "$1" in
         ;;
 esac
 STUB
-    chmod +x "$stub_dir/nix"
+	chmod +x "$stub_dir/nix"
 
-    export PATH="$stub_dir:$PATH"
-    export DODOT_NIX_STUB_LOG="$stub_dir/install-log"
+	export PATH="$stub_dir:$PATH"
+	export DODOT_NIX_STUB_LOG="$stub_dir/install-log"
 }
 
 # Count of `nix profile install` invocations the stub has logged.
 nix_stub_install_count() {
-    if [[ -f "$DODOT_NIX_STUB_LOG" ]]; then
-        wc -l < "$DODOT_NIX_STUB_LOG" | tr -d ' '
-    else
-        echo 0
-    fi
+	if [[ -f "$DODOT_NIX_STUB_LOG" ]]; then
+		wc -l <"$DODOT_NIX_STUB_LOG" | tr -d ' '
+	else
+		echo 0
+	fi
 }

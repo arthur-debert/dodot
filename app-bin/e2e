@@ -20,124 +20,124 @@ rebuild=false
 test_target=""
 
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --shell)
-            mode="shell"
-            shift
-            ;;
-        --explore)
-            mode="explore"
-            shift
-            ;;
-        --local)
-            mode="local"
-            shift
-            ;;
-        --rebuild)
-            rebuild=true
-            shift
-            ;;
-        -h|--help)
-            echo "Usage: app-bin/e2e [OPTIONS] [TEST_FILE]"
-            echo ""
-            echo "Options:"
-            echo "  --explore   Pre-built sandbox with fixtures + pre-existing home files"
-            echo "  --shell     Bare interactive container (for helper/BATS development)"
-            echo "  --local     Run locally without Docker (temp-dir isolation)"
-            echo "  --rebuild   Force rebuild of Docker image"
-            echo "  -h, --help  Show this help"
-            echo ""
-            echo "Examples:"
-            echo "  app-bin/e2e                       Run all tests in Docker"
-            echo "  app-bin/e2e test_up.bats           Run specific test file in Docker"
-            echo "  app-bin/e2e --local                Run all tests locally"
-            echo "  app-bin/e2e --local test_up.bats   Run specific test file locally"
-            echo "  app-bin/e2e --explore              Explore sandbox with conflicts/adoptable files"
-            echo "  app-bin/e2e --shell                Bare container shell"
-            exit 0
-            ;;
-        *.bats)
-            test_target="$1"
-            shift
-            ;;
-        *)
-            echo "Unknown argument: $1" >&2
-            exit 1
-            ;;
-    esac
+	case "$1" in
+	--shell)
+		mode="shell"
+		shift
+		;;
+	--explore)
+		mode="explore"
+		shift
+		;;
+	--local)
+		mode="local"
+		shift
+		;;
+	--rebuild)
+		rebuild=true
+		shift
+		;;
+	-h | --help)
+		echo "Usage: app-bin/e2e [OPTIONS] [TEST_FILE]"
+		echo ""
+		echo "Options:"
+		echo "  --explore   Pre-built sandbox with fixtures + pre-existing home files"
+		echo "  --shell     Bare interactive container (for helper/BATS development)"
+		echo "  --local     Run locally without Docker (temp-dir isolation)"
+		echo "  --rebuild   Force rebuild of Docker image"
+		echo "  -h, --help  Show this help"
+		echo ""
+		echo "Examples:"
+		echo "  app-bin/e2e                       Run all tests in Docker"
+		echo "  app-bin/e2e test_up.bats           Run specific test file in Docker"
+		echo "  app-bin/e2e --local                Run all tests locally"
+		echo "  app-bin/e2e --local test_up.bats   Run specific test file locally"
+		echo "  app-bin/e2e --explore              Explore sandbox with conflicts/adoptable files"
+		echo "  app-bin/e2e --shell                Bare container shell"
+		exit 0
+		;;
+	*.bats)
+		test_target="$1"
+		shift
+		;;
+	*)
+		echo "Unknown argument: $1" >&2
+		exit 1
+		;;
+	esac
 done
 
 # ── Local mode ──────────────────────────────────────────────────
 
 run_local() {
-    if ! command -v bats >/dev/null 2>&1; then
-        echo "Error: bats not found. Install with: brew install bats-core" >&2
-        exit 1
-    fi
+	if ! command -v bats >/dev/null 2>&1; then
+		echo "Error: bats not found. Install with: brew install bats-core" >&2
+		exit 1
+	fi
 
-    # Build the release binary
-    echo "Building dodot..."
-    cargo build --release -p dodot --manifest-path "$PROJECT_ROOT/Cargo.toml"
+	# Build the release binary
+	echo "Building dodot..."
+	cargo build --release -p dodot --manifest-path "$PROJECT_ROOT/Cargo.toml"
 
-    export DODOT_BIN="$PROJECT_ROOT/target/release/dodot"
+	export DODOT_BIN="$PROJECT_ROOT/target/release/dodot"
 
-    if [[ -n "$test_target" ]]; then
-        bats "$PROJECT_ROOT/tests/e2e/bats/$test_target"
-    else
-        bats "$PROJECT_ROOT/tests/e2e/bats/"
-    fi
+	if [[ -n "$test_target" ]]; then
+		bats "$PROJECT_ROOT/tests/e2e/bats/$test_target"
+	else
+		bats "$PROJECT_ROOT/tests/e2e/bats/"
+	fi
 }
 
 # ── Docker mode ─────────────────────────────────────────────────
 
 ensure_image() {
-    if $rebuild || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-        echo "Building Docker image..."
-        docker build \
-            -t "$IMAGE_NAME" \
-            -f "$PROJECT_ROOT/tests/e2e/Dockerfile" \
-            "$PROJECT_ROOT"
-    fi
+	if $rebuild || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+		echo "Building Docker image..."
+		docker build \
+			-t "$IMAGE_NAME" \
+			-f "$PROJECT_ROOT/tests/e2e/Dockerfile" \
+			"$PROJECT_ROOT"
+	fi
 }
 
 run_docker() {
-    ensure_image
+	ensure_image
 
-    if [[ -n "$test_target" ]]; then
-        docker run --rm "$IMAGE_NAME" "/tests/$test_target"
-    else
-        docker run --rm "$IMAGE_NAME"
-    fi
+	if [[ -n "$test_target" ]]; then
+		docker run --rm "$IMAGE_NAME" "/tests/$test_target"
+	else
+		docker run --rm "$IMAGE_NAME"
+	fi
 }
 
 run_shell() {
-    ensure_image
+	ensure_image
 
-    echo "Entering interactive container..."
-    echo "  dodot is at /usr/local/bin/dodot"
-    echo "  Test helpers: source /tests/helpers/setup.bash"
-    echo "  Run tests:    bats /tests/"
-    echo ""
+	echo "Entering interactive container..."
+	echo "  dodot is at /usr/local/bin/dodot"
+	echo "  Test helpers: source /tests/helpers/setup.bash"
+	echo "  Run tests:    bats /tests/"
+	echo ""
 
-    docker run --rm -it \
-        --entrypoint bash \
-        "$IMAGE_NAME"
+	docker run --rm -it \
+		--entrypoint bash \
+		"$IMAGE_NAME"
 }
 
 run_explore() {
-    ensure_image
+	ensure_image
 
-    docker run --rm -it \
-        --entrypoint bash \
-        "$IMAGE_NAME" \
-        /tests/interactive.bash
+	docker run --rm -it \
+		--entrypoint bash \
+		"$IMAGE_NAME" \
+		/tests/interactive.bash
 }
 
 # ── Dispatch ────────────────────────────────────────────────────
 
 case "$mode" in
-    local)  run_local ;;
-    docker) run_docker ;;
-    shell)  run_shell ;;
-    explore) run_explore ;;
+local) run_local ;;
+docker) run_docker ;;
+shell) run_shell ;;
+explore) run_explore ;;
 esac

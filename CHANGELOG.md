@@ -20,12 +20,9 @@ ci: migrate release reusable-workflow callers from @v2 to @v3 (rust-ci, rust-cli
 
 - **Docs site infrastructure.** `mkdocs.yml` (Material theme + `mkdocs-lex-plugin`) renders the `.lex` files under `docs/` as a static site. `.github/workflows/docs.yml` deploys on every push to `main` that touches `docs/**` or `mkdocs.yml`, via the `mhausenblas/mkdocs-deploy-gh-pages` action which runs `mkdocs gh-deploy` in a container. Custom domain `dodot.sh` wired in via `docs/CNAME` (Google Cloud DNS zone, A records pointing at GitHub Pages + apex AAAA + `www` CNAME). `docs/requirements.txt` pins the build deps to exact versions for reproducibility. Content wiring is incremental — sample nav covers home + four user-guide pages + three reference pages; the rest of the existing `.lex` files build but aren't yet in the nav.
 
-
 ### Changed
 
 - **Intra-pack handler execution order is now explicit.** Previously ordering was `category → alphabetical by handler name`, which happened to produce the right sequence (homebrew, install, path, shell, symlink) but was fragile — adding a handler with a name sorted earlier alphabetically would have silently reordered the pipeline. Handlers now declare an `ExecutionPhase` (`Provision` → `Setup` → `PathExport` → `ShellInit` → `Link`), and `rules::handler_execution_order` sorts on the enum's declared order. The observable order is unchanged; the contract is now encoded in the type system, and adding a handler requires a deliberate choice of phase. `HandlerCategory` (used by `--no-provision`) is derived from phase. Catchall-last is now enforced by `Link` being the final variant rather than by convention.
-
-
 
 All notable changes to this project will be documented in this file.
 
@@ -53,7 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.0.0] - 2026-05-15
 
-
 ### Added
 
 - **User-facing reference page for the `nix` handler (#161, PR 2).** `docs/user/handlers/nix.lex` covers the manifest shapes (list / bare derivation / attribute set), the shape-agnostic `nix profile install --expr <wrapper>` invocation, the sentinel + snapshot layout, the three-state `dodot status` output, the `--provision-rerun` re-run flow, the "ensure installed" semantics that distinguish the handler from a side-profile owner, and the §9 list of explicit non-goals (no `flake.nix` / `home.nix` matching, no NixOS / nix-darwin system config, no auto-bootstrap, no removal, no channel-drift upgrades). README handler-table and the docs/user/handlers index now include the `nix` row alongside `homebrew` and `install`; `docs/user/handlers/mappings.lex` lists the default `nix = "packages.nix"` mapping in the priority table, raw-TOML example, and key-shape table.
@@ -67,11 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Behavior change for `install.sh` and `Brewfile` (#169, PR C):** when these files change after a successful run, `dodot up` no longer auto-reruns them. Instead, `dodot up` reports `ran older version of <file> — run \`dodot up --provision-rerun\` to apply current` and leaves the prior state untouched. Run-once semantics are now strictly *opt-in re-execution* — the dodot user, not the file's mtime, decides when to re-run consequential scripts. To apply the new content, pass `--provision-rerun` to `dodot up`. (Note: `--force` is a *separate* flag that only overwrites pre-existing files at symlink target paths; it does not trigger run-once re-execution.) Manual `brew uninstall` of packages a `Brewfile` still lists likewise stays sticky: the sentinel records "we ran with this content" and dodot considers the work done until the file changes or `--provision-rerun` is passed.
+- **Behavior change for `install.sh` and `Brewfile` (#169, PR C):** when these files change after a successful run, `dodot up` no longer auto-reruns them. Instead, `dodot up` reports `ran older version of <file> — run \`dodot up --provision-rerun\` to apply current` and leaves the prior state untouched. Run-once semantics are now strictly *opt-in re-execution* — the dodot user, not the file's mtime, decides when to re-run consequential scripts. To apply the new content, pass `--provision-rerun` to `dodot up`. (Note:`--force` is a *separate* flag that only overwrites pre-existing files at symlink target paths; it does not trigger run-once re-execution.) Manual `brew uninstall` of packages a `Brewfile` still lists likewise stays sticky: the sentinel records "we ran with this content" and dodot considers the work done until the file changes or `--provision-rerun` is passed.
 - **Nix handler — uniform run-once lifecycle (#161, PR 3).** Removed the planning-time content-shape probe (`nix eval --apply`) and the v1 rejection of attribute-set manifests. The handler now invokes `nix profile install --expr <wrapper>` with a shape-normalizing Nix expression that collapses list / bare-derivation / attribute-set manifests to a single list before installing — same install command for every accepted shape, no per-shape dispatch. **Attribute-set manifests now install** (`{ pkgs ? import <nixpkgs> {} }: { ripgrep = pkgs.ripgrep; }`). Malformed content (syntax errors, unsupported shapes) surfaces at apply time via the `nix` subprocess, the same way a broken `Brewfile` surfaces a `brew bundle` error and a broken `install.sh` surfaces a `bash` error. This restores the lifecycle invariant that every run-once handler treats `has-run` / `which-version-has-run` / `will-run` identically: a previously-installed `packages.nix` the user later edits is now reported as `older version` (not failed planning), uniformly with `install` and `homebrew`. Constraint documented as a "Lifecycle invariant" section on `RunOnceCommand`.
 - Internal: `install` and `homebrew` handlers are now built on top of `RunOnceHandler<C>` via `InstallCommand` / `BrewfileCommand` specializations (#169, PR B). Duplicated checksum helpers consolidated in the shared module. Aside from the policy flip in PR C, no other observable behavior changed in the retrofit.
-## [4.1.1] - 2026-05-12
 
+## [4.1.1] - 2026-05-12
 
 ### Added
 
@@ -333,16 +329,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real chain state, so "deployed" actually means deployed. `_lib/` on
   non-macOS continues to surface only the planner warning, since
   those leaves produce zero intents.
-## [4.1.0] - 2026-05-04
 
+## [4.1.0] - 2026-05-04
 
 ### Added
 
 - **Conditional running (gates) — phases C1–C5** (`docs/proposals/shipped/conditional-running.lex`). Pack files, directories, and whole packs can now opt out of deployment based on host facts (OS, arch, user-defined dimensions) without touching code or rendering templates. **File-level gates** use a `_<label>` filename infix: `install._darwin.sh` deploys on macOS only, `aliases._linux.sh` on Linux only; passing-gate entries surface under their stripped names so existing `[mappings]` rules still match (`install._darwin.sh` → `install.sh`), and failing-gate entries surface as `gated out (label=...)` rows in `dodot status` with a footnote showing the predicate vs the host. **Directory-level gates** use `_<label>/` segments: `_darwin/install.sh` descends transparently when the predicate passes (children surface at pack root with the segment stripped), or surfaces as a single `gate` match when it fails. Gates nest (`_darwin/_arm64/install.sh` requires both) and compose with templates (`aliases._darwin.sh.tmpl` strips to `aliases.sh.tmpl`) and with routing prefixes (`home.bashrc._darwin` strips to `home.bashrc`; `_darwin/_home/.bashrc` surfaces under `_home/` at pack root). Routing-prefix tokens (`home`, `xdg`, `app`, `lib`) are explicitly excluded from gate-directory parsing. **Pack-level `[pack] os = [...]`** skips entire packs as a successful no-op (the same shape `.dodotignore` produces); empty list means "all OSes," `macos` is recognized as an alias for `darwin`. **Built-in label table** seeds `darwin` / `linux` / `macos` / `arm64` / `aarch64` / `x86_64`; **user-defined labels** in `[gates]` are inline tables of `(dimension, value)` AND-equality pairs (`arm-mac = { os = "darwin", arch = "arm64" }`) layered with the standard 3-tier root → pack inheritance. Unknown labels are a hard scan-time error (typo guard). New **`--only-os <os>`** flag on `up`/`status` overrides detected OS at the root-`[gates]` level so `--only-os linux` on a macOS dev host previews the Linux deployment. New **`HostFacts`** cached on `ExecutionContext`, detection helpers shared with the template preprocessor. New **`Health::Gated { label, expected, actual }`** status variant; symbol/description for the `gate` handler mirror `skip`. Filter-phase `GateHandler` claims gated entries and emits no intents. New `tests/e2e/bats/test_gates.bats` covers all five surfaces (filename gates, directory gates, nesting, pack-level `os`, `--only-os`, composition with templates and routing prefixes) with 18 e2e tests; ~24 new unit tests in `gates/` and ~16 new scanner integration tests.
 
 - **Unified `mappings.ignore` / `mappings.skip` as Filter-phase handlers.** Pack files can be excluded from deployment via two real handlers in a new `ExecutionPhase::Filter` slot that sorts before all other phases. **`mappings.ignore`** (silent — drops the match before status rendering) replaces the previous `!`-prefix exclusion phase and the `Rule::is_exclusion` shape in the matcher. **`mappings.skip`** (visible — surfaces as `skipped` in `dodot status`) replaces the synthetic `excluded` handler-name (which had no registry entry) used by the previous `mappings.exclude` for documentation/legal files. Both handlers produce zero intents and win via ordinary descending priority — `mappings.ignore` at 100, `mappings.skip` at 50, precise mappings at 10 — so README/LICENSE/CHANGELOG-like files can no longer be accidentally claimed by `mappings.shell` or the catchall, while explicit silent-skip still wins when both apply. Drops the hard-coded `handler == "excluded"` case-insensitivity check; `case_insensitive` is now a per-rule property on `Rule`. Per-scan `has_ci_rules` short-circuit so `match_file` only allocates the lowercased filename copy when at least one compiled rule actually requested case-insensitive matching. The pack-level `.dodotignore` marker is unchanged on disk but is now referred to as the "pack-ignore" mechanism in user-facing docs to disambiguate it from the intra-pack `mappings.ignore` / `mappings.skip` keys.
-## [4.0.0] - 2026-05-03
 
+## [4.0.0] - 2026-05-03
 
 ### Changed
 
@@ -356,8 +352,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Phase S2 of the secrets feature** — `bw` (Bitwarden CLI) and `sops` (Mozilla SOPS) providers, within-run caching, and reverse-merge sidecar masking. The `bw:` scheme resolves `bw:<item>` (default `password` field) or `bw:<item>#<field>` for `username` / `password` / `notes` / `totp` / `uri`; vault state is probed via `bw status` so a locked vault surfaces as `NotAuthenticated` with a "run `bw unlock` and export `BW_SESSION`" hint up-front rather than a generic resolve failure. The `sops:` scheme resolves `sops:<file>#<dot.path>` — files are anchored at the dotfiles root by default so the in-tree `.sops.yaml` configures both `sops --decrypt --extract` and dodot's reference parsing, and the dot-separated key path is translated to SOPS's bracketed `--extract` argument. `SecretRegistry` now holds a within-run cache so a reference appearing in N templates fires the underlying provider exactly once; pinned with `MockSecretProvider`'s invocation counter. `commands::transform::check` and the `template clean` filter now load each baseline's `<baseline>.secret.json` sidecar and pass the secret line ranges to burgertocow 0.4.0's new `DiffOptions::with_mask` so a rotated secret value in the deployed file no longer surfaces as a template-space diff that would rewrite the `{{ secret(...) }}` expression to the literal new value (defeating the abstraction). New bats e2e in `test_secrets_bw.bats` (5 tests, stub `bw` on PATH) and `test_secrets_reverse_merge_mask.bats` (2 tests, masked rotation invisible to `transform check`); `dev-shell.sh secrets-bw-stub` adds a Phase S2 fixture mirroring `secrets-pass`. Bumps `burgertocow-lib` 0.3 → 0.4.
 
 - **Phase S1 of the secrets feature** (`docs/proposals/secrets.lex` + `docs/proposals/secrets-testing.lex`). Templates can reference values stored outside the dotfiles repo via a new `secret(...)` MiniJinja function — `{{ secret("pass:test/db_password") }}` — which dispatches to a registered `SecretProvider` impl, resolves the value at render time, and zeroizes the in-memory copy on drop (`SecretString`, no `Debug` / `Display`). Phase S1 ships two providers: `pass` (password-store) and `op` (1Password CLI), both opt-in via `[secret.providers.<scheme>] enabled = true` so a fresh dodot install never shells out to a secret tool unprompted. A run-level preflight runs once per `dodot up`, probes every enabled provider, and aggregates `NotInstalled` / `NotAuthenticated` / `Misconfigured` outcomes into a single user-facing message before any rendering begins — so the user sees every fix-it pointer at once instead of one error per template. Per-render `<baseline>.secret.json` sidecars track the line ranges produced by each `secret(...)` call so downstream consumers (dry-run preview, burgertocow#13 mask integration) can mask resolved values without re-rendering. Multi-line provider returns are refused at render time (security: no whole-file deploys via the value-injection path; use a future whole-file provider instead). `dodot up --dry-run` and `dodot status` honor the `PreprocessMode::Passive` envelope (`secrets.lex` §7.4) — provider `resolve()` is never called from these commands; pinned in tests with a `PanickingProvider` that aborts on call. New `tests/e2e/bats/test_secrets.bats` covers the `pass` happy path, sidecar generation, preflight blocking on missing binaries, missing-reference errors, and the Passive contract end-to-end via a stub `pass` binary; `tests/e2e/bats/helpers/dev-shell.sh secrets-pass` drops developers into an interactive sandbox with the same fixture pre-seeded.
-## [3.0.0] - 2026-05-02
 
+## [3.0.0] - 2026-05-02
 
 ### Changed
 
@@ -425,8 +421,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `preprocess_pack` takes an extra `paths: Option<&dyn Pather>` argument. Active callers (`dodot up`) pass `Some(...)` so baselines are written; passive callers (`dodot status`) pass `None` so they don't overwrite the last-`up` baseline.
 - `ExpandedFile` gains optional `tracked_render` and `context_hash` fields, populated by generative preprocessors that support cache-backed reverse-merge (templates) and left `None` otherwise (identity, unarchive). Tests use `..Default::default()` for ad-hoc construction.
-## [2.0.0] - 2026-05-01
 
+## [2.0.0] - 2026-05-01
 
 ### Added
 
@@ -465,11 +461,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state (currently powering the plist filter-install prompt; future
   callers slot in by picking a key). Persisted at
   `<XDG_DATA_HOME>/dodot/prompts.json`. New CLI verbs:
-    - `dodot prompts list` — show every known prompt with its
+  - `dodot prompts list` — show every known prompt with its
       dismissed/active state and a one-line description.
-    - `dodot prompts reset <key>` — clear one dismissal so the
+  - `dodot prompts reset <key>` — clear one dismissal so the
       prompt fires again next time.
-    - `dodot prompts reset --all` — clear every dismissal.
+  - `dodot prompts reset --all` — clear every dismissal.
   Unknown keys lurking from older dodot versions appear in `list` so
   they can be reset.
 
@@ -499,15 +495,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CHANGELOG.md replaces the separate `CHANGELOG_UNRELEASED.md` file
   (Keep-a-Changelog canonical form).
 - **Plist filter ergonomics.** Several small polish items:
-    - `dodot plist clean` and `smudge` now produce actionable error
+  - `dodot plist clean` and `smudge` now produce actionable error
       messages when input isn't a valid plist, pointing at the most
       common cause (`.gitattributes` mis-binding) and at
       `dodot git-show-filters` for diagnosis.
-    - `dodot git-install-filters` success message now appends a macOS
+  - `dodot git-install-filters` success message now appends a macOS
       `cfprefsd` reminder so users know to `killall cfprefsd` after
       pulling plist changes from another machine, otherwise running
       apps keep serving cached values.
-    - `dodot git-install-filters --help` now documents PATH
+  - `dodot git-install-filters --help` now documents PATH
       considerations (filters use bare `dodot` and must find it on
       `$PATH` in whatever environment git is invoked from).
 
@@ -539,6 +535,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Mach-O binaries. Direct downloads still pass Gatekeeper via online
   verification (requires internet); Homebrew installs are unaffected
   either way (no quarantine bit on `brew install`).
+
 ## [1.2.0] - 2026-04-30
 
 ### Added
@@ -550,35 +547,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   macOS and Linux without `if os == "darwin"` branching inside packs.
   The full design lives in `docs/proposals/macos-paths.lex`; user-facing
   pieces (Phase M1–M5) shipping in this release:
-    - **`_app/<name>/<rest>` directory prefix** — deploys raw under
+  - **`_app/<name>/<rest>` directory prefix** — deploys raw under
       `<app_support_dir>/<name>/<rest>`. On macOS that's
       `~/Library/Application Support`; on Linux it collapses to
       `$XDG_CONFIG_HOME` so the same pack tree works on both. New
       Priority 2c in the symlink resolver.
-    - **`_lib/<rest>` directory prefix (macOS only)** — deploys to
+  - **`_lib/<rest>` directory prefix (macOS only)** — deploys to
       `$HOME/Library/<rest>` for non-Application-Support Library
       subtrees (`LaunchAgents/`, `Fonts/`, `Services/`). On
       non-macOS platforms emits a soft warning and skips with no
       symlink. New Priority 2d.
-    - **`[symlink] force_app`** — curated list of GUI-app folder
+  - **`[symlink] force_app`** — curated list of GUI-app folder
       names (case-sensitive, capped at 100) whose first path segment
       routes to `<app_support_dir>/<name>/<rest>` without a `_app/`
       prefix. Ships seeded with `Code`, `Cursor`, `Zed`, `Emacs`.
       New Priority 4.
-    - **`[symlink.app_aliases]` table** — pack-name → app-folder-name
+  - **`[symlink.app_aliases]` table** — pack-name → app-folder-name
       rewrites. A pack named `vscode` aliased to `Code` deploys to
       `<app_support_dir>/Code/...` so the pack name stays
       lowercase-ergonomic. New Priority 5; modifies the default rule
       only — explicit prefixes still win.
-    - **`[symlink] app_uses_library`** (default `true` on macOS,
+  - **`[symlink] app_uses_library`** (default `true` on macOS,
       ignored elsewhere) — set to `false` on macOS to opt the entire
       pack tree into Linux-style `~/.config` placement.
-    - **`dodot adopt ~/Library/Application Support/<X>/...`** —
+  - **`dodot adopt ~/Library/Application Support/<X>/...`** —
       AppSupport sources now infer pack `<X>` and produce
       `_app/<X>/<rest>` in-pack paths that round-trip back to the
       same deployed location. Pack-root directory expansion works
       the same as for XDG.
-    - **Capitalization heuristic for adopt suggestions** — when an
+  - **Capitalization heuristic for adopt suggestions** — when an
       AppSupport adopt's inferred pack name passes the GUI-app
       heuristic (uppercase / space / reverse-DNS shape), adopt
       surfaces an advisory tip pointing at the `app_aliases`
@@ -591,23 +588,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *advisory*, never authoritative — the resolver in §5 never consults
   this code, and a probe failure (no `brew` on PATH, malformed JSON,
   empty Spotlight result) never alters routing.
-    - **homebrew-cask probe** (`probe::brew`) — wraps
+  - **homebrew-cask probe** (`probe::brew`) — wraps
       `brew list --cask --versions` and `brew info --json=v2 --cask
       <token>` with on-disk caching at `<cache_dir>/probes/brew/`,
       24-hour TTL, and `--refresh` invalidation. Parses each cask's
       zap stanza to extract Application Support folder candidates and
       Preferences plist paths.
-    - **macOS-native probes** (`probe::macos_native`) — thin wrappers
+  - **macOS-native probes** (`probe::macos_native`) — thin wrappers
       around `mdls` (bundle-id lookup) and `mdfind` (display-name →
       `.app` bundle path). Both gate on `cfg!(target_os = "macos")`
       and return `None` on every other host.
-    - **`dodot adopt` enrichment** — when an AppSupport source's pack
+  - **`dodot adopt` enrichment** — when an AppSupport source's pack
       name matches an installed cask's app-support folder, adopt's
       success result includes a confirmation line ("homebrew cask
       `visual-studio-code` confirms this is …") and, when the cask's
       zap stanza lists Preferences plists, a sibling-adoption hint
       pointing at `dodot adopt ~/Library/Preferences/<file>`.
-    - **`dodot up` / `dodot status` missing-target hints** — when a
+  - **`dodot up` / `dodot status` missing-target hints** — when a
       pack's planned deploy targets an `<app_support_dir>/<X>/`
       folder that doesn't exist on disk, the planner emits a soft
       warning. Cask-enriched when the brew probe finds a matching
@@ -618,18 +615,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       provide it" message when no cask matches. macOS-only;
       suppressed on Linux where `app_support_dir` collapses onto
       `xdg_config_home`.
-    - **`dodot probe app <pack> [--refresh]` subcommand** —
+  - **`dodot probe app <pack> [--refresh]` subcommand** —
       diagnostic surface listing every app-support folder a pack
       will route to (alias / force_app / `_app/`), folder existence,
       matching cask + install state, `.app` bundle, bundle ID, and
       sibling-adoption candidates. Run on demand; not part of any
       hot path.
-    - **`ExecutionContext.command_runner`** — the production runner
+  - **`ExecutionContext.command_runner`** — the production runner
       is now exposed on the orchestration context so probes (and any
       future advisory subprocess wrapper) reuse the same
       `CommandRunner` the datastore already drives. Tests inject a
       `CannedRunner` mock for deterministic probe coverage.
-    - **Cask-aware rename suggestion** — when M5's
+  - **Cask-aware rename suggestion** — when M5's
       capitalization-heuristic tip fires *and* the M6 brew probe
       finds an installed cask matching the pack's app-support
       folder, the suggested rename uses the cask token instead of a
@@ -982,11 +979,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.16.0] - 2026-04-23
 
 ### Added
+
 - Provisioning script execution now prints `==== <pack> → <handler> → <script>  running…` before the spawn and `OK` (green) or `FAILED` (red) after, on stderr. Sentinel-skipped runs stay silent. Long-running scripts (e.g. brew installs) are no longer opaque from the user's side.
 
 ### Changed
+
 - **`up` and `down` now render through `status::status()`** instead of using their own per-operation vocabulary. `dodot up video` and `dodot status video` produce identical right-column labels (`in PATH`, `sourced`, `deployed`) for the same observed state — previously `up` reported `staged bin` while `status` reported `in PATH`, which was confusing. Operation failures from `up` are overlaid as additional error rows on top of the status view. Dry-run output is unchanged (still shows planned operations). (#42)
-- **`status` distinguishes "pending — clear to deploy" from "pending — would conflict on deploy"** (#43). When a non-symlink file or directory already occupies a symlink-handler target path, status renders the row with the `warning` style (label remains `pending` so the right column stays compact) and adds a per-pack footnote `(N) <path> (existing file/directory) — \`dodot up\` will refuse without --force`. Pre-existing symlinks (correct, dangling, or pointing elsewhere) are *not* flagged as conflicts because the executor's `create_user_link` gracefully replaces them on the next `up`.
+- **`status` distinguishes "pending — clear to deploy" from "pending — would conflict on deploy"** (#43). When a non-symlink file or directory already occupies a symlink-handler target path, status renders the row with the `warning` style (label remains `pending` so the right column stays compact) and adds a per-pack footnote `(N) <path> (existing file/directory) — \`dodot up\` will refuse without --force`. Pre-existing symlinks (correct, dangling, or pointing elsewhere) are *not* flagged as conflicts because the executor's`create_user_link` gracefully replaces them on the next `up`.
 - **`dodot up` auto-replaces content-equivalent pre-existing files** (#44). When `up` would deploy a symlink to a path where a regular file already exists, it now checks whether the file's content is byte-identical to the source. If so, it silently swaps the file for the dodot symlink chain — no `--force` required, no conflict reported. Direct (single-hop) symlinks pointing at the source — including relative-path symlinks — were already handled gracefully by `create_user_link`; this completes the picture for the file case. Multi-hop symlink chains are still replaced automatically (unchanged behavior). Only content-different non-symlink files still require `--force` — mismatched content is a real conflict.
 - **`status` no longer flags content-equivalent files as conflicts** (#44). A pre-existing file at the user-target path whose bytes match the source is rendered as plain `pending` with no footnote, since `up` will handle it without `--force`.
 - **`dodot adopt` distinguishes "fully managed" from "direct symlink to pack source"** (#44). When the user's existing symlink points directly into the dotfiles root (skipping dodot's data-link layer), adopt now skips with a clearer message that points at `dodot up <pack>` to upgrade to the full chain — instead of the previous opaque `already managed by dodot`. Sources whose symlinks already go through dodot's data dir keep the original wording.
@@ -994,6 +993,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.14.0] - 2026-04-22
 
 ### Added
+
 - **Cross-pack conflict detection** (#29): `dodot up` now collects intents from all packs before executing any, detects when multiple packs produce symlinks targeting the same resolved path, and halts with a clear error listing conflicting packs, handlers, and source files — no partial deployment occurs
 - `dodot status` surfaces potential cross-pack conflicts as warnings, even for packs that aren't deployed yet
 - Symlink target collisions detected across all resolution layers: `[symlink.targets]`, `_home/` prefix, `dot.` convention, `force_home`, XDG defaults
@@ -1003,6 +1003,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dodot status` now lists directories skipped via `.dodotignore` under an "Ignored Packs" heading, so users aren't baffled when a pack-shaped directory doesn't appear in the main listing
 
 ### Changed
+
 - **`mappings.shell` default now includes `env.sh`** alongside `aliases.sh`, `profile.sh`, `login.sh`. Files named `env.sh` in any pack are now claimed by the shell handler (sourced at shell init) instead of falling through to the symlink handler (which previously dropped them at `~/.env.sh` and collided across packs)
 - `dodot up` now uses a two-phase execution model: collect all intents first, then execute — replacing the previous sequential per-pack execution
 - `--force` does not override cross-pack conflicts (it only applies to pre-existing non-dodot files); cross-pack conflicts require a configuration fix
@@ -1016,6 +1017,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Handler::to_intents` now receives an `&dyn Fs` so handlers can inspect directory contents when deciding wholesale-vs-per-file treatment.
 
 ### Migration notes
+
 - If you previously relied on nested files being individually symlinked (e.g. `warp/themes/nord.yaml → ~/.config/themes/nord.yaml`), the whole `themes/` directory is now one symlink. The observed path `~/.config/themes/nord.yaml` still resolves identically via the directory link.
 - If you need nested per-file behavior (different targets per file, or selective inclusion), add `[symlink.targets]` entries or list individual files in `[symlink] protected_paths` — either triggers per-file mode for the containing directory.
 - If you had nested `install.sh` / `aliases.sh` / `Brewfile` that were (perhaps unintentionally) being picked up by their handlers, move them to the pack's top level or use `[mappings]` overrides.
@@ -1023,6 +1025,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.3] - 2026-04-16
 
 ### Added
+
 - Structured logging via `tracing` with daily-rotating file output to `~/.cache/dodot/logs/`
 - `--verbose` flag: show INFO-level log messages on stderr
 - `--debug` flag: show DEBUG-level log messages on stderr
@@ -1032,6 +1035,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.2] - 2026-04-16
 
 ### Changed
+
 - CI: force Node.js 24 for all GitHub Actions (future-proofing for June 2026 deprecation)
 - CI: replace manual `actions/cache` with `Swatinem/rust-cache` for smarter Rust caching
 - CI: e2e tests now download pre-built binary from check job instead of rebuilding from source
@@ -1039,6 +1043,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.1] - 2026-04-15
 
 ### Fixed
+
 - Release workflow: add MIT license and crate metadata required by crates.io
 - Release workflow: macOS signing failures no longer block binary packaging/upload
 - Release workflow: fix cross-compilation install on runners with pre-existing `cross` binary
@@ -1046,14 +1051,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.0] - 2026-04-15
 
 ### Added
+
 - `[pack] ignore` now ships with sensible compiled defaults (`.git`, `.svn`, `.DS_Store`, `*.swp`, etc.) — previously the default was an empty list
 - Exhaustive unit test verifying all compiled default values for `pack.ignore`, `symlink.force_home`, `symlink.protected_paths`, and all `mappings` fields
 
 ### Changed
+
 - **BREAKING:** `[mappings] ignore` renamed to `[mappings] skip` to disambiguate from `[pack] ignore`
 - Removed `genconfig` command — use `dodot config gen` (via clapfig) instead, which auto-generates a commented TOML template from struct definitions
 
 ### Fixed
+
 - Config docs: removed phantom "App Defaults" and "App Config" layers that never existed in code; documented the actual 3-layer hierarchy (compiled defaults → root `.dodot.toml` → pack `.dodot.toml`)
 - Config docs: corrected merge semantics from "arrays append" to "arrays override (last value wins)" matching actual clapfig behavior
 - Config docs: fixed `[symlink]` targets syntax from incorrect bare keys to correct `[symlink.targets]` table form

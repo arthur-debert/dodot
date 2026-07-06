@@ -54,7 +54,7 @@ create_home_file ".gitconfig" '[user]
 
 # Existing config files — will conflict with nvim pack
 mkdir -p "$HOME/.config/nvim"
-cat > "$HOME/.config/nvim/init.lua" << 'LUA'
+cat >"$HOME/.config/nvim/init.lua" <<'LUA'
 -- Pre-existing nvim config (will conflict with nvim pack)
 vim.opt.number = true
 vim.opt.relativenumber = true
@@ -62,7 +62,7 @@ LUA
 
 # Existing ssh config — will conflict with ssh pack
 mkdir -p "$HOME/.ssh"
-cat > "$HOME/.ssh/config" << 'SSH'
+cat >"$HOME/.ssh/config" <<'SSH'
 # Pre-existing SSH config
 Host github.com
     IdentityFile ~/.ssh/id_ed25519
@@ -86,7 +86,7 @@ family = "JetBrains Mono"
 
 # ── Print welcome ───────────────────────────────────────────────
 
-cat << 'WELCOME'
+cat <<'WELCOME'
 
 ┌─────────────────────────────────────────────────┐
 │           dodot explore sandbox                  │
@@ -134,7 +134,7 @@ echo ""
 
 # Drop into interactive shell (only when stdin is a terminal)
 if [ -t 0 ]; then
-    export PS1="[dodot-explore] \w \$ "
-    cd "$HOME"
-    exec bash --norc --noprofile -i
+	export PS1="[dodot-explore] \w \$ "
+	cd "$HOME"
+	exec bash --norc --noprofile -i
 fi

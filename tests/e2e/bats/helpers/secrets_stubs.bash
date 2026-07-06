@@ -20,16 +20,16 @@
 # references map to the documented `not in the password store`
 # stderr (exit 1) so the provider's error mapping fires.
 secrets_pass_stub_setup() {
-    local stub_dir="$SANDBOX/.secrets-stubs"
-    local store_dir="$SANDBOX/password-store"
-    local catalog="$stub_dir/pass-catalog"
+	local stub_dir="$SANDBOX/.secrets-stubs"
+	local store_dir="$SANDBOX/password-store"
+	local catalog="$stub_dir/pass-catalog"
 
-    mkdir -p "$stub_dir" "$store_dir"
-    : > "$catalog"
+	mkdir -p "$stub_dir" "$store_dir"
+	: >"$catalog"
 
-    echo 'dodot-test@example.invalid' > "$store_dir/.gpg-id"
+	echo 'dodot-test@example.invalid' >"$store_dir/.gpg-id"
 
-    cat > "$stub_dir/pass" <<'STUB'
+	cat >"$stub_dir/pass" <<'STUB'
 #!/usr/bin/env bash
 # Stub `pass` for dodot e2e tests.
 # Catalog: tab-separated <ref>\t<value> lines, one per entry.
@@ -58,18 +58,18 @@ case "$1" in
         ;;
 esac
 STUB
-    chmod +x "$stub_dir/pass"
+	chmod +x "$stub_dir/pass"
 
-    export PATH="$stub_dir:$PATH"
-    export PASSWORD_STORE_DIR="$store_dir"
+	export PATH="$stub_dir:$PATH"
+	export PASSWORD_STORE_DIR="$store_dir"
 }
 
 # Append a (reference, value) pair to the pass stub catalog.
 # Usage: seed_pass_secret "test/db_password" "hunter2-from-fixture"
 seed_pass_secret() {
-    local ref="$1"
-    local value="$2"
-    printf '%s\t%s\n' "$ref" "$value" >> "$SANDBOX/.secrets-stubs/pass-catalog"
+	local ref="$1"
+	local value="$2"
+	printf '%s\t%s\n' "$ref" "$value" >>"$SANDBOX/.secrets-stubs/pass-catalog"
 }
 
 # Drop the pass stub AND make `pass` genuinely unspawnable from this
@@ -86,30 +86,30 @@ seed_pass_secret() {
 # spawn fails everywhere with a real "command not found" → the
 # probe walks the documented NotInstalled path.
 secrets_drop_pass_stub() {
-    if [[ -d "$SANDBOX/.secrets-stubs" ]]; then
-        rm -rf "$SANDBOX/.secrets-stubs"
-    fi
-    local clean=""
-    local IFS=':'
-    local entry
-    for entry in $PATH; do
-        if [[ -n "$entry" && -x "$entry/pass" ]]; then
-            continue
-        fi
-        if [[ -z "$clean" ]]; then
-            clean="$entry"
-        else
-            clean="$clean:$entry"
-        fi
-    done
-    export PATH="$clean"
+	if [[ -d "$SANDBOX/.secrets-stubs" ]]; then
+		rm -rf "$SANDBOX/.secrets-stubs"
+	fi
+	local clean=""
+	local IFS=':'
+	local entry
+	for entry in $PATH; do
+		if [[ -n "$entry" && -x "$entry/pass" ]]; then
+			continue
+		fi
+		if [[ -z "$clean" ]]; then
+			clean="$entry"
+		else
+			clean="$clean:$entry"
+		fi
+	done
+	export PATH="$clean"
 }
 
 # Helper for the common case: enable the pass provider + point at the
 # sandbox store + flip the master switch. Writes the root .dodot.toml.
 # Tests can append further config before calling dodot.
 secrets_enable_pass_in_root_config() {
-    cat > "$DOTFILES_ROOT/.dodot.toml" <<TOML
+	cat >"$DOTFILES_ROOT/.dodot.toml" <<TOML
 [secret]
 enabled = true
 
@@ -132,14 +132,14 @@ TOML
 # multi-column data shape. Tests append entries with
 # `seed_bw_secret <item> <field> <value>`.
 secrets_bw_stub_setup() {
-    local stub_dir="$SANDBOX/.secrets-stubs"
-    mkdir -p "$stub_dir"
-    : > "$stub_dir/bw-status"
-    # Default to "unlocked" — tests that want to exercise the
-    # locked / unauthenticated probe paths overwrite this file.
-    echo 'unlocked' > "$stub_dir/bw-status"
+	local stub_dir="$SANDBOX/.secrets-stubs"
+	mkdir -p "$stub_dir"
+	: >"$stub_dir/bw-status"
+	# Default to "unlocked" — tests that want to exercise the
+	# locked / unauthenticated probe paths overwrite this file.
+	echo 'unlocked' >"$stub_dir/bw-status"
 
-    cat > "$stub_dir/bw" <<'STUB'
+	cat >"$stub_dir/bw" <<'STUB'
 #!/usr/bin/env bash
 # Stub `bw` for dodot e2e tests. Reads catalog files and the
 # sidecar-style status file written by helpers in
@@ -179,28 +179,28 @@ case "$1" in
         ;;
 esac
 STUB
-    chmod +x "$stub_dir/bw"
-    export PATH="$stub_dir:$PATH"
+	chmod +x "$stub_dir/bw"
+	export PATH="$stub_dir:$PATH"
 }
 
 # Append (item, field, value) to the bw stub catalog.
 # Usage: seed_bw_secret "gh-token" "password" "ghp_xyz"
 seed_bw_secret() {
-    local item="$1"
-    local field="$2"
-    local value="$3"
-    printf '%s\t%s\n' "$item" "$value" >> "$SANDBOX/.secrets-stubs/bw-$field"
+	local item="$1"
+	local field="$2"
+	local value="$3"
+	printf '%s\t%s\n' "$item" "$value" >>"$SANDBOX/.secrets-stubs/bw-$field"
 }
 
 # Override the bw status the stub reports. Valid: unlocked, locked,
 # unauthenticated. Default is unlocked.
 set_bw_stub_status() {
-    echo "$1" > "$SANDBOX/.secrets-stubs/bw-status"
+	echo "$1" >"$SANDBOX/.secrets-stubs/bw-status"
 }
 
 # Flip the bw provider on in the root .dodot.toml.
 secrets_enable_bw_in_root_config() {
-    cat > "$DOTFILES_ROOT/.dodot.toml" <<TOML
+	cat >"$DOTFILES_ROOT/.dodot.toml" <<TOML
 [secret]
 enabled = true
 
@@ -223,20 +223,20 @@ TOML
 #
 # Skips the calling test (returns 1) when `age` isn't on PATH.
 secrets_age_setup() {
-    if ! command -v age >/dev/null 2>&1 || ! command -v age-keygen >/dev/null 2>&1; then
-        return 1
-    fi
-    local dir="$SANDBOX/age"
-    mkdir -p "$dir"
-    age-keygen -o "$dir/identity.txt" 2> "$dir/keygen.stderr"
-    # age-keygen prints `# public key: <recipient>` to stderr.
-    AGE_RECIPIENT="$(awk -F': ' '/public key/ { print $2 }' "$dir/keygen.stderr")"
-    if [[ -z "$AGE_RECIPIENT" ]]; then
-        echo "secrets_age_setup: failed to extract age recipient" >&2
-        return 1
-    fi
-    export AGE_IDENTITY="$dir/identity.txt"
-    export AGE_RECIPIENT
+	if ! command -v age >/dev/null 2>&1 || ! command -v age-keygen >/dev/null 2>&1; then
+		return 1
+	fi
+	local dir="$SANDBOX/age"
+	mkdir -p "$dir"
+	age-keygen -o "$dir/identity.txt" 2>"$dir/keygen.stderr"
+	# age-keygen prints `# public key: <recipient>` to stderr.
+	AGE_RECIPIENT="$(awk -F': ' '/public key/ { print $2 }' "$dir/keygen.stderr")"
+	if [[ -z "$AGE_RECIPIENT" ]]; then
+		echo "secrets_age_setup: failed to extract age recipient" >&2
+		return 1
+	fi
+	export AGE_IDENTITY="$dir/identity.txt"
+	export AGE_RECIPIENT
 }
 
 # Encrypt $3 (literal plaintext bytes) into the pack at $1/$2 with
@@ -244,18 +244,18 @@ secrets_age_setup() {
 #     seed_age_encrypted_file "ssh" "id_ed25519" "<key bytes>"
 # produces $DOTFILES_ROOT/ssh/id_ed25519.age.
 seed_age_encrypted_file() {
-    local pack="$1"
-    local rel_path="$2"
-    local plaintext="$3"
-    local out="$DOTFILES_ROOT/$pack/$rel_path.age"
-    mkdir -p "$(dirname "$out")"
-    printf '%s' "$plaintext" | age -r "$AGE_RECIPIENT" -o "$out"
+	local pack="$1"
+	local rel_path="$2"
+	local plaintext="$3"
+	local out="$DOTFILES_ROOT/$pack/$rel_path.age"
+	mkdir -p "$(dirname "$out")"
+	printf '%s' "$plaintext" | age -r "$AGE_RECIPIENT" -o "$out"
 }
 
 # Flip on the age preprocessor in the root config and point at the
 # sandbox identity file generated by `secrets_age_setup`.
 secrets_enable_age_in_root_config() {
-    cat > "$DOTFILES_ROOT/.dodot.toml" <<TOML
+	cat >"$DOTFILES_ROOT/.dodot.toml" <<TOML
 [preprocessor.age]
 enabled = true
 identity = "$AGE_IDENTITY"
@@ -269,14 +269,14 @@ TOML
 #
 # Skips when `gpg` isn't on PATH.
 secrets_gpg_setup() {
-    if ! command -v gpg >/dev/null 2>&1; then
-        return 1
-    fi
-    local dir="$SANDBOX/gnupg"
-    mkdir -p "$dir"
-    chmod 700 "$dir"
-    export GNUPGHOME="$dir"
-    cat > "$dir/keygen.batch" <<'BATCH'
+	if ! command -v gpg >/dev/null 2>&1; then
+		return 1
+	fi
+	local dir="$SANDBOX/gnupg"
+	mkdir -p "$dir"
+	chmod 700 "$dir"
+	export GNUPGHOME="$dir"
+	cat >"$dir/keygen.batch" <<'BATCH'
 %no-protection
 Key-Type: RSA
 Key-Length: 2048
@@ -285,25 +285,25 @@ Name-Email: dodot-test@example.invalid
 Expire-Date: 0
 %commit
 BATCH
-    gpg --batch --gen-key "$dir/keygen.batch" 2>/dev/null
-    export GPG_RECIPIENT='dodot-test@example.invalid'
+	gpg --batch --gen-key "$dir/keygen.batch" 2>/dev/null
+	export GPG_RECIPIENT='dodot-test@example.invalid'
 }
 
 # Encrypt plaintext into a pack file with the .gpg suffix appended.
 seed_gpg_encrypted_file() {
-    local pack="$1"
-    local rel_path="$2"
-    local plaintext="$3"
-    local out="$DOTFILES_ROOT/$pack/$rel_path.gpg"
-    mkdir -p "$(dirname "$out")"
-    printf '%s' "$plaintext" | gpg --encrypt --recipient "$GPG_RECIPIENT" --batch \
-        --trust-model always --output "$out" 2>/dev/null
+	local pack="$1"
+	local rel_path="$2"
+	local plaintext="$3"
+	local out="$DOTFILES_ROOT/$pack/$rel_path.gpg"
+	mkdir -p "$(dirname "$out")"
+	printf '%s' "$plaintext" | gpg --encrypt --recipient "$GPG_RECIPIENT" --batch \
+		--trust-model always --output "$out" 2>/dev/null
 }
 
 # Flip on the gpg preprocessor in the root config. gpg picks up its
 # identity from gpg-agent + $GNUPGHOME (already set by setup).
 secrets_enable_gpg_in_root_config() {
-    cat > "$DOTFILES_ROOT/.dodot.toml" <<TOML
+	cat >"$DOTFILES_ROOT/.dodot.toml" <<TOML
 [preprocessor.gpg]
 enabled = true
 TOML
