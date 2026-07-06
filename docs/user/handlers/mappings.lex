@@ -54,6 +54,7 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
 
     Each `[mappings]` key has a fixed shape. Setting the wrong shape (a string for a list-typed key, or vice versa) is a config-load error.
 
+    Key shapes:
         | Key      | Type    | Notes                                                                          |
         | path     | string  | One directory name per pack. Trailing `/` auto-added.                          |
         | install  | list    | Multiple matched files all run, each with its own sentinel.                    |

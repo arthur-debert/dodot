@@ -9,6 +9,7 @@ This page is the conceptual map. The individual commands ([./git-install-filters
 
     Three of these are git-side filters or hooks; the fourth is a shell alias that wraps `git`.
 
+    Augmentations:
         | Piece                       | Installed by                      | What it does                                                                  |
         | Pre-commit hook             | `dodot transform install-hook`    | Reverse-merge any deployed-side edits back into template sources at commit.   |
         | Plist clean/smudge filter   | `dodot git-install-filters`       | Translate macOS `*.plist` between binary (working tree) and canonical XML (git). |
@@ -45,6 +46,7 @@ This page is the conceptual map. The individual commands ([./git-install-filters
 
     Each rung has two halves — one in the repo (committed, travels with clones) and one outside (local, per-machine). Knowing which is which avoids the "I cloned on a new machine and nothing works" surprise.
 
+    Rungs:
         | Rung                    | Committed (repo)                                | Per-clone, per-machine                                |
         | Pre-commit hook         | (nothing)                                       | `.git/hooks/pre-commit` block                          |
         | Plist filter            | `.gitattributes` line `*.plist filter=dodot-plist` | `.git/config` `[filter "dodot-plist"]` block        |

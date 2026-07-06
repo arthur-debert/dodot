@@ -28,6 +28,7 @@ Your dotfiles repo is not touched. `down` only retracts the bookkeeping; the sou
 
 3. Flags
 
+    Flags:
         | Flag        | Effect                                                       |
         | `--dry-run` | Preview removals without making any changes.                 |
 

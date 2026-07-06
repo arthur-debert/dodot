@@ -23,6 +23,7 @@ The alias is intentionally *not* part of the install ladder during `dodot up` â€
 
 3. Flags
 
+    Flags:
         | Flag                  | Effect                                                              |
         | `--shell <SHELL>`     | Target shell (`bash`, `zsh`). Auto-detected from `$SHELL` by default. |
 

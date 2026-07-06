@@ -24,6 +24,7 @@ You usually don't run this by hand. The intended pattern is to wrap `git` in a s
 
 3. Modes
 
+    Modes:
         | Mode             | Effect                                                                                    |
         | (default)        | Touch source mtimes; print a short report of touched / clean / missing entries.          |
         | `--quiet`        | Touch source mtimes silently. Intended for shell aliases that wrap `git`.                |

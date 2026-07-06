@@ -55,6 +55,7 @@ Pack name is inferred from the source's deployed location when it can be — pas
 
 5. Flags
 
+    Flags:
         | Flag             | Effect                                                                                       |
         | `--into <PACK>`  | Force a destination pack. Pack must exist. Overrides per-source inference.                   |
         | `--force`        | Overwrite an existing destination file in the pack.                                          |

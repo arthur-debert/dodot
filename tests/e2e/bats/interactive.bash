@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DODOT_BIN="${DODOT_BIN:-/usr/local/bin/dodot}"
 
 # Source helpers
+# shellcheck source=/dev/null
 source "$SCRIPT_DIR/helpers/setup.bash"
 
 # ── Build sandbox ───────────────────────────────────────────────

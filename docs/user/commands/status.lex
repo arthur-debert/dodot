@@ -34,6 +34,7 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
 3. Display options
 
+    Display options:
         | Flag           | Effect                                                                 |
         | `--full`       | Show every file per pack (the default).                                |
         | `--short`      | Collapse each pack to a one-line summary.                              |

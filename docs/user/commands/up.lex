@@ -46,6 +46,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
 4. Flags
 
+    Flags:
         | Flag                  | Effect                                                                                       |
         | `--dry-run`           | Plan and detect conflicts without making filesystem changes. Skips secret-provider preflight too — Passive mode. |
         | `--no-provision`      | Skip install + homebrew handlers this run.                                                   |

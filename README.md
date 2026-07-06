@@ -95,14 +95,14 @@ vim ~/.gitconfig        # same file as ~/dotfiles/git/gitconfig
 
 dodot matches files to handlers by name convention:
 
-| Handler    | Matches                                     | Action                        |
-|------------|---------------------------------------------|-------------------------------|
-| **symlink**| Most files (default)                        | Symlink under `~/.config/<pack>/` |
-| **shell**  | `*.{sh,bash,zsh}` at pack root              | Sourced via shell init script |
-| **path**   | `bin/` directories                          | Added to `$PATH`              |
-| **homebrew** | `Brewfile`                                | `brew bundle install`; edits report `older version`, apply with `dodot up --provision-rerun` |
-| **install**| `install.sh`, `install.bash`, `install.zsh` | Run once (checksum-tracked); edits report `older version`, apply with `dodot up --provision-rerun` |
-| **nix**    | `packages.nix`                              | `nix profile install` (shape-agnostic wrapper); edits report `older version`, apply with `dodot up --provision-rerun` |
+| Handler      | Matches                                     | Action                                                                                                                |
+| ------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **symlink**  | Most files (default)                        | Symlink under `~/.config/<pack>/`                                                                                     |
+| **shell**    | `*.{sh,bash,zsh}` at pack root              | Sourced via shell init script                                                                                         |
+| **path**     | `bin/` directories                          | Added to `$PATH`                                                                                                      |
+| **homebrew** | `Brewfile`                                  | `brew bundle install`; edits report `older version`, apply with `dodot up --provision-rerun`                          |
+| **install**  | `install.sh`, `install.bash`, `install.zsh` | Run once (checksum-tracked); edits report `older version`, apply with `dodot up --provision-rerun`                    |
+| **nix**      | `packages.nix`                              | `nix profile install` (shape-agnostic wrapper); edits report `older version`, apply with `dodot up --provision-rerun` |
 
 Symlink targets are resolved smartly:
 
@@ -136,22 +136,22 @@ Adopt existing settings with `dodot adopt --into <pack> ~/Library/Preferences/co
 
 ## Commands
 
-| Command      | Description                                      |
-|--------------|--------------------------------------------------|
-| `up`         | Deploy packs (symlinks, shell, installs)         |
-| `down`       | Remove all deployments for packs                 |
-| `status`     | Show what dodot will do / has done               |
-| `list`       | List all discovered packs                        |
-| `init`       | Create a new pack with template files            |
-| `adopt`      | Move existing files into a pack, symlink back    |
-| `fill`       | Add template files to an existing pack           |
-| `addignore`  | Drop a `.dodotignore` marker (pack-ignore)       |
-| `init-sh`    | Print shell init script for `eval`               |
-| `config`     | Inspect and modify configuration                 |
-| `plist`      | clean/smudge filters for macOS plists (stdin→stdout) |
-| `git-install-filters` | Wire plist filters into the repo's `.git/config`  |
-| `git-show-filters`    | Print plist filter config snippets without writing |
-| `prompts`    | Inspect/reset dismissed one-time prompts         |
+| Command               | Description                                          |
+| --------------------- | ---------------------------------------------------- |
+| `up`                  | Deploy packs (symlinks, shell, installs)             |
+| `down`                | Remove all deployments for packs                     |
+| `status`              | Show what dodot will do / has done                   |
+| `list`                | List all discovered packs                            |
+| `init`                | Create a new pack with template files                |
+| `adopt`               | Move existing files into a pack, symlink back        |
+| `fill`                | Add template files to an existing pack               |
+| `addignore`           | Drop a `.dodotignore` marker (pack-ignore)           |
+| `init-sh`             | Print shell init script for `eval`                   |
+| `config`              | Inspect and modify configuration                     |
+| `plist`               | clean/smudge filters for macOS plists (stdin→stdout) |
+| `git-install-filters` | Wire plist filters into the repo's `.git/config`     |
+| `git-show-filters`    | Print plist filter config snippets without writing   |
+| `prompts`             | Inspect/reset dismissed one-time prompts             |
 
 All commands accept pack names as arguments (`dodot up git nvim`) or operate on all packs when run without arguments.
 

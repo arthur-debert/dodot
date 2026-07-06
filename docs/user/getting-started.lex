@@ -93,6 +93,7 @@ Getting started
 
     Every dodot command accepts zero or more pack names. Without arguments it operates on every discovered pack; with arguments, only those.
 
+    Core commands:
         | Command       | Purpose                                                |
         | `dodot status`| What dodot sees per pack. Read-only.                   |
         | `dodot up`    | Deploy packs (symlinks, shell, installs).              |

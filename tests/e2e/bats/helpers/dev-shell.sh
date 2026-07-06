@@ -40,9 +40,9 @@ _PROJECT_ROOT="$(cd "$_SCRIPT_DIR/../../../.." && pwd)"
 # Reuse the bats setup helpers. The order matches what setup() in a
 # bats test would do: setup.bash first (so $SANDBOX, $HOME, etc. are
 # initialised), then the fixture-specific helper.
-# shellcheck source=setup.bash
+# shellcheck source=/dev/null
 source "$_SCRIPT_DIR/setup.bash"
-# shellcheck source=secrets_stubs.bash
+# shellcheck source=/dev/null
 source "$_SCRIPT_DIR/secrets_stubs.bash"
 
 sandbox_setup

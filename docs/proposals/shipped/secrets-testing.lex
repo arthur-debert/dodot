@@ -83,6 +83,7 @@ Design Specification: Testing Strategy for Secret Handling
 
     4.2. Provider Coverage
 
+    Provider coverage:
         | Provider              | Binary                  | Hermetic? | What gets tested                                                                                    |
         | pass                  | `pass`, `gpg`           | Yes       | Reference resolution, missing-entry error, gpg-agent passphrase-less unlock                         |
         | sops                  | `sops`, `age`           | Yes       | YAML key extraction (`sops:file.yaml#path.to.key`), missing-key error, decrypt failure              |

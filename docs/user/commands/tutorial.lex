@@ -27,6 +27,7 @@ The recommended starting point if you've never run `dodot up` on this repo befor
 
 3. Flags
 
+    Flags:
         | Flag             | Effect                                                                            |
         | `--reset`        | Discard saved tutorial state and start over.                                      |
         | `--from <STEP>`  | Jump to a specific step (e.g. `intro`, `pick_pack`, `dry_run`, `real_up`).        |

@@ -24,6 +24,7 @@ See [./git-augmentation.lex] for how the alias fits into the broader git-augment
 
 3. Flags
 
+    Flags:
         | Flag                  | Effect                                                              |
         | `--shell <SHELL>`     | Target shell (`bash`, `zsh`). Auto-detected from `$SHELL` by default. |
 

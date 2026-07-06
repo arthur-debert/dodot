@@ -22,6 +22,7 @@ Alternatives — how dodot compares to the rest of the space
 
     These are the load-bearing positions in dodot's design. The rest of this document checks each alternative against them.
 
+    Design principles:
         | Principle                                                        | What it means                                                            |
         | Minimal requirements on file layout                              | group by directory, special filenames map to special actions             |
         | No mapping required, unless you want to customize                | conventional names = working setup with zero config                      |
@@ -70,6 +71,7 @@ Alternatives — how dodot compares to the rest of the space
 
         Worth separating these by what kind of difference they are. Not every item on a "X can do Y, dodot can't" list is the same shape: some are structural gaps in dodot, some are intentional non-goals, some are mechanically easy to add as adoption grows, and some are convenience verbs over capability dodot already has.
 
+        Differences by kind:
             | Item                                                 | Kind                  |
             | External files pinned by URL or git ref              | Structural gap        |
             | Per-machine answers prompted at `chezmoi init`       | Convenience / UX      |
@@ -259,6 +261,7 @@ Alternatives — how dodot compares to the rest of the space
 
             The dotbot wiki lists ~80 community plugins. The ones that show up in real-world repos cluster into four buckets, and the bucket map is illuminating: each cluster closes a gap dotbot's core leaves open. dodot's first-class handler set (homebrew, install, shell, path, template, secret, plist) covers roughly the same ground built in.
 
+            Plugin buckets:
                 | Bucket                | Plugins                                                          | dodot equivalent          |
                 | Package managers      | dotbot-brew, dotbot-apt, dotbot-yum, dotbot-dnf, dotbot-yay,    | homebrew handler          |
                 |                       | dotbot-paru, dotbot-pacaur, dotbot-pip                          | + install handler         |
@@ -312,6 +315,7 @@ Alternatives — how dodot compares to the rest of the space
 
         Three of these four are intentional non-goals for dodot — features that would require accepting the Nix tax (a 6-GB package manager, a workflow shift away from hand-edited config files, deployed files that become read-only store symlinks). The remaining one is a structural choice with a small workaround.
 
+        Items by kind:
             | Item                                       | Kind                              |
             | Byte-identical reproducibility (flake.lock) | Intentional non-goal             |
             | Atomic rollback to a prior generation       | Intentional non-goal             |
@@ -365,6 +369,7 @@ Alternatives — how dodot compares to the rest of the space
 
     8.4. Things dotter can do that dodot doesn't
 
+        Items by kind:
             | Item                                                  | Kind                     |
             | Custom Handlebars helpers in Rhai                      | Adoption-driven          |
             | Per-machine target path overrides (`local.toml`)       | Adoption-driven          |
@@ -414,6 +419,7 @@ Alternatives — how dodot compares to the rest of the space
 
     9.4. Things dotdrop can do that dodot doesn't
 
+        Items by kind:
             | Item                                                 | Kind                  |
             | Multi-profile-per-machine (`-p` switching)            | Intentional non-goal  |
             | Profile inheritance + cross-profile composition       | Intentional non-goal  |
@@ -438,6 +444,7 @@ Alternatives — how dodot compares to the rest of the space
 
     10.1. Source layout & deployment
 
+    Source layout & deployment:
         | Feature                                                | dodot                                  | chezmoi                                | yadm                          | Stow                          | dotbot                        | Home Manager                       | dotter                         | dotdrop                       |
         | Edit your files at their normal paths                  | yes (symlinks)                         | no (apply rewrites them)               | yes (live in $HOME)           | yes (symlinks)                | yes (symlinks)                | no (read-only Nix store)           | yes (symlinks)                 | yes if `link:` set; else no   |
         | No apply step (edits go live)                          | yes                                    | no (`apply` required)                  | yes                           | yes                           | yes                           | no (`switch` required)             | yes (symlink mode)             | yes (link mode) / no (copy)   |
@@ -448,6 +455,7 @@ Alternatives — how dodot compares to the rest of the space
 
     10.2. Source-control posture
 
+    Source-control posture:
         | Feature                                | dodot              | chezmoi              | yadm                            | Stow              | dotbot           | Home Manager       | dotter           | dotdrop            |
         | Plain `git` works alongside the tool   | yes                | yes                  | yes (with --git-dir flags)      | yes               | yes              | yes                | yes              | yes                |
         | Tool wraps git commands                | no                 | optional (auto-commit) | yes (primary surface)         | no                | no               | no                 | no               | no                 |
@@ -456,6 +464,7 @@ Alternatives — how dodot compares to the rest of the space
 
     10.3. Features (built-in)
 
+    Built-in features:
         | Feature                                | dodot                          | chezmoi                          | yadm                                | Stow      | dotbot                       | Home Manager                       | dotter                       | dotdrop                              |
         | Templates                              | yes (MiniJinja, `.tmpl`)       | yes (Go text/template, `.tmpl`)  | yes (default awk, esh, j2, envtpl)  | no        | no (plugins exist)           | no template engine (use Nix)       | yes (Handlebars, content-sniff) | yes (Jinja2, default-on)          |
         | Per-OS/host conditionals               | yes (filename + config)        | yes (template if)                | yes (alt suffix)                    | no        | yes (per-entry shell `if:`)  | yes (Nix `mkIf`)                   | yes (`if =` predicates)      | yes (profiles)                       |
@@ -473,6 +482,7 @@ Alternatives — how dodot compares to the rest of the space
 
     10.4. Cognitive load & portability
 
+    Cognitive load & portability:
         | Feature                                | dodot                  | chezmoi              | yadm                          | Stow                | dotbot                   | Home Manager                       | dotter             | dotdrop              |
         | Core command count                     | 3 (`status`/`up`/`down`) | ~20+               | ~17 + git passthrough         | 1 modal             | 1 (`./install`)          | ~10                                | 6                  | ~10                  |
         | State storage                          | datastore symlinks     | BoltDB               | git repo                      | none                | none                     | Nix store generations              | `.dotter/cache.toml` | workdir + optional backups |
@@ -527,6 +537,7 @@ Alternatives — how dodot compares to the rest of the space
 
     The other side of the coin. If the features below are central to your workflow, dodot is the wrong tool. These items _can't_ close inside dodot without changing what dodot is.
 
+    When another tool fits better:
         | Need                                                         | Better tool       | Why dodot can't                                                     |
         | Files at canonical paths, no symlinks anywhere                | yadm              | Data layer ([./data-layer.lex]) is the double-link; symlinks are load-bearing, not incidental. |
         | Byte-identical reproducibility (lockfile-grade)              | Home Manager      | Requires content-addressed package store; Nix tax. Philosophy §2 + §7. |

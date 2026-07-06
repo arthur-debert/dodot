@@ -7,6 +7,7 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
 1. Subcommands at a glance
 
+    Subcommands:
         | Subcommand          | Answer it gives                                                                |
         | `deployment-map`    | Every dodot-owned symlink: where it lives, what it points back to.            |
         | `show-data-dir`     | Tree view of dodot's data directory (`$XDG_DATA_HOME/dodot`).                 |

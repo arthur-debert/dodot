@@ -325,6 +325,7 @@ Design Specification: MacOs Paths and the `_app/` Convention
 
     6.3. Defaults by Platform
 
+    Defaults by platform:
         | Setting             | MacOs default | Linux default                       |
         | `app_uses_library`  | `true`        | `false` (and ignored)               |
         | `force_app`         | `[]`          | `[]`                                |

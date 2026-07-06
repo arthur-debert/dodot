@@ -27,6 +27,7 @@ The "show me / generate / edit configuration" command. dodot ships sensible defa
 
 3. Subcommands
 
+    Subcommands:
         | Subcommand | Effect                                                                       |
         | `list`     | Show every resolved key/value pair (the default if no subcommand is given). |
         | `get`      | Show the resolved value and the inline documentation for one key.            |

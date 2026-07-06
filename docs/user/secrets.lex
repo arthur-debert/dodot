@@ -67,6 +67,7 @@ Secrets
 
     dodot ships six built-in providers. Each has its own reference syntax and config block. Pick whichever your existing setup already supports — none of them are dodot-specific tools.
 
+    Providers:
     | Scheme        | Tool                          | Reference                                  |
     | pass          | password-store                | `pass:path/to/entry`                       |
     | op            | 1Password CLI                 | `op://Vault/Item/Field`                    |
