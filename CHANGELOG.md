@@ -1,4 +1,4 @@
-<!-- generated - do not edit. See CHANGELOG/README.txt -->
+<!-- generated - do not edit; fragments live in CHANGELOG/ (`shipit changelog render` regenerates this file) -->
 
 # Changelog
 
@@ -23,6 +23,7 @@ ci: migrate release reusable-workflow callers from @v2 to @v3 (rust-ci, rust-cli
 ### Changed
 
 - **Intra-pack handler execution order is now explicit.** Previously ordering was `category → alphabetical by handler name`, which happened to produce the right sequence (homebrew, install, path, shell, symlink) but was fragile — adding a handler with a name sorted earlier alphabetically would have silently reordered the pipeline. Handlers now declare an `ExecutionPhase` (`Provision` → `Setup` → `PathExport` → `ShellInit` → `Link`), and `rules::handler_execution_order` sorts on the enum's declared order. The observable order is unchanged; the contract is now encoded in the type system, and adding a handler requires a deliberate choice of phase. `HandlerCategory` (used by `--no-provision`) is derived from phase. Catchall-last is now enforced by `Link` being the final variant rather than by convention.
+
 
 All notable changes to this project will be documented in this file.
 
@@ -376,7 +377,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Full magic-stack e2e showcase** (R8 of the template-magic track). New `tests/e2e/bats/test_full_magic_stack.bats` walks the complete user workflow end-to-end: install ladder (hook + filter + alias in order, with idempotent re-installs), the headline "edit deployed → `git status` sees template-space diff" scenario, the commit-refused-on-markers-then-resolved cycle, `transform status` across the editing lifecycle, the R4→R6 hook-block upgrade path, and the alias install + actual shell sourcing. Per-PR bats files cover their phases in isolation; this file pins the integration story so a future change to one phase can't silently break the whole flow.
 
-### Fixed
+### Fixed (R8, prior)
 
 - **Test flake in `git_alias::tests`** caused by parallel cargo tests racing on `$SHELL`. The four env-driven detect/resolve cases are now consolidated into a single `shell_detection_env_driven_cases` test with labelled sections, so cargo's parallel runner can't interleave them. No coverage lost — same scenarios, serial.
 
@@ -417,7 +418,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`dodot-conflict` markers and pipeline safety gate** (R2 of the template-magic track). New `preprocessing::conflict` module defines the `>>>>>> dodot-conflict (template)` / `====== dodot-conflict (deployed)` / `<<<<<< dodot-conflict` line shape and detection helpers. `dodot up` refuses to expand a template source that carries unresolved markers, returning a `DodotError::UnresolvedConflictMarker` that names the source path and line numbers and points the user at `git diff` for resolution. Without this gate, marker lines would render verbatim through MiniJinja and deploy as broken config. See `docs/proposals/preprocessing-pipeline.lex` §6.3.
 - **`Preprocessor::supports_reverse_merge()`** trait method (default `false`). Generative preprocessors that emit a `tracked_render` and want their sources scanned for marker resolution before expansion override this to `true`. Templates do; identity / unarchive don't.
 
-### Changed
+### Changed (R1, prior)
 
 - `preprocess_pack` takes an extra `paths: Option<&dyn Pather>` argument. Active callers (`dodot up`) pass `Some(...)` so baselines are written; passive callers (`dodot status`) pass `None` so they don't overwrite the last-`up` baseline.
 - `ExpandedFile` gains optional `tracked_render` and `context_hash` fields, populated by generative preprocessors that support cache-backed reverse-merge (templates) and left `None` otherwise (identity, unarchive). Tests use `..Default::default()` for ad-hoc construction.
