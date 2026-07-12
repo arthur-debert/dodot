@@ -1,0 +1,50 @@
+name: E2E
+
+# Companion e2e workflow (ADP02-WS05, #236) — the disposition the cutover
+# issue asked for: the bats e2e suite STAYS a caller of release's reusable
+# rust-ci.yml block rather than becoming a declared shipit lane, the same way
+# lexed#169 kept its packaged-Electron Playwright run a companion. The run
+# needs what the wf-checks block deliberately doesn't carry: a release build
+# of the `dodot` binary uploaded/downloaded as an artifact, bats-core + the
+# helper libs, and the shared `bin/check-e2e` harness (arm-gate installs it —
+# it is an untracked release-core mirror, never in the checkout). This file
+# is the slimmed remainder of the legacy ci.yml, whose quality-check half
+# (the `bin/check` umbrella verdict) now lives in checks.yml (the wf-checks
+# lanes).
+#
+# The caller job id stays `ci` ON PURPOSE: the ruleset-required context is
+# `ci / e2e`, and keeping the job id keeps that context stable across the
+# cutover — no window where a required check is unreportable. The block's
+# internal `check` job (`ci / check`, bin/check + the release build that
+# produces the e2e binary) still runs as the e2e job's prerequisite — the
+# reusable workflow hard-wires `e2e: needs: check`, and the artifact the e2e
+# job downloads is built there. Its verdict is NO LONGER ruleset-required
+# (the wf-checks lanes carry the required quality verdict); the overlap with
+# the lanes is an acknowledged prerequisite cost, not a second gate.
+#
+# `binary-name: dodot` causes the check job to build and upload
+# `dodot-linux`; `bats: true` adds the e2e job that downloads it, installs
+# bats-core, and runs `bin/check-e2e` with DODOT_BIN set to the
+# workspace-relative binary path. See docs/per-stack/rust-ci.md in
+# arthur-debert/release for the full input reference.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# Superseded-run hygiene, same shape as checks.yml (shipit#645): per-event,
+# per-ref/PR group; a new push cancels the superseded in-flight run.
+concurrency:
+  group: e2e-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: arthur-debert/release/.github/workflows/rust-ci.yml@v3
+    with:
+      binary-name: dodot
+      bats: true

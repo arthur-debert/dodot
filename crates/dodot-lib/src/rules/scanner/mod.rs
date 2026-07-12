@@ -156,8 +156,9 @@ impl<'a> Scanner<'a> {
         // per-entry `to_lowercase` allocation entirely.
         let has_ci_rules = compiled.iter().any(|r| r.case_insensitive);
         // Sort once per scan, then reuse the ordered slice for every entry.
+        // Descending priority via `Reverse` (clippy 1.96 unnecessary_sort_by).
         let mut sorted: Vec<&CompiledRule> = compiled.iter().collect();
-        sorted.sort_by(|a, b| b.priority.cmp(&a.priority));
+        sorted.sort_by_key(|r| std::cmp::Reverse(r.priority));
 
         // Compile + sort + validate `[mappings.gates]` globs via the
         // shared helper so the up-planning path
