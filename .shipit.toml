@@ -68,6 +68,45 @@ local = true
 [toolchains]
 "." = "rust"
 
+# [artifacts] — dodot's declared Artifact set for the shipit release pipeline
+# (ADP02-WS08, arthur-debert/shipit#841; modeled on padz's WS06-proven
+# consumer map — the exact same 5-asset shape). The legacy surface it
+# replaces is release.yml → rust-cli.yml@v3 (`crates: dodot-lib,dodot`,
+# `bin-name: dodot`, defaults: darwin arm64 + linux gnu x86_64/aarch64,
+# brew, apt, signed darwin via `secrets: inherit`).
+#   - [artifacts.dodot] is the binary-tarball artifact (the brew formula
+#     subject): archive composition over the same three native-runner
+#     platforms the legacy matrix built, distributed to gh-release + crates
+#     (dodot-lib then dodot — shipit derives the workspace topo order
+#     itself) + brew (the tap is shipit's portfolio constant,
+#     arthur-debert/homebrew-tools, which already carries dodot.rb — same
+#     as legacy).
+#   - [artifacts.dodot-deb] is the legacy `apt: true` leg: cargo-deb against
+#     the pre-built release binary (the same `cargo deb -p dodot --no-build
+#     --no-strip` contract as legacy build-deb, riding the
+#     [package.metadata.deb] variants in crates/dodot-cli/Cargo.toml),
+#     linux platforms only, gh-release only (legacy attached the .debs to
+#     the GH release; there is no apt repository endpoint).
+# `sign = true` on the archive artifact — the one deliberate divergence
+# from padz's map: dodot ships SIGNED darwin (legacy parity), routed
+# through the signer's archive leg (shipit#800: raw darwin CLI binaries
+# codesigned + notarized in-place, tarballs re-emitted under their
+# original filenames; padz went unsigned by owner decision, THIS repo
+# signs). The bare flag derives the Apple cert pair + either-notary-trio
+# secret requirements in preflight.
+[artifacts.dodot]
+build = [{ toolchain = "rust", package = "dodot" }]
+platforms = ["darwin-arm64", "linux-x86_64", "linux-arm64"]
+bundle = { composition = "archive" }
+sign = true
+endpoints = ["gh-release", "crates", "brew"]
+
+[artifacts.dodot-deb]
+build = [{ toolchain = "rust", package = "dodot" }]
+platforms = ["linux-x86_64", "linux-arm64"]
+bundle = { composition = "deb" }
+endpoints = ["gh-release"]
+
 [shipit]
 version = "c8ef2189cc57f58af425afcd383ef44575108b88"
 
