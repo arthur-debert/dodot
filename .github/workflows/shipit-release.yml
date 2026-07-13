@@ -24,30 +24,30 @@ name: shipit-release
 # artifact routes the darwin tarball through the signer's archive leg
 # (shipit#800 — raw darwin CLI binary codesign+notarize).
 #
-# Secrets — exactly the plan-required set for dodot's plan:
+# Secrets — the UNIFORM plan-required set (shipit#896): preflight
+# re-validates the WHOLE release plan at every stage entry, so EVERY
+# stage job (`prepare`, `sign`, `publish`) forwards the SAME secret set
+# as `full` — no per-stage subsetting; which secrets a stage actually
+# spends is the plan's call, not this caller's. (`build` declares no
+# secrets, so it forwards none.)
 #   RELEASE_TOKEN             prepare's tag+branch push through the
 #                             ruleset (a GITHUB_TOKEN push would not
 #                             re-trigger workflows).
 #   CARGO_REGISTRY_TOKEN      the crates endpoint's registry token,
 #                             mapped from this repo's legacy-named
-#                             CRATES_IO_KEY secret (NOT renamed: the
-#                             legacy release.yml still consumes it under
-#                             that name until it is retired). Forwarded
-#                             to the stages that can publish crates
-#                             (`full`, `publish`); the RC guard drops the
-#                             crates endpoint on an -release-rc version
-#                             centrally.
+#                             CRATES_IO_KEY secret (the repo secret keeps
+#                             its legacy name; renaming it is a repo
+#                             settings change, not this caller's). The RC
+#                             guard drops the crates endpoint on an
+#                             -release-rc version centrally.
 #   HOMEBREW_TAP_TOKEN        the brew endpoint's tap push token
 #                             (arthur-debert/homebrew-tools carries
-#                             dodot.rb), forwarded beside the crates
-#                             token to `full` and `publish`.
+#                             dodot.rb).
 #   APPLE_CERTIFICATE (+PASSWORD) the mac codesign identity, mapped from
 #                             this repo's legacy-named
 #                             APPLE_CERTIFICATE_P12_BASE64 secret (NOT
 #                             renamed, same reason as CRATES_IO_KEY).
 #   ASC_API_KEY_BASE64/_ID, ASC_API_ISSUER_ID  the ASC notary trio.
-#                             The Apple set rides the stages that can
-#                             sign (`full`, `sign`).
 # gh-release rides the workflow's own GITHUB_TOKEN (no registry entry).
 
 on:
@@ -133,6 +133,13 @@ jobs:
       unsigned: ${{ inputs.unsigned }}
     secrets:
       RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_KEY }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
 
   build:
     if: inputs.stage == 'build'
@@ -147,6 +154,9 @@ jobs:
       tag: ${{ inputs.tag }}
       run-id: ${{ inputs.run-id }}
     secrets:
+      RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_KEY }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
@@ -161,5 +171,11 @@ jobs:
       run-id: ${{ inputs.run-id }}
       unsigned: ${{ inputs.unsigned }}
     secrets:
+      RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
       CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_KEY }}
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
