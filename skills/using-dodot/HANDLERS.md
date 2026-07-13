@@ -5,16 +5,16 @@ pattern → handler mappings with a priority; checked highest-first, first match
 
 ## Default rules (highest priority first)
 
-| Prio | Handler  | Matches (at pack root)                                  |
-|------|----------|--------------------------------------------------------|
-| 100  | ignore   | (empty by default)                                     |
+| Prio | Handler  | Matches (at pack root)                                                                |
+|------|----------|---------------------------------------------------------------------------------------|
+| 100  | ignore   | (empty by default)                                                                    |
 | 50   | skip     | README, LICENSE, CHANGELOG, CONTRIBUTING, AUTHORS, NOTICE, COPYING (case-insensitive) |
-| 20   | install  | `install.sh`, `install.bash`, `install.zsh`            |
-| 10   | homebrew | `Brewfile`                                             |
-| 10   | nix      | `packages.nix`                                         |
-| 10   | path     | `bin/`                                                 |
-| 10   | shell    | `*.sh`, `*.bash`, `*.zsh`                              |
-| 0    | symlink  | catch-all — anything not claimed above                 |
+| 20   | install  | `install.sh`, `install.bash`, `install.zsh`                                           |
+| 10   | homebrew | `Brewfile`                                                                            |
+| 10   | nix      | `packages.nix`                                                                        |
+| 10   | path     | `bin/`                                                                                |
+| 10   | shell    | `*.sh`, `*.bash`, `*.zsh`                                                             |
+| 0    | symlink  | catch-all — anything not claimed above                                                |
 
 Override dispatch per-pack or repo-wide in `.dodot.toml` under `[mappings]`
 (e.g. `shell = ["aliases.sh"]`, `ignore = ["scratch.txt"]`).
