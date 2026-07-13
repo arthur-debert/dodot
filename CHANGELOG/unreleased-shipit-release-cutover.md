@@ -1,0 +1,1 @@
+- ci: release pipeline cut over to shipit — composed `wf-release.yml@v1` caller with per-stage dispatch (ADP02-WS08, arthur-debert/shipit#841); legacy `release.yml` retired after the rc proof
