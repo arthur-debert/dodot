@@ -1,1 +1,1 @@
-- ci: release pipeline cut over to shipit — composed `wf-release.yml@v1` caller with per-stage dispatch (ADP02-WS08, arthur-debert/shipit#841); legacy `release.yml` retired after the rc proof
+- ci: releases are now cut through the shipit release pipeline (`shipit-release.yml`, #240); the legacy `release.yml` caller is retired after the release-candidate proof
