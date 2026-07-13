@@ -114,14 +114,14 @@ dodot fill <pack>                        # add starter install.sh/aliases.sh/Bre
 
 ## How filenames map to handlers (the essentials)
 
-| At pack root            | Handler  | Result                                  |
-|-------------------------|----------|-----------------------------------------|
-| `*.sh` `*.bash` `*.zsh` | shell    | sourced at login                        |
-| `bin/`                  | path     | directory added to `$PATH`              |
-| `install.sh`            | install  | run once (tracked; won't re-run)        |
-| `Brewfile`              | homebrew | `brew bundle`                           |
-| `packages.nix`          | nix      | `nix profile install`                   |
-| `README` `LICENSE` …    | skip     | not deployed; shown as `skipped`        |
+| At pack root            | Handler  | Result                                       |
+|-------------------------|----------|----------------------------------------------|
+| `*.sh` `*.bash` `*.zsh` | shell    | sourced at login                             |
+| `bin/`                  | path     | directory added to `$PATH`                   |
+| `install.sh`            | install  | run once (tracked; won't re-run)             |
+| `Brewfile`              | homebrew | `brew bundle`                                |
+| `packages.nix`          | nix      | `nix profile install`                        |
+| `README` `LICENSE` …    | skip     | not deployed; shown as `skipped`             |
 | anything else           | symlink  | linked to `~/.<name>` or `~/.config/<pack>/` |
 
 Routing prefixes on a symlinked file override the default target: `home.X` →

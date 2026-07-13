@@ -105,7 +105,7 @@ baseline, never touching providers).
 ## Troubleshooting
 
 | Symptom | Cause / fix |
-|---|---|
+| --- | --- |
 | `provider 'op' is not authenticated` | set `OP_SERVICE_ACCOUNT_TOKEN` (no desktop fallback) |
 | `provider 'pass' is not installed` | install `pass`, or disable the provider |
 | `provider 'pass' is misconfigured` | `pass init <gpg-key>`, or set `store_dir` |
