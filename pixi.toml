@@ -11,7 +11,9 @@ test = "./bin/shipit test"
 # <<< shipit-managed test task <<<
 # >>> shipit-managed tasks (do not edit; regenerate via `shipit install`) >>>
 changelog = "./bin/shipit changelog"
+lint = "./bin/shipit lint"
 logs = "./bin/shipit logs"
+provision-lexd = "./bin/shipit provision lexd"
 # <<< shipit-managed tasks <<<
 
 [feature.lint.dependencies]
@@ -72,7 +74,7 @@ lint-full = { cmd = "./bin/shipit lint" }
 
 [environments]
 # >>> shipit-managed environments (do not edit; regenerate via `shipit install`) >>>
-lint = ["lint", "shipit-lexd"]
+lint = ["lint"]
 # <<< shipit-managed environments <<<
 
 # Consumer-owned dependencies (outside the shipit-managed blocks above),
@@ -174,14 +176,20 @@ wasm-pack = "0.15.*"
 # rust-release-toolchain block beside `rust`, NOT here: it must be delivered
 # (and skipped, when a consumer owns its `rust` pin) with the sysroot it
 # belongs to, while this block delivers unconditionally on the rust signal.
-# NOTE: rattler-build (the conda endpoint's packager) used to ride HERE too
-# (ARF01-WS01 #950) — but it is the ENDPOINT's tool, not a rust tool, and
-# gating it on the rust signal starved a NON-rust conda producer (tree-sitter's
-# `tarball` grammar) of its packager (the #1071 seed failure). It now rides the
-# conda-endpoint-gated `pixi.toml#shipit-conda-packager` block
-# (src/shipit/data/pixi-conda-packager-block.toml), delivered iff the repo
-# declares a `conda` endpoint — so a rust+conda repo gets it EXACTLY once and a
-# rust-without-conda repo (which publishes no `.conda`) no longer carries it.
+# The Artifact channel's conda-endpoint packager (ARF01-WS01 #950, ADR-0064):
+# `shipit release publish`'s conda endpoint runs `rattler-build build` to
+# repackage a final release binary into a `.conda` and `rattler-build publish`
+# to push+reindex the producing repo's per-repo channel. rattler-build is on
+# conda-forge, so it anchors HERE (the rust release-deps block, rust signal)
+# beside wasm-pack — the walking-skeleton producer (lex-fmt/lex → lexd) is a
+# rust artifact, so the rust signal delivers it; a language-agnostic
+# endpoint-gated home is future work. Provisioned under setup-pixi's
+# lockfile-keyed cache (the #582 doctrine: the release run NEVER installs at run
+# time — publish fails loudly naming this reconcile instead). Pinned to the
+# minor line (`0.68.*` — conda match-spec); spike-validated at 0.68.0
+# (ADR-0064). A bump is one data edit, rolled out on each consumer's next
+# `shipit install` reconcile.
+rattler-build = "0.68.*"
 # <<< shipit-managed rust release deps <<<
 cargo-nextest = ">=0.9.138,<0.10"
 
