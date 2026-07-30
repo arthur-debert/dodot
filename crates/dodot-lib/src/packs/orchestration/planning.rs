@@ -282,6 +282,11 @@ fn collect_pack_intents_inner(
 /// Same scan/preprocess/match/group/intents pipeline as
 /// [`collect_pack_intents_inner`], but additionally collects
 /// per-handler `warnings_for_matches` output.
+///
+/// Takes the pack config pre-loaded: both entrypoints load it once and
+/// pass it through, so config is not re-merged per pack. `ConfigManager`
+/// caches by path anyway, but threading it explicitly makes the data
+/// flow obvious.
 fn plan_pack_inner(
     pack: &Pack,
     ctx: &ExecutionContext,

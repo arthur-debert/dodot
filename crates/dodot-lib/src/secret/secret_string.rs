@@ -12,10 +12,10 @@
 //!   can't elide. Reduces the window where a stale-but-still-resident
 //!   buffer could be read by another process with sufficient
 //!   privilege.
-//! - **No `Debug` / `Display`.** The type is opaque to the standard
-//!   formatting machinery. A `tracing::error!("{e:?}", e=...)` that
-//!   accidentally captures a `SecretString` won't print the bytes; it
-//!   prints `SecretString(<redacted>)`.
+//! - **Redacted `Debug`, no `Display`.** A
+//!   `tracing::error!("{e:?}", e=...)` that accidentally captures a
+//!   `SecretString` won't print the bytes; it prints
+//!   `SecretString(<redacted>, len=N)`.
 //! - **No `Serialize`.** Same idea, for the JSON / TOML paths.
 //! - **No `Clone`.** Discourages duplicating the value into multiple
 //!   buffers; callers that genuinely need a copy can call

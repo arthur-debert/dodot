@@ -1,9 +1,9 @@
 //! Externals handler — declarative remote-resource deployment.
 //!
 //! The trigger file is `externals.toml` at the pack root. Each section
-//! declares one external resource (currently `type = "file"`). The
-//! handler parses the file and emits one [`HandlerIntent::Fetch`] per
-//! entry.
+//! declares one external resource (`file`, `git-repo`, `archive`, or
+//! `archive-file`). The handler parses the file and emits one
+//! [`HandlerIntent::Fetch`] per entry.
 //!
 //! Fetching, hashing, and symlink creation all happen in
 //! `crate::execution::fetch`.

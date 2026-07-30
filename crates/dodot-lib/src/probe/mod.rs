@@ -1,7 +1,7 @@
 //! Probe — introspection for the deployed state.
 //!
 //! Read-only views over `<data_dir>`, plus the markers `dodot up`
-//! writes there:
+//! writes there ([`cfprefsd_marker`], [`last_up`]):
 //!
 //! - [`deployment_map`] — the `pack / handler / source / deployed` map
 //!   that `dodot refresh` (see `docs/proposals/magic.lex`) also

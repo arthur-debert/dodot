@@ -132,7 +132,9 @@ fn check_file_drift(
     target: &str,
     fs: &dyn Fs,
 ) -> DriftReport {
-    // The file lives at `<entry-dir>/<basename-of-target>`.
+    // Resolve the exact path the executor would have written rather
+    // than scanning the dir, which can hold stale siblings and produce
+    // a nondeterministic answer.
     let basename = target_basename(target);
     let file_path: PathBuf = datastore_entry_dir.join(&basename);
     if !fs.exists(&file_path) {
