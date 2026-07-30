@@ -4,7 +4,7 @@
 //!
 //! Policy: run on `NeverRan`, skip silently on `RanCurrent`, skip with
 //! a "ran older version" notice on `RanDifferent`. `provision_rerun =
-//! true` (the `--force` flag) bypasses both skip cases.
+//! true` (the `--provision-rerun` flag) bypasses both skip cases.
 
 use tracing::info;
 

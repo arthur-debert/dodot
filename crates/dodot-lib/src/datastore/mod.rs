@@ -19,7 +19,8 @@ use crate::Result;
 /// Run-once handlers consult this to decide between
 /// *first-time-run* (NeverRan → execute), *already up to date*
 /// (RanCurrent → skip silently), and *file edited since last run*
-/// (RanDifferent → skip with notice, user runs `--force` to apply).
+/// (RanDifferent → skip with notice, user runs `--provision-rerun` to
+/// apply).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DidRunStatus {
     /// No sentinel exists for this filename in this pack/handler.

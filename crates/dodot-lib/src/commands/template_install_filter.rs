@@ -27,9 +27,8 @@ use crate::commands::MessageResult;
 use crate::packs::orchestration::ExecutionContext;
 use crate::{DodotError, Result};
 
-/// The `.git/config` snippet this command writes. Public so
-/// `dodot template show-filter` can print it for users who want to
-/// install by hand.
+/// The `.git/config` snippet this command writes. Public so the
+/// post-`up` prompt can print it for users who want to install by hand.
 pub fn config_block_text() -> String {
     [
         "[filter \"dodot-template\"]",
