@@ -292,7 +292,6 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
 
-        // Verify the double-link chain
         env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
     }
 
@@ -340,10 +339,8 @@ mod tests {
             results[0].message
         );
 
-        // Data link should NOT have been created (pre-check prevents it)
         env.assert_no_handler_state("vim", "symlink");
 
-        // Original file should be untouched
         env.assert_file_contents(&user_path, "existing content");
     }
 
@@ -381,10 +378,8 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].success, "force should succeed");
 
-        // Verify the double-link chain was created
         env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
 
-        // Content should now be from the pack
         let content = env.fs.read_to_string(&user_path).unwrap();
         assert_eq!(content, "set nocompatible");
     }
@@ -427,12 +422,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(results.len(), 2);
-        // First should fail (conflict)
         assert!(!results[0].success);
-        // Second should succeed (no conflict)
         assert!(results[1].success);
 
-        // gvimrc should be deployed despite vimrc conflict
         env.assert_double_link(
             "vim",
             "symlink",
@@ -482,7 +474,6 @@ mod tests {
             .file("keybindings.yaml", "keep me")
             .done()
             .build();
-        // Legacy setup: ~/.config/warp is a symlink into the pack itself.
         let pack_dir = env.dotfiles_root.join("warp");
         let config_warp = env.config_home.join("warp");
         env.fs.mkdir_all(&env.config_home).unwrap();
@@ -519,7 +510,6 @@ mod tests {
             results[0].message
         );
 
-        // No data link created, source file untouched.
         env.assert_no_handler_state("warp", "symlink");
         env.assert_file_contents(&source, "keep me");
     }
@@ -670,10 +660,8 @@ mod tests {
         let config_warp = env.config_home.join("warp");
         env.fs.mkdir_all(&env.config_home).unwrap();
 
-        // config_home is home/.config, dotfiles_root is home/dotfiles,
-        // so the relative hop is `../dotfiles/warp` — exactly the shape
-        // Copilot flagged: contains `..`, joins to a path that would
-        // NOT naively `starts_with(dotfiles_root)` without normalization.
+        // The relative hop contains `..`, so it only falls under
+        // dotfiles_root after lexical normalization.
         let rel_target = Path::new("../dotfiles/warp");
         env.fs.symlink(rel_target, &config_warp).unwrap();
 

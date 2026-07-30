@@ -200,14 +200,12 @@ mod tests {
             ])
             .unwrap();
 
-        // All should succeed with dry-run messages
         assert_eq!(results.len(), 3); // Link=1, Stage=1, Run=1
         for r in &results {
             assert!(r.success);
             assert!(r.message.contains("[dry-run]"), "msg: {}", r.message);
         }
 
-        // Nothing should have been created
         env.assert_not_exists(&env.home.join(".vimrc"));
         env.assert_no_handler_state("vim", "symlink");
         env.assert_no_handler_state("vim", "shell");

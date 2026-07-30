@@ -231,7 +231,6 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
 
-        // Pre-create sentinel for the SAME hash as the intent.
         let sentinel_dir = env.paths.handler_data_dir("vim", "install");
         env.fs.mkdir_all(&sentinel_dir).unwrap();
         env.fs
@@ -269,8 +268,6 @@ mod tests {
 
     #[test]
     fn execute_run_skips_with_notice_when_older_version_ran() {
-        // Pre-create a sentinel for a DIFFERENT hash → did_run returns
-        // RanDifferent → policy: skip with "ran older version" notice.
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
 

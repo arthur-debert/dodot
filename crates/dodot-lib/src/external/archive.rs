@@ -252,12 +252,10 @@ mod tests {
     use flate2::Compression;
     use std::io::Write;
 
-    /// Build a tiny tar.gz with two entries for tests.
     fn fake_tar_gz() -> Vec<u8> {
         let mut tar_buf: Vec<u8> = Vec::new();
         {
             let mut builder = tar::Builder::new(&mut tar_buf);
-            // Plain file.
             let mut header = tar::Header::new_gnu();
             let body = b"hello tar\n";
             header.set_path("themes/alpha.zsh-theme").unwrap();
@@ -266,7 +264,6 @@ mod tests {
             header.set_cksum();
             builder.append(&header, &body[..]).unwrap();
 
-            // Nested file.
             let mut header = tar::Header::new_gnu();
             let body = b"#!/bin/sh\necho hi\n";
             header.set_path("themes/scripts/setup.sh").unwrap();
@@ -281,7 +278,6 @@ mod tests {
         gz.finish().unwrap()
     }
 
-    /// Build a tiny zip with one file for tests.
     fn fake_zip() -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
         {
@@ -362,8 +358,6 @@ mod tests {
 
     #[test]
     fn tar_symlink_entries_are_rejected() {
-        // Build a tar that contains a symlink entry — should be
-        // refused so we don't silently extract an empty file.
         let mut tar_buf: Vec<u8> = Vec::new();
         {
             let mut builder = tar::Builder::new(&mut tar_buf);

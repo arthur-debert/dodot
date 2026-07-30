@@ -455,7 +455,6 @@ mod tests {
 
     #[test]
     fn build_records_hashes_and_optional_fields() {
-        // Empty optionals → empty strings (serde default), not Null.
         let p = Path::new("/dummy/source");
         let b = Baseline::build(p, b"hello", b"hello", None, None);
         assert_eq!(b.version, SCHEMA_VERSION);
@@ -465,7 +464,6 @@ mod tests {
         assert!(b.context_hash.is_empty());
         assert!(b.tracked_render.is_empty());
 
-        // Provided optionals → encoded.
         let b2 = Baseline::build(p, b"x", b"y", Some("tracked"), Some(&[0xff; 32]));
         assert_eq!(b2.context_hash.len(), 64);
         assert!(b2.context_hash.chars().all(|c| c == 'f'));
@@ -484,7 +482,6 @@ mod tests {
             None,
             None,
         );
-        // Replacement character for the invalid 0xff.
         assert_eq!(b.rendered_content, "fo\u{fffd}o");
     }
 
@@ -509,7 +506,6 @@ mod tests {
 
     #[test]
     fn write_overwrites_existing_baseline() {
-        // A second write at the same logical path replaces the first.
         let env = TempEnvironment::builder().build();
         let first = Baseline::build(Path::new("/dummy"), b"first", b"src", None, None);
         first
@@ -559,7 +555,6 @@ mod tests {
         assert_eq!(hex_encode_32(&[0; 32]).len(), 64);
         assert!(hex_encode_32(&[0; 32]).chars().all(|c| c == '0'));
         assert_eq!(hex_encode_32(&[0xab; 32]).len(), 64);
-        // Lowercase by convention.
         assert!(hex_encode_32(&[0xab; 32])
             .chars()
             .all(|c| c == 'a' || c == 'b'));

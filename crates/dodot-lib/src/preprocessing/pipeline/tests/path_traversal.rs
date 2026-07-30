@@ -71,7 +71,6 @@ fn rejects_absolute_path_from_preprocessor() {
         matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("unsafe path")),
         "expected unsafe-path error, got: {err}"
     );
-    // Verify the malicious target was not written
     assert!(!std::path::Path::new("/etc/passwd.dodot-would-have-written-here").exists());
 }
 

@@ -97,10 +97,8 @@ mod tests {
         assert_eq!(interpreter_for(Path::new("install.sh")), "bash");
         assert_eq!(interpreter_for(Path::new("install.bash")), "bash");
         assert_eq!(interpreter_for(Path::new("install.zsh")), "zsh");
-        // Unknown / missing extension falls back to bash.
         assert_eq!(interpreter_for(Path::new("install")), "bash");
         assert_eq!(interpreter_for(Path::new("install.ksh")), "bash");
-        // Path components don't interfere with extension lookup.
         assert_eq!(interpreter_for(Path::new("/a/b/install.zsh")), "zsh");
     }
 

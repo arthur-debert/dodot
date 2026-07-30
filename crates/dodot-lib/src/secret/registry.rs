@@ -318,7 +318,6 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("missing a scheme prefix"));
         assert!(msg.contains("`<scheme>:<provider-specific-reference>`"));
-        // Examples in the message help the user reach for the right shape.
         assert!(msg.contains("op://"));
         assert!(msg.contains("pass:"));
     }
@@ -357,7 +356,6 @@ mod tests {
         let err = reg.resolve("sops:foo.yaml#x").unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("no secret provider registered for scheme `sops`"));
-        // Configured schemes appear sorted so the message is stable.
         assert!(msg.contains("op, pass"));
     }
 
@@ -365,7 +363,6 @@ mod tests {
     fn registry_register_replaces_same_scheme() {
         let mut reg = SecretRegistry::new();
         reg.register(Arc::new(MockSecretProvider::new("pass").with("k", "first")));
-        // Replace with a fresh provider for the same scheme.
         reg.register(Arc::new(
             MockSecretProvider::new("pass").with("k", "second"),
         ));

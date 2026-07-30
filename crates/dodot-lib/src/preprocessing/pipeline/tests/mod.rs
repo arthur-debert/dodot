@@ -1,14 +1,4 @@
-//! Tests for the preprocessing pipeline.
-//!
-//! Shared helpers (`make_pack`, `make_registry`, `make_datastore`) and
-//! the `ScriptedPreprocessor` test double live here so the per-section
-//! sub-modules can `use super::{...}` without re-defining each fixture.
-//!
-//! General pipeline tests (passthrough, identity expansion, merging,
-//! collision detection, partitioning) stay inline. The four big topical
-//! suites — path-traversal defenses, baseline-cache integration, the
-//! conflict-marker safety gate, and the divergence guard — live in
-//! sibling files.
+//! Tests and shared fixtures for the preprocessing pipeline.
 
 #![allow(unused_imports)]
 
@@ -183,11 +173,9 @@ fn identity_preprocessor_creates_virtual_entry() {
     assert_eq!(virtual_entry.relative_path, PathBuf::from("config.toml"));
     assert!(!virtual_entry.is_dir);
 
-    // Verify the file was written to the datastore
     let content = env.fs.read_to_string(&virtual_entry.absolute_path).unwrap();
     assert_eq!(content, "host = localhost");
 
-    // Verify source map
     assert_eq!(
         result.source_map[&virtual_entry.absolute_path],
         env.dotfiles_root.join("app/config.toml.identity")
@@ -478,7 +466,6 @@ fn multiple_preprocessor_files_in_one_pack() {
     assert!(names.contains(&"config.toml".to_string()));
     assert!(names.contains(&"settings.json".to_string()));
 
-    // Each should have a source_map entry
     assert_eq!(result.source_map.len(), 2);
 }
 
@@ -565,7 +552,6 @@ fn source_map_is_complete() {
     )
     .unwrap();
 
-    // Every virtual entry must have a source_map entry
     for ve in &result.virtual_entries {
         assert!(
             result.source_map.contains_key(&ve.absolute_path),
@@ -573,7 +559,6 @@ fn source_map_is_complete() {
             ve.absolute_path.display()
         );
     }
-    // No regular entries in the source_map
     for re in &result.regular_entries {
         assert!(
             !result.source_map.contains_key(&re.absolute_path),
@@ -633,7 +618,6 @@ fn preprocessing_is_idempotent() {
         result2.virtual_entries[0].relative_path
     );
 
-    // Datastore file should be the same content
     let content1 = env
         .fs
         .read_to_string(&result1.virtual_entries[0].absolute_path)
@@ -657,7 +641,6 @@ fn expansion_error_propagates() {
     let datastore = make_datastore(&env);
     let pack = make_pack("app", env.dotfiles_root.join("app"));
 
-    // Point to a file that doesn't exist — expansion should fail
     let entries = vec![PackEntry {
         relative_path: "missing.conf.identity".into(),
         absolute_path: env.dotfiles_root.join("app/missing.conf.identity"),
@@ -685,7 +668,7 @@ fn expansion_error_propagates() {
 #[test]
 fn inter_preprocessor_collision_detected() {
     // Two preprocessors produce the same logical name.
-    // Set up: `config.toml.identity` and `config.toml.other` (custom
+    // `config.toml.identity` and `config.toml.other` (custom
     // extension) both strip to `config.toml`. The pipeline must
     // detect this and refuse rather than silently overwriting.
     let env = TempEnvironment::builder()
@@ -770,7 +753,6 @@ fn datastore_preserves_directory_structure() {
     assert_eq!(result.virtual_entries.len(), 1);
     let datastore_path = &result.virtual_entries[0].absolute_path;
 
-    // The datastore path should contain the subdirectory structure, not flattened
     let ds_str = datastore_path.to_string_lossy();
     assert!(
         ds_str.contains("sub/config.toml"),
@@ -781,7 +763,6 @@ fn datastore_preserves_directory_structure() {
         "datastore path should not contain flattening separator, got: {ds_str}"
     );
 
-    // File should actually exist at that path
     assert!(env.fs.exists(datastore_path));
     let content = env.fs.read_to_string(datastore_path).unwrap();
     assert_eq!(content, "nested");
@@ -789,8 +770,7 @@ fn datastore_preserves_directory_structure() {
 
 #[test]
 fn datastore_distinguishes_sibling_from_flattened_name() {
-    // Regression test for the flatten-with-`__` edge case: a user could
-    // have `a/b.txt` and `a__b.txt` both as preprocessor outputs, which
+    // `a/b.txt` and `a__b.txt` could both be preprocessor outputs and
     // would have collided under the old flattening scheme. With
     // directory-preserving storage they live in distinct datastore paths.
     let env = TempEnvironment::builder()
@@ -833,7 +813,6 @@ fn datastore_distinguishes_sibling_from_flattened_name() {
 
     assert_eq!(result.virtual_entries.len(), 2);
 
-    // Both files must exist with distinct content
     let nested = result
         .virtual_entries
         .iter()

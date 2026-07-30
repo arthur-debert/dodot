@@ -481,14 +481,12 @@ mod tests {
         template_body: &str,
         config_toml: &str,
     ) -> std::path::PathBuf {
-        // Write the template source.
         let src_path = env.dotfiles_root.join(pack).join(template_name);
         env.fs.mkdir_all(src_path.parent().unwrap()).unwrap();
         env.fs
             .write_file(&src_path, template_body.as_bytes())
             .unwrap();
 
-        // Write a root .dodot.toml carrying the desired vars.
         if !config_toml.is_empty() {
             env.fs
                 .write_file(
@@ -498,7 +496,6 @@ mod tests {
                 .unwrap();
         }
 
-        // Deploy via `dodot up`.
         let ctx = make_ctx(env);
         let _ = crate::commands::up::up(None, &ctx).unwrap();
 
@@ -526,8 +523,6 @@ mod tests {
 
     #[test]
     fn synced_files_report_synced_and_no_findings() {
-        // Run `dodot up` on a template, immediately run `transform
-        // check`. Nothing edited → all entries are Synced, no findings.
         let env = TempEnvironment::builder().build();
         deploy_template(
             &env,
@@ -545,9 +540,6 @@ mod tests {
 
     #[test]
     fn output_changed_static_edit_patches_source() {
-        // Edit the deployed file's static content. The source file's
-        // template variable should be preserved; the static edit
-        // should land in the template via diffy.
         let env = TempEnvironment::builder().build();
         let src_path = deploy_template(
             &env,
@@ -556,9 +548,6 @@ mod tests {
             "name = {{ name }}\nport = 5432\n",
             "[preprocessor.template.vars]\nname = \"Alice\"\n",
         );
-        // Edit the deployed file (the rendered content in the
-        // datastore — that's what the user-side symlink dereferences
-        // to). Change the static `port` line.
         let deployed = deployed_path(&env, "app", "config.toml");
         env.fs
             .write_file(&deployed, b"name = Alice\nport = 9999\n")
@@ -572,15 +561,9 @@ mod tests {
             "got: {:?}",
             result.entries[0].action
         );
-        // Patched is the auto-merge happy path: clean unified diff,
-        // source rewritten, nothing for the user to review. The
-        // pre-commit hook lets the commit proceed; the user does a
-        // follow-up `git add` + commit on the patched source. See #113.
         assert!(!result.has_findings);
         assert_eq!(result.exit_code(), 0);
 
-        // Source was rewritten: the static line is updated, the
-        // variable-bearing line is preserved verbatim.
         let new_src = env.fs.read_to_string(&src_path).unwrap();
         assert!(new_src.contains("port = 9999"), "src: {new_src:?}");
         assert!(new_src.contains("name = {{ name }}"), "src: {new_src:?}");
@@ -608,7 +591,6 @@ mod tests {
         let result = check(&ctx, false).unwrap();
         assert_eq!(result.entries.len(), 1);
         assert!(matches!(result.entries[0].action, TransformAction::Synced));
-        // Source must be byte-identical to the original.
         assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
     }
 
@@ -633,7 +615,6 @@ mod tests {
         );
         let original_src = env.fs.read_to_string(&src_path).unwrap();
 
-        // Edit the deployed file the same way the patching test does.
         let deployed = deployed_path(&env, "app", "config.toml");
         env.fs
             .write_file(&deployed, b"name = Alice\nport = 9999\n")
@@ -649,7 +630,6 @@ mod tests {
         );
         assert!(!result.has_findings);
         assert_eq!(result.exit_code(), 0);
-        // Source untouched on disk.
         assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
     }
 
@@ -706,23 +686,15 @@ mod tests {
         ctx.dry_run = true;
         let result = check(&ctx, false).unwrap();
         assert!(matches!(result.entries[0].action, TransformAction::Patched));
-        // Source unchanged on disk despite the action label.
         assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
     }
 
     #[test]
     fn needs_rebaseline_when_tracked_render_is_empty_and_deployed_edited() {
-        // Forward-compat surface: a baseline written before
-        // tracked_render existed (or by a future preprocessor that
-        // opts in without producing a marker stream) is unable to
-        // drive burgertocow. If the deployed file has been edited,
-        // the action MUST be NeedsRebaseline — never silently
-        // reported as Synced. This test pins that contract because
-        // the bug existed in the first cut: empty tracked_render
-        // produced reverse_merge → Unchanged → mapped to Synced,
-        // hiding real divergence from the user.
+        // A baseline without a marker stream cannot drive burgertocow.
+        // Edited deployed content must be reported as NeedsRebaseline,
+        // never silently as Synced.
         let env = TempEnvironment::builder().build();
-        // Stage a baseline by hand with an empty tracked_render.
         let src_path = env.dotfiles_root.join("app/config.toml.tmpl");
         env.fs.mkdir_all(src_path.parent().unwrap()).unwrap();
         env.fs.write_file(&src_path, b"name = {{ name }}").unwrap();
@@ -742,7 +714,6 @@ mod tests {
                 "config.toml",
             )
             .unwrap();
-        // Lay down a deployed file that DIVERGES from the baseline.
         let deployed = deployed_path(&env, "app", "config.toml");
         env.fs.mkdir_all(deployed.parent().unwrap()).unwrap();
         env.fs
@@ -763,8 +734,6 @@ mod tests {
         );
         assert_eq!(result.exit_code(), 1);
 
-        // Source must NOT have been mutated (we couldn't compute a
-        // safe diff without the marker stream).
         let src_after = env.fs.read_to_string(&src_path).unwrap();
         assert_eq!(src_after, "name = {{ name }}");
     }
@@ -775,7 +744,6 @@ mod tests {
         // (Easier than going through `dodot up` and then deleting
         // the file.)
         let env = TempEnvironment::builder().build();
-        // Build a minimal baseline by hand at the cache path.
         let baseline = crate::preprocessing::baseline::Baseline::build(
             &env.dotfiles_root.join("app/missing.toml.tmpl"),
             b"rendered",
@@ -792,8 +760,6 @@ mod tests {
                 "missing.toml",
             )
             .unwrap();
-        // Also lay down a deployed file so we don't conflate
-        // MissingSource with MissingDeployed.
         let deployed = deployed_path(&env, "app", "missing.toml");
         env.fs.mkdir_all(deployed.parent().unwrap()).unwrap();
         env.fs.write_file(&deployed, b"rendered").unwrap();
@@ -809,9 +775,7 @@ mod tests {
 
     #[test]
     fn strict_mode_flags_unresolved_marker_in_source() {
-        // Deploy a template, then write dodot-conflict markers into
-        // the source file (simulating a previous `transform check`
-        // run that emitted them). Strict mode catches it.
+        // Strict mode catches dodot-conflict markers left in the source.
         let env = TempEnvironment::builder().build();
         let src_path = deploy_template(
             &env,
@@ -828,12 +792,9 @@ mod tests {
         env.fs.write_file(&src_path, dirty.as_bytes()).unwrap();
 
         let ctx = make_ctx(&env);
-        // Non-strict: no marker scan, so no findings (the source
-        // change makes it InputChanged, which is fine).
         let lax = check(&ctx, false).unwrap();
         assert!(lax.unresolved_markers.is_empty());
 
-        // Strict: scan picks up the markers, has_findings=true.
         let strict = check(&ctx, true).unwrap();
         assert_eq!(strict.unresolved_markers.len(), 1);
         assert_eq!(strict.unresolved_markers[0].line_numbers, vec![2, 4]);
@@ -843,8 +804,6 @@ mod tests {
 
     #[test]
     fn strict_mode_clean_repo_is_zero_findings() {
-        // No source has markers → strict mode reports zero unresolved
-        // markers and (assuming no divergence either) no findings.
         let env = TempEnvironment::builder().build();
         deploy_template(
             &env,
@@ -876,7 +835,6 @@ mod tests {
         );
         let ctx = make_ctx(&env);
         let result = check(&ctx, false).unwrap();
-        // At least one of source/deployed should start with `~/`.
         let entry = &result.entries[0];
         assert!(
             entry.source_path.starts_with("~/") || entry.deployed_path.starts_with("~/"),
@@ -921,9 +879,6 @@ mod tests {
             "name = {{ name }}\n",
             "[preprocessor.template.vars]\nname = \"Alice\"\n",
         );
-        // Drop a sidecar next to the baseline. (In production
-        // the renderer writes this; tests can build it
-        // directly since the file shape is stable.)
         let sidecar = crate::preprocessing::baseline::SecretsSidecar::new(vec![
             crate::preprocessing::SecretLineRange {
                 start: 0,

@@ -270,8 +270,7 @@ fn force_app_outranks_app_alias() {
 
 #[test]
 fn home_prefix_routes_top_level_file_to_home() {
-    // home.X is the per-file opt-in for $HOME/.X placement, replacing
-    // the older `dot.X` prefix in #48.
+    // home.X is the per-file opt-in for $HOME/.X placement.
     let config = HandlerConfig::default();
     let target = resolve_target("git", "home.gitconfig", &config, &test_pather());
     assert_eq!(target, PathBuf::from("/home/alice/.gitconfig"));
@@ -332,9 +331,8 @@ fn strip_file_prefix_unit() {
     assert_eq!(strip_file_prefix("lib."), None);
 }
 
-/// A file literally named `home.` falls through the priority list to
-/// the pack-namespaced XDG default — never to `$HOME/.`. Regression
-/// for review item #3 on PR #49.
+/// A file literally named `home.` falls through to the pack-namespaced
+/// XDG default, never `$HOME/.`.
 #[test]
 fn literal_home_dot_filename_does_not_target_home_root() {
     let config = HandlerConfig::default();
@@ -342,8 +340,7 @@ fn literal_home_dot_filename_does_not_target_home_root() {
     assert_eq!(target, PathBuf::from("/home/alice/.config/misc/home."));
 }
 
-/// Same regression for the new file prefixes — bare `app.`, `xdg.`,
-/// `lib.` filenames must not target the routing root.
+/// Bare `app.`, `xdg.`, and `lib.` filenames must not target a routing root.
 #[test]
 fn literal_bare_file_prefix_filenames_do_not_target_root() {
     let config = HandlerConfig::default();

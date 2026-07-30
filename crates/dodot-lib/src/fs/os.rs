@@ -230,7 +230,6 @@ mod tests {
         assert!(fs.is_symlink(&link));
         assert_eq!(fs.readlink(&link).unwrap(), original);
 
-        // Reading through the symlink works
         let content = fs.read_to_string(&link).unwrap();
         assert_eq!(content, "content");
     }
@@ -362,7 +361,6 @@ mod tests {
         assert_eq!(meta.permissions().mode() & 0o777, 0o755);
     }
 
-    // Compile-time check: Fs must be object-safe
     #[allow(dead_code)]
     fn assert_object_safe(_: &dyn Fs) {}
 }

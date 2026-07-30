@@ -100,10 +100,6 @@ mod tests {
 
     #[test]
     fn relative_direct_symlink_to_source_is_equivalent() {
-        // Regression for PR #47 review: `~/.vimrc -> ../dotfiles/vim/vimrc`
-        // (relative target) must resolve to the same absolute source path,
-        // not be mis-classified as "points elsewhere".
-        //
         // TempEnvironment lays out dotfiles_root inside home (as
         // `<home>/dotfiles`), so a symlink at `<home>/.vimrc` reaches
         // the source via the relative path `dotfiles/vim/vimrc`.

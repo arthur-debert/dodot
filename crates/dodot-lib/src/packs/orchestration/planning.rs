@@ -632,7 +632,6 @@ mod tests {
         let intents =
             collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
 
-        // Should produce a Link intent for "config.toml" (not "config.toml.identity")
         assert_eq!(intents.len(), 1, "intents: {intents:?}");
 
         match &intents[0] {
@@ -644,13 +643,11 @@ mod tests {
             } => {
                 assert_eq!(p, "app");
                 assert_eq!(handler, "symlink");
-                // The source should be in the datastore (preprocessed handler dir)
                 assert!(
                     source.to_string_lossy().contains("preprocessed"),
                     "source should be in preprocessed dir: {}",
                     source.display()
                 );
-                // The user_path should NOT contain .identity extension
                 let user_str = user_path.to_string_lossy();
                 assert!(
                     !user_str.contains("identity"),
@@ -688,7 +685,6 @@ mod tests {
         let intents =
             collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
 
-        // Should have 2 Link intents: one for config.toml (preprocessed), one for readme.txt (regular)
         assert_eq!(intents.len(), 2, "intents: {intents:?}");
 
         let intent_sources: Vec<String> = intents
@@ -701,7 +697,6 @@ mod tests {
             })
             .collect();
 
-        // One should be in the preprocessed dir, the other in the pack dir
         let has_preprocessed = intent_sources.iter().any(|s| s.contains("preprocessed"));
         let has_regular = intent_sources
             .iter()
@@ -756,7 +751,6 @@ mod tests {
             .done()
             .build();
 
-        // Write config disabling preprocessing
         env.fs
             .write_file(
                 &env.dotfiles_root.join(".dodot.toml"),
@@ -782,8 +776,6 @@ mod tests {
         let intents =
             collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
 
-        // With preprocessing disabled, the .identity file is treated as regular
-        // and deployed as-is with the .identity extension preserved
         assert_eq!(intents.len(), 1);
         match &intents[0] {
             crate::operations::HandlerIntent::Link { user_path, .. } => {
@@ -815,7 +807,6 @@ mod tests {
                 .to_handler_config(),
         );
 
-        // No preprocessor registry at all
         let intents = collect_pack_intents_with_preprocessors(&pack, &ctx, None).unwrap();
 
         assert_eq!(intents.len(), 1);
@@ -833,7 +824,6 @@ mod tests {
 
     #[test]
     fn preprocessing_end_to_end_deploy_and_verify_content() {
-        // Full pipeline: preprocess → collect intents → execute → verify user file
         let env = TempEnvironment::builder()
             .pack("app")
             .file("config.toml.identity", "host = localhost\nport = 5432")
@@ -858,7 +848,6 @@ mod tests {
         let intents =
             collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
 
-        // Extract the user_path from the intent so we know where to check
         let user_path = match &intents[0] {
             crate::operations::HandlerIntent::Link { user_path, .. } => user_path.clone(),
             other => panic!("expected Link intent, got: {other:?}"),
@@ -871,7 +860,6 @@ mod tests {
             "all operations should succeed: {results:?}"
         );
 
-        // The user file should exist and have the preprocessed content
         assert!(
             ctx.fs.exists(&user_path),
             "user file should exist at: {}",
@@ -882,7 +870,6 @@ mod tests {
             "user file should be a symlink"
         );
 
-        // Content should be the preprocessed (identity = same) content
         let content = ctx.fs.read_to_string(&user_path).unwrap();
         assert_eq!(content, "host = localhost\nport = 5432");
     }
@@ -944,7 +931,6 @@ mod tests {
                 .to_handler_config(),
         );
 
-        // Register both identity and unarchive preprocessors
         let mut registry = crate::preprocessing::PreprocessorRegistry::new();
         registry.register(Box::new(
             crate::preprocessing::identity::IdentityPreprocessor::new(),
@@ -956,7 +942,6 @@ mod tests {
         let intents =
             collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
 
-        // The .identity file should still be handled by the identity preprocessor
         assert_eq!(intents.len(), 1);
         match &intents[0] {
             crate::operations::HandlerIntent::Link { source, .. } => {
@@ -982,8 +967,6 @@ mod tests {
             .done()
             .build();
 
-        // Create a simple tar.gz at the pack's bin/ dir so it maps to
-        // the path handler after expansion.
         let archive_path = env.dotfiles_root.join("tools/payload.tar.gz");
         let file = std::fs::File::create(&archive_path).unwrap();
         let enc = GzEncoder::new(file, Compression::default());
@@ -1008,11 +991,8 @@ mod tests {
                 .to_handler_config(),
         );
 
-        // Call the real production entrypoint — no explicit registry.
         let intents = collect_pack_intents(&pack, &ctx).unwrap();
 
-        // Should include a Link intent for the expanded `mytool` file,
-        // with its source in the preprocessed datastore directory.
         let has_expanded_source = intents.iter().any(|i| match i {
             crate::operations::HandlerIntent::Link { source, .. } => {
                 source.to_string_lossy().contains("preprocessed")
@@ -1069,7 +1049,6 @@ mod tests {
 
     #[test]
     fn template_with_shell_handler_sources_rendered_content() {
-        // aliases.sh.tmpl should match the shell handler after stripping.
         let env = TempEnvironment::builder()
             .pack("tools")
             .file("aliases.sh.tmpl", "alias hello='echo {{ greeting }}'")
@@ -1104,7 +1083,6 @@ mod tests {
 
     #[test]
     fn template_respects_per_pack_var_overrides() {
-        // Root config defines name=Alice; pack overrides to name=Bob.
         let env = TempEnvironment::builder()
             .pack("app")
             .file("greeting.tmpl", "hello {{ name }}")
@@ -1112,7 +1090,6 @@ mod tests {
             .done()
             .build();
 
-        // Root config: name = Alice
         env.fs
             .write_file(
                 &env.dotfiles_root.join(".dodot.toml"),
@@ -1166,8 +1143,6 @@ mod tests {
         );
 
         let intents = collect_pack_intents(&pack, &ctx).unwrap();
-        // With preprocessing disabled, the .tmpl file is treated as a
-        // regular file and deployed verbatim (retaining the .tmpl extension).
         assert_eq!(intents.len(), 1);
         match &intents[0] {
             crate::operations::HandlerIntent::Link {
@@ -1297,7 +1272,6 @@ mod tests {
         // SHA-256 of the *rendered* script in the datastore.
         assert!(sentinel.starts_with("install.sh-"));
 
-        // Verify the rendered file contains the OS substitution
         let content = ctx.fs.read_to_string(&rendered_path).unwrap();
         assert!(
             content.contains(std::env::consts::OS),
@@ -1395,7 +1369,6 @@ mod tests {
                 .to_handler_config(),
         );
 
-        // Prime baseline.
         let _ = plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Active).unwrap();
         let deployed = env
             .paths

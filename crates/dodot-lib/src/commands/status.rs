@@ -1236,8 +1236,6 @@ mod tests {
             .build();
         let ctx = ctx_for(&env);
         let abs = env.dotfiles_root.join("vim/install.sh");
-        // Pre-create a sentinel for the *current* hash so did_run
-        // returns RanCurrent.
         let checksum = crate::handlers::run_once::file_checksum(env.fs.as_ref(), &abs).unwrap();
         let dir = env.paths.handler_data_dir("vim", HANDLER_INSTALL);
         env.fs.mkdir_all(&dir).unwrap();
@@ -1263,8 +1261,6 @@ mod tests {
         let ctx = ctx_for(&env);
         let abs = env.dotfiles_root.join("vim/install.sh");
 
-        // Previous-run sentinel for a different hash, plus its
-        // snapshot sibling — exactly what `run_and_record` writes.
         let dir = env.paths.handler_data_dir("vim", HANDLER_INSTALL);
         env.fs.mkdir_all(&dir).unwrap();
         env.fs
@@ -1292,7 +1288,6 @@ mod tests {
             }
             _ => panic!("expected RanOlderVersion"),
         }
-        // show_diff was false → no diff rows emitted.
         assert!(diffs.is_empty());
     }
 
@@ -1306,7 +1301,6 @@ mod tests {
         let ctx = ctx_for(&env);
         let abs = env.dotfiles_root.join("vim/install.sh");
 
-        // Pre-snapshot-era sentinel: no .snapshot sibling.
         let dir = env.paths.handler_data_dir("vim", HANDLER_INSTALL);
         env.fs.mkdir_all(&dir).unwrap();
         env.fs
@@ -1324,7 +1318,6 @@ mod tests {
             }
             _ => panic!("expected RanOlderVersion"),
         }
-        // Even with show_diff=true, no snapshot ⇒ no diff payload.
         assert!(
             diffs.is_empty(),
             "no snapshot should yield no diff entry, got {} entries",

@@ -345,7 +345,6 @@ mod tests {
         ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
             .unwrap();
 
-        // First run: failure → sidecar written.
         let bad = CannedChecker::default();
         bad.set(
             "aliases.sh",
@@ -357,7 +356,6 @@ mod tests {
         let sidecar = error_sidecar_path(env.paths.as_ref(), "vim", "aliases.sh");
         assert!(env.fs.exists(&sidecar));
 
-        // Second run: success → sidecar removed.
         let good = CannedChecker::default();
         let report = validate_shell_sources(env.fs.as_ref(), env.paths.as_ref(), &good).unwrap();
         assert_eq!(report.checked, 1);
@@ -379,7 +377,6 @@ mod tests {
         ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.zsh"))
             .unwrap();
 
-        // Prime a stale sidecar.
         let sidecar = error_sidecar_path(env.paths.as_ref(), "vim", "aliases.zsh");
         env.fs.mkdir_all(sidecar.parent().unwrap()).unwrap();
         env.fs.write_file(&sidecar, b"old failure\n").unwrap();
@@ -392,7 +389,6 @@ mod tests {
         assert_eq!(report.checked, 1);
         assert!(report.failures.is_empty());
         assert!(report.missing_interpreters.contains("zsh"));
-        // Sidecar untouched.
         assert!(env.fs.exists(&sidecar));
         assert_eq!(env.fs.read_to_string(&sidecar).unwrap(), "old failure\n");
     }

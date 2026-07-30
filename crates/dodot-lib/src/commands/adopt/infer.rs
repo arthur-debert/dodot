@@ -845,7 +845,6 @@ mod tests {
         // an XDG-rooted source's path also starts with HOME. Inference
         // must pick the *more specific* root (XDG) — checking HOME
         // first would produce a useless "nested under $HOME" verdict.
-        // This test pins that ordering as a regression guard.
         let p = pather("/u", "/u/.config");
         let t = infer_target(Path::new("/u/.config/nvim/init.lua"), false, &p, &[]).unwrap();
         assert_eq!(t.source_root, SourceRoot::XdgConfig);

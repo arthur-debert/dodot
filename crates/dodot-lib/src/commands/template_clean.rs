@@ -235,10 +235,7 @@ mod tests {
     use crate::testing::TempEnvironment;
     use burgertocow::Tracker;
 
-    /// Render a template through burgertocow the way R1's pipeline
-    /// does, so we get a tracked-render string that the filter will
-    /// be able to rehydrate. Mirrors the test helper in the
-    /// reverse_merge module.
+    /// Render a template and return the tracked string cached for rehydration.
     fn render(src: &str, ctx: serde_json::Value) -> (String, String) {
         let mut tracker = Tracker::new();
         tracker.add_template("t", src).unwrap();
@@ -246,9 +243,7 @@ mod tests {
         (tracked.output().to_string(), tracked.tracked().to_string())
     }
 
-    /// Stage a baseline + matching pack source + matching deployed
-    /// file. Returns the absolute paths so the test can edit either
-    /// side. Same shape as the helper in `commands::refresh::tests`.
+    /// Stage matching baseline, source, and deployed files.
     fn stage(
         env: &TempEnvironment,
         pack: &str,
@@ -473,12 +468,10 @@ mod tests {
         env.fs.write_file(&deployed, b"* a\n+ b\n- c\n").unwrap();
 
         let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
-        // Original template still present.
         assert!(
             out.contains("{% for i in items %}"),
             "original template must be retained: {out:?}"
         );
-        // Conflict block appended.
         assert!(
             out.contains(MARKER_START),
             "conflict block missing: {out:?}"
@@ -542,7 +535,6 @@ mod tests {
         env.fs.mkdir_all(deployed.parent().unwrap()).unwrap();
         env.fs.write_file(&deployed, b"name = EDITED\n").unwrap();
 
-        // Baseline with an empty tracked_render.
         let baseline = Baseline::build(&src, b"name = Alice\n", template.as_bytes(), None, None);
         baseline
             .write(
@@ -608,7 +600,6 @@ mod tests {
         let template = "name = {{ name }}\n";
         env.fs.write_file(&src, template.as_bytes()).unwrap();
 
-        // Lay down a corrupt baseline JSON (parse failure on load).
         let cache_path = env
             .paths
             .preprocessor_baseline_path("app", "preprocessed", "cfg");
@@ -617,7 +608,6 @@ mod tests {
 
         let mut stdin = std::io::Cursor::new(template.as_bytes().to_vec());
         let mut stdout: Vec<u8> = Vec::new();
-        // Must succeed — the inner Err is swallowed.
         template_clean_stdio(
             env.fs.as_ref(),
             env.paths.as_ref(),
@@ -627,7 +617,6 @@ mod tests {
             &mut stdout,
         )
         .expect("stdio must soft-fail to echo, not propagate Err");
-        // And the echoed bytes must equal the input verbatim.
         assert_eq!(stdout, template.as_bytes());
     }
 
@@ -655,9 +644,6 @@ mod tests {
             .write_file(&deployed, b"unrelated content\n")
             .unwrap();
 
-        // Baseline with a tracked_render that doesn't correspond to
-        // the template — burgertocow will see them as totally
-        // different.
         let baseline = Baseline::build(
             &src,
             b"different",
@@ -675,8 +661,6 @@ mod tests {
             )
             .unwrap();
 
-        // Must succeed (output may be anything; just not a panic or
-        // an Err).
         let _ = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
     }
 }

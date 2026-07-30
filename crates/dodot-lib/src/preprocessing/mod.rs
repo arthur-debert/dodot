@@ -414,7 +414,6 @@ pub fn build_secret_registry(
 mod tests {
     use super::*;
 
-    // Compile-time check: Preprocessor must be object-safe
     #[allow(dead_code)]
     fn assert_object_safe(_: &dyn Preprocessor) {}
 
@@ -458,7 +457,6 @@ mod tests {
         registry.register(Box::new(
             crate::preprocessing::identity::IdentityPreprocessor::new(),
         ));
-        // Registering a second one that matches the same extension
         registry.register(Box::new(
             crate::preprocessing::identity::IdentityPreprocessor::with_extension("identity"),
         ));
@@ -479,18 +477,15 @@ mod tests {
 
         assert_eq!(registry.len(), 2);
 
-        // Each matches its own extension
         assert!(registry.is_preprocessor_file("config.toml.identity"));
         assert!(registry.is_preprocessor_file("bin.tar.gz"));
 
-        // Neither matches the other
         let identity = registry.find_for_file("config.toml.identity").unwrap();
         assert_eq!(identity.name(), "identity");
 
         let unarchive = registry.find_for_file("bin.tar.gz").unwrap();
         assert_eq!(unarchive.name(), "unarchive");
 
-        // Non-preprocessor files still return None
         assert!(registry.find_for_file("regular.txt").is_none());
     }
 
@@ -559,8 +554,6 @@ mod tests {
         assert!(reg.find_for_file("id_ed25519.age").is_none());
         assert!(reg.find_for_file("Brewfile.gpg").is_none());
         assert!(reg.find_for_file("notes.asc").is_none());
-        // Sanity: template + unarchive are still registered (the
-        // pre-S3 default set).
         assert!(reg.find_for_file("config.toml.tmpl").is_some());
         assert!(reg.find_for_file("bin.tar.gz").is_some());
     }
@@ -593,9 +586,7 @@ mod tests {
             crate::preprocessing::identity::IdentityPreprocessor::new(),
         ));
 
-        // "identity" alone is not ".identity"
         assert!(!registry.is_preprocessor_file("identity"));
-        // File without the dot prefix shouldn't match
         assert!(!registry.is_preprocessor_file("fileidentity"));
     }
 }

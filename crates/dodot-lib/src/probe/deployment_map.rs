@@ -338,8 +338,6 @@ mod tests {
     fn sentinel_file_classified_as_file_with_no_source() {
         let env = TempEnvironment::builder().build();
 
-        // Simulate an install handler sentinel: a plain file in the
-        // handler dir, not a symlink.
         let handler_dir = env.paths.handler_data_dir("nvim", "install");
         env.fs.mkdir_all(&handler_dir).unwrap();
         env.fs
@@ -432,8 +430,6 @@ git\tsymlink\tsymlink\t/src/b\t/ds/b
 
     #[test]
     fn parser_skips_malformed_rows() {
-        // Too few columns and an unknown kind should both be dropped,
-        // not crash.
         let content = "\
 only-two-cols\tvalue
 vim\tshell\tweird-kind\t/a\t/b
@@ -482,15 +478,12 @@ vim\tshell\tsymlink\t/a\t/b
 
     #[test]
     fn paths_with_tabs_would_break_tsv_but_are_not_produced_by_dodot() {
-        // Documenting an invariant rather than testing a path: dodot
-        // never creates paths containing literal tab characters, so we
+        // Dodot never creates paths containing literal tab characters, so we
         // don't escape them in the TSV. A pack dir named "foo\tbar"
         // would produce a malformed row — but dodot's pack discovery
         // rejects such names upstream (ignore list + XDG conventions).
         //
-        // This test just locks in the current format so a future change
-        // that wants tab-containing paths has to explicitly revisit
-        // escaping.
+        // Supporting tab-containing paths would require revisiting escaping.
         let entry = DeploymentMapEntry {
             pack: "p".into(),
             handler: "h".into(),

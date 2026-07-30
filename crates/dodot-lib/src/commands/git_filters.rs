@@ -642,7 +642,6 @@ mod tests {
 
     #[test]
     fn normalize_plist_extensions_strips_lowercases_dedupes_and_filters() {
-        // Trims, strips a leading `.`, lowercases.
         assert_eq!(
             normalize_plist_extensions(&[
                 "plist".into(),
@@ -655,7 +654,6 @@ mod tests {
              to a single canonical entry"
         );
 
-        // Filters empty / whitespace-only.
         assert!(normalize_plist_extensions(&["".into(), "   ".into(), ".".into()]).is_empty());
 
         // Rejects shell metacharacters, path separators, glob chars,
@@ -676,7 +674,6 @@ mod tests {
             "metacharacter-bearing entries must be dropped"
         );
 
-        // Real-world mix passes through cleanly.
         assert_eq!(
             normalize_plist_extensions(&[
                 "plist".into(),

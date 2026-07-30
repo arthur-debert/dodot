@@ -33,8 +33,7 @@ fn gate_passing_strips_suffix_and_routes_to_handler() {
     let m = &matches[0];
     assert_eq!(m.handler, "install");
     assert_eq!(m.relative_path.to_string_lossy(), "install.sh");
-    // absolute_path is the original on-disk file — install handler
-    // executes the actual `install._darwin.sh` script.
+    // The stripped path is logical; the handler still receives the on-disk path.
     assert!(m
         .absolute_path
         .to_string_lossy()
@@ -61,7 +60,6 @@ fn gate_failing_emits_gate_handler_match() {
     // Gated entries keep their original path (with the suffix) so
     // status can render the source name truthfully.
     assert_eq!(m.relative_path.to_string_lossy(), "install._linux.sh");
-    // Metadata for the status renderer.
     assert_eq!(m.options.get("gate_label"), Some(&"linux".to_string()));
     assert_eq!(
         m.options.get("gate_predicate"),
@@ -100,14 +98,12 @@ fn gate_compound_user_label_evaluates_and() {
     let scanner = Scanner::new(env.fs.as_ref());
     let pack = make_pack("p", env.dotfiles_root.join("p"));
 
-    // Build a table with `arm-mac` defined.
     let mut user = HashMap::new();
     let mut arm_mac = HashMap::new();
     arm_mac.insert("os".into(), "darwin".into());
     arm_mac.insert("arch".into(), "aarch64".into());
     user.insert("arm-mac".into(), arm_mac);
 
-    // Case 1: darwin + aarch64 → pass.
     let mut gates = GateTable::with_builtins();
     gates.merge_user(&user).unwrap();
     let host = HostFacts::for_tests("darwin", "aarch64");
@@ -137,7 +133,6 @@ fn gate_compound_user_label_evaluates_and() {
     assert_eq!(matches[0].handler, "shell");
     assert_eq!(matches[0].relative_path.to_string_lossy(), "setup.sh");
 
-    // Case 2: darwin + x86_64 → fail (arch mismatch).
     let host_intel = HostFacts::for_tests("darwin", "x86_64");
     let matches = scanner
         .match_entries(
@@ -173,7 +168,6 @@ fn gate_composes_with_template_extension() {
         .unwrap();
     assert_eq!(matches.len(), 1);
     let m = &matches[0];
-    // .tmpl is preserved → preprocessor will pick it up.
     assert_eq!(m.relative_path.to_string_lossy(), "aliases.sh.tmpl");
     // Falls through to the catchall (symlink) since `aliases.sh.tmpl`
     // isn't in `mappings.shell`. In the real pipeline this match
@@ -230,23 +224,19 @@ fn gate_mixed_files_in_one_pack() {
             acc
         });
 
-    // install._darwin.sh stripped to install.sh → install handler.
     assert_eq!(
         by_handler.get("install"),
         Some(&vec!["install.sh".to_string()])
     );
-    // install._linux.sh kept as-is → gate handler.
     assert_eq!(
         by_handler.get(crate::handlers::HANDLER_GATE),
         Some(&vec!["install._linux.sh".to_string()])
     );
-    // vimrc → catchall symlink.
     assert_eq!(by_handler.get("symlink"), Some(&vec!["vimrc".to_string()]));
 }
 
 #[test]
 fn gate_brewfile_extensionless() {
-    // Brewfile._darwin → strips to Brewfile, matches homebrew handler.
     let env = TempEnvironment::builder()
         .pack("brew")
         .file("Brewfile._darwin", "brew \"ripgrep\"")

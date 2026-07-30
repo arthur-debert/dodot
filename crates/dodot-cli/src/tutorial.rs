@@ -895,7 +895,6 @@ mod tests {
 
         let out = String::from_utf8(buf).unwrap();
 
-        // The driver visited every step we expected.
         assert!(out.contains("Welcome to dodot"), "missing intro: {out}");
         assert!(
             out.contains("Step 1 — find your dotfiles repo"),
@@ -915,14 +914,12 @@ mod tests {
         );
         assert!(out.contains("You're set up."), "missing outro: {out}");
 
-        // No prompt answers should be left over.
         assert_eq!(
             prompts.remaining(),
             0,
             "tutorial consumed fewer prompts than scripted"
         );
 
-        // Pack actually got deployed — symlink chain exists.
         let user_target = temp.config_home.join("vim").join("vimrc");
         assert!(
             temp.fs.is_symlink(&user_target),
@@ -949,7 +946,6 @@ mod tests {
         let mut buf: Vec<u8> = Vec::new();
         run_with_prompts(&env, opts_text(), &prompts, &mut buf).unwrap();
 
-        // Pack was not deployed.
         let user_target = temp.config_home.join("vim").join("vimrc");
         assert!(
             !temp.fs.exists(&user_target),

@@ -533,7 +533,6 @@ mod tests {
         ));
         let p = SopsProvider::new(runner, root());
         let v = p.resolve("s.yaml#k").unwrap();
-        // Two newlines in stdout → one stays in resolved value.
         assert_eq!(v.expose().unwrap(), "multi-line-value\n");
     }
 }

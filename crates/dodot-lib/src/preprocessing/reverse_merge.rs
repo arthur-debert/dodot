@@ -200,9 +200,6 @@ mod tests {
         // pure-data edit and recommends no template change.
         let template = "name = {{ name }}\nport = 5432\n";
         let (rendered, tracked) = render(template, serde_json::json!({"name": "Alice"}));
-        // Re-render with a different value to simulate the deployed
-        // file as it would be after the next `dodot up` (or after
-        // the user manually edited the value).
         let _ = rendered;
         let deployed = "name = Bob\nport = 5432\n";
         let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
@@ -245,7 +242,6 @@ mod tests {
         // Conflict and leaves the source untouched.
         let template = "{% for i in items %}- {{ i }}\n{% endfor %}";
         let (_, tracked) = render(template, serde_json::json!({"items": ["a", "b", "c"]}));
-        // Inconsistent prefix edits per iteration:
         let deployed = "* a\n+ b\n- c\n";
         let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         assert!(
@@ -272,7 +268,6 @@ mod tests {
         let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         match outcome {
             ReverseMergeOutcome::Patched(patched) => {
-                // Template's loop body now uses `*` instead of `-`.
                 assert!(patched.contains("* {{ i }}"), "patched: {patched:?}");
             }
             other => panic!("expected Patched for consistent loop edit, got: {other:?}"),
@@ -309,8 +304,6 @@ mod tests {
         assert!(ReverseMergeOutcome::Conflict(String::new()).is_actionable());
     }
 
-    /// Helper for the masking tests below — build a single-line
-    /// `SecretLineRange` covering the given 0-indexed line.
     fn mask_line(line: usize, reference: &str) -> SecretLineRange {
         SecretLineRange {
             start: line,
@@ -341,14 +334,9 @@ mod tests {
         assert_eq!(rendered, "user = Ada\npassword = OLD\n");
         let deployed = "user = Ada\npassword = NEW_ROTATED\n";
 
-        // Without mask: a unified diff propagates the rotated value
-        // back to the template (or surfaces a conflict — either way,
-        // *not* Unchanged).
         let unmasked = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         assert_ne!(unmasked, ReverseMergeOutcome::Unchanged);
 
-        // With the line-1 mask: byte change on the masked line is
-        // invisible → Unchanged.
         let masked =
             reverse_merge(template, &tracked, deployed, &[mask_line(1, "pass:db")]).unwrap();
         assert_eq!(masked, ReverseMergeOutcome::Unchanged);
@@ -373,7 +361,6 @@ mod tests {
         match outcome {
             ReverseMergeOutcome::Patched(patched) => {
                 assert!(patched.contains("port = 9999"), "patched: {patched:?}");
-                // The masked line stays at "OLD" in the source.
                 assert!(
                     patched.contains("secret_line = OLD"),
                     "masked line must not propagate: {patched:?}"

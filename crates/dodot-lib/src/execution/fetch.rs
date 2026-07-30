@@ -1168,12 +1168,10 @@ mod tests {
         assert!(results.iter().all(|r| r.success), "{results:#?}");
         assert_eq!(fetcher.calls(), vec!["https://example.com/aliases.sh"]);
 
-        // The user-visible link exists and resolves to the bytes we fed in.
         assert!(env.fs.is_symlink(&user_path));
         let content = env.fs.read_to_string(&user_path).unwrap();
         assert_eq!(content.as_bytes(), known_body());
 
-        // Sentinel was recorded.
         let sentinel = super::file_sentinel("aliases", &known_sha());
         env.assert_sentinel("shared", "external", &sentinel);
     }
@@ -1208,7 +1206,6 @@ mod tests {
         .with_fetcher(&fetcher);
         let _ = executor.execute(vec![intent.clone()]).unwrap();
 
-        // Second run: no calls because sentinel matches.
         let results = executor.execute(vec![intent]).unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
@@ -1217,7 +1214,6 @@ mod tests {
             "msg: {}",
             results[0].message
         );
-        // Mock pops responses on use; only the first execute consumed it.
         assert_eq!(fetcher.calls(), vec!["https://example.com/aliases.sh"]);
     }
 
@@ -1249,19 +1245,16 @@ mod tests {
         )
         .with_fetcher(&fetcher);
 
-        // Initial deploy: fetch + link.
         executor.execute(vec![intent.clone()]).unwrap();
         assert!(env.fs.is_symlink(&user_path));
 
-        // User (or a stray `rm`) deletes the deployed symlink.
         env.fs.remove_file(&user_path).unwrap();
         assert!(!env.fs.exists(&user_path));
 
         // Re-running `up` with the sentinel still present must
         // restore the symlink even though the sha hasn't changed and
         // --force is off. The fetcher's only canned response was
-        // already consumed — so a regression here would surface as
-        // "no response configured for ...".
+        // already consumed, so an unexpected fetch would fail.
         let results = executor.execute(vec![intent]).unwrap();
         assert!(
             results.iter().all(|r| r.success),
@@ -1275,7 +1268,6 @@ mod tests {
             env.fs.read_to_string(&user_path).unwrap(),
             "#!/bin/sh\nexport SHARED=1\n"
         );
-        // The repair must not re-fetch from upstream.
         assert_eq!(fetcher.calls(), vec!["https://example.com/aliases.sh"]);
     }
 
@@ -1285,7 +1277,6 @@ mod tests {
         let (ds, _) = make_datastore(&env);
         let fetcher = MockFetcher::new().with("https://example.com/aliases.sh", known_body());
 
-        // Place a regular file at the target path before deploying.
         let user_path = env.home.join(".config/shared/aliases.sh");
         env.fs.mkdir_all(user_path.parent().unwrap()).unwrap();
         env.fs
@@ -1325,12 +1316,10 @@ mod tests {
             "msg: {}",
             results[0].message
         );
-        // Original file untouched.
         assert_eq!(
             env.fs.read_to_string(&user_path).unwrap(),
             "hand-written by the user"
         );
-        // No fetch happened (we pre-checked the conflict).
         assert!(fetcher.calls().is_empty());
     }
 
@@ -1372,7 +1361,6 @@ mod tests {
             "msg: {}",
             results[0].message
         );
-        // Nothing was written.
         assert!(!env.fs.exists(&user_path));
         env.assert_no_handler_state("shared", "external");
     }
@@ -1494,7 +1482,6 @@ mod tests {
             "msg: {}",
             results[0].message
         );
-        // No fetch call, no symlink, no sentinel.
         assert!(fetcher.calls().is_empty());
         assert!(!env.fs.exists(&user_path));
         env.assert_no_handler_state("shared", "external");
@@ -1538,7 +1525,6 @@ mod tests {
         )
         .with_git(&git);
 
-        // First run: clone happens.
         let first = executor.execute(vec![intent.clone()]).unwrap();
         assert_eq!(first.len(), 2);
         assert!(first.iter().all(|r| r.success), "{first:#?}");
@@ -1549,7 +1535,6 @@ mod tests {
         );
         assert!(env.fs.is_symlink(&user_path));
 
-        // Second run: clone exists, ls-remote matches local → no fetch.
         let calls_before = git.calls().len();
         let second = executor.execute(vec![intent]).unwrap();
         assert!(second.iter().all(|r| r.success), "{second:#?}");
@@ -1592,7 +1577,6 @@ mod tests {
         )
         .with_git(&git);
 
-        // Initial clone.
         executor.execute(vec![intent.clone()]).unwrap();
 
         // Upstream moves; next run must fetch+reset.
@@ -1604,7 +1588,6 @@ mod tests {
             "{:?}",
             git.calls()
         );
-        // The marker file should reflect the refresh.
         let datastore_path = env
             .paths
             .handler_data_dir("frameworks", "external")
@@ -1632,7 +1615,6 @@ mod tests {
         )
         .with_git(&git);
 
-        // Initial clone succeeds.
         executor.execute(vec![intent.clone()]).unwrap();
 
         // Network goes down. ls-remote fails transiently; we must
@@ -1681,10 +1663,8 @@ mod tests {
         )
         .with_git(&git);
 
-        // First run clones.
         executor.execute(vec![intent.clone()]).unwrap();
 
-        // Move upstream; fetch fails transiently.
         git.set_upstream_sha(&"b".repeat(40));
         git.set_fetch_offline(true);
         let results = executor.execute(vec![intent]).unwrap();
@@ -1756,8 +1736,6 @@ mod tests {
             .join("p10k");
         let resolved = env.fs.readlink(&user_path).unwrap();
         assert_eq!(resolved, clone_root.join("themes"));
-        // And the marker file (which the mock writes under subpath)
-        // is reachable through the symlink.
         let content = env.fs.read_to_string(&user_path.join("README.md")).unwrap();
         assert!(content.contains("# themes"));
     }
@@ -1788,7 +1766,6 @@ mod tests {
         )
         .with_git(&git);
 
-        // First run clones --branch v1.20.0.
         executor.execute(vec![intent.clone()]).unwrap();
         assert!(
             git.calls()
@@ -1798,7 +1775,6 @@ mod tests {
             git.calls()
         );
 
-        // Second run: ls-remote uses the configured ref, not HEAD.
         let calls_before = git.calls().len();
         executor.execute(vec![intent]).unwrap();
         let new_calls = &git.calls()[calls_before..];
@@ -1894,7 +1870,6 @@ mod tests {
             "msg: {}",
             results[0].message
         );
-        // No clone calls, no symlink, no datastore tree.
         assert!(git.calls().is_empty());
         assert!(!env.fs.exists(&user_path));
         env.assert_no_handler_state("frameworks", "external");
@@ -2002,7 +1977,6 @@ mod tests {
             .unwrap();
         assert!(results.iter().all(|r| r.success), "{results:#?}");
         assert!(env.fs.is_symlink(&user_path));
-        // Two files materialised under the entry dir.
         let theme = user_path.join("themes/alpha.zsh");
         let script = user_path.join("scripts/setup.sh");
         assert!(env.fs.exists(&theme));
@@ -2108,7 +2082,6 @@ mod tests {
             .unwrap();
         assert!(results.iter().all(|r| r.success), "{results:#?}");
         assert!(env.fs.is_symlink(&user_path));
-        // The deployed file's content matches the archive member.
         assert_eq!(
             env.fs.read_to_string(&user_path).unwrap(),
             "#!/bin/sh\necho setup\n"

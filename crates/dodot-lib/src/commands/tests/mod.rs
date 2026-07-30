@@ -1,10 +1,4 @@
-//! Integration tests for command API.
-//!
-//! Big tests — adopt, probe + shell-init, gating — live in sibling
-//! files so each per-command suite stays under its own roof and
-//! `cargo test commands::tests::adopt::` can target a single
-//! command's coverage without compiling the rest of the suite.
-//! Shared test fixtures live in [`mod@support`].
+//! Integration tests for the command API.
 
 mod adopt;
 mod gating;
@@ -51,7 +45,6 @@ fn status_shows_pending_before_up() {
     assert_eq!(result.packs[0].name, "vim");
     assert!(!result.packs[0].files.is_empty());
 
-    // All should be pending
     for file in &result.packs[0].files {
         assert_eq!(
             file.status, "pending",
@@ -65,7 +58,7 @@ fn status_shows_pending_before_up() {
 /// in the planner. Status must suppress the corresponding row and
 /// only surface the warning — otherwise the user sees a confusing
 /// "pending symlink" row alongside a "skipping on this platform"
-/// warning. Regression for review feedback on PR #90.
+/// warning.
 #[test]
 fn status_suppresses_lib_prefix_rows_when_skipped() {
     let env = TempEnvironment::builder()
@@ -175,13 +168,11 @@ fn status_renders_with_standout() {
     let ctx = make_ctx(&env);
     let result = commands::status::status(None, &ctx).unwrap();
 
-    // Render as text
     let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
     assert!(output.contains("vim"), "output: {output}");
     assert!(output.contains("vimrc"), "output: {output}");
     assert!(output.contains("pending"), "output: {output}");
 
-    // Render as JSON
     let json = render::render("pack-status", &result, OutputMode::Json).unwrap();
     assert!(json.contains("\"packs\""), "json: {json}");
 }
@@ -274,8 +265,6 @@ fn status_shows_xdg_target_for_subdirectory() {
 
 #[test]
 fn status_lists_top_level_dirs_wholesale() {
-    // Top-level dirs now appear as single entries (linked wholesale),
-    // not expanded into one entry per nested file.
     let env = TempEnvironment::builder()
         .pack("nvim")
         .file("nvim/init.lua", "-- nvim config")
@@ -295,11 +284,11 @@ fn status_lists_top_level_dirs_wholesale() {
     );
 }
 
-/// Regression: status must follow the planner's intent expansion for
+/// Status must follow the planner's intent expansion for
 /// escape-prefix directories (`_home/`, `_xdg/`, `_app/`, `_lib/`).
 ///
-/// Before this was fixed, status iterated raw scanner matches and
-/// rendered `_app` as a single row resolving to the default rule
+/// Iterating raw scanner matches would render `_app` as a single row
+/// resolving to the default rule
 /// (`$XDG_CONFIG_HOME/<pack>/_app`) — a path the planner never deploys
 /// to. Because the data link for that bogus target never exists,
 /// verification reported "pending" indefinitely, even after a
@@ -307,7 +296,7 @@ fn status_lists_top_level_dirs_wholesale() {
 /// `<app_support>/...` per the `_app/<rest>` rule) didn't appear in
 /// status output at all.
 ///
-/// The fix has status drive its deployable rows from
+/// Status drives its deployable rows from
 /// `orchestration::plan_pack` (the same intents the executor runs),
 /// not from raw matches. This test pins that contract end-to-end:
 /// after `up`, status must show the per-leaf row deployed at the
@@ -402,7 +391,6 @@ fn up_deploys_packs() {
     assert!(!result.packs.is_empty());
     assert!(result.message.is_some());
 
-    // After up, status should show deployed
     let status = commands::status::status(None, &ctx).unwrap();
     let deployed_count = status.packs[0]
         .files
@@ -412,11 +400,9 @@ fn up_deploys_packs() {
     assert!(deployed_count > 0, "some files should be deployed after up");
 }
 
-/// Regression for #42 (unify status rendering): `up` and `status` must
+/// `up` and `status` must
 /// produce identical per-file status_label strings for the same handler
-/// state. Before #42, `up` reported "staged bin" while `status` reported
-/// "in PATH" for the same path-handler state — confusing duplicate
-/// vocabulary.
+/// state, using steady-state vocabulary.
 #[test]
 fn up_and_status_produce_matching_labels() {
     let env = TempEnvironment::builder()
@@ -434,7 +420,6 @@ fn up_and_status_produce_matching_labels() {
     let up_result = commands::up::up(None, &ctx).unwrap();
     let status_result = commands::status::status(None, &ctx).unwrap();
 
-    // Build (pack, file_name) -> status_label maps for both.
     let to_map = |packs: &[commands::DisplayPack]| {
         let mut map = std::collections::HashMap::new();
         for p in packs {
@@ -478,7 +463,7 @@ fn up_and_status_produce_matching_labels() {
     );
 }
 
-/// Regression for #42: `down` should likewise render through status, not
+/// `down` should likewise render through status, not
 /// hand-rolled "removed" / "state removed" labels.
 #[test]
 fn down_and_status_produce_matching_labels() {
@@ -515,7 +500,6 @@ fn down_and_status_produce_matching_labels() {
         "down and status should report identical status_labels for the same files"
     );
 
-    // After down, files should be in handler-specific pending vocabulary.
     let labels: Vec<&str> = down_labels.values().map(String::as_str).collect();
     assert!(
         labels.iter().all(|l| !l.contains("removed")),
@@ -534,7 +518,6 @@ fn up_generates_shell_init() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Shell init script should exist
     env.assert_exists(&env.paths.init_script_path());
     let init_content = env
         .fs
@@ -575,7 +558,7 @@ fn status_surfaces_syntax_error_sidecar_for_deployed_shell_file() {
     ctx.syntax_checker = Arc::new(FlagAliases);
     commands::up::up(None, &ctx).unwrap();
 
-    // Now run status — should flag aliases.sh as broken and leave
+    // Status flags aliases.sh as broken and leaves
     // env.sh as plain deployed.
     let result = commands::status::status(None, &ctx).unwrap();
     let pack = &result.packs[0];
@@ -782,13 +765,11 @@ fn up_writes_syntax_error_sidecar_when_check_fails() {
     ctx.syntax_checker = Arc::new(FlagAliases);
     commands::up::up(None, &ctx).unwrap();
 
-    // Sidecar present for the failing file…
     let bad = crate::shell::error_sidecar_path(env.paths.as_ref(), "vim", "aliases.sh");
     assert!(env.fs.exists(&bad), "expected sidecar at {}", bad.display());
     let body = env.fs.read_to_string(&bad).unwrap();
     assert!(body.contains("unexpected token"), "sidecar:\n{body}");
 
-    // …and not for the clean file.
     let good = crate::shell::error_sidecar_path(env.paths.as_ref(), "vim", "env.sh");
     assert!(!env.fs.exists(&good));
 }
@@ -807,7 +788,6 @@ fn up_dry_run_no_changes() {
     let result = commands::up::up(None, &ctx).unwrap();
     assert!(result.dry_run);
 
-    // Nothing should be deployed
     let status_ctx = make_ctx(&env); // fresh non-dry-run ctx
     let status = commands::status::status(None, &status_ctx).unwrap();
     for file in &status.packs[0].files {
@@ -845,7 +825,7 @@ fn up_dry_run_does_not_write_preprocessing_baselines() {
     );
 }
 
-// ── cfprefsd drift marker (#109) ────────────────────────────
+// ── cfprefsd drift marker ───────────────────────────────────
 
 #[cfg(target_os = "macos")]
 #[test]
@@ -918,7 +898,7 @@ fn up_with_pack_filter_does_not_write_cfprefsd_marker_for_unrelated_pack_plists(
 
 #[test]
 fn up_reports_conflict_when_file_exists() {
-    // home.gitconfig (post-#48 per-file home opt-in) routes to ~/.gitconfig,
+    // home.gitconfig routes to ~/.gitconfig,
     // which already exists in the home_file fixture. That collision
     // exercises the conflict path the test cares about.
     let env = TempEnvironment::builder()
@@ -931,14 +911,12 @@ fn up_reports_conflict_when_file_exists() {
     let ctx = make_ctx(&env);
     let result = commands::up::up(None, &ctx).unwrap();
 
-    // Should report errors
     assert!(
         result.message.as_deref() == Some("Packs deployed with errors."),
         "msg: {:?}",
         result.message
     );
 
-    // The conflict file should show as error
     let error_files: Vec<&commands::DisplayFile> = result.packs[0]
         .files
         .iter()
@@ -948,7 +926,7 @@ fn up_reports_conflict_when_file_exists() {
         !error_files.is_empty(),
         "should have error files for conflicts"
     );
-    // The conflict message now lives in the notes section, referenced by
+    // The conflict message lives in the notes section, referenced by
     // the error row's note_ref. status_label stays a short "error" keyword
     // so the column layout is preserved.
     let note_idx = error_files[0]
@@ -960,8 +938,7 @@ fn up_reports_conflict_when_file_exists() {
         "note should mention conflict: {}",
         result.notes[note_idx].body
     );
-    // Error rows must identify the failing file in the left column,
-    // not render with an empty name (regression: PR #45 review).
+    // Error rows identify the failing file in the left column.
     assert!(
         !error_files[0].name.is_empty(),
         "error row should name the failing file, got empty name"
@@ -972,12 +949,11 @@ fn up_reports_conflict_when_file_exists() {
         error_files[0].name
     );
 
-    // Original file should be untouched
     env.assert_file_contents(&env.home.join(".gitconfig"), "[user]\n  name = old");
 
     // Status should NOT show deployed. The conflicted file should surface
     // as `warning` (PendingConflict) with a footnote pointing at the
-    // pre-existing user file — see #43.
+    // pre-existing user file.
     let status = commands::status::status(None, &ctx).unwrap();
     for file in &status.packs[0].files {
         assert!(
@@ -1026,20 +1002,16 @@ fn up_force_overwrites_existing_files() {
     ctx.force = true;
     let result = commands::up::up(None, &ctx).unwrap();
 
-    // Should succeed
     assert_eq!(result.message.as_deref(), Some("Packs deployed."));
 
-    // File should now be a symlink with new content
     let content = env.fs.read_to_string(&env.home.join(".gitconfig")).unwrap();
     assert_eq!(content, "[user]\n  name = new");
 }
 
-// ── up: reconcile non-provisioning state (#58) ─────────────
+// ── up: reconcile non-provisioning state ────────────────────
 
-/// `dodot up` was additive only: a deleted source file would leave its
-/// datastore entry behind, so the regenerated init script kept sourcing
-/// a now-missing path. The fix wipes configuration-handler state per
-/// pack at the start of `up` and re-applies from current source.
+/// `dodot up` wipes configuration-handler state per pack before
+/// reapplying current sources, so deleted entries cannot remain sourced.
 #[test]
 fn up_reconciles_deleted_shell_source() {
     let env = TempEnvironment::builder()
@@ -1057,7 +1029,6 @@ fn up_reconciles_deleted_shell_source() {
     before.sort();
     assert_eq!(before, vec!["aliases.sh", "profile.sh"]);
 
-    // Delete one source from the pack and re-run up.
     env.fs
         .remove_file(&env.dotfiles_root.join("gh/profile.sh"))
         .unwrap();
@@ -1126,7 +1097,6 @@ fn up_reconciles_deleted_path_dir() {
     let path_dir = env.paths.handler_data_dir("tools", "path");
     assert_eq!(env.list_dir_names(&path_dir), vec!["bin"]);
 
-    // Drop the bin/ directory entirely.
     env.fs
         .remove_dir_all(&env.dotfiles_root.join("tools/bin"))
         .unwrap();
@@ -1177,8 +1147,6 @@ fn up_preserves_install_sentinel_when_source_persists() {
     );
     let original = sentinels_before.into_iter().next().unwrap();
 
-    // Re-run up with no source change. The sentinel must persist —
-    // wiping it would force the script to re-execute every time.
     commands::up::up(None, &ctx).unwrap();
     let sentinels_after: Vec<_> = env
         .list_dir_names(&install_dir)
@@ -1244,23 +1212,20 @@ fn down_removes_deployed_state() {
 
     let ctx = make_ctx(&env);
 
-    // Deploy first
     commands::up::up(None, &ctx).unwrap();
 
-    // Verify something is deployed
     let status = commands::status::status(None, &ctx).unwrap();
     let has_deployed = status.packs[0].files.iter().any(|f| f.status == "deployed");
     assert!(has_deployed, "should have deployed files after up");
 
-    // Down
     let down_result = commands::down::down(None, &ctx).unwrap();
     assert!(down_result.message.is_some());
 
     // After down, all files should be plain pending. The user-side
     // symlinks left dangling by `down` are NOT conflicts — the executor's
-    // create_user_link gracefully replaces them on the next `up`. (#43
-    // refines `PendingConflict` to only fire when the executor would
-    // actually refuse: non-symlink + exists.)
+    // create_user_link gracefully replaces them on the next `up`.
+    // `PendingConflict` only fires when the executor would
+    // actually refuse: non-symlink + exists.
     let status = commands::status::status(None, &ctx).unwrap();
     for file in &status.packs[0].files {
         assert_eq!(
@@ -1299,7 +1264,6 @@ fn list_shows_all_packs() {
     let disabled = result.packs.iter().find(|p| p.name == "disabled").unwrap();
     assert!(disabled.ignored);
 
-    // Render as text
     let output = render::render("list", &result, OutputMode::Text).unwrap();
     assert!(output.contains("vim"), "output: {output}");
     assert!(output.contains("(ignored)"), "output: {output}");
@@ -1412,7 +1376,6 @@ fn down_on_already_down_pack_says_nothing_to_do() {
         .build();
 
     let ctx = make_ctx(&env);
-    // vim was never deployed — should not print misleading output
     let result = commands::down::down(None, &ctx).unwrap();
     assert_eq!(
         result.message.as_deref(),
@@ -1433,10 +1396,8 @@ fn addignore_on_deployed_pack_warns() {
         .build();
 
     let ctx = make_ctx(&env);
-    // Deploy first
     commands::up::up(None, &ctx).unwrap();
 
-    // Now addignore should warn
     let result = commands::addignore::addignore("git", &ctx).unwrap();
     assert!(result.message.contains("ignored"));
     let has_warning = result
@@ -1465,7 +1426,6 @@ fn full_lifecycle_up_status_down_status() {
 
     let ctx = make_ctx(&env);
 
-    // 1. Status before up — all pending
     let s1 = commands::status::status(None, &ctx).unwrap();
     assert_eq!(s1.packs.len(), 2);
     for pack in &s1.packs {
@@ -1474,11 +1434,9 @@ fn full_lifecycle_up_status_down_status() {
         }
     }
 
-    // 2. Up — deploy
     let up = commands::up::up(None, &ctx).unwrap();
     assert!(!up.packs.is_empty());
 
-    // 3. Status after up — deployed
     let s2 = commands::status::status(None, &ctx).unwrap();
     let total_deployed: usize = s2
         .packs
@@ -1488,11 +1446,10 @@ fn full_lifecycle_up_status_down_status() {
         .count();
     assert!(total_deployed > 0);
 
-    // 4. Down — remove
     commands::down::down(None, &ctx).unwrap();
 
-    // 5. Status after down — pending again. Dangling user-side symlinks
-    // left by `down` are not conflicts (executor handles them on
+    // Dangling user-side symlinks left by `down` are not conflicts
+    // (the executor handles them on
     // re-deploy), so they stay plain pending.
     let s3 = commands::status::status(None, &ctx).unwrap();
     for pack in &s3.packs {
@@ -1505,7 +1462,6 @@ fn full_lifecycle_up_status_down_status() {
         }
     }
 
-    // 6. Up again — idempotent
     commands::up::up(None, &ctx).unwrap();
     let s4 = commands::status::status(None, &ctx).unwrap();
     let deployed_again: usize = s4
@@ -1517,7 +1473,7 @@ fn full_lifecycle_up_status_down_status() {
     assert_eq!(total_deployed, deployed_again, "idempotent re-deploy");
 }
 
-/// Regression for #43: status must distinguish "pending — clear to
+/// Status must distinguish "pending — clear to
 /// deploy" from "pending — would conflict with a pre-existing file".
 /// Both render under the `pending` *label*, but the conflict case gets
 /// a `warning` status (so themes can color it differently) plus a
@@ -1525,7 +1481,7 @@ fn full_lifecycle_up_status_down_status() {
 #[test]
 fn status_surfaces_pre_existing_conflict_as_warning_with_footnote() {
     // Use `home.X` so the deploy targets ~/.X and collides with the
-    // home_file fixture (under #48 the default deploy target is
+    // home_file fixture (the default deploy target is
     // $XDG_CONFIG_HOME/<pack>/X, which wouldn't collide).
     let env = TempEnvironment::builder()
         .pack("ghostty")
@@ -1582,7 +1538,6 @@ fn status_surfaces_pre_existing_conflict_as_warning_with_footnote() {
         result.notes[ghostty_note].body
     );
 
-    // vim has no pre-existing ~/.vimrc — should be plain pending, no note.
     let vim_file = &vim.files[0];
     assert_eq!(
         vim_file.status, "pending",
@@ -1595,12 +1550,10 @@ fn status_surfaces_pre_existing_conflict_as_warning_with_footnote() {
     );
 }
 
-/// Negative regression for #43: pre-existing symlinks at the user-target
+/// Pre-existing symlinks at the user-target
 /// path are NOT conflicts. The executor's `create_user_link` gracefully
 /// replaces them (correct ones are no-ops, wrong/dangling ones are
 /// removed and recreated), so flagging them would be a false positive.
-/// Issue #44 may add an informational note for the equivalent-symlink
-/// case, but that's separate from the conflict detection #43 introduces.
 #[test]
 fn status_does_not_flag_pre_existing_symlinks_as_conflict() {
     let env = TempEnvironment::builder()
@@ -1612,12 +1565,10 @@ fn status_does_not_flag_pre_existing_symlinks_as_conflict() {
         .done()
         .build();
 
-    // Equivalent symlink: ~/.kittyrc already points at dodot's source.
     let source = env.dotfiles_root.join("kitty/kittyrc");
     let kitty_target = env.home.join(".kittyrc");
     env.fs.symlink(&source, &kitty_target).unwrap();
 
-    // Non-equivalent symlink: ~/.ghostrc points somewhere else entirely.
     let ghostty_target = env.home.join(".ghostrc");
     env.fs
         .symlink(std::path::Path::new("/tmp/elsewhere"), &ghostty_target)
@@ -1712,7 +1663,6 @@ fn status_detects_broken_user_link_removed() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Remove the user link (under #48: $XDG_CONFIG_HOME/vim/vimrc).
     let user_path = env.home.join(".config/vim/vimrc");
     env.fs.remove_file(&user_path).unwrap();
 
@@ -1741,9 +1691,9 @@ fn status_detects_conflict_at_user_path() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Replace user symlink (under #48: $XDG_CONFIG_HOME/vim/vimrc) with a
+    // Replace the user symlink with a
     // regular file whose content does NOT match source — that's a real
-    // conflict (#44 auto-replace would only kick in for matching content).
+    // conflict; auto-replace only applies to matching content.
     let user_path = env.home.join(".config/vim/vimrc");
     env.fs.remove_file(&user_path).unwrap();
     env.fs.write_file(&user_path, b"manual file").unwrap();
@@ -1797,18 +1747,12 @@ fn status_shell_handler_detects_broken_source() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Delete source but keep data link
     let source = env.dotfiles_root.join("vim/aliases.sh");
     env.fs.remove_file(&source).unwrap();
 
-    // Scanner won't find the deleted file, so pack will have no matches.
-    // Recreate the source so scanner finds it, but break the chain differently.
-    // Instead, test that the data link pointing to missing source is detected.
-    // We need the file in the pack for the scanner, so write a new one and
-    // then break the data link.
+    // Recreate the source so the scanner sees it, then break the data link.
     env.fs.write_file(&source, b"alias vi=vim").unwrap();
 
-    // Now manually break the data link by pointing it elsewhere
     let data_link = env
         .paths
         .handler_data_dir("vim", "shell")
@@ -1858,7 +1802,6 @@ fn status_path_handler_verified_deployed() {
 
 #[test]
 fn up_succeeds_after_resolving_conflict() {
-    // Set up conflicting packs
     let env = TempEnvironment::builder()
         .pack("pack-a")
         .file("home.aliases", "a")
@@ -1870,16 +1813,13 @@ fn up_succeeds_after_resolving_conflict() {
 
     let ctx = make_ctx(&env);
 
-    // First attempt fails
     let err = commands::up::up(None, &ctx).unwrap_err();
     assert!(matches!(err, crate::DodotError::CrossPackConflict { .. }));
 
-    // "Resolve" conflict by deploying only one pack
     let filter = vec!["pack-a".into()];
     let result = commands::up::up(Some(&filter), &ctx).unwrap();
     assert_eq!(result.message.as_deref(), Some("Packs deployed."));
 
-    // pack-a should be deployed
     let status = commands::status::status(Some(&filter), &ctx).unwrap();
     assert!(status.packs[0].files.iter().any(|f| f.status == "deployed"));
 }
@@ -1908,7 +1848,6 @@ fn up_conflict_with_home_prefix_convention() {
 
 #[test]
 fn up_multiple_simultaneous_conflicts() {
-    // Two conflict groups at the same time
     let env = TempEnvironment::builder()
         .pack("a")
         .file("home.aliases", "a-aliases")
@@ -1981,7 +1920,7 @@ fn up_conflict_xdg_path_both_packs_subdir() {
     // hatch — skips the pack name in the path) → both resolve to
     // ~/.config/nvim/init.lua, conflict.
     //
-    // (Without `_xdg/`, the new default would namespace each pack
+    // (Without `_xdg/`, the default would namespace each pack
     // under its own dir — `~/.config/nvim-base/...` vs `~/.config/
     // nvim-custom/...` — and they wouldn't collide.)
     let env = TempEnvironment::builder()
@@ -2013,14 +1952,12 @@ fn up_auto_chmod_makes_bin_files_executable() {
 
     let ctx = make_ctx(&env);
 
-    // Verify the file starts non-executable
     let tool_path = env.dotfiles_root.join("tools/bin/deploy");
     let meta_before = env.fs.stat(&tool_path).unwrap();
     assert_eq!(meta_before.mode & 0o111, 0, "should start non-executable");
 
     commands::up::up(None, &ctx).unwrap();
 
-    // After up, file should be executable
     let meta_after = env.fs.stat(&tool_path).unwrap();
     assert_ne!(
         meta_after.mode & 0o111,
@@ -2037,7 +1974,6 @@ fn up_auto_chmod_disabled_via_config() {
         .done()
         .build();
 
-    // Write root config disabling auto_chmod_exec
     env.fs
         .write_file(
             &env.dotfiles_root.join(".dodot.toml"),
@@ -2048,7 +1984,6 @@ fn up_auto_chmod_disabled_via_config() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // File should remain non-executable
     let tool_path = env.dotfiles_root.join("tools/bin/deploy");
     let meta = env.fs.stat(&tool_path).unwrap();
     assert_eq!(
@@ -2062,10 +1997,8 @@ fn up_auto_chmod_disabled_via_config() {
 
 #[test]
 fn status_reports_template_under_stripped_name() {
-    // Regression guard: before the fix, status used the raw scanner
-    // output (pre-preprocessing) for its file list, so a `greet.tmpl`
-    // template would be listed as `greet.tmpl` and wrongly reported as
-    // "pending" even after `dodot up` deployed the rendered `greet`.
+    // Status uses post-preprocessing entries so a deployed `greet.tmpl`
+    // appears as `greet`, not a pending source template.
     let env = TempEnvironment::builder()
         .pack("app")
         .file("greet.tmpl", "hello {{ name }}")
@@ -2075,7 +2008,6 @@ fn status_reports_template_under_stripped_name() {
 
     let ctx = make_ctx(&env);
 
-    // Run up first so the deployment state is "deployed".
     commands::up::up(None, &ctx).unwrap();
 
     let result = commands::status::status(None, &ctx).unwrap();
@@ -2084,7 +2016,6 @@ fn status_reports_template_under_stripped_name() {
     let files = &result.packs[0].files;
     assert_eq!(files.len(), 1, "files: {files:?}");
 
-    // The display name must be the stripped name, not the .tmpl source.
     assert_eq!(files[0].name, "greet", "file name: {}", files[0].name);
     assert_eq!(
         files[0].status, "deployed",
@@ -2094,7 +2025,6 @@ fn status_reports_template_under_stripped_name() {
 
 #[test]
 fn status_reports_template_pending_before_up() {
-    // Even without running up, status should use the stripped name.
     let env = TempEnvironment::builder()
         .pack("app")
         .file("greet.tmpl", "hello {{ name }}")
@@ -2156,7 +2086,6 @@ fn summary_rolls_up_error_over_pending_over_deployed() {
         note_ref: None,
     };
 
-    // error beats pending beats deployed
     let pack = DisplayPack::new(
         "mixed".into(),
         vec![mk("error"), mk("pending"), mk("deployed")],
@@ -2164,17 +2093,14 @@ fn summary_rolls_up_error_over_pending_over_deployed() {
     assert_eq!(pack.summary_status, "error");
     assert_eq!(pack.summary_count, 1);
 
-    // broken rolls into error bucket
     let pack = DisplayPack::new("b".into(), vec![mk("broken"), mk("deployed")]);
     assert_eq!(pack.summary_status, "error");
 
-    // stale and warning roll into pending bucket
     let pack = DisplayPack::new("s".into(), vec![mk("stale"), mk("deployed")]);
     assert_eq!(pack.summary_status, "pending");
     let pack = DisplayPack::new("w".into(), vec![mk("warning"), mk("deployed")]);
     assert_eq!(pack.summary_status, "pending");
 
-    // count counts only files in the winning bucket
     let pack = DisplayPack::new(
         "counts".into(),
         vec![
@@ -2206,7 +2132,6 @@ fn short_mode_renders_one_line_per_pack_with_count() {
 
     let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
 
-    // Short mode: one line per pack, count + status word, no per-file rows
     assert!(output.contains("vim"), "output: {output}");
     assert!(output.contains("nvim"), "output: {output}");
     assert!(output.contains("(1) pending"), "output: {output}");
@@ -2237,7 +2162,6 @@ fn by_status_groups_packs_under_banners() {
 
     let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
 
-    // All packs pending, so only the Pending banner appears
     assert!(output.contains("Pending Packs"), "output: {output}");
     assert!(
         !output.contains("Deployed Packs"),
@@ -2247,7 +2171,6 @@ fn by_status_groups_packs_under_banners() {
         !output.contains("Error Packs"),
         "no error packs — error banner should be hidden: {output}"
     );
-    // Pack names still render within the group
     assert!(output.contains("vim"), "output: {output}");
     assert!(output.contains("nvim"), "output: {output}");
 }

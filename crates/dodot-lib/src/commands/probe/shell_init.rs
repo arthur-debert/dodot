@@ -503,16 +503,13 @@ mod tests {
 
     #[test]
     fn format_unix_ts_handles_zero_and_out_of_range() {
-        // Sentinel for parse-failure → empty, not a date.
         assert_eq!(format_unix_ts(0), "");
-        // Real timestamp → formatted.
         assert_eq!(format_unix_ts(1_714_000_000), "2024-04-24 23:06");
         // Past year 9999 → empty (defensive ceiling so a tampered
         // filename doesn't produce a nonsense date or risk overflow
         // during the i64 cast on `days`).
         assert_eq!(format_unix_ts(u64::MAX), "");
         assert_eq!(format_unix_ts(253_402_300_800), ""); // 1s past year 9999.
-                                                         // Right below the ceiling still renders.
         assert_eq!(format_unix_ts(253_402_300_799), "9999-12-31 23:59");
     }
 }

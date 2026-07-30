@@ -615,7 +615,6 @@ mod tests {
 
     #[test]
     fn missing_dimension_does_not_match() {
-        // Predicate requires hostname=foo, but host has no hostname.
         let p = GatePredicate {
             matchers: vec![(Dimension::Hostname, "foo".into())],
         };
@@ -743,7 +742,6 @@ mod tests {
         darwin.insert("hostname".into(), "specific-mac".into());
         user.insert("darwin".into(), darwin);
         t.merge_user(&user).unwrap();
-        // Now darwin requires the hostname too.
         let p = t.lookup("darwin").unwrap();
         assert_eq!(p.matchers.len(), 2);
     }
@@ -905,11 +903,8 @@ mod tests {
 
     #[test]
     fn dir_gate_invalid_chars_not_a_gate() {
-        // empty label
         assert_eq!(parse_dir_gate_label("_"), None);
-        // dot in label (would be a basename gate, not a dir gate)
         assert_eq!(parse_dir_gate_label("_da.rwin"), None);
-        // space
         assert_eq!(parse_dir_gate_label("_dar win"), None);
     }
 
@@ -917,7 +912,6 @@ mod tests {
 
     #[test]
     fn hostfacts_detect_runs() {
-        // Smoke test: detect() shouldn't panic and must populate os/arch.
         let h = HostFacts::detect();
         assert!(!h.os.is_empty());
         assert!(!h.arch.is_empty());

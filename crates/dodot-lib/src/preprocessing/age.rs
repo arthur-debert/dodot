@@ -377,12 +377,8 @@ mod tests {
 
     #[test]
     fn expand_preserves_binary_plaintext_verbatim_via_run_bytes() {
-        // Non-UTF-8 plaintext (a raw binary key blob) flows
-        // through intact via `run_bytes`. The earlier `run` path
-        // would have decoded stdout via `String::from_utf8_lossy`
-        // and replaced 0xff / 0xfe with U+FFFD, corrupting
-        // round-tripped bytes. Pin that the preprocessor goes
-        // through `run_bytes` and the bytes survive verbatim.
+        // Non-UTF-8 plaintext must flow through `run_bytes`; lossy
+        // string decoding would replace 0xff / 0xfe and corrupt it.
         let raw = vec![0u8, 1, 2, 0xff, 0xfe, b'\n', 0x80, 0xc0];
         let runner = Arc::new(ScriptedBytesRunner::new().expect(
             "age",

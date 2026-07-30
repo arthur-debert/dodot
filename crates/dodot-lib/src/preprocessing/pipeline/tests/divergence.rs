@@ -1,4 +1,4 @@
-//! Divergence guard (issue #110, §6.4): the "deployed file was edited
+//! Divergence guard (§6.4): the "deployed file was edited
 //! out-of-band" detector that blocks an automatic re-render.
 
 #![allow(unused_imports)]
@@ -81,17 +81,14 @@ fn divergence_guard_skips_when_deployed_was_edited() {
         .done()
         .build();
 
-    // First run: clean deploy, baseline written.
     let first = run_template_preprocess(&env, "app", false);
     assert!(first.skipped.is_empty(), "first deploy must not skip");
     let deployed_path = &first.virtual_entries[0].absolute_path.clone();
 
-    // User edits the deployed file directly.
     env.fs
         .write_file(deployed_path, b"name = USER EDITED")
         .unwrap();
 
-    // Second run with the same source → guard fires.
     let second = run_template_preprocess(&env, "app", false);
     assert_eq!(second.skipped.len(), 1, "deployed-edit must skip");
     let skip = &second.skipped[0];
@@ -124,7 +121,6 @@ fn divergence_guard_skips_when_both_changed() {
     let first = run_template_preprocess(&env, "app", false);
     let deployed_path = first.virtual_entries[0].absolute_path.clone();
 
-    // Edit both the source template and the deployed file.
     env.fs
         .write_file(
             &env.dotfiles_root.join("app/config.toml.tmpl"),
@@ -158,7 +154,6 @@ fn divergence_guard_proceeds_when_source_changed_only() {
     let first = run_template_preprocess(&env, "app", false);
     let deployed_path = first.virtual_entries[0].absolute_path.clone();
 
-    // Source edited; deployed left untouched.
     env.fs
         .write_file(
             &env.dotfiles_root.join("app/config.toml.tmpl"),
@@ -287,7 +282,6 @@ fn divergence_guard_reproceeds_when_user_undoes_their_edit() {
     let first = run_template_preprocess(&env, "app", false);
     let deployed_path = first.virtual_entries[0].absolute_path.clone();
 
-    // Edit, then revert.
     env.fs
         .write_file(&deployed_path, b"name = USER EDITED")
         .unwrap();
@@ -319,7 +313,6 @@ fn divergence_guard_active_for_read_only_callers() {
         .done()
         .build();
 
-    // Prime the baseline with a normal `up`.
     let _ = run_template_preprocess(&env, "app", false);
     let baseline_before = crate::preprocessing::baseline::Baseline::load(
         env.fs.as_ref(),
@@ -331,7 +324,6 @@ fn divergence_guard_active_for_read_only_callers() {
     .unwrap()
     .unwrap();
 
-    // User edits the deployed file directly.
     let deployed_path = env
         .paths
         .handler_data_dir("app", "preprocessed")
@@ -340,7 +332,6 @@ fn divergence_guard_active_for_read_only_callers() {
         .write_file(&deployed_path, b"name = USER EDITED")
         .unwrap();
 
-    // Simulate `status`: write_baselines=false, force=false.
     use std::collections::HashMap;
     let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
         vec!["tmpl".into()],

@@ -538,7 +538,6 @@ mod tests {
 
         let now = 1_000_000;
         let _ = info_cask("cursor", &cache, now, env.fs.as_ref(), &runner).unwrap();
-        // Simulate clock advance past TTL.
         let _ = info_cask(
             "cursor",
             &cache,
@@ -642,13 +641,10 @@ mod tests {
             env.fs.as_ref(),
             /*cache_only=*/ true,
         );
-        // Installed list still populated (brew list was called).
         assert!(result
             .installed_tokens
             .contains(&"visual-studio-code".into()));
-        // No info → no folder match.
         assert!(result.folder_to_token.is_empty());
-        // And brew info was never invoked.
         assert_eq!(
             runner.call_count(&["brew", "info", "--json=v2", "--cask", "visual-studio-code"]),
             0,

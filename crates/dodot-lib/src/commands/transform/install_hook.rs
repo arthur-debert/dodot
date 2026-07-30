@@ -252,7 +252,6 @@ mod tests {
     fn install_hook_creates_new_pre_commit_when_absent() {
         let env = TempEnvironment::builder().build();
         fake_git_dir(&env);
-        // Make sure the hooks dir exists but the hook file does not.
         let hook_path = env.dotfiles_root.join(".git/hooks/pre-commit");
         assert!(!env.fs.exists(&hook_path));
 
@@ -319,7 +318,6 @@ mod tests {
             body_after_first, body_after_second,
             "body changed on second call"
         );
-        // Exactly one occurrence of the guard line.
         assert_eq!(body_after_second.matches(HOOK_GUARD_START).count(), 1);
     }
 
@@ -342,15 +340,11 @@ mod tests {
         fake_git_dir(&env);
         let ctx = make_ctx(&env);
 
-        // No hook yet → not installed.
         assert!(!hook_is_installed(&ctx).unwrap());
 
-        // Install it → reported as installed.
         install_hook(&ctx).unwrap();
         assert!(hook_is_installed(&ctx).unwrap());
 
-        // A user-written hook without our guard → not installed
-        // (from our perspective).
         let hook_path = env.dotfiles_root.join(".git/hooks/pre-commit");
         env.fs
             .write_file(&hook_path, b"#!/bin/sh\necho hello\n")
@@ -371,8 +365,7 @@ mod tests {
 
         let hook_path = env.dotfiles_root.join(".git/hooks/pre-commit");
         let mode = std::fs::metadata(&hook_path).unwrap().permissions().mode();
-        // owner-execute bit must be set; we test for any execute
-        // rather than exact 0o755 because the OS may apply umask.
+        // Test for any execute bit because the OS may apply umask.
         assert!(
             mode & 0o100 != 0,
             "hook is not executable, mode = {:o}",
@@ -399,15 +392,14 @@ mod tests {
 
     #[test]
     fn install_hook_replaces_a_stale_managed_block() {
-        // An older R4-shape block (single check command, no refresh
+        // An older block (single check command, no refresh
         // line) must be detected and rewritten to the new two-line
         // form when `install-hook` runs again. Existing non-managed
         // content is preserved.
         let env = TempEnvironment::builder().build();
         fake_git_dir(&env);
 
-        // Stage an old-style block manually. This is what an R4-era
-        // install-hook would have produced: the same guards, but the
+        // Stage an old-style block manually: the same guards, but the
         // single old `dodot transform check --strict || exit 1`
         // command line and the older comment.
         let stale = format!(
@@ -433,14 +425,10 @@ mod tests {
         assert!(matches!(result.outcome, InstallHookOutcome::Updated));
 
         let body = env.fs.read_to_string(&hook_path).unwrap();
-        // New shape: both refresh + check lines, comment matches the
-        // current block.
         assert!(body.contains(HOOK_COMMAND_REFRESH), "body: {body:?}");
         assert!(body.contains(HOOK_COMMAND_CHECK), "body: {body:?}");
-        // User content (before AND after the managed block) survived.
         assert!(body.contains("user-installed pre-commit step"));
         assert!(body.contains("trailing user step"));
-        // Exactly one managed block — no duplicates.
         assert_eq!(body.matches(HOOK_GUARD_START).count(), 1);
         assert_eq!(body.matches(HOOK_GUARD_END).count(), 1);
     }
@@ -454,7 +442,6 @@ mod tests {
         fake_git_dir(&env);
         let ctx = make_ctx(&env);
 
-        // Install fresh.
         let r1 = install_hook(&ctx).unwrap();
         assert!(matches!(r1.outcome, InstallHookOutcome::Created));
         let body_after_first = env
@@ -462,7 +449,6 @@ mod tests {
             .read_to_string(&env.dotfiles_root.join(".git/hooks/pre-commit"))
             .unwrap();
 
-        // Re-install — current block is up to date, no change.
         let r2 = install_hook(&ctx).unwrap();
         assert!(matches!(r2.outcome, InstallHookOutcome::AlreadyInstalled));
         let body_after_second = env

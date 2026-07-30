@@ -192,7 +192,6 @@ mod tests {
             env.paths.clone(),
             Arc::new(NoopCommandRunner),
         );
-        // Seed unrelated state to prove check_status ignores it.
         let source = env.dotfiles_root.join("vim/vimrc");
         ds.create_data_link("vim", HANDLER_SYMLINK, &source)
             .unwrap();

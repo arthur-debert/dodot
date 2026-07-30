@@ -395,7 +395,6 @@ fn validate_registry(registry: &HashMap<String, Box<dyn Handler + '_>>) {
 mod tests {
     use super::*;
 
-    // Compile-time check: Handler must be object-safe
     #[allow(dead_code)]
     fn assert_object_safe(_: &dyn Handler) {}
 

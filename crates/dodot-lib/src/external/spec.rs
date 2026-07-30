@@ -577,7 +577,6 @@ mod tests {
 
     #[test]
     fn missing_sha256_on_file_is_an_error() {
-        // sha256 is mandatory; serde should reject the missing field.
         let toml = r#"
             [unpinned]
             type = "file"

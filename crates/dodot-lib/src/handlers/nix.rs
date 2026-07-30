@@ -210,8 +210,6 @@ mod tests {
         let (e2, a2) = NixCommand.command_for(Path::new("/b/packages.nix"));
         assert_eq!(e1, e2);
         assert_eq!(a1.len(), a2.len());
-        // The argv structure is identical — only the path inside
-        // the wrapper expression differs.
         assert_eq!(a1[0], a2[0]); // "profile"
         assert_eq!(a1[1], a2[1]); // "install"
         assert_eq!(a1[2], a2[2]); // "--expr"
@@ -222,12 +220,10 @@ mod tests {
     #[test]
     fn nix_path_literal_quotes_and_escapes() {
         assert_eq!(nix_path_literal(Path::new("/a/b.nix")), "\"/a/b.nix\"");
-        // Embedded double-quote — escaped.
         assert_eq!(
             nix_path_literal(Path::new("/weird\"name.nix")),
             "\"/weird\\\"name.nix\""
         );
-        // Embedded backslash — escaped.
         assert_eq!(
             nix_path_literal(Path::new("/with\\backslash.nix")),
             "\"/with\\\\backslash.nix\""

@@ -608,7 +608,7 @@ c = "{{ secret("bw:gh-token") }}""#;
         // Malformed input shouldn't crash the scanner; the user
         // would get a MiniJinja parse error at render time.
         let text = r#"x = {{ secret("unterminated"#;
-        let _ = scan_secret_calls(text); // doesn't panic; we don't care what comes back
+        let _ = scan_secret_calls(text);
     }
 
     #[test]
@@ -628,9 +628,7 @@ c = "{{ secret("bw:gh-token") }}""#;
 
     #[test]
     fn list_skips_basename_gated_template() {
-        // Round-2 review feedback: `secret list` must skip files
-        // whose filename gate evaluates false on this host. Same
-        // posture as `dodot status`.
+        // Secret discovery follows the same host-gating posture as status.
         let gated = if cfg!(target_os = "macos") {
             "linux"
         } else if cfg!(target_os = "linux") {
@@ -660,7 +658,6 @@ enabled = true
         );
 
         let result = list(&ctx).unwrap();
-        // Only the unconditional template's reference should surface.
         let refs: Vec<&str> = result.rows.iter().map(|r| r.reference.as_str()).collect();
         assert!(
             refs.contains(&"pass:other"),
@@ -674,10 +671,7 @@ enabled = true
 
     #[test]
     fn list_recognises_gate_suffixed_template_extension() {
-        // Round-2 review feedback: `gitconfig.tmpl._darwin` should be
-        // recognised as a template (after stripping the gate
-        // suffix). Without the strip, the rightmost extension would
-        // be `_darwin`, not `tmpl`, and the file would be skipped.
+        // The gate suffix must be stripped before recognizing the template extension.
         let passing = if cfg!(target_os = "macos") {
             "darwin"
         } else if cfg!(target_os = "linux") {

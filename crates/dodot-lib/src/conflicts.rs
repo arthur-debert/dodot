@@ -222,7 +222,6 @@ mod tests {
         }
     }
 
-    /// Helper: create a mock Fs for tests that don't need real filesystem.
     fn dummy_fs() -> std::sync::Arc<crate::fs::OsFs> {
         std::sync::Arc::new(crate::fs::OsFs::new())
     }
@@ -589,7 +588,6 @@ mod tests {
         let conflicts = detect_cross_pack_conflicts(&pack_intents, env.fs.as_ref());
         assert_eq!(conflicts.len(), 1);
 
-        // Claimant sources should point to the actual files, not the directories
         for claimant in &conflicts[0].claimants {
             assert!(
                 claimant.source.to_string_lossy().contains("deploy"),

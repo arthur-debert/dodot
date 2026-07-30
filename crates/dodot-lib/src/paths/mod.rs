@@ -665,7 +665,6 @@ mod tests {
         }
     }
 
-    // Compile-time check: Pather must be object-safe
     #[allow(dead_code)]
     fn assert_object_safe(_: &dyn Pather) {}
 }

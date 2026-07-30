@@ -1,4 +1,4 @@
-//! Integration tests for the `probe` command family (probe summary, deployment-map, shell-init in all modes, and the macOS app-advisory probes).
+//! Integration tests for the `probe` command family.
 
 #![allow(unused_imports)]
 
@@ -73,7 +73,6 @@ fn probe_show_data_dir_renders_tree_with_sizes() {
     assert!(output.contains("packs"), "output:\n{output}");
     assert!(output.contains("vim"), "output:\n{output}");
     assert!(output.contains("shell"), "output:\n{output}");
-    // Tree should use box-drawing glyphs somewhere.
     assert!(
         output.contains("├") || output.contains("└"),
         "expected branch glyphs in tree; got:\n{output}"
@@ -91,7 +90,7 @@ fn probe_deployment_map_json_mode_is_kind_tagged() {
     assert!(parsed["entries"].is_array());
 }
 
-// ── probe shell-init Phase 3 (--runs / --history) ─────────────────
+// ── probe shell-init (--runs / --history) ─────────────────────────
 
 fn write_fake_profile(env: &TempEnvironment, name: &str, lines: &[&str]) {
     let dir = env.paths.probes_shell_init_dir();
@@ -147,7 +146,6 @@ fn probe_shell_init_aggregate_warns_when_fewer_runs_than_requested() {
         "profile-1714000001-1-1.tsv",
         &["source\tvim\tshell\t/x.sh\t1.000000\t1.000100\t0"],
     );
-    // Asked for 10, only 1 on disk.
     let result = commands::probe::shell_init_aggregate(&ctx, 10).unwrap();
     let output = render::render("probe", &result, OutputMode::Text).unwrap();
     assert!(
@@ -196,19 +194,16 @@ fn probe_shell_init_history_renders_one_row_per_run_newest_first() {
         output.contains("2024-04-24"),
         "date missing; got:\n{output}"
     );
-    // Three rendered rows; ordering check via JSON because the text
-    // template's column padding makes substring offsets fragile.
+    // Use JSON for ordering because text-column padding makes offsets fragile.
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     let rows = parsed["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 3);
-    // Newest unix_ts first, oldest last (descending).
     let timestamps: Vec<u64> = rows
         .iter()
         .map(|r| r["unix_ts"].as_u64().unwrap_or(0))
         .collect();
     assert_eq!(timestamps, vec![1714007200, 1714003600, 1714000000]);
-    // Middle row had a non-zero exit_status.
     assert_eq!(rows[1]["failed_entries"].as_u64().unwrap(), 1);
     assert_eq!(rows[0]["failed_entries"].as_u64().unwrap(), 0);
     assert_eq!(rows[2]["failed_entries"].as_u64().unwrap(), 0);
@@ -272,7 +267,7 @@ fn probe_shell_init_errors_json_is_kind_tagged() {
     assert!(parsed["targets"].is_array());
 }
 
-// ── probe shell-init: staleness banner (#59) ────────────────
+// ── probe shell-init: staleness banner ──────────────────────
 
 /// Plant a `last-up-at` marker at the given unix timestamp so tests
 /// don't depend on real wall-clock writes.
@@ -308,7 +303,6 @@ fn probe_shell_init_banner_when_profile_predates_last_up() {
         text.contains("warning:"),
         "expected staleness banner, got:\n{text}"
     );
-    // Banner mentions both timestamps so the user can verify the comparison.
     assert!(
         text.contains("2024-04-24") && text.contains("2024-04-25"),
         "banner should reference both capture and up timestamps, got:\n{text}"
@@ -627,7 +621,6 @@ fn probe_shell_init_filter_supports_nested_subpaths() {
         ],
     );
 
-    // Subpath filter narrows to the matching nested file only.
     let result = commands::probe::shell_init_filter(
         &ctx,
         "gpg/sub/dir/env.sh",
@@ -641,7 +634,6 @@ fn probe_shell_init_filter_supports_nested_subpaths() {
     assert_eq!(view.targets.len(), 1);
     assert_eq!(view.targets[0].target, "/p/gpg/sub/dir/env.sh");
 
-    // Bare basename still matches both nested files.
     let result_basename = commands::probe::shell_init_filter(
         &ctx,
         "gpg/env.sh",
@@ -657,7 +649,6 @@ fn probe_shell_init_filter_supports_nested_subpaths() {
 
 #[test]
 fn probe_shell_init_filter_basename_does_not_partial_match() {
-    // Boundary check: `env.sh` filter must not match `nvenv.sh`.
     let env = TempEnvironment::builder().build();
     let ctx = make_ctx(&env);
     write_fake_profile(
@@ -719,7 +710,6 @@ fn probe_shell_init_errors_only_keeps_only_failed_runs() {
         commands::probe::ProbeResult::ShellInitErrors(v) => v,
         other => panic!("expected ShellInitErrors, got {other:?}"),
     };
-    // vim/aliases.sh succeeded — must not appear. Only gpg/env.sh.
     assert_eq!(view.targets.len(), 1);
     assert_eq!(view.targets[0].display_target, "env.sh");
     assert_eq!(view.targets[0].failure_count, 1);
@@ -761,8 +751,6 @@ fn probe_shell_init_errors_only_sorts_by_failure_count_desc() {
 
 #[test]
 fn probe_shell_init_errors_only_clean_window_says_so() {
-    // Only successful runs in the window — view shows 0 targets and
-    // the renderer surfaces a cheerful "no failed sources" line.
     let env = TempEnvironment::builder().build();
     let ctx = make_ctx(&env);
     write_fake_profile(
@@ -812,7 +800,6 @@ fn up_writes_last_up_marker() {
 
     let raw = env.fs.read_to_string(&env.paths.last_up_path()).unwrap();
     let parsed: u64 = raw.trim().parse().expect("marker should be a unix ts");
-    // Sanity: post-2023.
     assert!(parsed > 1_700_000_000, "ts should look recent: {parsed}");
 }
 
@@ -856,7 +843,6 @@ fn down_refreshes_deployment_map_to_empty() {
 
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
-    // Precondition: map has a row.
     let content_before = env
         .fs
         .read_to_string(&env.paths.deployment_map_path())
@@ -869,7 +855,6 @@ fn down_refreshes_deployment_map_to_empty() {
         .fs
         .read_to_string(&env.paths.deployment_map_path())
         .unwrap();
-    // Header stays; data rows are gone.
     assert!(content_after.starts_with("# dodot deployment map v1"));
     assert!(
         !content_after.contains("aliases.sh"),
@@ -889,7 +874,6 @@ fn up_dry_run_does_not_touch_deployment_map() {
     ctx.dry_run = true;
     commands::up::up(None, &ctx).unwrap();
 
-    // Map file should not have been written for a dry-run.
     env.assert_not_exists(&env.paths.deployment_map_path());
 }
 
@@ -916,7 +900,7 @@ fn by_status_folds_ignored_packs_into_ignored_group() {
     assert!(output.contains("Pending Packs"), "output: {output}");
 }
 
-// ── M6: probe::app + advisory probes ─────────────────────────
+// ── probe::app + advisory probes ─────────────────────────────
 
 /// `dodot probe app <pack>` collects every folder this pack would
 /// route to (alias, force_app, _app/), checks each against the
@@ -999,7 +983,6 @@ fn probe_app_collects_alias_force_and_underscore_entries() {
         Some("com.todesktop.Cursor")
     );
 
-    // Sibling-adoption suggestions surfaced from cask zap.
     assert!(
         view.suggested_adoptions
             .iter()
@@ -1012,8 +995,7 @@ fn probe_app_collects_alias_force_and_underscore_entries() {
 /// `dodot probe app ..` (or any other path-traversing input) must
 /// not let `pack_path` traversal escape the dotfiles root. Probe
 /// validates that `pack_name` is a single-component path before
-/// passing it to `Pather::pack_path`. Regression for review feedback
-/// on PR #91.
+/// passing it to `Pather::pack_path`.
 #[test]
 fn probe_app_rejects_path_traversal_input() {
     let env = TempEnvironment::builder().build();
@@ -1026,8 +1008,6 @@ fn probe_app_rejects_path_traversal_input() {
             commands::probe::ProbeResult::App(v) => v,
             other => panic!("expected App variant, got {other:?}"),
         };
-        // Empty-but-named view: the pack name echoes back, but no
-        // entries are surfaced (filesystem traversal was skipped).
         assert_eq!(view.pack, evil, "input echoed back unchanged");
         assert!(
             view.entries.is_empty(),
@@ -1062,7 +1042,6 @@ fn probe_app_non_macos_returns_minimal_view() {
         other => panic!("expected App variant, got {other:?}"),
     };
     assert!(!view.macos);
-    // No brew enrichment.
     for entry in &view.entries {
         assert!(entry.cask.is_none(), "row: {entry:?}");
         assert!(entry.app_bundle.is_none(), "row: {entry:?}");
@@ -1121,7 +1100,6 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         ctx.command_runner.as_ref(),
     );
 
-    // Synthesize a Pack matching the on-disk pack we built.
     let pack_path = env.dotfiles_root.join("vscode");
     let pack_config = ctx.config_manager.config_for_pack(&pack_path).unwrap();
     let pack = Pack {
@@ -1144,8 +1122,8 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         hint_text.contains("visual-studio-code"),
         "expected cask-enriched hint, got: {hint_text}"
     );
-    // Per review feedback: the cask is installed (we read it from
-    // `brew list`), so the message must NOT claim it isn't installed.
+    // Casks from `brew list` are installed, so the message must not
+    // claim otherwise.
     assert!(
         !hint_text.contains("isn't installed"),
         "hint should not falsely claim the cask is uninstalled, got: {hint_text}"

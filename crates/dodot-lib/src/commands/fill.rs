@@ -184,7 +184,6 @@ mod tests {
         env.assert_exists(&env.dotfiles_root.join("vim/aliases.sh"));
         env.assert_exists(&env.dotfiles_root.join("vim/Brewfile"));
 
-        // install.sh should contain pack name
         let content = env
             .fs
             .read_to_string(&env.dotfiles_root.join("vim/install.sh"))
@@ -203,14 +202,12 @@ mod tests {
         let ctx = make_ctx(&env);
 
         let result = fill("vim", &ctx).unwrap();
-        // Only 2 created (aliases.sh + Brewfile), install.sh skipped
         assert!(result.message.contains("2 template"));
         assert!(result
             .details
             .iter()
             .any(|d| d.contains("install.sh") && d.contains("skipped")));
 
-        // Original content preserved
         let content = env
             .fs
             .read_to_string(&env.dotfiles_root.join("vim/install.sh"))

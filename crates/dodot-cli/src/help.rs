@@ -231,7 +231,6 @@ mod tests {
 
     #[test]
     fn lookup_falls_back_to_parent() {
-        // Unknown probe subcommand -> falls back to "probe"
         let got = lookup("probe.unknown-thing");
         let probe_text = HELP_TEXTS
             .iter()
@@ -249,8 +248,6 @@ mod tests {
 
     #[test]
     fn every_registered_command_has_help() {
-        // Sanity: each known command path resolves to its own text,
-        // not a parent fallback.
         for (path, expected) in HELP_TEXTS {
             assert_eq!(lookup(path), *expected, "path {path:?} should self-match");
         }
@@ -266,7 +263,6 @@ mod tests {
         for (name, body) in HELP_TEXTS {
             let display_name = if name.is_empty() { "<top-level>" } else { name };
             let rendered = render(body, OutputMode::TermDebug);
-            // Any `[foo?]` indicates a tag the theme doesn't know.
             for (lineno, line) in rendered.lines().enumerate() {
                 assert!(
                     !line.contains("?]"),

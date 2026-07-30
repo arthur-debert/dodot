@@ -375,7 +375,6 @@ mod tests {
         assert_eq!(result.failed_packs, 0);
         assert!(result.is_success());
 
-        // Both packs should have operations
         for pr in &result.pack_results {
             assert!(pr.success, "pack {} failed", pr.pack_name);
             assert!(
@@ -495,7 +494,6 @@ mod tests {
         let results = run_handler_pipeline(&pack, &ctx).unwrap();
         assert!(results.iter().all(|r| r.success));
 
-        // Verify symlinks were created
         let vim_symlink_dir = ctx.paths.handler_data_dir("vim", "symlink");
         assert!(ctx.fs.exists(&vim_symlink_dir));
     }
@@ -539,7 +537,6 @@ mod tests {
         assert!(result.is_success());
         assert!(!result.pack_results[0].operations.is_empty());
 
-        // No filesystem changes should have been made
         let vim_symlink_dir = ctx.paths.handler_data_dir("vim", "symlink");
         assert!(!ctx.fs.exists(&vim_symlink_dir));
     }
@@ -566,7 +563,6 @@ mod tests {
 
         let results = run_handler_pipeline(&pack, &ctx).unwrap();
 
-        // Should have symlink operations but no RunCommand
         for r in &results {
             assert!(
                 !matches!(r.operation, crate::operations::Operation::RunCommand { .. }),

@@ -400,8 +400,6 @@ mod tests {
 
     #[test]
     fn alias_line_runs_refresh_then_command_git() {
-        // Both shells use the same alias body for now; pin the
-        // exact form so a stray edit doesn't break the wrap.
         for sh in [Shell::Bash, Shell::Zsh] {
             assert_eq!(
                 sh.alias_line(),
@@ -427,14 +425,8 @@ mod tests {
         assert_eq!(resolve_shell(Some("Zsh")).unwrap(), Shell::Zsh);
     }
 
-    // Env-driven detect/resolve_shell tests use the shared
-    // `ShellEnvGuard` from `crate::testing`. The guard is RAII
-    // (restores `$SHELL` on drop, including on panic) AND holds a
-    // process-wide mutex, so any test in the binary touching
-    // `$SHELL` is serialised. We can split these into one
-    // `#[test]` per scenario again, since the guard handles both
-    // the panic-safety and cross-test-races concerns Copilot
-    // raised on R8.
+    // `ShellEnvGuard` restores `$SHELL` on drop and serialises all tests
+    // in the binary that mutate it.
 
     use crate::testing::ShellEnvGuard;
 
@@ -452,17 +444,14 @@ mod tests {
 
     #[test]
     fn detect_returns_none_for_unknown_shell() {
-        // fish/nu/etc. don't auto-detect — the caller must `--shell`.
         let _g = ShellEnvGuard::set("/usr/bin/fish");
         assert_eq!(Shell::detect(), None);
     }
 
     #[test]
     fn resolve_shell_no_explicit_unsupported_shell_errors() {
-        // The PR-review fix from R7: a fish/nu user running
-        // `dodot git-show-alias` (no --shell) gets a clear error
-        // pointing at `--shell bash|zsh`, NOT a silent fall-
-        // through to bash that writes a useless ~/.bashrc.
+        // Unsupported shells require an explicit supported `--shell`
+        // instead of silently falling through to bash.
         let _g = ShellEnvGuard::set("/usr/bin/fish");
         let err = resolve_shell(None).unwrap_err();
         let msg = format!("{err}");
@@ -472,8 +461,6 @@ mod tests {
 
     #[test]
     fn resolve_shell_no_explicit_unset_shell_errors() {
-        // $SHELL unset entirely. Same disposition: clear pointer
-        // at --shell.
         let _g = ShellEnvGuard::unset();
         let err = resolve_shell(None).unwrap_err();
         let msg = format!("{err}");
@@ -593,12 +580,9 @@ mod tests {
         assert!(matches!(r.outcome, InstallAliasOutcome::Updated));
 
         let body = env.fs.read_to_string(&rc_path).unwrap();
-        // New shape:
         assert!(body.contains(Shell::Zsh.alias_line()));
-        // User content (before AND after the block) survived:
         assert!(body.contains("export PATH"));
         assert!(body.contains("alias ll='ls -l'"));
-        // Exactly one managed block.
         assert_eq!(body.matches(ALIAS_GUARD_START).count(), 1);
     }
 
@@ -609,7 +593,6 @@ mod tests {
         assert!(!is_installed(&ctx, Shell::Bash));
         install_alias(&ctx, Shell::Bash).unwrap();
         assert!(is_installed(&ctx, Shell::Bash));
-        // The other shell's state is independent.
         assert!(!is_installed(&ctx, Shell::Zsh));
     }
 
@@ -626,7 +609,6 @@ mod tests {
         assert!(r.alias_block.contains(Shell::Zsh.alias_line()));
         assert_eq!(r.rc_path_display, "~/.zshrc");
         assert!(!r.already_installed);
-        // Critically: file must NOT have been created.
         assert!(!env.fs.exists(&rc_path));
     }
 

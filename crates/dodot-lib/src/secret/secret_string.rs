@@ -185,13 +185,4 @@ mod tests {
         let s2 = SecretString::new("next-value".into());
         assert_eq!(s2.expose().unwrap(), "next-value");
     }
-
-    // Compile-time check: SecretString does NOT implement Clone.
-    // (If a future change accidentally derives Clone, the line below
-    // would compile and this test would silently pass. Instead, the
-    // negative assertion lives as a doc-comment; rust-analyzer / human
-    // review catches re-introduced Clone derivations.)
-    //
-    //   let s = SecretString::new("x".into());
-    //   let _ = s.clone();   // <-- must fail to compile
 }

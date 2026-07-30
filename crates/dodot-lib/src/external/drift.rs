@@ -290,7 +290,6 @@ sha256 = "{sha256}"
     fn file_drift_detected_when_user_edits_deployed_copy() {
         let env = TempEnvironment::builder().build();
         let configured_sha = hex_sha256(b"original content");
-        // User overwrote the deployed copy with something else.
         write_datastore_file(&env, "p", "x", "x", b"tampered content");
         let toml = file_externals_toml("x", &configured_sha);
         let reports = detect_drift_for_pack(
@@ -315,8 +314,6 @@ sha256 = "{sha256}"
         let env = TempEnvironment::builder().build();
         let body = b"current content";
         let sha = hex_sha256(body);
-        // Sibling that would lexically sort first and previously
-        // confused the check.
         write_datastore_file(&env, "p", "x", "0-old-name", b"stale");
         write_datastore_file(&env, "p", "x", "x", body);
         let toml = file_externals_toml("x", &sha);
@@ -374,7 +371,6 @@ sha256 = "abc"
         // tracks porcelain output.
         let env = TempEnvironment::builder().build();
         let mock = crate::external::MockGitRunner::new(&"a".repeat(40), b"");
-        // Fake the clone directory existing.
         let clone_dir = env
             .paths
             .handler_data_dir("p", crate::handlers::HANDLER_EXTERNAL)

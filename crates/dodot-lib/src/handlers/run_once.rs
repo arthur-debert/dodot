@@ -412,7 +412,6 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    // Compile-time check: RunOnceCommand is object-safe.
     #[allow(dead_code)]
     fn assert_object_safe(_: &dyn RunOnceCommand) {}
 
@@ -431,7 +430,6 @@ mod tests {
         FilesystemDataStore::new(env.fs.clone(), env.paths.clone(), Arc::new(NoopRunner))
     }
 
-    /// Test double — a minimal `RunOnceCommand` implementation.
     struct FakeCommand {
         name: &'static str,
         phase: ExecutionPhase,
@@ -567,10 +565,8 @@ mod tests {
                 assert_eq!(pack, "vim");
                 assert_eq!(h, "fake");
                 assert_eq!(executable, "bash");
-                // Args template + appended path.
                 assert_eq!(arguments[0], "--");
                 assert!(arguments[1].ends_with("vim/setup.sh"));
-                // Sentinel shape: "<filename>-<16 hex chars>".
                 assert!(sentinel.starts_with("setup.sh-"));
                 assert_eq!(sentinel.len(), "setup.sh-".len() + 16);
                 assert_eq!(filename, "setup.sh");
@@ -644,10 +640,7 @@ mod tests {
 
     #[test]
     fn validate_does_not_fire_on_placeholder_match() {
-        // A validator that always errors must NOT be called for a
-        // first-time-pack passive placeholder (no rendered bytes, no
-        // on-disk file). Regression test for Copilot review on #170 —
-        // the earlier draft validated before checking for content.
+        // A passive placeholder has no content to validate.
         let env = TempEnvironment::builder().build();
         let cmd = FakeCommand {
             validate_fails: true,
@@ -670,8 +663,6 @@ mod tests {
 
     #[test]
     fn to_intents_skips_first_time_pack_passive_placeholder() {
-        // No rendered_bytes, file doesn't exist on disk → skip (no
-        // intent), don't error.
         let env = TempEnvironment::builder().build();
         let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
 
@@ -782,7 +773,6 @@ mod tests {
         let checksum = file_checksum(env.fs.as_ref(), &abs).unwrap();
         let sentinel = format!("setup.sh-{checksum}");
 
-        // Pre-create the sentinel on disk so check_status finds it.
         let sentinel_dir = env.paths.handler_data_dir("vim", "fake");
         env.fs.mkdir_all(&sentinel_dir).unwrap();
         env.fs
@@ -811,8 +801,6 @@ mod tests {
             .build();
         let abs = env.dotfiles_root.join("vim/setup.sh");
 
-        // Pre-create a sentinel for a different hash → did_run
-        // returns RanDifferent → check_status reports "older version".
         let sentinel_dir = env.paths.handler_data_dir("vim", "fake");
         env.fs.mkdir_all(&sentinel_dir).unwrap();
         env.fs

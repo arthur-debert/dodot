@@ -221,7 +221,6 @@ mod tests {
         let r = registry(&env);
         let dismissed = r.dismissed();
         assert_eq!(dismissed.len(), 2);
-        // BTreeMap ordering — keys are sorted.
         assert_eq!(dismissed[0].0, "a");
         assert_eq!(dismissed[1].0, "b");
     }

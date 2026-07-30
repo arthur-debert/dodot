@@ -308,7 +308,6 @@ mod tests {
                 "config.toml",
             )
             .unwrap();
-        // Drop a sidecar next to it.
         let sidecar = crate::preprocessing::baseline::SecretsSidecar::new(vec![
             crate::preprocessing::SecretLineRange {
                 start: 0,
@@ -327,14 +326,12 @@ mod tests {
             .unwrap();
 
         let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
-        // Exactly one entry — the baseline. The sidecar is skipped.
         assert_eq!(baselines.len(), 1);
         assert_eq!(baselines[0].2, "config.toml");
     }
 
     #[test]
     fn synced_state_when_nothing_changed() {
-        // Baseline + source bytes + deployed bytes all match.
         let env = TempEnvironment::builder().build();
         write_pack_template(&env, "app", "config.toml.tmpl", "src");
         write_deployed(&env, "app", "preprocessed", "config.toml", "rendered");
@@ -464,7 +461,6 @@ mod tests {
                 "config.toml",
             )
             .unwrap();
-        // Deliberately do NOT write the deployed file.
 
         let reports = collect_divergences(env.fs.as_ref(), env.paths.as_ref()).unwrap();
         assert_eq!(reports[0].state, DivergenceState::MissingDeployed);

@@ -669,7 +669,6 @@ mod tests {
             .unwrap();
 
         let source = env.dotfiles_root.join("app/bad.tmpl");
-        // Ensure the env var is genuinely unset
         std::env::remove_var("DEFINITELY_UNSET_VAR_ZZZ_12345");
         let err = pp.expand(&source, env.fs.as_ref()).unwrap_err();
         assert!(
@@ -822,7 +821,6 @@ mod tests {
         .unwrap();
         assert_eq!(pp.stripped_name("config.j2.tmpl"), "config");
 
-        // Opposite config order yields the same result.
         let pp_reversed = TemplatePreprocessor::new(
             vec!["j2.tmpl".into(), "tmpl".into()],
             HashMap::new(),
@@ -906,11 +904,8 @@ mod tests {
 
     #[test]
     fn renders_for_loop_over_user_var() {
-        // Regression guard: MiniJinja supports loops, but we want to
-        // confirm that user-defined vars (which are plain strings) still
-        // work inside a minimal control-flow structure. Strings are
-        // iterable as sequences of characters — confirm our value-layer
-        // doesn't silently block that.
+        // MiniJinja loops must accept user-defined vars, which are plain
+        // strings, without the value layer blocking iteration.
         let env = crate::testing::TempEnvironment::builder()
             .pack("app")
             .file(
@@ -1007,13 +1002,11 @@ mod tests {
         // present; if they return None, the key is absent.
         let ctx = build_dodot_context(&make_pather());
 
-        // These are always present:
         assert!(ctx.contains_key("os"));
         assert!(ctx.contains_key("arch"));
         assert!(ctx.contains_key("home"));
         assert!(ctx.contains_key("dotfiles_root"));
 
-        // Optional keys: present iff the detection helper returned Some.
         assert_eq!(
             ctx.contains_key("username"),
             crate::gates::detect_username().is_some()
@@ -1249,7 +1242,6 @@ mod tests {
         let result = pp.expand(&source, env.fs.as_ref()).unwrap();
         let rendered = String::from_utf8_lossy(&result[0].content);
         assert_eq!(rendered, "a = v\nb = v\nc = v\n");
-        // Cache hit on calls 2 and 3.
         assert_eq!(
             mock.resolve_call_count(),
             1,
@@ -1312,7 +1304,6 @@ mod tests {
             .build();
         let source = env.dotfiles_root.join("app/c.tmpl");
         let result = pp.expand(&source, env.fs.as_ref()).unwrap();
-        // k1's value lands on line 1 (0-indexed), k2's on line 3.
         let ranges = &result[0].secret_line_ranges;
         assert_eq!(ranges.len(), 2);
         assert_eq!(ranges[0].reference, "pass:k1");
@@ -1336,7 +1327,6 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("multi-line value"));
         assert!(msg.contains("single-line only"));
-        // Points the user at the whole-file path, not just rejecting.
         assert!(msg.contains("whole-file deploy"));
     }
 
@@ -1351,14 +1341,12 @@ mod tests {
         let source = env.dotfiles_root.join("app/c.tmpl");
         let err = pp.expand(&source, env.fs.as_ref()).unwrap_err();
         let msg = err.to_string();
-        // The mock's "no canned value" message comes through.
         assert!(msg.contains("MockSecretProvider"));
         assert!(msg.contains("missing"));
     }
 
     #[test]
     fn secret_function_unknown_scheme_lists_configured_schemes() {
-        // Registry has `pass` only; template references `op://...`.
         let pp = pp_with_secrets("pass", &[("k", "v")]);
         let env = crate::testing::TempEnvironment::builder()
             .pack("app")

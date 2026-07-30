@@ -166,9 +166,7 @@ mod tests {
         )));
         let err = preflight(&reg).unwrap_err().to_string();
         assert!(err.contains("1 secret provider(s) need attention"));
-        // The Ok one isn't mentioned — silence is success.
         assert!(!err.contains("`pass`"));
-        // The failing one is.
         assert!(err.contains("`op` is not authenticated"));
         assert!(err.contains("OP_SERVICE_ACCOUNT_TOKEN"));
     }

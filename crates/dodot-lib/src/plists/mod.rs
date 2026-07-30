@@ -113,7 +113,6 @@ fn filter_err(direction: &str, e: plist::Error) -> DodotError {
 mod tests {
     use super::*;
 
-    /// Minimal XML plist with two keys in non-alphabetical order.
     const UNSORTED_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -199,7 +198,6 @@ mod tests {
     /// must produce identical XML across runs.
     #[test]
     fn determinism_property_test() {
-        // Start from a plist with deliberately unstable encoder ordering.
         let canonical = clean(UNSORTED_XML.as_bytes()).expect("clean 1");
 
         // Round-trip several times. If anything is non-deterministic
@@ -218,7 +216,6 @@ mod tests {
 
     #[test]
     fn clean_accepts_binary_input() {
-        // Build canonical XML, convert to binary, ensure clean accepts it.
         let canonical = clean(UNSORTED_XML.as_bytes()).expect("clean");
         let binary = smudge(&canonical).expect("smudge");
         let from_binary = clean(&binary).expect("clean from binary");
@@ -254,7 +251,6 @@ mod tests {
         let xml = clean(mixed.as_bytes()).expect("clean");
         let xml_str = std::str::from_utf8(&xml).expect("utf8");
 
-        // Top-level keys sorted: arr_key, bool_key, int_key, real_key, string_key.
         let positions = ["arr_key", "bool_key", "int_key", "real_key", "string_key"]
             .iter()
             .map(|k| xml_str.find(k).unwrap_or_else(|| panic!("missing {k}")))
@@ -264,7 +260,6 @@ mod tests {
             "top-level keys not sorted, got:\n{xml_str}"
         );
 
-        // Nested dict in array: a before z.
         let a_inner = xml_str.rfind(">a<").expect("inner a");
         let z_inner = xml_str.rfind(">z<").expect("inner z");
         assert!(
@@ -289,7 +284,6 @@ mod tests {
             !xml.contains(&b'\r'),
             "clean output must contain no CR bytes"
         );
-        // And the canonical output is identical to the LF-input case.
         let lf_xml = clean(UNSORTED_XML.as_bytes()).expect("clean lf");
         assert_eq!(xml, lf_xml, "CRLF and LF inputs must produce same output");
     }

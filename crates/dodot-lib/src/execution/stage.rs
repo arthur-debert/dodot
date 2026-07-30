@@ -234,7 +234,6 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
 
-        // Data link should exist
         let datastore_link = env
             .paths
             .handler_data_dir("vim", "shell")
@@ -251,7 +250,6 @@ mod tests {
             .build();
         let (ds, _) = make_datastore(&env);
 
-        // Verify the file starts without execute permission
         let tool_path = env.dotfiles_root.join("tools/bin/mytool");
         let meta_before = env.fs.stat(&tool_path).unwrap();
         assert_eq!(
@@ -277,7 +275,6 @@ mod tests {
             }])
             .unwrap();
 
-        // Should have the stage result + chmod result
         assert!(results.len() >= 2, "results: {results:?}");
         let chmod_result = results.iter().find(|r| r.message.contains("chmod +x"));
         assert!(
@@ -286,7 +283,6 @@ mod tests {
         );
         assert!(chmod_result.unwrap().success);
 
-        // Verify file is now executable
         let meta_after = env.fs.stat(&tool_path).unwrap();
         assert_ne!(
             meta_after.mode & 0o111,
@@ -304,7 +300,6 @@ mod tests {
             .build();
         let (ds, _) = make_datastore(&env);
 
-        // Pre-set execute permission
         let tool_path = env.dotfiles_root.join("tools/bin/mytool");
         env.fs.set_permissions(&tool_path, 0o755).unwrap();
 
@@ -325,7 +320,6 @@ mod tests {
             }])
             .unwrap();
 
-        // Should only have the stage result — no chmod needed
         let chmod_results: Vec<_> = results
             .iter()
             .filter(|r| r.message.contains("chmod"))
@@ -345,7 +339,6 @@ mod tests {
             .build();
         let (ds, _) = make_datastore(&env);
 
-        // auto_chmod_exec = false
         let executor = Executor::new(
             &ds,
             env.fs.as_ref(),
@@ -363,7 +356,6 @@ mod tests {
             }])
             .unwrap();
 
-        // Should only have the stage result — no chmod attempted
         let chmod_results: Vec<_> = results
             .iter()
             .filter(|r| r.message.contains("chmod"))
@@ -373,7 +365,6 @@ mod tests {
             "auto_chmod_exec=false should skip chmod: {chmod_results:?}"
         );
 
-        // File should remain non-executable
         let tool_path = env.dotfiles_root.join("tools/bin/mytool");
         let meta = env.fs.stat(&tool_path).unwrap();
         assert_eq!(meta.mode & 0o111, 0, "file should remain non-executable");
@@ -405,12 +396,10 @@ mod tests {
             }])
             .unwrap();
 
-        // The chmod should only apply to files, not the subdir directory
         let chmod_results: Vec<_> = results
             .iter()
             .filter(|r| r.message.contains("chmod"))
             .collect();
-        // subdir is a directory, not a file — should not be chmod'd
         for r in &chmod_results {
             assert!(
                 !r.message.contains("subdir"),
@@ -482,7 +471,6 @@ mod tests {
             }])
             .unwrap();
 
-        // Should report what would be chmod'd
         let chmod_results: Vec<_> = results
             .iter()
             .filter(|r| r.message.contains("chmod"))
@@ -493,7 +481,6 @@ mod tests {
         );
         assert!(chmod_results[0].message.contains("[dry-run]"));
 
-        // File should NOT have been modified
         let tool_path = env.dotfiles_root.join("tools/bin/mytool");
         let meta = env.fs.stat(&tool_path).unwrap();
         assert_eq!(
@@ -540,7 +527,6 @@ mod tests {
             "should chmod both files: {chmod_results:?}"
         );
 
-        // Both files should be executable
         for name in ["tool-a", "tool-b"] {
             let path = env.dotfiles_root.join(format!("tools/bin/{name}"));
             let meta = env.fs.stat(&path).unwrap();

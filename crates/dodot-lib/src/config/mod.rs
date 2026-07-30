@@ -829,7 +829,6 @@ mod tests {
 
     #[test]
     fn default_config_has_expected_values() {
-        // Load with no files — should use compiled defaults
         let env = TempEnvironment::builder().build();
         let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
         let cfg = mgr.root_config().unwrap();
@@ -937,7 +936,6 @@ mod tests {
     fn root_config_overrides_defaults() {
         let env = TempEnvironment::builder().build();
 
-        // Write a root .dodot.toml
         env.fs
             .write_file(
                 &env.dotfiles_root.join(".dodot.toml"),
@@ -954,7 +952,6 @@ homebrew = "MyBrewfile"
 
         assert_eq!(cfg.mappings.install, vec!["setup.sh"]);
         assert_eq!(cfg.mappings.homebrew, "MyBrewfile");
-        // Unset fields keep defaults
         assert_eq!(cfg.mappings.path, "bin");
     }
 
@@ -975,7 +972,6 @@ install = ["vim-setup.sh"]
             .done()
             .build();
 
-        // Root config
         env.fs
             .write_file(
                 &env.dotfiles_root.join(".dodot.toml"),
@@ -989,11 +985,9 @@ homebrew = "RootBrewfile"
 
         let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
 
-        // Root config
         let root_cfg = mgr.root_config().unwrap();
         assert_eq!(root_cfg.mappings.install, vec!["install.sh"]);
 
-        // Pack config merges root + pack
         let pack_path = env.dotfiles_root.join("vim");
         let pack_cfg = mgr.config_for_pack(&pack_path).unwrap();
         assert_eq!(pack_cfg.mappings.install, vec!["vim-setup.sh"]); // overridden
@@ -1017,7 +1011,6 @@ homebrew = "RootBrewfile"
 
         let rules = mappings_to_rules(&mappings);
 
-        // path + 2 install + 2 shell + homebrew + nix + externals + ignore + catchall = 10
         assert_eq!(rules.len(), 10, "rules: {rules:#?}");
 
         let handler_names: Vec<&str> = rules.iter().map(|r| r.handler.as_str()).collect();
@@ -1037,7 +1030,6 @@ homebrew = "RootBrewfile"
         assert!(!ignore.pattern.starts_with('!'));
         assert!(!ignore.case_insensitive);
 
-        // Catchall should be lowest priority
         let catchall = rules.iter().find(|r| r.pattern == "*").unwrap();
         assert_eq!(catchall.priority, 0);
     }
