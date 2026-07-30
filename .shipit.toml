@@ -1,31 +1,17 @@
-# [secrets] — repo Actions secrets. Each table key is the GitHub secret NAME; the
-# value names exactly one source ({ doppler = "KEY" } / { env = "VAR" } /
-# { prompt = true }). Seeded with shipit's local-reviewer (codex/agy) GitHub App
-# credentials, each sourced from Doppler github/prd. `shipit gh-setup` only pushes
-# a secret when its source resolves, so these are safe before the App is installed.
+# `shipit gh-setup` pushes a secret only when its configured source resolves.
 [secrets]
 CODEX_REVIEW_APP_PRIVATE_KEY = { doppler = "CODEX_REVIEW_APP_PRIVATE_KEY" }
 CODEX_REVIEW_APP_ID          = { doppler = "CODEX_REVIEW_APP_ID" }
 AGY_REVIEW_APP_PRIVATE_KEY   = { doppler = "AGY_REVIEW_APP_PRIVATE_KEY" }
 AGY_REVIEW_APP_ID            = { doppler = "AGY_REVIEW_APP_ID" }
 
-# [reviewers] — the required-reviewer SET for this repo's PRs (the map KEYS are
-# required; ALL must be DONE to flip Ready). Seeded with shipit's shipped default
-# (Copilot, review-once), rendered from the single source in
-# `prstate.reviewers_config.DEFAULT_REVIEWERS`. codex/agy are NOT seeded by default —
-# their review GitHub Apps are not installed on an arbitrary repo, so requiring them
-# would park PRs at REVIEWS_PENDING; a repo that HAS the Apps opts them in here (e.g.
-# `codex = {}`). Review-once: `rerun` defaults OFF (token-billed; opt in per reviewer
-# with e.g. `copilot = { rerun = true }`).
+# All configured reviewers must finish before the PR can become ready. Review
+# reruns are opt-in with `{ rerun = true }`.
 [reviewers]
 copilot = {}
 
-# [lint].ignore — paths the managed lint gate must SKIP. Seeded with common
-# generated/assembled files (a built CHANGELOG, package lockfiles) that are not
-# hand-written prose, so a freshly-onboarded repo does not take a latent gate
-# failure on them. Gitignore-style globs. You OWN this list and may extend it —
-# it is reconcile-safe: `shipit install` seeds [lint] only when absent and never
-# clobbers a table you have edited.
+# Gitignore-style globs skipped by the lint gate. This table is consumer-owned
+# and reconcile-safe.
 [lint]
 ignore = [
   "CHANGELOG.md",
@@ -34,27 +20,10 @@ ignore = [
   "pnpm-lock.yaml",
 ]
 
-# [lanes] — the declared PR-time check units (ADP02-WS05, #236; modeled on
-# lex#829/lexed#169). The lane planner (`shipit ci plan`) maps these + the CI
-# event + a path-diff to the job matrix the wf-checks workflow block runs
-# (`pixi run --locked <run>` per job). Both lanes' tasks SELF-PROVISION,
-# because on a hosted runner nothing outside pixi is provisioned:
-#   - `lint-full` (NOT the managed bare `lint` task, which runs in the default
-#     env where no lint tool exists) resolves into the pixi lint env and
-#     provisions lexd inline (this repo tracks `.lex` docs, so the lex Lang of
-#     `shipit lint` runs) — see its definition in pixi.toml
-#     [feature.lint.tasks].
-#   - The test lane runs the managed `test` task (-> ./bin/shipit test ->
-#     cargo nextest over the rust workspace; a real task, so the #444
-#     POSIX-`test` trap does not apply). No extra inline provisioning needed —
-#     this repo has no submodules (shipit#759 n/a); cargo + cargo-nextest +
-#     uv (for bin/shipit) ride pixi's default env ([dependencies] in
-#     pixi.toml).
-# The bats e2e suite is NOT a lane: it stays on the companion e2e.yml caller
-# of release's rust-ci.yml (the run needs the release-built `dodot` binary
-# artifact handed to `bin/check-e2e` — a build/download/bats surface the
-# wf-checks block deliberately doesn't carry), keeping the required
-# `ci / e2e` context stable across the cutover (the lexed#169 pattern).
+# `shipit ci plan` maps these lanes and the path diff to the reusable workflow's
+# job matrix. `lint-full` resolves in the lint environment; `test` resolves in
+# the default environment. E2E stays separate because it consumes a
+# release-built binary.
 [lanes.lint]
 run = "lint-full"
 required = true
@@ -68,32 +37,9 @@ local = true
 [toolchains]
 "." = "rust"
 
-# [artifacts] — dodot's declared Artifact set for the shipit release pipeline
-# (ADP02-WS08, arthur-debert/shipit#841; modeled on padz's WS06-proven
-# consumer map — the exact same 5-asset shape). The legacy surface it
-# replaces is release.yml → rust-cli.yml@v3 (`crates: dodot-lib,dodot`,
-# `bin-name: dodot`, defaults: darwin arm64 + linux gnu x86_64/aarch64,
-# brew, apt, signed darwin via `secrets: inherit`).
-#   - [artifacts.dodot] is the binary-tarball artifact (the brew formula
-#     subject): archive composition over the same three native-runner
-#     platforms the legacy matrix built, distributed to gh-release + crates
-#     (dodot-lib then dodot — shipit derives the workspace topo order
-#     itself) + brew (the tap is shipit's portfolio constant,
-#     arthur-debert/homebrew-tools, which already carries dodot.rb — same
-#     as legacy).
-#   - [artifacts.dodot-deb] is the legacy `apt: true` leg: cargo-deb against
-#     the pre-built release binary (the same `cargo deb -p dodot --no-build
-#     --no-strip` contract as legacy build-deb, riding the
-#     [package.metadata.deb] variants in crates/dodot-cli/Cargo.toml),
-#     linux platforms only, gh-release only (legacy attached the .debs to
-#     the GH release; there is no apt repository endpoint).
-# `sign = true` on the archive artifact — the one deliberate divergence
-# from padz's map: dodot ships SIGNED darwin (legacy parity), routed
-# through the signer's archive leg (shipit#800: raw darwin CLI binaries
-# codesigned + notarized in-place, tarballs re-emitted under their
-# original filenames; padz went unsigned by owner decision, THIS repo
-# signs). The bare flag derives the Apple cert pair + either-notary-trio
-# secret requirements in preflight.
+# Shipit derives workspace crate publication order for the archive artifact.
+# The deb artifact reuses the release binary and the Cargo metadata variants;
+# signed macOS archives pass through code-signing and notarization (shipit#800).
 [artifacts.dodot]
 build = [{ toolchain = "rust", package = "dodot" }]
 platforms = ["darwin-arm64", "linux-x86_64", "linux-arm64"]
