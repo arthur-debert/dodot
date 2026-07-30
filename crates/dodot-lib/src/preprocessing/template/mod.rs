@@ -197,18 +197,12 @@ impl TemplatePreprocessor {
             env.add_global(name.clone(), Value::from(val.clone()));
         }
 
-        // Install the `secret(...)` function. Two cases:
-        //
-        // - Registry configured: function dispatches through the
-        //   registry. Refuses multi-line values per §3.4. Records
-        //   the (reference, value) pair into `sidecar` so the
-        //   caller can compute line ranges after rendering.
-        // - No registry: function still exists, but every call
-        //   surfaces a clean render error pointing the user at
-        //   `[secret] enabled = true`. The presence-without-function
-        //   alternative would surface as MiniJinja's generic
-        //   "undefined" error which doesn't tell the user how to
-        //   fix the config.
+        // The `secret(...)` function is installed whether or not a
+        // registry is configured: without one, every call surfaces a
+        // clean render error pointing the user at
+        // `[secret] enabled = true`. Leaving the function undefined
+        // instead would surface MiniJinja's generic "undefined"
+        // error, which doesn't tell the user how to fix the config.
         match &self.secret_registry {
             Some(registry) => {
                 let registry = registry.clone();
@@ -216,16 +210,15 @@ impl TemplatePreprocessor {
                 env.add_function(
                     "secret",
                     move |reference: &str| -> std::result::Result<String, MjError> {
-                        // Within-run cache: first call for a given
-                        // reference goes to the provider; subsequent
-                        // calls (in this template or any other
-                        // rendered through the same registry
-                        // instance) hit the cache and never shell
-                        // out. Multi-line / non-UTF-8 are detected
-                        // up here so the rich error messages stay
-                        // co-located with the callback that surfaces
-                        // them; only validated values reach the
-                        // cache. See `secrets.lex` §7.4 / §3.4.
+                        // Within-run cache: a repeat reference (in
+                        // this template or any other rendered through
+                        // the same registry instance) never shells
+                        // out again. Multi-line / non-UTF-8 values
+                        // are rejected up here so the rich error
+                        // messages stay co-located with the callback
+                        // that surfaces them; only validated values
+                        // reach the cache. See `secrets.lex` §7.4 /
+                        // §3.4.
                         //
                         // The cache holds `Arc<SecretString>` so the
                         // resolved bytes get zeroized when the
@@ -254,10 +247,6 @@ impl TemplatePreprocessor {
                                     ),
                                 ));
                             }
-                            // Validate UTF-8 before caching — a
-                            // non-UTF-8 value never reaches the
-                            // cache (the call propagates the rich
-                            // error instead).
                             value.expose().map_err(|_| {
                                 MjError::new(
                                     MjErrorKind::InvalidOperation,
@@ -282,10 +271,8 @@ impl TemplatePreprocessor {
                             reference: reference.to_string(),
                             value: owned,
                         });
-                        // The sentinel is what flows through MiniJinja
-                        // and into the rendered output; `expand()`
-                        // computes line ranges by locating sentinels
-                        // and then substitutes them back to the value.
+                        // The sentinel, not the value, is what flows
+                        // through MiniJinja into the rendered output.
                         Ok(sentinel)
                     },
                 );
@@ -331,7 +318,7 @@ impl Preprocessor for TemplatePreprocessor {
     fn matches_extension(&self, filename: &str) -> bool {
         // Extensions are normalized (no leading dot) at construction.
         // We require a literal "." before the extension to avoid e.g.
-        // "mpl" matching "foo.tmpl". No per-call allocation.
+        // "mpl" matching "foo.tmpl".
         self.extensions.iter().any(|ext| {
             filename
                 .strip_suffix(ext.as_str())
@@ -365,11 +352,9 @@ impl Preprocessor for TemplatePreprocessor {
         // surfaces sensibly in any error MiniJinja produces.
         let template_name = source.to_string_lossy().into_owned();
 
-        // Per-render sidecar accumulator. Each `secret(...)` call
-        // pushes a `SecretCallEntry { sentinel, reference, value }`;
-        // the rendered output carries the sentinel (not the value),
-        // and `finalize_secrets` below turns sentinels into line
-        // ranges and then substitutes them back to the real value.
+        // Per-render sidecar accumulator: `finalize_secrets` below
+        // turns the recorded sentinels into line ranges and then
+        // substitutes them back to the real values.
         let sidecar: Arc<Mutex<Vec<SecretCallEntry>>> = Arc::new(Mutex::new(Vec::new()));
         let render_id = next_render_id();
 

@@ -214,11 +214,11 @@ pub trait Handler: Send + Sync {
     /// human-readable strings the orchestration surfaces in
     /// `PackStatusResult.warnings`.
     ///
-    /// Default empty. The symlink handler overrides this to flag
-    /// `_lib/` entries on non-macOS platforms (per
-    /// `docs/proposals/macos-paths.lex` §4.2): the pack is otherwise
-    /// fine, other entries deploy normally, but the user gets a visible
-    /// "skipped on this platform" notice.
+    /// Default empty. Override when a handler deliberately drops an
+    /// entry and the user should know: the pack stays valid and its
+    /// other entries deploy normally, but a visible notice explains
+    /// the gap. The symlink handler uses this for macOS-only paths on
+    /// other platforms.
     fn warnings_for_matches(
         &self,
         _matches: &[RuleMatch],
@@ -246,17 +246,12 @@ pub struct HandlerConfig {
     /// Paths that must be forced to `$HOME` (e.g. `["ssh", "bashrc"]`).
     pub force_home: Vec<String>,
     /// Paths that must be forced to the app-support root (e.g.
-    /// `["Code", "Cursor"]`). Curated GUI-app folder names whose first
-    /// path segment routes to `<app_support_dir>/<seg>/<rest>` without
-    /// requiring a `_app/` prefix in the pack tree. See
-    /// `docs/proposals/macos-paths.lex` §3.4.
+    /// `["Code", "Cursor"]`). See
+    /// [`SymlinkSection::force_app`](crate::config::SymlinkSection::force_app).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub force_app: Vec<String>,
-    /// Pack-name → app-support folder name rewrites. When the pack
-    /// name appears as a key here, the resolver's default rule routes
-    /// through `<app_support_dir>/<alias>/<rel_path>` instead of
-    /// `$XDG_CONFIG_HOME/<pack>/<rel_path>`. See `app_aliases` in
-    /// `docs/proposals/macos-paths.lex` §3.3.
+    /// Pack-name → app-support folder name rewrites. See
+    /// [`SymlinkSection::app_aliases`](crate::config::SymlinkSection::app_aliases).
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub app_aliases: std::collections::HashMap<String, String>,
     /// Paths that must not be symlinked (e.g. `[".ssh/id_rsa"]`).
@@ -333,9 +328,7 @@ pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
 /// reference is needed by the run-once handlers (install, homebrew,
 /// nix) for checksum computation; `runner` is threaded in for any
 /// environmental pre-flight a `RunOnceCommand` may want to do at
-/// intent-production time (see the lifecycle-invariant note on
-/// `RunOnceCommand` — per-content validation is out of scope for
-/// run-once handlers).
+/// intent-production time.
 pub fn create_registry<'a>(
     fs: &'a dyn Fs,
     runner: &'a dyn crate::datastore::CommandRunner,

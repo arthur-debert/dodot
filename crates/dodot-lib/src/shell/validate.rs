@@ -5,7 +5,7 @@
 //! `dodot up` time instead of silently breaking the user's next shell
 //! startup. The interpreter's stderr (which carries `file: line N:
 //! error_message`) is preserved verbatim into a sidecar file under the
-//! handler datastore so `dodot status` can show it later (3c).
+//! handler datastore so `dodot status` can show it later.
 //!
 //! This module does not invoke the staged file. It only parses it.
 //! `bash -n` / `zsh -n` are syntax-only — no commands run, no side
@@ -118,7 +118,7 @@ pub struct ShellValidationFailure {
 }
 
 /// Subdirectory (under each pack's shell handler dir) where sidecar
-/// `.err` files live. Public so 3c (`status`) can read it back.
+/// `.err` files live. Public so `status` can read it back.
 pub const ERRORS_SUBDIR: &str = ".errors";
 
 /// Path of the sidecar error file for one source.

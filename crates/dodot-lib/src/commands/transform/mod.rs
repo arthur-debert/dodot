@@ -25,8 +25,8 @@
 //!
 //! # Strict mode
 //!
-//! `check(ctx, strict=true)` is the form used by the pre-commit hook
-//! (R4). On top of the matrix work above, it scans every source file
+//! `check(ctx, strict=true)` is the form used by the pre-commit hook.
+//! On top of the matrix work above, it scans every source file
 //! for unresolved [`crate::preprocessing::conflict`] markers — if any
 //! are found, the result reports them and the command exits non-zero
 //! so a commit is blocked until the user resolves them.
@@ -146,12 +146,11 @@ pub struct TransformStatusEntry {
     /// References this file resolved through `secret(...)` on its
     /// last successful render. Populated from
     /// `<baseline>.secret.json` (per `secrets.lex` §3.3); empty
-    /// when the file has no sidecar (which is also the common
-    /// case for templates that don't use secrets, and for
-    /// pre-Phase-S1 baselines that pre-date sidecar tracking).
-    /// Phase S5 surfaces this in the rendered status so users can
-    /// see *which* secret references each baseline depends on
-    /// without re-rendering. JSON consumers see the same field.
+    /// when the file has no sidecar (the common case for templates
+    /// that don't use secrets, and for baselines written before
+    /// sidecar tracking existed). Surfaced in the rendered status so
+    /// users can see *which* secret references each baseline depends
+    /// on without re-rendering. JSON consumers see the same field.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secret_references: Vec<String>,
 }
@@ -293,10 +292,8 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                 TransformAction::MissingDeployed
             }
             DivergenceState::OutputChanged | DivergenceState::BothChanged if no_reverse => {
-                // Opted out — leave source untouched, surface as
-                // Synced. The user has explicitly chosen "detect
-                // divergence but don't auto-merge"; `transform
-                // status` still shows the real state.
+                // Opted out — surface as Synced without touching the
+                // source.
                 TransformAction::Synced
             }
             DivergenceState::OutputChanged | DivergenceState::BothChanged => {
@@ -314,17 +311,16 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                     has_findings = true;
                     TransformAction::NeedsRebaseline
                 } else {
-                    // Run the reverse-merge engine. Unchanged → variable-
-                    // only edit, no action. Patched → write back to source.
-                    // Conflict → report the block, leave source alone.
+                    // Run the reverse-merge engine. `Unchanged` means the
+                    // deployed edit touched only variable values, so the
+                    // template source needs no change.
                     let template_src = ctx.fs.read_to_string(&report.source_path)?;
                     let deployed = ctx.fs.read_to_string(&report.deployed_path)?;
                     // Load the per-render secrets sidecar so the
                     // reverse-merge masks lines whose source-of-truth
                     // is a vault, not the deployed bytes. Absence of
-                    // the sidecar = empty mask = byte-identical to
-                    // pre-Phase-S2 behavior. See secrets.lex §3.3 and
-                    // burgertocow#13.
+                    // the sidecar = empty mask = unmasked merge. See
+                    // secrets.lex §3.3 and burgertocow#13.
                     let secret_ranges = crate::preprocessing::baseline::SecretsSidecar::load(
                         ctx.fs.as_ref(),
                         ctx.paths.as_ref(),
@@ -345,15 +341,9 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                             if !ctx.dry_run {
                                 ctx.fs.write_file(&report.source_path, patched.as_bytes())?;
                             }
-                            // `Patched` is the auto-merge happy path:
-                            // burgertocow + diffy produced an
-                            // unambiguous unified patch, the source
-                            // is now in sync with the user's edit.
-                            // Nothing for the user to review →
-                            // `has_findings` stays false. The patched
-                            // source surfaces as modified on the next
-                            // `git status` for a follow-up commit.
-                            // See #113.
+                            // The auto-merge happy path: `has_findings`
+                            // deliberately stays false (see
+                            // `TransformCheckResult::has_findings`).
                             TransformAction::Patched
                         }
                         ReverseMergeOutcome::Conflict(block) => {

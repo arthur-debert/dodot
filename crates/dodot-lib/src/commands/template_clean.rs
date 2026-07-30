@@ -4,7 +4,7 @@
 //! This is what makes `git status` / `git diff` / `git log -p` show
 //! the truth between commits, even when the user has only edited the
 //! deployed file. Git invokes us when reading a working-tree file
-//! whose mtime suggests it might have changed (refresh — R5 — is the
+//! whose mtime suggests it might have changed (`dodot refresh` is the
 //! thing that nudges those mtimes); we look up the cached baseline,
 //! compare the deployed bytes to the baseline's rendered hash, and:
 //!
@@ -17,12 +17,12 @@
 //! 2. **Slow path**: if the deployed file diverges, rehydrate the
 //!    cached `TrackedRender::from_tracked_string` and run
 //!    `burgertocow::generate_diff_with_markers` (with our
-//!    `MARKER_*` constants from R2) against the deployed bytes.
+//!    `MARKER_*` constants) against the deployed bytes.
 //!    Apply the resulting diff to the template via diffy and emit
 //!    the patched form. Conflict blocks land inline.
 //!
 //! No provider calls, ever. The whole point of caching
-//! `tracked_render` in R1 is so this filter never re-renders — that
+//! `tracked_render` is so this filter never re-renders — that
 //! would re-trigger any `secret(...)` provider auth on every
 //! `git status`, the auth-fatigue scenario magic.lex specifically
 //! rules out.
@@ -137,8 +137,7 @@ pub fn template_clean(
     // deployed file would land as a diff that rewrites the template
     // expression to the literal new value — defeating the
     // `secret(...)` abstraction. See `secrets.lex` §3.3 +
-    // burgertocow#13. Absent sidecar = empty mask = byte-identical
-    // to pre-Phase-S2 behavior.
+    // burgertocow#13.
     let secret_ranges = SecretsSidecar::load(fs, paths, &pack, &handler, &filename)?
         .map(|s| s.secret_line_ranges)
         .unwrap_or_default();

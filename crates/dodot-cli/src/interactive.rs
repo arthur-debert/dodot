@@ -10,8 +10,8 @@ use std::io::{self, BufRead, IsTerminal, Write};
 pub enum YesNoShow {
     /// User wants to proceed.
     Yes,
-    /// User declined; caller should NOT mark the prompt dismissed
-    /// (so it fires again next time).
+    /// User declined. What that means for dismissal is the caller's
+    /// policy, documented per prompt.
     No,
     /// User wants to inspect the underlying config without committing.
     Show,

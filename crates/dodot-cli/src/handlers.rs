@@ -44,10 +44,6 @@ fn verbose_from(matches: &clap::ArgMatches) -> bool {
 }
 
 /// Build an ExecutionContext from the current environment.
-///
-/// Uses `ExecutionContext::production()` with the dotfiles root
-/// discovered from env/git. Reads CLI flags when present, defaulting
-/// to false for flags not defined on the current subcommand.
 fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
     let mut ctx = ExecutionContext::production(&dotfiles_root, verbose_from(matches))?;
@@ -96,7 +92,6 @@ fn pack_filter(matches: &clap::ArgMatches) -> Option<Vec<String>> {
 
 /// Discover the dotfiles root directory.
 fn discover_dotfiles_root() -> Result<PathBuf, anyhow::Error> {
-    // DOTFILES_ROOT env var
     if let Ok(root) = std::env::var("DOTFILES_ROOT") {
         let path = PathBuf::from(root);
         if path.exists() {
@@ -104,7 +99,6 @@ fn discover_dotfiles_root() -> Result<PathBuf, anyhow::Error> {
         }
     }
 
-    // Git toplevel
     if let Ok(output) = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
@@ -117,7 +111,6 @@ fn discover_dotfiles_root() -> Result<PathBuf, anyhow::Error> {
         }
     }
 
-    // CWD fallback
     let cwd = std::env::current_dir()?;
     Ok(cwd)
 }
@@ -291,10 +284,7 @@ pub fn probe_app_handler(
 /// §6 and `docs/proposals/magic.lex`. Exit code 0 = clean, 1 = at
 /// least one Patched / Conflict / Missing finding (or, in `--strict`
 /// mode, any unresolved dodot-conflict markers in template sources).
-///
-/// The non-zero exit code is set via [`PENDING_EXIT_CODE`] so the
-/// rendered report still prints normally; `main.rs` consults the
-/// atomic after dispatch and `std::process::exit`s if it's non-zero.
+/// The non-zero code is threaded out through [`PENDING_EXIT_CODE`].
 pub fn transform_check_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
@@ -527,7 +517,6 @@ pub fn config_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Erro
         .no_env()
         .handle_to_string(&action)?;
 
-    // Clean up clapfig's Debug-format leak: String("value") → "value"
     let cleaned = clean_debug_format(&output);
     print!("{cleaned}");
     Ok(())
@@ -537,7 +526,6 @@ pub fn config_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Erro
 /// Replaces `String("value")` with `"value"` in config list output.
 fn clean_debug_format(input: &str) -> String {
     let mut result = input.to_string();
-    // Iteratively replace String("...") with "..."
     while let Some(start) = result.find("String(\"") {
         let after_prefix = start + 8; // skip 'String("'
         if let Some(end_quote) = result[after_prefix..].find("\")") {
@@ -619,11 +607,10 @@ pub fn git_show_filters_handler(
 
 /// Post-`up` consolidated installer ladder.
 ///
-/// Replaces three sequential prompts (plist filter, hook, template
-/// filter) with a single Y/n covering whichever rungs apply. Spec:
-/// `docs/proposals/magic.lex` §"What This Costs the User" promises
-/// "one Y/n to install the clean/smudge filters and the pre-commit
-/// hook"; this function is the implementation.
+/// A single Y/n covering whichever of the three rungs (plist filter,
+/// hook, template filter) apply. Spec: `docs/proposals/magic.lex`
+/// §"What This Costs the User" — "one Y/n to install the clean/smudge
+/// filters and the pre-commit hook".
 ///
 /// Behavior:
 /// - **Yes** installs every applicable rung whose component dismissal
@@ -717,10 +704,9 @@ fn try_prompt_install_ladder() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    // A rung enters the ladder only when applicable AND its
-    // component dismissal isn't set. The component check lets the
-    // user opt out of a single rung (via `dodot prompts <key>`) while
-    // still hearing about the others.
+    // The per-component dismissal check lets the user opt out of a
+    // single rung (via `dodot prompts <key>`) while still hearing
+    // about the others.
     let mut active_rungs: Vec<&LadderRung> = Vec::new();
     if hook_applicable && !registry.is_dismissed(RUNG_HOOK.component_key) {
         active_rungs.push(&RUNG_HOOK);
@@ -735,9 +721,6 @@ fn try_prompt_install_ladder() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    // Build the prompt body. Header summarises detection; bullet list
-    // enumerates what would be installed; closing line frames the
-    // ask.
     let mut body: Vec<String> = Vec::new();
     body.push("dodot can wire git up to handle the files in this repo:".into());
     for rung in &active_rungs {
@@ -766,11 +749,11 @@ fn try_prompt_install_ladder() -> Result<(), anyhow::Error> {
             // will offer the same prompt.
         }
         crate::interactive::YesNoShow::No => {
-            // Per #112: "no" dismisses every component key so
-            // subsequent `up` runs don't re-prompt. The umbrella
-            // `magic.install_ladder` key is also dismissed so a
-            // future rung becoming applicable doesn't unilaterally
-            // re-open the ladder against the user's wishes.
+            // "no" dismisses every component key so subsequent `up`
+            // runs don't re-prompt. The umbrella `magic.install_ladder`
+            // key is also dismissed so a future rung becoming
+            // applicable doesn't unilaterally re-open the ladder
+            // against the user's wishes.
             for rung in &active_rungs {
                 registry.dismiss(rung.component_key);
             }
@@ -806,14 +789,12 @@ fn install_ladder_yes(
         .any(|r| r.component_key == RUNG_TEMPLATE_FILTER.component_key);
 
     // Each rung is soft-fail: an error in one installer must not
-    // skip the others. The pre-three-prompts UX let the user
-    // accept/reject each rung independently; the consolidated
-    // ladder needs to preserve that "approved means tried" contract,
-    // because the rungs are operationally unrelated (the plist
-    // filter doesn't care whether the hook installed). Surface each
-    // failure to stderr so the user knows what didn't land, and
-    // only dismiss the catalog key on the success path so a failed
-    // rung re-prompts on the next `up`.
+    // skip the others. "Approved means tried" for every rung, because
+    // the rungs are operationally unrelated (the plist filter doesn't
+    // care whether the hook installed). Surface each failure to
+    // stderr so the user knows what didn't land, and only dismiss the
+    // catalog key on the success path so a failed rung re-prompts on
+    // the next `up`.
     if install_hook {
         match commands::transform::install_hook(ctx) {
             Ok(r) => {
@@ -939,7 +920,6 @@ pub fn maybe_prompt_invalidate_cfprefsd() {
 fn try_prompt_invalidate_cfprefsd() -> Result<(), anyhow::Error> {
     use dodot_lib::prompts::PromptRegistry;
 
-    // cfprefsd is macOS-only.
     if !cfg!(target_os = "macos") {
         return Ok(());
     }

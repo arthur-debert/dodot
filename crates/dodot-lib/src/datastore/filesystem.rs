@@ -16,8 +16,8 @@ use crate::{DodotError, Result};
 /// can delete the sentinel + snapshot pair to roll a file back to
 /// `NeverRan`.
 ///
-/// Old sentinels predating PR C of #169 have no sibling — `did_run`
-/// surfaces `previous_snapshot: None` in that case so `dodot status`
+/// Sentinels written before snapshots existed have no sibling —
+/// `did_run` surfaces `previous_snapshot: None` then, so `dodot status`
 /// can render the `ran older version` state without diff details
 /// (and `dodot status --diff` can omit the entry from its output).
 pub(crate) const SNAPSHOT_SUFFIX: &str = ".snapshot";
@@ -162,14 +162,12 @@ impl DataStore for FilesystemDataStore {
 
         self.fs.mkdir_all(&link_dir)?;
 
-        // Idempotent: if the link already points to the correct source, skip.
         if self.fs.is_symlink(&link_path) {
             if let Ok(current_target) = self.fs.readlink(&link_path) {
                 if current_target == source_file {
                     return Ok(link_path);
                 }
             }
-            // Wrong target — remove and re-create.
             self.fs.remove_file(&link_path)?;
         }
 
@@ -178,23 +176,18 @@ impl DataStore for FilesystemDataStore {
     }
 
     fn create_user_link(&self, datastore_path: &Path, user_path: &Path) -> Result<()> {
-        // Create parent directory
         if let Some(parent) = user_path.parent() {
             self.fs.mkdir_all(parent)?;
         }
 
-        // If something already exists at user_path, handle it
         if self.fs.is_symlink(user_path) {
-            // Existing symlink — check if it's correct
             if let Ok(current_target) = self.fs.readlink(user_path) {
                 if current_target == datastore_path {
-                    return Ok(()); // Already correct
+                    return Ok(());
                 }
             }
-            // Wrong target — remove and re-create
             self.fs.remove_file(user_path)?;
         } else if self.fs.exists(user_path) {
-            // Exists but is not a symlink — conflict
             return Err(crate::DodotError::SymlinkConflict {
                 path: user_path.to_path_buf(),
             });
@@ -212,7 +205,6 @@ impl DataStore for FilesystemDataStore {
         sentinel: &str,
         force: bool,
     ) -> Result<()> {
-        // Idempotent: skip if sentinel exists
         if !force && self.has_sentinel(pack, handler, sentinel)? {
             return Ok(());
         }
@@ -266,7 +258,6 @@ impl DataStore for FilesystemDataStore {
         }
         result?;
 
-        // Record sentinel
         let sentinel_dir = self.paths.handler_data_dir(pack, handler);
         self.fs.mkdir_all(&sentinel_dir)?;
 
@@ -280,13 +271,12 @@ impl DataStore for FilesystemDataStore {
 
         // Snapshot the file we just ran so that a future `did_run`
         // can return its previous content for diff display when the
-        // current file's hash differs (notify-don't-rerun, #169 PR
-        // C). The path of the file ran is the last argument by
-        // convention — same as the header-block read above. Snapshot
-        // writes are best-effort: if the read or write fails, log
-        // and move on. The sentinel itself is already recorded, so
-        // the user's run state is correct; only the diff capability
-        // is lost.
+        // current file's hash differs. The path of the file ran is
+        // the last argument by convention — same as the header-block
+        // read above. Snapshot writes are best-effort: if the read or
+        // write fails, log and move on. The sentinel itself is
+        // already recorded, so the user's run state is correct; only
+        // the diff capability is lost.
         if let Some(path_str) = script_path.as_deref() {
             let snapshot_path = sentinel_dir.join(format!("{sentinel}{SNAPSHOT_SUFFIX}"));
             match self.fs.read_file(Path::new(path_str)) {
@@ -352,19 +342,14 @@ impl DataStore for FilesystemDataStore {
             return Ok(DidRunStatus::NeverRan);
         }
 
-        // RanCurrent if any sentinel records the current hash.
         if matches.iter().any(|(_, h)| h == current_hash) {
             return Ok(DidRunStatus::RanCurrent);
         }
 
-        // For tie-break between multiple non-matching sentinels, pick
-        // the sentinel with the most recent `completed|<unix-ts>`
-        // payload (written by `run_and_record`). This is the closest
-        // signal we have to "most recent prior run" without needing
-        // mtime access through the Fs trait. Sentinels whose payload
-        // doesn't parse fall to the bottom of the ranking (timestamp
-        // 0); ties on timestamp break by lexical order on the
-        // sentinel filename for determinism.
+        // Tie-break on the `completed|<unix-ts>` payload rather than
+        // mtime, which the Fs trait doesn't expose. Sentinels whose
+        // payload doesn't parse fall to the bottom (timestamp 0); the
+        // lexical fallback keeps ties deterministic.
         let prior = matches
             .into_iter()
             .map(|(name, hash)| {

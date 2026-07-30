@@ -13,9 +13,9 @@
 //!    exactly this.
 //!
 //! 2. **Centralisation of OS-shaped policy.** The XDG fallback chain,
-//!    the `DOTFILES_ROOT` env-var lookup, and (planned, per
-//!    `docs/proposals/macos-paths.lex`) the macOS `app_support_dir`
-//!    selection all live in one place. The resolver, the symlink
+//!    the `DOTFILES_ROOT` env-var lookup, and the macOS
+//!    `app_support_dir` selection (`docs/proposals/macos-paths.lex`)
+//!    all live in one place. The resolver, the symlink
 //!    handler, and `adopt`'s source-path inference all consult the
 //!    same accessors — drift between them is impossible by construction.
 //!
@@ -47,9 +47,7 @@ use crate::Result;
 /// Provides all path calculations for dodot.
 ///
 /// Every path that dodot uses — XDG directories, pack locations,
-/// handler data directories — is computed through this trait. This
-/// keeps path logic centralised and makes testing straightforward:
-/// construct a `Pather` whose directories all live under a temp dir.
+/// handler data directories — is computed through this trait.
 ///
 /// Use `&dyn Pather` (trait objects) throughout the codebase.
 pub trait Pather: Send + Sync {
@@ -392,7 +390,8 @@ impl Pather for XdgPather {
     }
 }
 
-/// Resolve `HOME` from environment, falling back to the `dirs` approach.
+/// Resolve `HOME` from the environment, falling back to a placeholder
+/// path when it is unset.
 fn resolve_home() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
@@ -409,12 +408,10 @@ fn resolve_home() -> PathBuf {
 /// 2. Git repository root (`git rev-parse --show-toplevel`)
 /// 3. `$HOME/dotfiles` fallback
 fn resolve_dotfiles_root(home: &Path) -> PathBuf {
-    // 1. Explicit env var
     if let Ok(root) = std::env::var("DOTFILES_ROOT") {
         return expand_tilde(&root, home);
     }
 
-    // 2. Git toplevel
     if let Ok(output) = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
@@ -427,7 +424,6 @@ fn resolve_dotfiles_root(home: &Path) -> PathBuf {
         }
     }
 
-    // 3. Fallback
     home.join("dotfiles")
 }
 

@@ -52,14 +52,14 @@ impl<'a> Executor<'a> {
             )]);
         }
 
-        // Pre-check: does a non-symlink file exist at user_path?
-        // We check BEFORE creating the data link to avoid leaving
-        // dangling state when the user link would fail.
+        // Pre-check for a conflicting occupant BEFORE creating the
+        // data link, to avoid leaving dangling state when the user
+        // link would fail.
         //
-        // #44: if the existing file's content is byte-identical to
-        // the source we'd deploy, treat it as safe to replace —
-        // the content reaching `user_path` doesn't change, only
-        // the storage representation does. No `--force` required.
+        // If the existing file's content is byte-identical to the
+        // source we'd deploy, treat it as safe to replace — the
+        // content reaching `user_path` doesn't change, only the
+        // storage representation does. No `--force` required.
         if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
             let content_equivalent = crate::equivalence::is_equivalent(user_path, source, self.fs);
             if self.force || content_equivalent {
@@ -76,7 +76,6 @@ impl<'a> Executor<'a> {
                         "force-removing existing file"
                     );
                 }
-                // Remove the existing path before creating the symlink
                 if self.fs.is_dir(user_path) {
                     self.fs.remove_dir_all(user_path)?;
                 } else {
@@ -88,8 +87,6 @@ impl<'a> Executor<'a> {
                     path = %user_path.display(),
                     "conflict: file already exists"
                 );
-                // Return a failed result — non-fatal so other files
-                // in the pack can still be processed.
                 let op = Operation::CreateUserLink {
                     pack: pack.clone(),
                     handler: handler.clone(),
@@ -106,7 +103,6 @@ impl<'a> Executor<'a> {
             }
         }
 
-        // Step 1: Create data link (source → datastore)
         let datastore_path = self.datastore.create_data_link(pack, handler, source)?;
         debug!(
             pack,
@@ -114,7 +110,6 @@ impl<'a> Executor<'a> {
             "created data link"
         );
 
-        // Step 2: Create user link (datastore → user location)
         self.datastore
             .create_user_link(&datastore_path, user_path)?;
 
@@ -164,7 +159,6 @@ impl<'a> Executor<'a> {
             )];
         }
 
-        // Check for conflicts even in dry-run
         if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
             if self.force {
                 return vec![OperationResult::ok(

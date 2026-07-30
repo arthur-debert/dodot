@@ -1,6 +1,6 @@
 //! `Run` intent: execute a run-once handler command (install scripts,
 //! Brewfile bundle, `nix profile install`), gated by [`DataStore::did_run`]'s
-//! three-way classification (#169).
+//! three-way classification.
 //!
 //! Policy: run on `NeverRan`, skip silently on `RanCurrent`, skip with
 //! a "ran older version" notice on `RanDifferent`. `provision_rerun =
@@ -29,7 +29,6 @@ impl<'a> Executor<'a> {
             unreachable!("execute_run called with non-Run intent");
         };
 
-        // Three-way policy via did_run, unless --force.
         if !self.provision_rerun {
             match self
                 .datastore
@@ -79,9 +78,9 @@ impl<'a> Executor<'a> {
         let cmd_str = format!("{} {}", executable, arguments.join(" "));
         info!(pack, handler = handler.as_str(), command = %cmd_str.trim(), "running command");
 
-        // Run the command. `force=true` here tells run_and_record to
-        // skip its own internal has_sentinel pre-check — we've already
-        // made the policy decision above via did_run.
+        // `force=true` here tells run_and_record to skip its own
+        // internal has_sentinel pre-check — we've already made the
+        // policy decision above via did_run.
         self.datastore
             .run_and_record(pack, handler, executable, arguments, sentinel, true)?;
 

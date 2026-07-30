@@ -94,7 +94,6 @@ impl Preprocessor for UnarchivePreprocessor {
                 })?
                 .into_owned();
 
-            // Tar-slip guard: reject absolute paths and `..` components.
             if !entry_path_is_safe(&entry_path) {
                 return Err(DodotError::PreprocessorError {
                     preprocessor: "unarchive".into(),

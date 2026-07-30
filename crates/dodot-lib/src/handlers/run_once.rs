@@ -1,6 +1,5 @@
 //! `RunOnceCommand` + `RunOnceHandler<C>` — the shared shape behind
-//! the run-once provisioning handlers (`install`, `homebrew`, and the
-//! forthcoming `nix`).
+//! the run-once provisioning handlers (`install`, `homebrew`, `nix`).
 //!
 //! All three of these handlers do the same job: run a program on a
 //! user-provided file, hash the file, write a sentinel so we know not
@@ -10,7 +9,7 @@
 //! [`RunOnceCommand`] trait, with [`RunOnceHandler`] handling the
 //! rest.
 //!
-//! # Three-state run-once semantics (#169 PR C / PR D)
+//! # Three-state run-once semantics
 //!
 //! Run-once handlers consult [`DataStore::did_run`](crate::datastore::DataStore::did_run)
 //! to classify a matched file into one of three states:
@@ -23,9 +22,9 @@
 //! 3. [`RanDifferent`](crate::datastore::DidRunStatus::RanDifferent) — a
 //!    sentinel exists but for a *different* content hash; skip with
 //!    notice. The user opts in to re-running via
-//!    `dodot up --provision-rerun` (the existing `provision_rerun`
-//!    flag — distinct from `--force`, which only overwrites
-//!    pre-existing files at symlink target paths).
+//!    `dodot up --provision-rerun` (the `provision_rerun` flag —
+//!    distinct from `--force`, which only overwrites pre-existing
+//!    files at symlink target paths).
 //!
 //! `dodot status` renders this three-way result as `pending` /
 //! `deployed` / `older version (N lines added, M removed)` rows; the
@@ -38,9 +37,9 @@
 //! writes a `<sentinel>.snapshot` sibling capturing the script's bytes
 //! at the moment of a successful run. Snapshots are the data behind
 //! the `(N+ M-)` summary in status and the body of
-//! `dodot status --diff`. Sentinels predating the convention
-//! (pre-#169 PR C) have no snapshot — those rows surface as `older
-//! version (no diff data)` and are excluded from `--diff` output.
+//! `dodot status --diff`. Sentinels written before snapshots existed
+//! have no snapshot sibling — those rows surface as `older version
+//! (no diff data)` and are excluded from `--diff` output.
 //!
 //! Snapshots live at
 //! `<datastore>/packs/<pack>/<handler>/<filename>-<hash>.snapshot`;
@@ -110,19 +109,14 @@ pub trait RunOnceCommand: Send + Sync {
 
     /// Optional pre-flight check. Default: no-op.
     ///
-    /// **Scope: environmental, not content.** See the
-    /// "Lifecycle invariant" section in the trait docs — a
-    /// validator that fails per-content (e.g. file-syntax check,
-    /// manifest-shape rejection) breaks the shared `did_run`
-    /// lifecycle by failing planning for a file the run-once
-    /// policy says should surface as `older version`. Use
+    /// **Scope: environmental, not content** — see the
+    /// "Lifecycle invariant" section in the trait docs. Use
     /// `validate` only for environment-level prerequisites that
     /// fail consistently regardless of the file's current
     /// contents.
     ///
     /// Returning `Err` aborts intent generation for the matched
-    /// file and propagates the error. The default implementation
-    /// passes any file through unchanged.
+    /// file and propagates the error.
     ///
     /// Implementations receive both `fs` (for reading the matched
     /// file's bytes without re-entering the executor) and `runner`
@@ -151,8 +145,8 @@ pub trait RunOnceCommand: Send + Sync {
     /// Human-readable status message when a sentinel exists but for
     /// a *different* content hash — the file has been edited since
     /// the last successful run, but the conservative
-    /// notify-don't-rerun policy (#169 PR C) leaves the prior state
-    /// in place until the user opts in via `--provision-rerun`.
+    /// notify-don't-rerun policy leaves the prior state in place
+    /// until the user opts in via `--provision-rerun`.
     ///
     /// Default: `"older version"`. Overridden per-handler for
     /// readability — e.g. `"brew packages older version"` for
@@ -352,10 +346,8 @@ pub fn status_messages_for<C: RunOnceCommand>(cmd: &C) -> RunOnceStatusMessages 
 }
 
 /// Look up the canonical run-state copy for a built-in run-once
-/// handler by name. `dodot status` consults this so it can render
-/// the three-state row label per handler without instantiating a
-/// `RunOnceHandler<C>` against the right `Fs`. Unknown handler names
-/// fall back to the trait defaults.
+/// handler by name. Unknown handler names fall back to the trait
+/// defaults.
 pub fn run_once_status_messages(handler: &str) -> RunOnceStatusMessages {
     use crate::handlers::{HANDLER_HOMEBREW, HANDLER_INSTALL, HANDLER_NIX};
     if handler == HANDLER_INSTALL {
@@ -379,10 +371,6 @@ pub fn run_once_status_messages(handler: &str) -> RunOnceStatusMessages {
 /// Returns the first 8 bytes of the SHA-256 hash as 16 hex chars —
 /// unique enough for sentinel-name disambiguation, short enough to
 /// keep on-disk paths readable.
-///
-/// Internal helper used by [`RunOnceHandler`] and (in PR B) by the
-/// retrofitted `install` / `homebrew` handlers. Crate-scoped to keep
-/// it out of dodot-lib's public API surface.
 pub(crate) fn file_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
     let mut reader = fs.open_read(path)?;
     let mut hasher = Sha256::new();

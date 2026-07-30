@@ -1,10 +1,10 @@
 //! `dodot git-show-alias` and `dodot git-install-alias` — the
 //! Tier 2 shell-side glue for the template-magic flow.
 //!
-//! Tier 1 (R4) gets you commit-time correctness via the pre-commit
+//! Tier 1 gets you commit-time correctness via the pre-commit
 //! hook. Tier 2 makes interactive `git status` and `git diff` show
 //! the truth between commits too, by wrapping git in a shell alias
-//! that runs `dodot refresh --quiet` first. The clean filter (R6)
+//! that runs `dodot refresh --quiet` first. The clean filter
 //! does the heavy lifting once the source mtime is fresh; this
 //! alias is what nudges the mtime on every interactive git
 //! invocation.
@@ -53,11 +53,6 @@ impl Shell {
     /// or names a shell we don't support — the caller (typically
     /// [`resolve_shell`]) surfaces a clear error rather than
     /// silently writing a bashrc snippet for a fish/nu user.
-    ///
-    /// Why fail explicitly: silently falling back to `Bash` means
-    /// `dodot git-install-alias` happily writes `~/.bashrc` for a
-    /// fish user, who then never sees the alias take effect.
-    /// Better to refuse with a message that points at `--shell`.
     pub fn detect() -> Option<Self> {
         std::env::var("SHELL").ok().and_then(|s| {
             if s.ends_with("/zsh") || s == "zsh" {

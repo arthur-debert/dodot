@@ -200,7 +200,6 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         }
     }
 
-    // Regenerate shell init script and deployment map
     if !ctx.dry_run {
         // Tear down any stale state for packs that are now ignored, so
         // the regenerated (global) init script below stops sourcing
@@ -655,13 +654,11 @@ fn extract_op_info(
             user_path,
             ..
         } => {
-            // Name: filename from the datastore path (pack-relative name)
             let name = datastore_path
                 .file_name()
                 .unwrap_or_else(|| user_path.file_name().unwrap_or_default())
                 .to_string_lossy()
                 .into_owned();
-            // Target: user_path displayed relative to ~ for readability
             let target = if let Ok(rel) = user_path.strip_prefix(home) {
                 format!("~/{}", rel.display())
             } else {

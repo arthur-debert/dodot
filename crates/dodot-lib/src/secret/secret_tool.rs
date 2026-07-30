@@ -30,14 +30,12 @@
 //! `apt install libsecret-tools` / `dnf install libsecret`
 //! pointer.
 //!
-//! Why we don't expose generic attribute pairs in the reference
-//! syntax (e.g. `secret-tool:k1=v1,k2=v2`): the most common
-//! libsecret schema is the GNOME default with `service` and
-//! `account` attributes. Power users with custom schemas can
-//! still adopt secrets storage, but they lose the per-reference
-//! attribute flexibility — accept the simplification for now;
-//! a future extension can layer attribute pairs on top without
-//! breaking the existing shape.
+//! Why the reference syntax doesn't expose generic attribute pairs
+//! (e.g. `secret-tool:k1=v1,k2=v2`): the most common libsecret
+//! schema is the GNOME default with `service` and `account`
+//! attributes. Power users with custom schemas lose per-reference
+//! attribute flexibility; attribute pairs can be layered on later
+//! without breaking the existing shape.
 //!
 //! See `secrets.lex` §5.2 / §5.4 (provider table + error UX) and
 //! §S4 (OS-level providers).
@@ -103,8 +101,8 @@ impl SecretProvider for SecretToolProvider {
     }
 
     fn probe(&self) -> ProbeResult {
-        // Step 1: binary on PATH. `secret-tool --version` is
-        // cheap and doesn't touch the daemon.
+        // `secret-tool --version` is cheap and doesn't touch the
+        // daemon.
         match self.runner.run("secret-tool", &["--version".into()]) {
             Ok(out) if out.exit_code == 0 => {}
             Ok(_) => {

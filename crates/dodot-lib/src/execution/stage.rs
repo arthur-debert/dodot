@@ -1,7 +1,8 @@
 //! `Stage` intent: copy a pack source into the datastore. The path
 //! handler also gets auto-chmod +x for files inside `bin/` so dropped
 //! execute bits (a common loss in git-on-macOS / manual-create flows)
-//! don't leave dead-end shims on `$PATH`.
+//! don't leave dead-end shims on `$PATH`. That chmod is gated on the
+//! executor's `auto_chmod_exec` flag, which is on by default.
 
 use tracing::{debug, info};
 
@@ -35,7 +36,6 @@ impl<'a> Executor<'a> {
 
         let mut results = vec![OperationResult::ok(op, format!("staged {}", filename))];
 
-        // Auto-chmod +x for path handler directories
         if handler == HANDLER_PATH && self.auto_chmod_exec {
             debug!(pack, source = %source.display(), "checking executable permissions");
             results.extend(self.ensure_executable(pack, source));
@@ -147,8 +147,6 @@ impl<'a> Executor<'a> {
                 }
                 Err(e) => {
                     info!(pack, file = %entry.name, error = %e, "chmod +x failed");
-                    // Warning, not failure — don't mark the pack as failed
-                    // just because chmod didn't work.
                     results.push(OperationResult::ok(
                         op,
                         format!("warning: could not chmod +x {}: {}", entry.name, e),

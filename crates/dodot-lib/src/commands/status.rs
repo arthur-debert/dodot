@@ -51,8 +51,8 @@ enum Health {
     /// Run-once handler (install / homebrew) recorded a successful run
     /// for a *different* content hash than the file currently has on
     /// disk. The script has not been re-run automatically — the
-    /// notify-don't-rerun policy (#169 PR C) leaves the prior state in
-    /// place until the user passes `--provision-rerun`. `label` is the
+    /// notify-don't-rerun policy leaves the prior state in place
+    /// until the user passes `--provision-rerun`. `label` is the
     /// short status-column text (carries the per-handler "older
     /// version" copy plus a `(N+ M-)` line summary when a snapshot is
     /// on disk).
@@ -210,10 +210,10 @@ fn intent_display_name(
 /// Verify symlink handler chain for a single file.
 ///
 /// `user_target` is the resolved deploy path — provided by the caller
-/// (typically a [`HandlerIntent::Link`] from the planner). Status no
-/// longer re-derives it; doing so used to drift from the planner for
+/// (typically a [`HandlerIntent::Link`] from the planner). Status must
+/// not re-derive it: a second derivation drifts from the planner for
 /// escape-prefix dirs (`_home/`/`_xdg/`/`_app/`/`_lib/`), producing
-/// permanent "pending" rows for files the planner had successfully
+/// permanent "pending" rows for files the planner successfully
 /// deployed under a *different* path. Source of truth lives in
 /// `resolve_target`, called once per intent in the planner.
 ///
@@ -235,7 +235,6 @@ fn verify_symlink(
         .handler_data_dir(pack, HANDLER_SYMLINK)
         .join(filename);
 
-    // Step 1: Does the data link exist and is it a symlink?
     if !ctx.fs.is_symlink(&data_link) {
         if ctx.fs.exists(&data_link) {
             return Health::Broken("broken: data link exists but is not a symlink".into());
@@ -266,7 +265,6 @@ fn verify_symlink(
         return Health::Pending;
     }
 
-    // Step 2: Does data link point to the correct source?
     match ctx.fs.readlink(&data_link) {
         Ok(target) if target == source => {}
         Ok(target) => {
@@ -275,12 +273,10 @@ fn verify_symlink(
         Err(_) => return Health::Broken("broken: cannot read data link".into()),
     }
 
-    // Step 3: Does the source file still exist?
     if !ctx.fs.exists(source) {
         return Health::Broken("broken: source file missing".into());
     }
 
-    // Step 4: Check user link at the intent's target
     if ctx.fs.is_symlink(user_target) {
         match ctx.fs.readlink(user_target) {
             Ok(link_target) if link_target == data_link => {
@@ -303,8 +299,8 @@ fn verify_symlink(
             Health::Broken("conflict: non-symlink file at target path".into())
         }
     } else {
-        // No user link — data link exists but user link missing.
-        // This happens when config changed (drift) or deployment was interrupted.
+        // Data link exists but the user link is missing — config drift
+        // or an interrupted deployment.
         Health::Stale("stale: user link missing, re-deploy to fix".into())
     }
 }
@@ -454,9 +450,9 @@ fn run_once_health(
                 }
                 _ => {
                     // No snapshot on disk — sentinel predates the
-                    // snapshot convention (#169 PR C). Render the
-                    // state without a line summary so the user knows
-                    // a re-run is pending but not what changed.
+                    // snapshot convention. Render the state without a
+                    // line summary so the user knows a re-run is
+                    // pending but not what changed.
                     format!("{} (no diff data)", messages.ran_different)
                 }
             };
@@ -614,7 +610,6 @@ fn truncate_for_footnote(stderr: &str, budget: usize) -> String {
 pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     info!("starting status command");
 
-    // Validate pack names before doing anything
     let mut warnings = Vec::new();
     if let Some(names) = pack_filter {
         warnings = orchestration::validate_pack_names(names, ctx)?;
@@ -651,7 +646,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     // when `ctx.show_diff` is true and the row's snapshot is on disk.
     let mut diffs: Vec<DisplayDiff> = Vec::new();
 
-    // Collect intents across all packs for conflict detection
     let mut pack_intents = Vec::new();
     // Capture the active packs (post-filter, post-OS-gate) so the
     // optional `--check-drift` pass at the end of status() respects
@@ -664,7 +658,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
         pack.config = pack_config.to_handler_config();
 
-        // C3: pack-level OS gate. Inactive packs surface in their own
+        // Pack-level OS gate. Inactive packs surface in their own
         // section ("inactive on this OS") and skip the per-file
         // walk/preprocess/match cycle entirely.
         if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
@@ -768,13 +762,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         )?;
 
         // Collect intents for conflict detection AND drive symlink
-        // rendering off the same intents the executor sees. Without
-        // this, status re-walked matches and re-resolved targets in
-        // parallel — and drifted for escape-prefix dirs (`_app/` etc.),
-        // since matches are top-level entries but the planner expands
-        // those per-leaf. Driving display off intents collapses the
-        // two paths into one and makes "render through status" actually
-        // truthful for every file the executor touched.
+        // rendering off the same intents the executor sees. Re-walking
+        // matches and re-resolving targets in parallel drifts for
+        // escape-prefix dirs (`_app/` etc.), since matches are
+        // top-level entries but the planner expands those per-leaf.
+        // Driving display off intents collapses the two paths into one
+        // and makes "render through status" actually truthful for
+        // every file the executor touched.
         //
         // The first tuple element is the user-facing label that
         // surfaces in any resulting `DisplayConflict.claimants` entry,
@@ -910,9 +904,9 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // recurses per-leaf, so this produces N rows where the matches
         // loop would have produced 1 wrongly-targeted row. For wholesale
         // dirs (`nvim`) and plain top-level files the planner produces
-        // exactly one intent, matching the old per-match output. `_lib/`
-        // on non-macOS yields zero intents (`Resolution::Skip`), so the
-        // old explicit `_lib/`-suppress branch is no longer needed.
+        // exactly one intent. `_lib/` on non-macOS yields zero intents
+        // (`Resolution::Skip`), so those rows drop out without an
+        // explicit suppress branch here.
         let home = ctx.paths.home_dir();
         let preprocessed_dir = ctx.paths.handler_data_dir(&pack.name, "preprocessed");
         for intent in &intents_for_pack {
@@ -952,7 +946,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         display_packs.push(DisplayPack::new(pack.display_name.clone(), files));
     }
 
-    // Detect and surface cross-pack conflicts as structured display data
     let detected_conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
     let home = ctx.paths.home_dir();
     let display_conflicts: Vec<DisplayConflict> = detected_conflicts

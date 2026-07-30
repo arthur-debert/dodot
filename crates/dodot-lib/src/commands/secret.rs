@@ -1,4 +1,4 @@
-//! `dodot secret` subcommands — Phase S5 ergonomics surface.
+//! `dodot secret` subcommands.
 //!
 //! Two read-only commands for inspecting the secrets configuration
 //! and template references without running `dodot up`:
@@ -12,9 +12,9 @@
 //!   invokes a provider.
 //!
 //! Both commands take an [`ExecutionContext`] (already built by the
-//! CLI handler), build the registry from root config (Phase S4
-//! contract: `[secret]` is root-only — see `SecretSection` docs),
-//! and return a serializable result for the standout renderer.
+//! CLI handler), build the registry from root config (`[secret]` is
+//! root-only — see `SecretSection` docs), and return a serializable
+//! result for the standout renderer.
 
 use serde::Serialize;
 

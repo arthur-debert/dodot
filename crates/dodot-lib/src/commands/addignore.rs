@@ -36,7 +36,6 @@ pub fn addignore(pack_name: &str, ctx: &ExecutionContext) -> Result<AddIgnoreRes
 
     ctx.fs.write_file(&ignore_path, b"")?;
 
-    // Check if pack is currently deployed and warn (#18)
     let handlers = ctx.datastore.list_pack_handlers(&pack_dir)?;
     let mut details = vec![format!("Created {}", ignore_path.display())];
     if !handlers.is_empty() {

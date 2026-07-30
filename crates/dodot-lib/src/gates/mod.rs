@@ -143,8 +143,6 @@ impl HostFacts {
 }
 
 fn detect_os() -> String {
-    // Match the values templates already expose so users don't have
-    // to learn two name systems.
     if cfg!(target_os = "macos") {
         "darwin".into()
     } else if cfg!(target_os = "linux") {
@@ -432,10 +430,9 @@ pub fn compile_mapping_gates<'a>(
 /// when the host's `os` matches at least one entry. Aliases recognised
 /// in the OS labels apply: `macos` → `darwin`.
 ///
-/// This is the entire mechanism behind the C3 surface — pack-level OS
-/// gating sits beside the filename grammar without sharing machinery
-/// because the granularity (whole pack) and the data flow (config field
-/// vs filename) are different.
+/// Pack-level OS gating sits beside the filename grammar without
+/// sharing machinery: the granularity (whole pack) and the data flow
+/// (config field vs filename) are different.
 pub fn pack_os_active(allowed: &[String], host: &HostFacts) -> bool {
     if allowed.is_empty() {
         return true;
@@ -512,13 +509,9 @@ pub enum BasenameGate<'a> {
 /// Hidden-file-style basenames (start with `.`) are skipped because the
 /// scanner already drops them at walk time. We don't special-case them.
 pub fn parse_basename_gate(basename: &str) -> BasenameGate<'_> {
-    // Scan `._` boundaries from right to left. For each, the label runs
-    // from after `_` up to the next `.` (or end of basename for the
-    // extensionless form). The first valid label found is the gate.
-    //
-    // Right-to-left ensures that in `foo._bar._baz.sh` only `._baz` is
-    // taken as the gate, leaving `foo._bar` literal — `_bar` would only
-    // be a gate if the user wrote `foo._bar.sh`.
+    // Right-to-left scan: in `foo._bar._baz.sh` only `._baz` is taken
+    // as the gate, leaving `foo._bar` literal — `_bar` would only be a
+    // gate if the user wrote `foo._bar.sh`.
     let bytes = basename.as_bytes();
     let mut i = bytes.len();
     while i >= 2 {

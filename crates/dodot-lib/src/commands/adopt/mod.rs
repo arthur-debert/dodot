@@ -77,7 +77,6 @@ pub(crate) use self::infer::derive_home_in_pack as derive_pack_filename;
 struct AdoptPlan {
     /// The resolved source (post --no-follow handling).
     source: PathBuf,
-    /// Destination inside the pack.
     pack_dest: PathBuf,
     /// `true` if the source is a directory (after --no-follow resolution).
     is_dir: bool,
@@ -98,11 +97,10 @@ struct AdoptPlan {
 /// `None` lets per-source inference decide. See the module-level docs
 /// for the inference rules and two-phase failure semantics.
 ///
-/// `only_os` is `Some(label)` when the user passed `--only-os <label>`
-/// (Phase C5 of the conditional-running proposal). Each source's
-/// in-pack path is prepended with a `_<label>/` gate-dir segment so
-/// re-deploying via `dodot up` will only land the symlink on hosts
-/// matching the gate predicate. The label is validated against the
+/// `only_os` is `Some(label)` when the user passed `--only-os <label>`.
+/// Each source's in-pack path is prepended with a `_<label>/` gate-dir
+/// segment so re-deploying via `dodot up` will only land the symlink on
+/// hosts matching the gate predicate. The label is validated against the
 /// gate table (built-ins + user `[gates]`) at the root level.
 pub fn adopt(
     pack_override: Option<&str>,
@@ -136,16 +134,9 @@ pub fn adopt(
 
     // ── Resolve pack: per-source inference, then aggregate ───────────
     //
-    // Each source contributes a candidate pack name (its naturally-inferred
-    // pack, or None if the source root has no pack structure). We require
-    // exactly one pack per adopt invocation:
-    //
-    //   - All sources agree on a single inferred name → use it.
-    //   - Sources disagree → refuse; ask the user to split or use --into.
-    //   - All sources decline (HOME-only) → require --into.
-    //   - --into supplied → it wins regardless of inference.
-    //
-    // The single-pack constraint keeps the result shape (one
+    // Exactly one pack per adopt invocation (see
+    // `resolve_pack_for_sources` for how candidates aggregate). The
+    // single-pack constraint keeps the result shape (one
     // PackStatusResult) and the conflict-check semantics simple. Future
     // work can lift this to multi-pack invocations once the result
     // structure supports it.
@@ -157,10 +148,8 @@ pub fn adopt(
 
     // ── Auto-create the pack if inferred and missing ─────────────────
     //
-    // Inferred-but-absent packs are created as empty directories. The
-    // explicit `--into` path goes through `resolve_pack_dir_name` and
-    // errors on miss instead — that's the typo-guard the user opted
-    // into by naming a specific pack.
+    // Only inferred names reach here: an explicit `--into` naming a
+    // missing pack already errored in `resolve_pack_for_sources`.
     if !ctx.fs.exists(&pack_path) {
         ctx.fs.mkdir_all(&pack_path)?;
     }
@@ -225,17 +214,12 @@ pub fn adopt(
         result.warnings.push(msg);
     }
 
-    // M5 capitalization-heuristic advisory + M6 brew enrichment.
+    // Capitalization-heuristic advisory (M5) + brew enrichment (M6).
     //
     // Both gate on the same precondition (at least one AppSupport
     // source) and consume the same brew probe data (the matching
-    // installed-cask token for the pack name). They were separate
-    // blocks pre-cask-aware-rename — the consolidation here lets the
-    // M5 rename suggestion *prefer the cask token* over a
-    // whitespace-stripped-lowercase folder name, which matters for
-    // reverse-DNS bundle IDs (`com.colliderli.iina` → `iina`, not
-    // `comcolliderliiina`). See `docs/proposals/macos-paths.lex`
-    // §8.1–§8.2.
+    // installed-cask token for the pack name). See
+    // `docs/proposals/macos-paths.lex` §8.1–§8.2.
     //
     // Resolver/pack-tree state is unaffected throughout — these are
     // purely user-facing strings on `PackStatusResult.warnings`.
@@ -563,7 +547,7 @@ fn preflight(
         // Already-adopted detection: source is a symlink whose target lives
         // inside the dotfiles root or the data dir.
         //
-        // #44: distinguish two sub-cases so the user knows what to do next:
+        // Two sub-cases, distinguished so the user knows what to do next:
         //
         // - `target.starts_with(&data_dir)` — fully managed via dodot's
         //   chain (`user_path → data_link → source`). Nothing to do.
@@ -614,21 +598,20 @@ fn preflight(
             smeta.is_dir
         };
 
-        // ── Inference: source-root match + in-pack path computation ──
         let inferred =
             infer_target(&abs, is_dir, ctx.paths.as_ref(), &force_home).map_err(|reason| {
                 DodotError::Other(format!("refusing to adopt {}: {reason}", abs.display()))
             })?;
 
         // Pick the override-aware encoding when --into changed the pack
-        // name. This keeps `_xdg/<X>/...` (and the future `_app/<X>/...`)
+        // name. This keeps `_xdg/<X>/...` and `_app/<X>/...`
         // round-trip-correct even when the user reroutes the file into
         // a different pack than its source-root segment suggests.
         let in_pack = match (&inferred.natural_pack, pack_override) {
             (Some(natural), Some(over)) if natural != over => inferred.in_pack_override.clone(),
             _ => inferred.in_pack_natural.clone(),
         };
-        // C5: `--only-os <label>` wraps the entry in a `_<label>/`
+        // `--only-os <label>` wraps the entry in a `_<label>/`
         // gate dir so the deployed symlink only lands on matching
         // hosts. The wrap composes with routing prefixes (`_home/`,
         // `_xdg/`, ...) — those still work after the gate dir strips
@@ -640,9 +623,9 @@ fn preflight(
         };
 
         if inferred.expand_children {
-            // Source IS a pack-root directory under XDG (or AppSupport
-            // future) — enumerate children and adopt each as a top-level
-            // pack entry. This is the "I want this whole `~/.config/nvim/`
+            // Source IS a pack-root directory under XDG (or AppSupport)
+            // — enumerate children and adopt each as a top-level pack
+            // entry. This is the "I want this whole `~/.config/nvim/`
             // to become the `nvim` pack" ergonomic.
             //
             // Override-aware: if `--into` rerouted the destination pack
@@ -658,7 +641,7 @@ fn preflight(
             let entries = fs.read_dir(&abs)?;
             for entry in entries {
                 let child_in_pack = expand_child_in_pack(&inferred, &entry.name, override_differs);
-                // C5: same gate-dir wrap as the single-source path.
+                // Same gate-dir wrap as the single-source path.
                 let child_in_pack = if let Some(label) = only_os {
                     std::path::PathBuf::from(format!("_{label}")).join(&child_in_pack)
                 } else {
@@ -718,9 +701,9 @@ fn preflight(
 /// When `override_differs` is false (no override, or override matches
 /// inferred name), the natural-pack encoding wins: bare `<child>` for
 /// XDG (default rule routes back via the matching pack name), and
-/// `_app/<X>/<child>` for AppSupport (default rule routes through
-/// `$XDG`, not `app_support_dir`, so the prefix is mandatory even at
-/// natural pack name — see `docs/proposals/macos-paths.lex` §7.2).
+/// `_app/<X>/<child>` for AppSupport (the `_app/` prefix is mandatory
+/// even at natural pack name — see `docs/proposals/macos-paths.lex`
+/// §7.2).
 fn expand_child_in_pack(
     parent: &InferredTarget,
     child_name: &str,
@@ -739,9 +722,8 @@ fn expand_child_in_pack(
         }
         SourceRoot::AppSupport => {
             // `parent.in_pack_override` is `_app/<X>` for the dir itself.
-            // AppSupport always needs the prefix (see §7.2 note), so the
-            // override flag doesn't change behavior here. Reserved for
-            // when Pather exposes app_support_dir() per macos-paths M1.
+            // AppSupport always needs the prefix, so the override flag
+            // doesn't change behavior here.
             parent.in_pack_override.join(child_name)
         }
         SourceRoot::Home => {
@@ -837,8 +819,8 @@ fn push_plan(
 }
 
 /// Resolve a possibly-relative path to an absolute, lexically-normalized one.
-/// Mirrors the original adopt behavior: relative inputs resolve against
-/// CWD, then `..` and `.` are collapsed without touching the filesystem.
+/// Relative inputs resolve against CWD, then `..` and `.` are collapsed
+/// without touching the filesystem.
 fn absolutize(raw: &Path) -> Result<PathBuf> {
     let abs = if raw.is_absolute() {
         raw.to_path_buf()
@@ -904,7 +886,6 @@ fn copy_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Result<()> {
                 return Err(e);
             }
         } else {
-            // No existing destination: copy directly.
             copy_tree(&plan.source, &plan.pack_dest, fs)?;
         }
     }
@@ -1036,7 +1017,6 @@ fn swap_file_atomic(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> 
     let tmp = temp_sibling(source, "tmp");
     fs.symlink(pack_dest, &tmp)?;
     if let Err(e) = fs.rename(&tmp, source) {
-        // Clean up temp link before returning.
         let _ = fs.remove_file(&tmp);
         return Err(e);
     }
@@ -1050,12 +1030,10 @@ fn swap_dir(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
     fs.rename(source, &backup)?;
     match fs.symlink(pack_dest, source) {
         Ok(()) => {
-            // Best-effort cleanup of the backup directory.
             let _ = fs.remove_dir_all(&backup);
             Ok(())
         }
         Err(e) => {
-            // Restore original on failure.
             let _ = fs.rename(&backup, source);
             Err(e)
         }

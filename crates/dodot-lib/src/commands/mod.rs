@@ -185,7 +185,6 @@ pub struct DisplayNote {
 /// One claimant of a cross-pack conflict, formatted for display.
 #[derive(Debug, Clone, Serialize)]
 pub struct DisplayClaimant {
-    /// Pack name.
     pub pack: String,
     /// Short, pack-relative source description (e.g. `git/env.sh`).
     pub source: String,
@@ -251,7 +250,6 @@ fn pack_relative_source(source: &std::path::Path, pack: &str) -> String {
         let rel = &s[idx + 1..];
         return rel.to_string();
     }
-    // Fallback: pack/filename
     let fname = source
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())

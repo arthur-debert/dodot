@@ -130,12 +130,8 @@ impl SecretRegistry {
     /// [`Self::resolve`] and then [`Self::cache_put`] to populate
     /// the cache for future calls.
     ///
-    /// Returns `Arc<SecretString>` so the cached bytes stay zeroize-
-    /// on-drop — callers go through `SecretString::expose` at the
-    /// substitution boundary, never an unsealed `String` copy in
-    /// the cache itself. Cloning the Arc is a cheap pointer bump;
-    /// the inner buffer is dropped (and zeroized) when the last
-    /// holder is gone.
+    /// Cloning the returned `Arc` is a cheap pointer bump; the inner
+    /// buffer is dropped (and zeroized) when the last holder is gone.
     ///
     /// Splitting cache access from resolution lets the caller
     /// validate values (multi-line refusal, UTF-8) with rich error

@@ -1,7 +1,7 @@
 //! `fill` command — add placeholder files to an existing pack.
 //!
 //! Creates template files for each configured handler pattern so the
-//! user has a starting point. Files that already exist are skipped.
+//! user has a starting point.
 
 use serde::Serialize;
 
@@ -75,8 +75,6 @@ echo "Installing PACK_NAME..."
 /// Skips files that already exist. Replaces `PACK_NAME` in templates
 /// with the actual pack name.
 pub fn fill(pack_name: &str, ctx: &ExecutionContext) -> Result<FillResult> {
-    // Resolve the user's input (display or raw on-disk name) to the
-    // actual directory.
     let pack_dir = orchestration::resolve_pack_dir_name(pack_name, ctx)?;
     let pack_path = ctx.paths.pack_path(&pack_dir);
 
@@ -104,7 +102,6 @@ pub fn fill(pack_name: &str, ctx: &ExecutionContext) -> Result<FillResult> {
         let content = template.content.replace("PACK_NAME", display);
         ctx.fs.write_file(&file_path, content.as_bytes())?;
 
-        // Make install.sh executable
         if template.filename.ends_with(".sh") {
             ctx.fs.set_permissions(&file_path, 0o755)?;
         }

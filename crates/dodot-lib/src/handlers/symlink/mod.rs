@@ -1,4 +1,4 @@
-//! Symlink handler — the most complex handler.
+//! Symlink handler.
 //!
 //! Creates double-link chains from source files to user-visible locations.
 //! Target resolution priority (highest first):
@@ -85,7 +85,6 @@ impl Handler for SymlinkHandler {
         for m in matches {
             let rel_str = m.relative_path.to_string_lossy();
 
-            // Check protected paths
             if is_protected(&rel_str, &config.protected_paths) {
                 continue;
             }
@@ -144,7 +143,7 @@ impl Handler for SymlinkHandler {
                 ));
             }
         }
-        let _ = paths; // reserved for future per-warning path enrichment
+        let _ = paths; // unused here; supplied by the trait signature
         out
     }
 
@@ -158,11 +157,11 @@ impl Handler for SymlinkHandler {
 
         // The trait doesn't carry a `Pather`, so we can't compute the
         // resolved deploy path here. Producing a hand-rolled path string
-        // would re-implement (and inevitably drift from) `resolve_target`
-        // — the very bug-bomb #48's centralization is meant to prevent.
-        // Use a path-free message in the style of `path` and `shell`
-        // handlers; callers that need the deploy path call
-        // `resolve_target` directly via the `status::status()` flow.
+        // would re-implement (and inevitably drift from)
+        // `resolve_target`, which is deliberately the single place
+        // routing is decided. Use a path-free message in the style of
+        // `path` and `shell` handlers; callers that need the deploy path
+        // call `resolve_target` directly via the `status::status()` flow.
         Ok(HandlerStatus {
             file: file.to_string_lossy().into_owned(),
             handler: HANDLER_SYMLINK.into(),
@@ -220,7 +219,6 @@ fn dir_intents(
         }]);
     }
 
-    // Per-file mode: recurse the directory and emit one intent per file.
     let mut intents = Vec::new();
     collect_per_file_intents(m, &m.absolute_path, config, paths, fs, &mut intents)?;
     Ok(intents)
@@ -258,9 +256,8 @@ fn collect_per_file_intents(
             continue;
         }
         check_routing_conflict(&m.pack, &rel_str, config)?;
-        // Use the full Resolution channel so `_lib/` on non-macOS is
-        // skipped (no Link intent produced); `warnings_for_matches`
-        // surfaces the user-visible warning out-of-band.
+        // Go through the full `Resolution` channel so a `Skip` drops the
+        // entry instead of producing a Link intent.
         match resolve_target_full(&m.pack, &rel_str, config, paths) {
             Resolution::Path(user_path) => out.push(HandlerIntent::Link {
                 pack: m.pack.clone(),
@@ -443,17 +440,13 @@ pub(crate) fn resolve_target_full(
     // Priority 0: Custom target override from [symlink.targets]
     if let Some(target) = config.targets.get(rel_path) {
         if target.starts_with('/') {
-            // Absolute path — use as-is
             return Resolution::Path(PathBuf::from(target));
         }
-        // Relative path — resolve from XDG_CONFIG_HOME
+        // A relative override resolves from XDG_CONFIG_HOME.
         return Resolution::Path(xdg_config.join(target));
     }
 
-    // Priority 1: file-level prefixes (per-file opt-in, top-level only).
-    // Each strips the prefix and routes the remainder under a fixed
-    // root, skipping pack namespacing — parallel to the directory
-    // prefixes at Priority 2.
+    // Priority 1: file-level prefixes (top-level files only).
     if let Some((kind, rest)) = strip_file_prefix(rel_path) {
         return match kind {
             FilePrefix::Home => Resolution::Path(home.join(format!(".{rest}"))),
@@ -471,11 +464,8 @@ pub(crate) fn resolve_target_full(
         };
     }
 
-    // Priority 2: Explicit directory-prefix escape hatches.
-    // _home/<rest> → $HOME/.<rest> (raw, no pack namespace)
-    // _xdg/<rest>  → $XDG_CONFIG_HOME/<rest> (raw, no pack namespace)
-    // _app/<rest>  → <app_support_dir>/<rest> (raw, no pack namespace)
-    // _lib/<rest>  → $HOME/Library/<rest> (macOS only; warn elsewhere)
+    // Priority 2: directory-prefix escape hatches. Each strips its
+    // prefix and routes the remainder raw, with no pack namespace.
     if let Some(stripped) = rel_path.strip_prefix("_home/") {
         let parts: Vec<&str> = stripped.split('/').collect();
         if let Some(first) = parts.first() {
@@ -538,8 +528,7 @@ pub(crate) fn resolve_target_full(
 
     // Priority 4: force_app — curated GUI-app folders that route to
     // `<app_support_dir>/<first-segment>/<rest>` without a `_app/`
-    // prefix. Mirrors `force_home` semantics: first segment compared
-    // case-sensitively (Library folder names *are* case-sensitive).
+    // prefix.
     if is_force_app(rel_path, &config.force_app) {
         return Resolution::Path(app_support.join(rel_path));
     }
@@ -556,15 +545,9 @@ pub(crate) fn resolve_target_full(
     }
 
     // Priority 6: Default — $XDG_CONFIG_HOME/<pack>/<rel_path>
-    //
-    // The pack name namespaces every entry by default so common modern
-    // tools (nvim, helix, ghostty, …) work out of the box without
-    // requiring `pack/program/` doubled paths. The escape hatches above
-    // cover legacy `$HOME` tools and any user-specified overrides.
     Resolution::Path(xdg_config.join(pack).join(rel_path))
 }
 
-/// Check if a path matches any force_home entry.
 fn is_force_home(rel_path: &str, force_home: &[String]) -> bool {
     let first_segment = rel_path.split('/').next().unwrap_or(rel_path);
     let without_dot = first_segment.strip_prefix('.').unwrap_or(first_segment);
@@ -586,7 +569,6 @@ fn is_force_app(rel_path: &str, force_app: &[String]) -> bool {
     force_app.iter().any(|entry| entry == first_segment)
 }
 
-/// Check if a path is in the protected paths list.
 fn is_protected(rel_path: &str, protected_paths: &[String]) -> bool {
     let normalized = rel_path.strip_prefix("./").unwrap_or(rel_path);
     let with_dot = if !normalized.starts_with('.') {
@@ -596,11 +578,10 @@ fn is_protected(rel_path: &str, protected_paths: &[String]) -> bool {
     };
 
     for protected in protected_paths {
-        // Exact match
         if protected == normalized || protected == &with_dot {
             return true;
         }
-        // Parent directory match
+        // A protected directory protects everything under it.
         if normalized.starts_with(&format!("{protected}/"))
             || with_dot.starts_with(&format!("{protected}/"))
         {

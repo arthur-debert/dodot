@@ -71,7 +71,6 @@ fn main() {
         }
     }
 
-    // Initialize logging based on CLI flags
     let verbosity = if matches.get_flag("debug") {
         logging::Verbosity::Debug
     } else if matches.get_flag("verbose") {
@@ -86,8 +85,8 @@ fn main() {
 
     // Passthrough: config (clapfig handles its own output)
     if let Some(("config", sub_matches)) = matches.subcommand() {
-        // If no config subcommand given, show config help instead of
-        // falling through to config list (#20)
+        // With no config subcommand, show config help instead of
+        // falling through to config list.
         if sub_matches.subcommand().is_none() {
             let cmd = build_clap_command();
             let config_cmd = cmd
@@ -143,28 +142,16 @@ fn main() {
             println!("{output}");
             // Post-up nudges. Both fire only after a successful `up`
             // and are soft (failures land in the debug log, never
-            // stderr).
-            //
-            // - `maybe_prompt_install_ladder`: single Y/n covering
-            //   the pre-commit hook + plist filter + template filter
-            //   (whichever apply). Replaces the earlier three
-            //   sequential prompts. See magic.lex §"What This Costs
-            //   the User" and #112.
-            //
-            // - `maybe_prompt_invalidate_cfprefsd` (macOS only):
-            //   fires when `up` detected a plist change relative to
-            //   the previous run. Offers `killall cfprefsd` so
-            //   running apps re-read the new values. See plists.lex
-            //   §6.4 and #109.
+            // stderr); each handler's docstring covers what it offers
+            // and when it applies.
             if subcommand.as_deref() == Some("up") {
                 handlers::maybe_prompt_install_ladder();
                 handlers::maybe_prompt_invalidate_cfprefsd();
             }
             // `dodot transform check` may have set a non-zero exit code
-            // via PENDING_EXIT_CODE: the report still rendered above,
-            // but findings are present and the pre-commit hook (R4) is
-            // counting on the process to exit 1. Read after print so
-            // the user sees the report even when we're about to exit.
+            // via PENDING_EXIT_CODE; the pre-commit hook counts on the
+            // process exiting 1. Read after print so the user still
+            // sees the rendered report when we're about to exit.
             let pending = handlers::PENDING_EXIT_CODE.load(std::sync::atomic::Ordering::Relaxed);
             if pending != 0 {
                 std::process::exit(pending);
@@ -172,7 +159,6 @@ fn main() {
         }
         standout::cli::RunResult::Silent => {}
         standout::cli::RunResult::NoMatch(_) => {
-            // No subcommand given — show help
             let _ = build_clap_command().print_help();
             println!();
         }
@@ -183,13 +169,11 @@ fn main() {
             );
             std::process::exit(1);
         }
-        // Handler / hook / output-write errors. standout 7.6.2's
-        // `RunResult::Error` carries the formatted error string; we
-        // print to stderr and exit non-zero so scripts piping with `&&`
-        // and CI invocations see failure correctly. Pre-7.6.2 these
-        // were misclassified as `Handled`, silently exiting 0 — fixes
-        // every standout-dispatched subcommand at once
-        // (status, up, down, list, init, fill, adopt, addignore, probe …).
+        // Handler / hook / output-write errors. standout's
+        // `RunResult::Error` carries the formatted error string; print
+        // it to stderr and exit non-zero so scripts piping with `&&`
+        // and CI invocations see the failure. Needs standout >= 7.6.2 —
+        // earlier versions reported these as `Handled` and exited 0.
         standout::cli::RunResult::Error(msg) => {
             eprintln!("{msg}");
             std::process::exit(1);

@@ -310,7 +310,7 @@ pub struct PreprocessorGpgSection {
 pub struct ProfilingSection {
     /// Whether the generated `dodot-init.sh` carries the timing wrapper
     /// around each `source` and PATH line. When false, the init script
-    /// is byte-identical to the pre-Phase-2 form. When true, bash 5+ /
+    /// carries no timing instrumentation at all. When true, bash 5+ /
     /// zsh sessions emit one TSV per shell startup under
     /// `<data_dir>/probes/shell-init/`; older shells fall through to
     /// the no-op path even with the wrapper present.
@@ -612,7 +612,7 @@ impl DodotConfig {
 /// Generate rules from the mappings section.
 ///
 /// This produces the default rule set that maps filename patterns to
-/// handlers, matching the Go implementation's `GenerateRulesFromMapping`.
+/// handlers.
 pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
     use std::collections::HashMap;
 
@@ -652,7 +652,6 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
         }
     }
 
-    // Shell handler
     for pattern in &mappings.shell {
         if !pattern.is_empty() {
             rules.push(Rule {
@@ -665,7 +664,6 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
         }
     }
 
-    // Homebrew handler
     if !mappings.homebrew.is_empty() {
         rules.push(Rule {
             pattern: mappings.homebrew.clone(),

@@ -136,8 +136,6 @@ fn read_tar_entry<R: std::io::Read>(
     let is_regular = header_entry_type.is_file();
     if !is_dir && !is_regular {
         // Symlinks, hardlinks, fifos, char/block devices, sparse, etc.
-        // Reject explicitly so the caller can surface a clear error
-        // rather than silently materialising an empty file.
         return Err(ArchiveError::UnsafePath(format!(
             "unsupported tar entry type {:?} at {}",
             header_entry_type,
@@ -234,8 +232,6 @@ fn validate_safe_archive_path(raw: &std::path::Path) -> Result<Option<PathBuf>, 
     for component in raw.components() {
         match component {
             Component::Normal(n) => cleaned.push(n),
-            // Skip pure `./` segments rather than fail (tar archives
-            // produced by `tar` itself frequently start with `./`).
             Component::CurDir => {}
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
                 return Err(ArchiveError::UnsafePath(raw.display().to_string()));

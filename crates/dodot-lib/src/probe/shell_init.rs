@@ -103,7 +103,6 @@ pub fn read_latest_profile(fs: &dyn Fs, paths: &dyn Pather) -> Result<Option<Pro
 
 /// Read up to `limit` most recent profiles, newest first.
 ///
-/// Profiles are returned in reverse chronological order (newest first).
 /// The cap exists because callers know how much they need — `--runs 5`
 /// asks for five — and the directory may have hundreds of files.
 ///
@@ -205,7 +204,6 @@ pub fn parse_errors_log(content: &str) -> Vec<ProfileErrorRecord> {
     for raw_line in content.lines() {
         let line = raw_line.trim_end_matches('\r');
         if let Some(rest) = line.strip_prefix("@@\t") {
-            // New record header. Flush any in-progress record first.
             flush(&mut current, &mut out);
             let mut parts = rest.splitn(2, '\t');
             let Some(target) = parts.next() else { continue };
@@ -255,7 +253,7 @@ pub fn parse_profile(filename: &str, content: &str) -> Profile {
                     "shell" => shell = val.to_string(),
                     "start_t" => start_t = val.parse::<f64>().ok(),
                     "end_t" => end_t = val.parse::<f64>().ok(),
-                    _ => {} // unknown header — ignore
+                    _ => {}
                 }
             }
             continue;
@@ -445,7 +443,6 @@ pub struct AggregatedView {
 pub fn aggregate_profiles(profiles: &[Profile]) -> AggregatedView {
     use std::collections::BTreeMap;
 
-    // Bucket durations by (pack, handler, target).
     let mut buckets: BTreeMap<(String, String, String), Vec<u64>> = BTreeMap::new();
     for p in profiles {
         for e in &p.entries {

@@ -153,11 +153,9 @@ pub fn lookup(path: &str) -> &'static str {
     {
         return text;
     }
-    // Try shorter prefixes
     if let Some((parent, _)) = path.rsplit_once('.') {
         return lookup(parent);
     }
-    // Fall back to the top-level help
     HELP_TEXTS
         .iter()
         .find_map(|(k, v)| k.is_empty().then_some(*v))

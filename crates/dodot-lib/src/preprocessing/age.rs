@@ -43,8 +43,7 @@ use crate::{DodotError, Result};
 /// Holds the identity path resolved at construction so every
 /// `expand()` call uses the same identity file (no re-reading of
 /// env vars per file). The path is **not** validated to exist at
-/// construction; `age` validates at decrypt time and emits a
-/// diagnostic we surface verbatim if the file is missing.
+/// construction; `age` reports a missing identity at decrypt time.
 pub struct AgePreprocessor {
     runner: Arc<dyn CommandRunner>,
     identity: PathBuf,

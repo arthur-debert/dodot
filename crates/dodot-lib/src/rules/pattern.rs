@@ -41,8 +41,6 @@ pub(super) fn compile_rules(rules: &[Rule]) -> Vec<CompiledRule> {
             let raw_pattern = rule.pattern.clone();
             let case_insensitive = rule.case_insensitive;
 
-            // For case-insensitive rules, lowercase the pattern at
-            // compile time; the matcher lowercases the filename to mirror.
             let normalized = if case_insensitive {
                 raw_pattern.to_lowercase()
             } else {
@@ -50,14 +48,12 @@ pub(super) fn compile_rules(rules: &[Rule]) -> Vec<CompiledRule> {
             };
 
             let pattern = if normalized.ends_with('/') {
-                // Directory pattern
                 let dir_name = normalized.trim_end_matches('/').to_string();
                 CompiledPattern::Directory(dir_name)
             } else if normalized.contains('*')
                 || normalized.contains('?')
                 || normalized.contains('[')
             {
-                // Glob pattern
                 match glob::Pattern::new(&normalized) {
                     Ok(p) => CompiledPattern::Glob(p),
                     Err(_) => CompiledPattern::Exact(normalized),

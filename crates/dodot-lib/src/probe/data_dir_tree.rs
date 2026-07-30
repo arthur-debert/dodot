@@ -107,7 +107,6 @@ fn walk(fs: &dyn Fs, path: &Path, display_name: &str, remaining_depth: usize) ->
         });
     }
 
-    // Directory.
     if remaining_depth == 0 {
         // Report how many entries are hidden so the user knows the
         // subtree wasn't empty.

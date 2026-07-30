@@ -24,7 +24,6 @@ pub fn init(pack_name: &str, ctx: &ExecutionContext) -> Result<InitResult> {
 
     ctx.fs.mkdir_all(&pack_path)?;
 
-    // Write default .dodot.toml
     let config_content = format!(
         r#"# dodot configuration for {pack_name}
 # See: dodot config gen --help

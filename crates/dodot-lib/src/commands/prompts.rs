@@ -62,7 +62,7 @@ pub fn list(ctx: &ExecutionContext) -> Result<PromptsListResult> {
 
     // Surface any unknown keys lurking in the registry so they can be
     // reset. Catalog absence is not an error — older dodot versions
-    // may have written them. One pass over the dismissed map; cheap.
+    // may have written them.
     for (key, record) in registry.dismissed() {
         if catalog::lookup(key).is_none() {
             rows.push(PromptRow {

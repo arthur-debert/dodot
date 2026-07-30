@@ -50,13 +50,11 @@ pub enum ConflictKind {
 /// A cross-pack conflict: multiple packs claim the same effective target.
 #[derive(Debug, Clone)]
 pub struct Conflict {
-    /// The kind of collision.
     pub kind: ConflictKind,
     /// For [`ConflictKind::SymlinkTarget`]: the resolved filesystem path.
     /// For [`ConflictKind::PathExecutable`]: a sentinel path
     /// `<path-executable>/<name>` — read `.file_name()` for the bare name.
     pub target: PathBuf,
-    /// Every pack that claims this target.
     pub claimants: Vec<Claimant>,
 }
 
@@ -151,7 +149,6 @@ pub fn detect_cross_pack_conflicts(
     let mut conflicts: Vec<Conflict> = targets
         .into_iter()
         .filter(|(_, claimants)| {
-            // Only flag when at least two *different* packs claim the target.
             let first = &claimants[0].pack;
             claimants.len() > 1 && claimants.iter().any(|c| c.pack != *first)
         })

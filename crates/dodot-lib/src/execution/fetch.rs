@@ -321,7 +321,6 @@ impl<'a> Executor<'a> {
         // needs to handle "remove existing dodot symlink and re-create".
         self.create_external_user_link(&datastore_path, user_path)?;
 
-        // Record sentinel so subsequent up's are no-ops.
         self.write_sentinel(pack, handler, &sentinel)?;
 
         let create_link = Operation::CreateUserLink {
@@ -449,8 +448,7 @@ impl<'a> Executor<'a> {
             }
         };
 
-        // Now safe to wipe the previous extraction. We only get here
-        // once we've already parsed the new archive successfully.
+        // Now safe to wipe the previous extraction.
         if self.fs.exists(&entry_root) {
             // For archive-file we wrote a single file; for archive we
             // wrote a directory tree. Handle both.
@@ -505,7 +503,6 @@ impl<'a> Executor<'a> {
             }
         };
 
-        // User-visible symlink.
         self.create_external_user_link(&symlink_target, user_path)?;
         self.write_sentinel(pack, handler, &sentinel)?;
 
@@ -550,19 +547,8 @@ impl<'a> Executor<'a> {
 
     /// Fetch one `type = "git-repo"` external.
     ///
-    /// Freshness model:
-    /// - **Unpinned** (`git_ref = None`, `commit = None`):
-    ///   `git ls-remote HEAD`; refresh when upstream moves.
-    /// - **`ref = "v1"`**: `git ls-remote v1`; refresh when that
-    ///   reference's SHA changes (rare for tags, possible for
-    ///   branch refs).
-    /// - **`commit = "<sha>"`**: no ls-remote at all; check the
-    ///   local clone against the pinned SHA and refresh only if
-    ///   they differ (which happens when the user edits the TOML).
-    ///
-    /// `subpath` triggers sparse-checkout on the initial clone; the
-    /// user-visible symlink then targets that subpath inside the
-    /// clone.
+    /// Freshness and `subpath` semantics follow the pin rules
+    /// documented on [`FetchSpec::GitRepo`].
     ///
     /// Network failures (ls-remote, fetch, even initial clone) are
     /// soft: the cached clone (if any) stays put and the result

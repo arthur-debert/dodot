@@ -10,7 +10,7 @@
 //! a thorough check involves hashing every deployed file, which can
 //! be expensive for big trees (think `oh-my-zsh`).
 //!
-//! Per-type strategy (PR 5):
+//! Per-type strategy:
 //! - **file** — compute sha256 of the datastore copy and compare
 //!   against the entry's configured sha256. Fast.
 //! - **git-repo** — `git -C <clone> status --porcelain`. Any output
@@ -132,10 +132,7 @@ fn check_file_drift(
     target: &str,
     fs: &dyn Fs,
 ) -> DriftReport {
-    // The file lives at `<entry-dir>/<basename-of-target>`. Resolve
-    // the exact path the executor would have written rather than
-    // scanning the dir (which can hold stale siblings and produce a
-    // nondeterministic answer).
+    // The file lives at `<entry-dir>/<basename-of-target>`.
     let basename = target_basename(target);
     let file_path: PathBuf = datastore_entry_dir.join(&basename);
     if !fs.exists(&file_path) {

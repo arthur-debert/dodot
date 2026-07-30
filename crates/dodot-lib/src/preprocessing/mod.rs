@@ -47,16 +47,15 @@ pub enum TransformType {
 /// Lines are 0-indexed and `start..end` is half-open. A single-line
 /// secret occupies line `start` and is encoded as `end == start + 1`
 /// (`start == end` would be an empty range and is never produced).
-/// For Phase S1 every entry is single-line: multi-line secrets are
-/// refused at resolution time per `secrets.lex` §3.4. The `end` field
-/// is preserved in the schema for forward-compatibility but the
-/// renderer never produces `end > start + 1`.
+/// Every entry is single-line: multi-line secrets are refused at
+/// resolution time per `secrets.lex` §3.4. The `end` field exists in
+/// the schema for forward-compatibility, but the renderer never
+/// produces `end > start + 1`.
 ///
 /// Persisted to disk under `<baseline>.secret.json` (see
 /// `secrets.lex` §3.3); consumed by the dry-run preview rendering
 /// (§7.4) to mask resolved values, and by the burgertocow mask
-/// integration (issue arthur-debert/burgertocow#13) to skip those
-/// lines from the reverse diff.
+/// integration to skip those lines from the reverse diff.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SecretLineRange {
     /// First line, 0-indexed, inclusive.
@@ -71,10 +70,6 @@ pub struct SecretLineRange {
 }
 
 /// A single file produced by a preprocessor's expansion.
-///
-/// Construct ad-hoc via the struct literal; tests commonly use
-/// `ExpandedFile { relative_path, content, ..Default::default() }` to
-/// fill in the optional cache-related fields.
 #[derive(Debug, Clone, Default)]
 pub struct ExpandedFile {
     /// Path relative to the expansion output (usually just the filename).
@@ -111,8 +106,8 @@ pub struct ExpandedFile {
     pub secret_line_ranges: Vec<SecretLineRange>,
     /// Unix mode the rendered datastore file should be chmod'd to
     /// after the pipeline writes it. `None` (the default) leaves
-    /// the file at whatever umask-derived mode `write_file` produced
-    /// — the pre-S3 behavior for templates / unarchive output.
+    /// the file at whatever umask-derived mode `write_file` produced,
+    /// as template and unarchive output does.
     /// Whole-file secret preprocessors (`age`, `gpg`) set this to
     /// `Some(0o600)` to enforce `secrets.lex` §4.3: rendered
     /// secrets land 0600 regardless of the source file's mode.

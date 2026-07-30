@@ -2,8 +2,8 @@
 //!
 //! A pack opts into externally-sourced content by placing an
 //! `externals.toml` at its root. Each `[entry]` block declares a single
-//! resource (a remote file today, a git repo in a later PR) and the
-//! target path under `$HOME` where it should appear.
+//! resource (a remote file, a git repo, or an archive) and the target
+//! path under `$HOME` where it should appear.
 //!
 //! ```toml
 //! [shared-aliases]

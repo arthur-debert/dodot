@@ -15,12 +15,12 @@
 //! sha256 = "..."
 //! ```
 //!
-//! `file` and `git-repo` are implemented; any other `type` value
-//! parses to [`FetchSpec::Unsupported`]. The original type string is
-//! not retained — `#[serde(other)]` does not carry it over — so the
+//! Any unrecognized `type` value parses to
+//! [`FetchSpec::Unsupported`]. The original type string is not
+//! retained — `#[serde(other)]` does not carry it over — so the
 //! handler's diagnostic surfaces the entry name and a generic
 //! "unsupported type" message rather than echoing back what the user
-//! wrote. Subsequent PRs add `archive` / `archive-file`.
+//! wrote.
 
 use std::collections::BTreeMap;
 
@@ -54,9 +54,6 @@ pub struct ExternalEntry {
 /// The fetch recipe for one external entry.
 ///
 /// Tagged externally by the `type` field per TOML convention.
-/// `archive` and `archive-file` arrive in a later PR — until then,
-/// those parse into [`FetchSpec::Unsupported`] so the handler can
-/// surface "not yet implemented" without choking the whole pack.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum FetchSpec {

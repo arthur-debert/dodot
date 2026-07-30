@@ -36,8 +36,7 @@ use crate::handlers::{ExecutionPhase, HANDLER_INSTALL};
 /// as `<interpreter> -- <abs path>` (the `--` end-of-flags separator
 /// guards against scripts whose names start with a dash). No
 /// pre-flight content validation — a script's syntax errors surface
-/// at apply time via the interpreter, the same way `brew bundle`
-/// surfaces Brewfile errors. See the
+/// at apply time via the interpreter. See the
 /// [`RunOnceCommand`](crate::handlers::run_once::RunOnceCommand)
 /// lifecycle invariant.
 pub struct InstallCommand;

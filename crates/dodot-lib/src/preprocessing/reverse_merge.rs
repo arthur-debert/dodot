@@ -25,9 +25,8 @@
 //! secret-provider auth prompts in the variable context — auth fatigue
 //! that the magic.lex design specifically rules out. We rehydrate the
 //! cached tracked string via
-//! [`burgertocow::TrackedRender::from_tracked_string`] (added in
-//! burgertocow 0.3) and feed it into `generate_diff_with_markers`
-//! directly.
+//! [`burgertocow::TrackedRender::from_tracked_string`] and feed it
+//! into `generate_diff_with_markers` directly.
 
 use std::ops::Range;
 
@@ -80,11 +79,9 @@ impl ReverseMergeOutcome {
 /// bytes — so a rotated `{{ secret(...) }}` value (or a hand-edit
 /// to a secret line) does not propagate into a template-space diff
 /// that would replace the `secret(...)` expression with the literal
-/// rotated value. See `secrets.lex` §3.3 / burgertocow#13.
+/// rotated value. See `secrets.lex` §3.3.
 ///
-/// The legacy three-arg shape is preserved as
-/// [`reverse_merge_no_mask`] for callers that don't have a sidecar
-/// loaded yet (every existing call site keeps the same behavior).
+/// Callers without a sidecar loaded use [`reverse_merge_no_mask`].
 pub fn reverse_merge(
     template_src: &str,
     cached_tracked: &str,
@@ -109,9 +106,7 @@ pub fn reverse_merge(
     let mid = format!("\n{MARKER_MID}\n");
     let end = format!("\n{MARKER_END}\n");
     let markers = ConflictMarkers::new(&start, &mid, &end);
-    // Convert `SecretLineRange { start, end, .. }` to the
-    // `Range<usize>` shape `DiffOptions` consumes. Bound to a local
-    // `Vec` because `with_mask` takes a borrowed slice.
+    // Bound to a local `Vec` because `with_mask` takes a borrowed slice.
     let mask: Vec<Range<usize>> = secret_ranges.iter().map(|r| r.start..r.end).collect();
     let opts = DiffOptions::new(&markers).with_mask(&mask);
     let diff = generate_diff_with_markers_opts(template_src, &tracked, deployed, &opts);
@@ -161,8 +156,7 @@ pub fn reverse_merge(
 /// Convenience for callers that haven't loaded a secrets sidecar
 /// for this file (or are computing reverse-merge for a file that
 /// has no `secret(...)` calls). Equivalent to
-/// [`reverse_merge`] with an empty mask — burgertocow then behaves
-/// byte-identically to the pre-0.4 single-mask-less entry point.
+/// [`reverse_merge`] with an empty mask.
 pub fn reverse_merge_no_mask(
     template_src: &str,
     cached_tracked: &str,

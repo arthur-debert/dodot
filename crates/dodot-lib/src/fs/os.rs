@@ -74,9 +74,6 @@ impl Fs for OsFs {
             .mode(mode)
             .open(path)
             .map_err(|e| fs_err(path, e))?;
-        // Tighten the mode regardless of whether the file already
-        // existed, so the plaintext never sits at a permissive
-        // mode while the bytes are written.
         let perms = fs::Permissions::from_mode(mode);
         fs::set_permissions(path, perms).map_err(|e| fs_err(path, e))?;
         file.write_all(contents).map_err(|e| fs_err(path, e))?;

@@ -1,9 +1,8 @@
 //! Shell integration — generates `dodot-init.sh`.
 //!
-//! Unlike the Go implementation which ships a ~400-line shell script
-//! that re-discovers the datastore layout at runtime, we generate a
-//! flat, declarative script from the actual datastore state. This
-//! means:
+//! The script is generated flat and declarative from the actual
+//! datastore state, rather than re-discovering the datastore layout at
+//! runtime in shell. This means:
 //!
 //! - Zero logic duplication between Rust and shell
 //! - The script is just `source` and `PATH=` lines — trivially fast
@@ -16,9 +15,6 @@
 //! [ -f ~/.local/share/dodot/shell/dodot-init.sh ] && . ~/.local/share/dodot/shell/dodot-init.sh
 //! ```
 //!
-//! In the future, this can also be exposed as `dodot init-sh` or
-//! a minimal standalone binary for even faster shell startup.
-//!
 //! # Profiling wrapper (Phase 2 of profiling.lex)
 //!
 //! When the caller passes `profiling_enabled = true`, the generator
@@ -29,7 +25,7 @@
 //! without the variable fall through to the unchanged source/PATH
 //! path with a single `[ "$_dodot_prof" = "1" ]` test of overhead.
 //! When `profiling_enabled = false`, the generated script is
-//! byte-identical to the pre-Phase-2 form.
+//! byte-identical to the unwrapped form.
 //!
 //! Sources are *not* wrapped in a shell function: in zsh, `source`
 //! inside a function changes scoping for plain variable assignments
@@ -81,7 +77,6 @@ pub fn generate_init_script(
     writeln!(script, "# Regenerated on every `dodot up` / `dodot down`.").unwrap();
     writeln!(script).unwrap();
 
-    // Discover all packs with state
     let packs_dir = paths.data_dir().join("packs");
     if !fs.exists(&packs_dir) {
         append_empty_notice(&mut script);
@@ -115,7 +110,6 @@ pub fn generate_init_script(
                     if !entry.is_symlink {
                         continue;
                     }
-                    // Follow the symlink to get the actual file path
                     let target = fs.readlink(&entry.path)?;
                     shell_sources.push((pack_display.clone(), target));
                 }
@@ -137,7 +131,6 @@ pub fn generate_init_script(
         }
     }
 
-    // If nothing is deployed, add an explanatory comment
     if path_additions.is_empty() && shell_sources.is_empty() {
         append_empty_notice(&mut script);
         return Ok(script);
@@ -153,7 +146,6 @@ pub fn generate_init_script(
         );
     }
 
-    // Emit PATH additions
     if !path_additions.is_empty() {
         writeln!(script, "# PATH additions").unwrap();
         for (pack, target) in &path_additions {
@@ -167,7 +159,6 @@ pub fn generate_init_script(
         writeln!(script).unwrap();
     }
 
-    // Emit shell sources
     if !shell_sources.is_empty() {
         writeln!(script, "# Shell scripts").unwrap();
         for (pack, target) in &shell_sources {
@@ -192,7 +183,6 @@ pub fn generate_init_script(
         writeln!(script).unwrap();
     }
 
-    // Profiling epilogue (close the report, scrub our state).
     if profiling_active {
         emit_profiling_epilogue(&mut script);
     }

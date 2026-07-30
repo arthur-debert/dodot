@@ -40,8 +40,8 @@ pub enum InstallHookOutcome {
 }
 
 /// Result returned by [`install_hook`]. Renders through the
-/// `transform-install-hook.jinja` template; CLI exits 0 in all three
-/// outcomes (every state is a success).
+/// `transform-install-hook.jinja` template; CLI exits 0 for every
+/// outcome (they are all successes).
 #[derive(Debug, Clone, Serialize)]
 pub struct InstallHookResult {
     pub outcome: InstallHookOutcome,
@@ -61,8 +61,10 @@ pub struct InstallHookResult {
 ///
 /// - If `<dotfiles_root>/.git/hooks/pre-commit` does not exist:
 ///   create it with `#!/bin/sh` + our guarded block, mode `0o755`.
-/// - If it exists and already contains [`HOOK_GUARD_START`]:
+/// - If it exists and already carries an up-to-date managed block:
 ///   no-op, return [`InstallHookOutcome::AlreadyInstalled`].
+/// - If it exists with a stale managed block: rewrite the block in
+///   place, leaving everything outside the guards untouched.
 /// - If it exists without our guard: append our block (preserving
 ///   existing content), ensure executable bit is set.
 ///
@@ -91,9 +93,6 @@ pub fn install_hook(ctx: &ExecutionContext) -> Result<InstallHookResult> {
     let outcome = if ctx.fs.exists(&hook_path) {
         let existing = ctx.fs.read_to_string(&hook_path)?;
         if let Some((start_byte, end_byte)) = find_managed_block(&existing) {
-            // A managed block exists. Decide whether it matches the
-            // current `block` exactly (no-op) or is stale and needs
-            // replacing.
             let current_block = &existing[start_byte..end_byte];
             if current_block == block {
                 InstallHookOutcome::AlreadyInstalled
@@ -153,23 +152,20 @@ pub fn hook_is_installed(ctx: &ExecutionContext) -> Result<bool> {
     Ok(existing.contains(HOOK_GUARD_START))
 }
 
-/// Public for `dodot transform show-hook` (future) and for the
-/// onboarding prompt in `commands::up` to surface what would be
-/// installed. Includes the guard lines so callers can grep-detect
-/// the block in arbitrary contexts.
+/// Public so the onboarding prompt in `commands::up` can surface what
+/// would be installed. Includes the guard lines so callers can
+/// grep-detect the block in arbitrary contexts.
 ///
 /// The block runs two commands:
 ///
 /// 1. `dodot refresh --quiet` — touch source mtimes for any
 ///    deployed-side edits so git's stat-cache invalidates. Without
-///    this, the clean filter (R6) wouldn't fire on the upcoming
-///    commit, and the commit could include stale template content.
+///    this, the clean filter wouldn't fire on the upcoming commit,
+///    and the commit could include stale template content.
 /// 2. `dodot transform check --strict` — run the 4-state matrix and
 ///    refuse the commit on any finding (Conflict, missing,
 ///    unresolved markers, NeedsRebaseline). `Patched` outcomes don't
-///    refuse — burgertocow's auto-merge already produced a clean
-///    unified patch and rewrote the source; the user `git add`s and
-///    commits the follow-up if they want a clean history.
+///    refuse; see `TransformCheckResult::has_findings`.
 ///
 /// Each step short-circuits with `|| exit 1`; a failure in either
 /// aborts the commit (with exit code 1 — the inner command's exit
@@ -216,7 +212,6 @@ pub(crate) const HOOK_COMMAND: &str = "dodot refresh --quiet && dodot transform 
 /// non-managed content the user has in their hook.
 fn find_managed_block(text: &str) -> Option<(usize, usize)> {
     let start = text.find(HOOK_GUARD_START)?;
-    // Find the end guard after `start`.
     let after_start = start + HOOK_GUARD_START.len();
     let end_rel = text[after_start..].find(HOOK_GUARD_END)?;
     let end_guard_start = after_start + end_rel;

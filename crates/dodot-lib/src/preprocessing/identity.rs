@@ -11,9 +11,6 @@ use crate::preprocessing::{ExpandedFile, Preprocessor, TransformType};
 use crate::Result;
 
 /// A preprocessor that passes content through unchanged.
-///
-/// Useful for testing the preprocessing pipeline without depending
-/// on any transformation engine.
 pub struct IdentityPreprocessor {
     extension: String,
 }

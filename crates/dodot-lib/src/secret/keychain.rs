@@ -94,9 +94,9 @@ impl SecretProvider for KeychainProvider {
     }
 
     fn probe(&self) -> ProbeResult {
-        // Step 1: binary on PATH? On macOS `/usr/bin/security`
-        // is part of the base system, so a missing binary is
-        // almost always "this is a non-macOS host".
+        // On macOS `/usr/bin/security` is part of the base system,
+        // so a missing binary is almost always "this is a non-macOS
+        // host".
         match self.runner.run("security", &["-h".into()]) {
             Ok(_) => {}
             Err(_) => {
@@ -112,12 +112,11 @@ impl SecretProvider for KeychainProvider {
                 };
             }
         }
-        // Step 2: keychain accessibility. We don't have a known
-        // item to look up at probe time, so we use a lightweight
-        // sanity check: `security default-keychain` returns the
-        // user's default keychain path on success and a
-        // diagnostic on failure. Doesn't unlock anything, doesn't
-        // require any pre-existing items.
+        // Keychain accessibility. We don't have a known item to look
+        // up at probe time, so we use a lightweight sanity check:
+        // `security default-keychain` returns the user's default
+        // keychain path on success and a diagnostic on failure.
+        // Doesn't unlock anything, doesn't require pre-existing items.
         match self.runner.run("security", &["default-keychain".into()]) {
             Ok(out) if out.exit_code == 0 => ProbeResult::Ok,
             Ok(_) => ProbeResult::ProbeFailed {

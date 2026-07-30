@@ -64,9 +64,6 @@ pub(super) fn flatten_tree(
         return;
     }
 
-    // Extend the prefix for children. The root contributes no prefix
-    // characters; a last-child contributes "   "; an inner child
-    // contributes "│  ".
     let child_prefix = if is_root {
         String::new()
     } else if is_last {

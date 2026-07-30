@@ -124,11 +124,8 @@ impl RunOnceCommand for NixCommand {
         )
     }
 
-    // No `validate` override — see lifecycle-invariant note on
-    // RunOnceCommand. Content-shape checks at planning time would
-    // diverge nix from install / homebrew. Malformed manifests
-    // surface at apply time via the `nix profile install` subprocess
-    // exit code and stderr, the same way a broken Brewfile does.
+    // No `validate` override — see the lifecycle-invariant note on
+    // `RunOnceCommand`.
 
     fn status_deployed(&self) -> &str {
         "nix packages installed"

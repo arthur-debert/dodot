@@ -35,14 +35,8 @@ pub use resolve::{resolve_pack_dir_name, validate_pack_names};
 
 // ── Pipeline ────────────────────────────────────────────────────
 
-/// Execute a command across all (or filtered) packs.
-///
-/// This is the single entry point for the orchestration pipeline:
-///
-/// 1. Load root config
-/// 2. Discover packs (filtering by name if specified)
-/// 3. For each pack: load merged config → execute command → collect result
-/// 4. Aggregate results
+/// Execute a command across all (or filtered) packs — the single entry
+/// point for the orchestration pipeline.
 pub fn execute(
     command: &dyn Command,
     pack_filter: Option<&[String]>,
@@ -50,14 +44,12 @@ pub fn execute(
 ) -> Result<ExecuteResult> {
     info!(command = command.name(), "starting command");
 
-    // Load root config for pack-level ignore patterns
     let root_config = ctx.config_manager.root_config()?;
     debug!(
         ignore_patterns = ?root_config.pack.ignore,
         "loaded root config"
     );
 
-    // Discover packs
     let mut all_packs = packs::discover_packs(
         ctx.fs.as_ref(),
         ctx.paths.dotfiles_root(),
@@ -69,7 +61,6 @@ pub fn execute(
         "discovered packs"
     );
 
-    // Validate and apply name filter
     if let Some(names) = pack_filter {
         let _warnings = validate_pack_names(names, ctx)?;
         // Warnings are handled by the calling command (status/up/down)
@@ -87,7 +78,6 @@ pub fn execute(
     for mut pack in all_packs {
         info!(pack = %pack.name, "processing pack");
 
-        // Load pack-specific merged config
         let pack_config = match ctx.config_manager.config_for_pack(&pack.path) {
             Ok(pack_config) => {
                 debug!(pack = %pack.name, "loaded pack config");
@@ -107,8 +97,8 @@ pub fn execute(
             }
         };
 
-        // C3: skip packs gated out by `[pack] os` on this host. Counted
-        // as successful (it's the configured behaviour, not a failure)
+        // Packs gated out by `[pack] os` on this host count as
+        // successful (it's the configured behaviour, not a failure)
         // with no operations — same shape `.dodotignore` would have if
         // it reached this loop.
         if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
@@ -191,7 +181,6 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
         info!(count = all_packs.len(), "packs after filter");
     }
 
-    // Load per-pack config
     let mut configured = Vec::with_capacity(all_packs.len());
     for mut pack in all_packs {
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;

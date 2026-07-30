@@ -68,14 +68,11 @@ pub trait Fs: Send + Sync {
     /// even briefly — closing the race window between
     /// `write_file` (lands at e.g. 0644 on a typical 022 umask)
     /// and `set_permissions` (tightens to 0600). See
-    /// `secrets.lex` §4.3 + the Phase S3 chmod-race review on
-    /// PR #130.
+    /// `secrets.lex` §4.3.
     ///
-    /// Default impl falls back to `write_file` then
-    /// `set_permissions` so existing `Fs` implementations stay
-    /// correct (semantics-preserving) without forcing an upgrade;
-    /// the production `OsFs` overrides to use `OpenOptions::mode`
-    /// for the atomic version.
+    /// The default impl is the racy `write_file` +
+    /// `set_permissions` pair; `OsFs` overrides it to apply the
+    /// mode via `OpenOptions::mode` instead.
     fn write_file_with_mode(&self, path: &Path, contents: &[u8], mode: u32) -> Result<()> {
         self.write_file(path, contents)?;
         self.set_permissions(path, mode)
@@ -122,9 +119,7 @@ pub trait Fs: Send + Sync {
     /// source-side mtimes when deciding whether to touch the source.
     ///
     /// **Default implementation panics.** Override in `Fs` impls that
-    /// need mtime support (currently `OsFs`). Provided as a default
-    /// so adding mtime operations doesn't break any existing in-tree
-    /// or downstream `Fs` impl.
+    /// need mtime support (currently `OsFs`).
     fn modified(&self, _path: &Path) -> Result<std::time::SystemTime> {
         unimplemented!("Fs::modified is only implemented by OsFs")
     }

@@ -2,7 +2,7 @@
 //!
 //! Owns [`plan_pack`] (the main planner), [`plan_pack_inner`] (the
 //! actual scan → preprocess → match-rules → group-by-handler →
-//! to_intents pipeline, ~210 LOC), the [`PackPlan`] result type,
+//! to_intents pipeline), the [`PackPlan`] result type,
 //! [`build_gate_table`] (`HostFacts`/`[gates]` merging), and the
 //! per-pack `collect_pack_intents` API plus its diagnostic helpers
 //! (`missing_target_hints`, `display_path_relative_to_home`).
@@ -105,10 +105,6 @@ pub fn plan_pack(
     plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode)
 }
 
-/// Shared implementation that takes a pre-loaded pack config. Both
-/// entrypoints load the config once and pass it through so we don't
-/// re-merge config for every pack (the ConfigManager caches by path,
-/// but passing the config explicitly makes the data flow obvious).
 /// Resolve the gate table for a pack: built-in seed plus any
 /// user-defined `[gates]` entries from config.
 fn build_gate_table(pack_config: &crate::config::DodotConfig) -> Result<GateTable> {
@@ -155,10 +151,8 @@ pub(crate) fn filter_pre_preprocess_gates(
     use crate::gates::{parse_basename_gate, BasenameGate};
     use crate::rules::GateFailure;
 
-    // Pre-compile + sort + validate `[mappings.gates]` globs via the
-    // shared helper so this path and `match_entries` can never disagree
-    // about iteration order, validation, or first-match semantics. See
-    // `gates::compile_mapping_gates`.
+    // Shared with `match_entries` — see `gates::compile_mapping_gates`
+    // for the ordering and validation contract.
     let compiled_mapping_gates = crate::gates::compile_mapping_gates(mappings_gates, pack_name)?;
 
     // Helper: build a GateFailure from a label + predicate, summarising
@@ -184,8 +178,6 @@ pub(crate) fn filter_pre_preprocess_gates(
 
     let mut out = Vec::with_capacity(entries.len());
     for entry in entries {
-        // Already-failed entries (from the directory-segment walk)
-        // pass through untouched.
         if entry.gate_failure.is_some() {
             out.push(entry);
             continue;
@@ -205,8 +197,6 @@ pub(crate) fn filter_pre_preprocess_gates(
             .find(|(pat, _)| pat.matches(&rel_str))
             .map(|(_, label)| *label);
 
-        // Conflict guard: filename gate AND `[mappings.gates]` on the
-        // same file is ambiguous — pick one.
         if let (BasenameGate::Found { .. }, Some(map_label)) = (&basename_gate, mapping_match) {
             return Err(crate::DodotError::Config(format!(
                 "gate-routing conflict in pack `{pack_name}` for `{}`: \
@@ -328,13 +318,10 @@ fn plan_pack_inner(
     let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
 
-    // Phase 1.5: Apply all gate sources (basename `._<label>` AND
-    // `[mappings.gates]` glob hits) BEFORE preprocessing. Otherwise a
-    // gate-failed `aliases._linux.sh.tmpl` (or a mapping-gated
-    // `Brewfile`) on a non-matching host still triggers template
-    // render / secret-provider / baseline-cache work for an entry the
-    // user explicitly opted out of. match_entries re-evaluates these
-    // gates so the failure also surfaces as a `gate`-handler match.
+    // Phase 1.5: Apply the remaining gate sources before preprocessing
+    // — see `filter_pre_preprocess_gates` for why they belong here.
+    // match_entries re-evaluates these gates so a failure also surfaces
+    // as a `gate`-handler match.
     let entries = filter_pre_preprocess_gates(
         entries,
         &gates,
@@ -440,7 +427,6 @@ fn plan_pack_inner(
             }
         };
 
-        // Skip code execution handlers if --no-provision
         if ctx.no_provision && handler.category() == handlers::HandlerCategory::CodeExecution {
             debug!(pack = %pack.name, handler = %handler_name, "skipping code-execution handler (--no-provision)");
             continue;
@@ -470,7 +456,7 @@ fn plan_pack_inner(
         }
     }
 
-    // Missing-target hints (M6 §8.2) — macOS only.
+    // Missing-target hints — macOS only.
     //
     // For each Link intent that lands under `app_support_dir`, check
     // whether the immediate child folder exists on disk. If not, the

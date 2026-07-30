@@ -39,9 +39,9 @@ use zeroize::Zeroize;
 /// A resolved secret value, held briefly in process memory.
 ///
 /// Construct via [`SecretString::new`]; read via [`SecretString::expose`].
-/// Zeroes its buffer on drop. Has no `Debug` / `Display` / `Serialize`
-/// implementations; printing one through any of those paths produces
-/// `<redacted>`.
+/// Zeroes its buffer on drop. `Debug` prints `<redacted>`; `Display` and
+/// `Serialize` are not implemented at all. See the module docs for what
+/// this wrapper does and does not protect against.
 pub struct SecretString {
     inner: Vec<u8>,
 }

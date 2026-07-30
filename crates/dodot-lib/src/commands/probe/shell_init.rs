@@ -199,8 +199,6 @@ fn target_matches_filter(target: &str, filter: &str) -> bool {
             .file_name()
             .is_some_and(|s| s == std::ffi::OsStr::new(filter));
     }
-    // Subpath form: must end at a path boundary so `dir/env.sh` doesn't
-    // accidentally match `otherdir/env.sh`.
     target.ends_with(&format!("/{filter}")) || target == filter
 }
 
@@ -340,7 +338,6 @@ pub fn shell_init_errors(ctx: &ExecutionContext, runs: usize) -> Result<ProbeRes
     for profile in &profiles {
         let when = format_unix_ts(parse_unix_ts_from_filename(&profile.filename));
         for entry in &profile.entries {
-            // Errors-only: skip clean runs entirely.
             if entry.exit_status == 0 {
                 continue;
             }

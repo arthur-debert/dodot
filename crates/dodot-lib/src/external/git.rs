@@ -2,10 +2,10 @@
 //!
 //! Shell-out to the user's `git` binary is the simplest design that
 //! supports shallow clones (`--depth=1 --filter=blob:none`) and
-//! sparse-tree fetch — both features the issue explicitly requires
-//! and that the pure-Rust gitoxide crates don't yet expose at a
-//! porcelain level. The dependency on a system `git` is a reasonable
-//! prerequisite for dodot users (they're managing dotfiles, after all).
+//! sparse-tree fetch — both required here, and neither exposed at a
+//! porcelain level by the pure-Rust gitoxide crates. The dependency on
+//! a system `git` is a reasonable prerequisite for dodot users (they're
+//! managing dotfiles, after all).
 //!
 //! The trait abstraction exists so tests don't have to network out to
 //! real repos. Tests use [`MockGitRunner`] which records calls and
