@@ -305,12 +305,12 @@ pub struct MockGitRunner {
 
 #[cfg(any(test, feature = "test-utils"))]
 struct MockGitInner {
-    /// Upstream SHA returned by `ls_remote_head`. None = error.
+    /// Canned SHA returned by `ls_remote`; `None` makes the mock return an error.
     pub ls_remote_sha: Option<String>,
     /// SHA recorded by the last clone / fetch+reset / used by
     /// `local_head` to answer subsequent queries.
     pub local_sha: Option<String>,
-    /// Whether ls_remote_head should fail with a transient error
+    /// Whether `ls_remote` should fail with a transient error
     /// to exercise the offline-tolerant path.
     pub ls_remote_offline: bool,
     /// Whether fetch_and_reset should fail.
@@ -356,7 +356,7 @@ impl MockGitRunner {
         g.ls_remote_sha = Some(sha.into());
     }
 
-    /// Force `ls_remote_head` to fail transiently (network down).
+    /// Force `ls_remote` to fail transiently (network down).
     pub fn set_ls_remote_offline(&self, offline: bool) {
         let mut g = self.inner.lock().unwrap();
         g.ls_remote_offline = offline;

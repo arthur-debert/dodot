@@ -1,3 +1,5 @@
+# Main-branch deployment; pull requests build through docs-check.yml without deploying.
+
 name: Docs
 
 on:

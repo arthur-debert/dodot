@@ -674,7 +674,7 @@ fn preflight(
 
     // Permission pre-flight. We do this after planning so every error up to
     // this point gives precise guidance; perms check catches late issues.
-    let _ = pack_name; // reserved for future per-pack perm messages
+    let _ = pack_name;
     check_writable(fs, pack_path)?;
     for plan in &plans {
         // Pass the plan's `is_dir` (already resolved with `--no-follow`

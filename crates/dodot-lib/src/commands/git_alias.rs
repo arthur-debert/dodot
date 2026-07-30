@@ -310,10 +310,8 @@ pub fn resolve_shell(explicit: Option<&str>) -> Result<Shell> {
     })
 }
 
-/// Cheap "is this rc file already wrapping git via our alias?"
-/// check, used by the future post-`up` prompt. Reads the rc file
-/// and looks for the guard. Doesn't error out if the file is
-/// missing — that's a normal "not installed" state.
+/// Checks whether this shell's rc file already wraps git via dodot's alias.
+/// A missing file is the normal "not installed" state.
 pub fn is_installed(ctx: &ExecutionContext, shell: Shell) -> bool {
     let rc_path = ctx.paths.home_dir().join(shell.rc_relative_path());
     if !ctx.fs.exists(&rc_path) {

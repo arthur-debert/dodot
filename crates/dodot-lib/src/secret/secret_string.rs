@@ -186,5 +186,6 @@ mod tests {
         assert_eq!(s2.expose().unwrap(), "next-value");
     }
 
-    // The non-`Clone` contract is documented at the module boundary.
+    // Absence of `Clone` is a compile-time API property; this runtime test
+    // module cannot assert it without a compile-fail harness.
 }
