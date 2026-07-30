@@ -3,8 +3,7 @@
 //!
 //! The bulk of the behavior lives in
 //! [`crate::handlers::run_once::RunOnceHandler`]. This module supplies
-//! the [`BrewfileCommand`] specialization: program name (`brew`) and
-//! argument shape (`bundle --file <path>`).
+//! the [`BrewfileCommand`] specialization.
 
 use std::path::Path;
 
@@ -15,10 +14,9 @@ use crate::handlers::{ExecutionPhase, HANDLER_HOMEBREW};
 ///
 /// Invokes `brew bundle --file <abs path>`. No pre-flight validation —
 /// `brew` itself surfaces parse errors clearly when the Brewfile is
-/// malformed. This matches the
+/// malformed. See the
 /// [`RunOnceCommand`](crate::handlers::run_once::RunOnceCommand)
-/// lifecycle invariant: content errors surface at apply time, not at
-/// planning time.
+/// lifecycle invariant.
 pub struct BrewfileCommand;
 
 impl RunOnceCommand for BrewfileCommand {

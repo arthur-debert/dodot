@@ -77,22 +77,18 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 /// See module-level docs for the exact equivalence rules.
 pub fn is_equivalent(user_path: &Path, source: &Path, fs: &dyn Fs) -> bool {
     if fs.is_symlink(user_path) {
-        // Single-hop direct symlink to source. Resolve relative targets
-        // against the symlink's parent so e.g. `~/.vimrc -> ../foo/vimrc`
-        // is recognised. Multi-hop chains and links pointing elsewhere
-        // fall through to false.
+        // Single hop only: a multi-hop chain never compares equal here,
+        // even when its realpath is `source`.
         match fs.readlink(user_path) {
             Ok(target) => resolve_symlink_target(user_path, &target) == source,
             Err(_) => false,
         }
     } else if fs.exists(user_path) && !fs.is_dir(user_path) {
-        // Regular file: byte equality with source.
         match (fs.read_file(user_path), fs.read_file(source)) {
             (Ok(a), Ok(b)) => a == b,
             _ => false,
         }
     } else {
-        // Absent, directory, or unreadable.
         false
     }
 }
@@ -104,10 +100,6 @@ mod tests {
 
     #[test]
     fn relative_direct_symlink_to_source_is_equivalent() {
-        // Regression for PR #47 review: `~/.vimrc -> ../dotfiles/vim/vimrc`
-        // (relative target) must resolve to the same absolute source path,
-        // not be mis-classified as "points elsewhere".
-        //
         // TempEnvironment lays out dotfiles_root inside home (as
         // `<home>/dotfiles`), so a symlink at `<home>/.vimrc` reaches
         // the source via the relative path `dotfiles/vim/vimrc`.

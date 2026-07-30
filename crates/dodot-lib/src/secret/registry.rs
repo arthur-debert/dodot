@@ -130,12 +130,11 @@ impl SecretRegistry {
     /// [`Self::resolve`] and then [`Self::cache_put`] to populate
     /// the cache for future calls.
     ///
-    /// Returns `Arc<SecretString>` so the cached bytes stay zeroize-
-    /// on-drop — callers go through `SecretString::expose` at the
-    /// substitution boundary, never an unsealed `String` copy in
-    /// the cache itself. Cloning the Arc is a cheap pointer bump;
-    /// the inner buffer is dropped (and zeroized) when the last
-    /// holder is gone.
+    /// Cloning the returned `Arc` is a cheap pointer bump; the inner
+    /// buffer is dropped (and zeroized) when the last holder is gone.
+    /// Callers go through [`crate::secret::SecretString::expose`] at the
+    /// substitution boundary — never an unsealed `String` copy in the
+    /// cache itself.
     ///
     /// Splitting cache access from resolution lets the caller
     /// validate values (multi-line refusal, UTF-8) with rich error
@@ -319,7 +318,6 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("missing a scheme prefix"));
         assert!(msg.contains("`<scheme>:<provider-specific-reference>`"));
-        // Examples in the message help the user reach for the right shape.
         assert!(msg.contains("op://"));
         assert!(msg.contains("pass:"));
     }
@@ -358,7 +356,6 @@ mod tests {
         let err = reg.resolve("sops:foo.yaml#x").unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("no secret provider registered for scheme `sops`"));
-        // Configured schemes appear sorted so the message is stable.
         assert!(msg.contains("op, pass"));
     }
 
@@ -366,7 +363,6 @@ mod tests {
     fn registry_register_replaces_same_scheme() {
         let mut reg = SecretRegistry::new();
         reg.register(Arc::new(MockSecretProvider::new("pass").with("k", "first")));
-        // Replace with a fresh provider for the same scheme.
         reg.register(Arc::new(
             MockSecretProvider::new("pass").with("k", "second"),
         ));

@@ -1,9 +1,4 @@
-//! Shared test fixture for the `transform` command suites.
-//!
-//! `make_ctx` wires a no-op `CommandRunner` into a `FilesystemDataStore`
-//! pointed at the test's `TempEnvironment`. Both the check / status
-//! tests in `mod.rs` and the install-hook tests in `install_hook.rs`
-//! use it via `super::test_support::make_ctx`.
+//! Shared context fixture for `transform` command tests.
 
 use std::sync::Arc;
 

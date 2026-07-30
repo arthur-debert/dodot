@@ -52,14 +52,14 @@ impl<'a> Executor<'a> {
             )]);
         }
 
-        // Pre-check: does a non-symlink file exist at user_path?
-        // We check BEFORE creating the data link to avoid leaving
-        // dangling state when the user link would fail.
+        // Pre-check for a conflicting occupant BEFORE creating the
+        // data link, to avoid leaving dangling state when the user
+        // link would fail.
         //
-        // #44: if the existing file's content is byte-identical to
-        // the source we'd deploy, treat it as safe to replace —
-        // the content reaching `user_path` doesn't change, only
-        // the storage representation does. No `--force` required.
+        // If the existing file's content is byte-identical to the
+        // source we'd deploy, treat it as safe to replace — the
+        // content reaching `user_path` doesn't change, only the
+        // storage representation does. No `--force` required.
         if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
             let content_equivalent = crate::equivalence::is_equivalent(user_path, source, self.fs);
             if self.force || content_equivalent {
@@ -76,7 +76,6 @@ impl<'a> Executor<'a> {
                         "force-removing existing file"
                     );
                 }
-                // Remove the existing path before creating the symlink
                 if self.fs.is_dir(user_path) {
                     self.fs.remove_dir_all(user_path)?;
                 } else {
@@ -88,8 +87,6 @@ impl<'a> Executor<'a> {
                     path = %user_path.display(),
                     "conflict: file already exists"
                 );
-                // Return a failed result — non-fatal so other files
-                // in the pack can still be processed.
                 let op = Operation::CreateUserLink {
                     pack: pack.clone(),
                     handler: handler.clone(),
@@ -106,7 +103,6 @@ impl<'a> Executor<'a> {
             }
         }
 
-        // Step 1: Create data link (source → datastore)
         let datastore_path = self.datastore.create_data_link(pack, handler, source)?;
         debug!(
             pack,
@@ -114,7 +110,6 @@ impl<'a> Executor<'a> {
             "created data link"
         );
 
-        // Step 2: Create user link (datastore → user location)
         self.datastore
             .create_user_link(&datastore_path, user_path)?;
 
@@ -164,7 +159,6 @@ impl<'a> Executor<'a> {
             )];
         }
 
-        // Check for conflicts even in dry-run
         if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
             if self.force {
                 return vec![OperationResult::ok(
@@ -298,7 +292,6 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
 
-        // Verify the double-link chain
         env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
     }
 
@@ -346,10 +339,8 @@ mod tests {
             results[0].message
         );
 
-        // Data link should NOT have been created (pre-check prevents it)
         env.assert_no_handler_state("vim", "symlink");
 
-        // Original file should be untouched
         env.assert_file_contents(&user_path, "existing content");
     }
 
@@ -387,10 +378,8 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].success, "force should succeed");
 
-        // Verify the double-link chain was created
         env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
 
-        // Content should now be from the pack
         let content = env.fs.read_to_string(&user_path).unwrap();
         assert_eq!(content, "set nocompatible");
     }
@@ -433,12 +422,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(results.len(), 2);
-        // First should fail (conflict)
         assert!(!results[0].success);
-        // Second should succeed (no conflict)
         assert!(results[1].success);
 
-        // gvimrc should be deployed despite vimrc conflict
         env.assert_double_link(
             "vim",
             "symlink",
@@ -488,7 +474,6 @@ mod tests {
             .file("keybindings.yaml", "keep me")
             .done()
             .build();
-        // Legacy setup: ~/.config/warp is a symlink into the pack itself.
         let pack_dir = env.dotfiles_root.join("warp");
         let config_warp = env.config_home.join("warp");
         env.fs.mkdir_all(&env.config_home).unwrap();
@@ -525,7 +510,6 @@ mod tests {
             results[0].message
         );
 
-        // No data link created, source file untouched.
         env.assert_no_handler_state("warp", "symlink");
         env.assert_file_contents(&source, "keep me");
     }
@@ -676,10 +660,8 @@ mod tests {
         let config_warp = env.config_home.join("warp");
         env.fs.mkdir_all(&env.config_home).unwrap();
 
-        // config_home is home/.config, dotfiles_root is home/dotfiles,
-        // so the relative hop is `../dotfiles/warp` — exactly the shape
-        // Copilot flagged: contains `..`, joins to a path that would
-        // NOT naively `starts_with(dotfiles_root)` without normalization.
+        // The relative hop contains `..`, so it only falls under
+        // dotfiles_root after lexical normalization.
         let rel_target = Path::new("../dotfiles/warp");
         env.fs.symlink(rel_target, &config_warp).unwrap();
 

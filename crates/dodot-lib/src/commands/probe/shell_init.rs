@@ -199,8 +199,6 @@ fn target_matches_filter(target: &str, filter: &str) -> bool {
             .file_name()
             .is_some_and(|s| s == std::ffi::OsStr::new(filter));
     }
-    // Subpath form: must end at a path boundary so `dir/env.sh` doesn't
-    // accidentally match `otherdir/env.sh`.
     target.ends_with(&format!("/{filter}")) || target == filter
 }
 
@@ -340,7 +338,6 @@ pub fn shell_init_errors(ctx: &ExecutionContext, runs: usize) -> Result<ProbeRes
     for profile in &profiles {
         let when = format_unix_ts(parse_unix_ts_from_filename(&profile.filename));
         for entry in &profile.entries {
-            // Errors-only: skip clean runs entirely.
             if entry.exit_status == 0 {
                 continue;
             }
@@ -506,16 +503,13 @@ mod tests {
 
     #[test]
     fn format_unix_ts_handles_zero_and_out_of_range() {
-        // Sentinel for parse-failure → empty, not a date.
         assert_eq!(format_unix_ts(0), "");
-        // Real timestamp → formatted.
         assert_eq!(format_unix_ts(1_714_000_000), "2024-04-24 23:06");
         // Past year 9999 → empty (defensive ceiling so a tampered
         // filename doesn't produce a nonsense date or risk overflow
         // during the i64 cast on `days`).
         assert_eq!(format_unix_ts(u64::MAX), "");
         assert_eq!(format_unix_ts(253_402_300_800), ""); // 1s past year 9999.
-                                                         // Right below the ceiling still renders.
         assert_eq!(format_unix_ts(253_402_300_799), "9999-12-31 23:59");
     }
 }

@@ -1,10 +1,4 @@
-//! Shared test fixtures for the commands integration tests.
-//!
-//! Holds the mock `CommandRunner` impls and the `make_ctx` /
-//! `make_ctx_with_runner` builders that every per-command test module
-//! reaches for. Visibility is `pub(super)` so other test files within
-//! the `tests/` directory can reuse them without exposing the helpers
-//! to the broader crate.
+//! Shared command-test fixtures.
 
 use std::sync::Arc;
 
@@ -27,9 +21,7 @@ impl CommandRunner for MockCommandRunner {
     }
 }
 
-/// CommandRunner test double that returns canned outputs per `(exe,
-/// args...)` key. Used by probe::app integration tests so the brew /
-/// mdls / mdfind subprocesses don't actually run.
+/// Returns canned command outputs without spawning subprocesses.
 pub(super) struct CannedRunner {
     responses: std::sync::Mutex<std::collections::HashMap<Vec<String>, CommandOutput>>,
 }
@@ -97,9 +89,6 @@ pub(super) fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
     }
 }
 
-/// Variant of make_ctx that swaps in a [`CannedRunner`] so probe
-/// tests can exercise the brew/mdls/mdfind enrichment paths without
-/// spawning processes.
 pub(super) fn make_ctx_with_runner(
     env: &TempEnvironment,
     runner: Arc<dyn CommandRunner>,

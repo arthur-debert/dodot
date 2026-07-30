@@ -39,8 +39,7 @@ pub(super) fn next_render_id() -> u64 {
 /// (U+E000–U+F8FF), which by definition has no assigned meaning and
 /// does not appear in normal dotfile content. Combined with the
 /// per-render id, the resulting string is unique within and across
-/// renders, eliminating the substring-collision failure mode of the
-/// previous "search for the resolved value" approach.
+/// renders.
 pub(super) fn make_secret_sentinel(render_id: u64, call_idx: usize) -> String {
     let mut s = String::with_capacity(20);
     s.push('\u{E000}');
@@ -53,7 +52,7 @@ pub(super) fn make_secret_sentinel(render_id: u64, call_idx: usize) -> String {
 }
 
 /// Walk `rendered` to convert each sentinel into a [`SecretLineRange`]
-/// (single-line per Phase S1 / §3.4), then substitute every sentinel
+/// (single-line per §3.4), then substitute every sentinel
 /// back to its real value in both `rendered` and `tracked` and return
 /// all three.
 ///

@@ -22,8 +22,8 @@ use super::{make_datastore, make_pack, make_registry, ScriptedPreprocessor};
 
 #[test]
 fn conflict_marker_in_template_source_blocks_expansion() {
-    // The most important test for R2: a template source containing
-    // a dodot-conflict marker must be refused at the pipeline level
+    // A template source containing a dodot-conflict marker must be
+    // refused at the pipeline level
     // — otherwise the markers would render verbatim through
     // MiniJinja and deploy into the user's config as garbage.
     use std::collections::HashMap;
@@ -271,8 +271,7 @@ fn gate_handles_non_utf8_source_via_lossy_decode() {
         gate_failure: None,
     }];
 
-    // Should NOT error: the gate's lossy decode handles non-UTF-8
-    // gracefully, and there are no marker lines in the bytes.
+    // Lossy decoding accepts non-UTF-8 bytes when no marker lines are present.
     let result = preprocess_pack(
         entries,
         &registry,
@@ -388,7 +387,6 @@ fn template_renders_normally_after_markers_are_resolved() {
         gate_failure: None,
     }];
 
-    // Round 1: clean source → success.
     let result = preprocess_pack(
         entries.clone(),
         &registry,
@@ -402,7 +400,6 @@ fn template_renders_normally_after_markers_are_resolved() {
     .expect("clean source should expand successfully");
     assert_eq!(result.virtual_entries.len(), 1);
 
-    // Round 2: user adds a marker → blocked.
     let dirty = format!(
         "hello\n{}\n{{{{ name }}}}\n{}\n",
         crate::preprocessing::conflict::MARKER_START,
@@ -424,7 +421,6 @@ fn template_renders_normally_after_markers_are_resolved() {
     .unwrap_err();
     assert!(matches!(err, DodotError::UnresolvedConflictMarker { .. }));
 
-    // Round 3: user resolves → success again.
     env.fs
         .write_file(
             &env.dotfiles_root.join("app/greet.tmpl"),

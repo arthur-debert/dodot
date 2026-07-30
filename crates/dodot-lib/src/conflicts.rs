@@ -50,13 +50,11 @@ pub enum ConflictKind {
 /// A cross-pack conflict: multiple packs claim the same effective target.
 #[derive(Debug, Clone)]
 pub struct Conflict {
-    /// The kind of collision.
     pub kind: ConflictKind,
     /// For [`ConflictKind::SymlinkTarget`]: the resolved filesystem path.
     /// For [`ConflictKind::PathExecutable`]: a sentinel path
     /// `<path-executable>/<name>` — read `.file_name()` for the bare name.
     pub target: PathBuf,
-    /// Every pack that claims this target.
     pub claimants: Vec<Claimant>,
 }
 
@@ -151,7 +149,6 @@ pub fn detect_cross_pack_conflicts(
     let mut conflicts: Vec<Conflict> = targets
         .into_iter()
         .filter(|(_, claimants)| {
-            // Only flag when at least two *different* packs claim the target.
             let first = &claimants[0].pack;
             claimants.len() > 1 && claimants.iter().any(|c| c.pack != *first)
         })
@@ -225,7 +222,6 @@ mod tests {
         }
     }
 
-    /// Helper: create a mock Fs for tests that don't need real filesystem.
     fn dummy_fs() -> std::sync::Arc<crate::fs::OsFs> {
         std::sync::Arc::new(crate::fs::OsFs::new())
     }
@@ -592,7 +588,6 @@ mod tests {
         let conflicts = detect_cross_pack_conflicts(&pack_intents, env.fs.as_ref());
         assert_eq!(conflicts.len(), 1);
 
-        // Claimant sources should point to the actual files, not the directories
         for claimant in &conflicts[0].claimants {
             assert!(
                 claimant.source.to_string_lossy().contains("deploy"),

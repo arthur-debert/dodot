@@ -1,5 +1,4 @@
-# Consumer override for release-sync. Adds opt-in `bats` + `mkdocs`
-# Components on top of the rust Stack defaults.
+# Extends release-sync's Rust defaults with Bats and MkDocs.
 capabilities:
   - rust-quality
   - bats

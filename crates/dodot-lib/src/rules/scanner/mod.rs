@@ -37,7 +37,6 @@ fn is_ignored(name: &str, patterns: &[String]) -> bool {
                 return true;
             }
         }
-        // Exact match fallback
         if name == pattern {
             return true;
         }
@@ -57,13 +56,7 @@ impl<'a> Scanner<'a> {
 
     /// Scan a pack directory and return all rule matches.
     ///
-    /// Walks the pack directory (non-recursively for top-level, but
-    /// directories matched by the directory pattern are included as
-    /// single entries). Skips hidden files (except `.config`), special
-    /// files (`.dodot.toml`, `.dodotignore`), and files matching
-    /// pack-level ignore patterns.
-    ///
-    /// This is a convenience wrapper over [`walk_pack`] + [`match_entries`].
+    /// A convenience wrapper over [`walk_pack`] + [`match_entries`].
     /// `mappings_gates` is the `[mappings.gates]` glob → label map; pass
     /// an empty `HashMap` if not used.
     pub fn scan_pack(
@@ -79,12 +72,11 @@ impl<'a> Scanner<'a> {
         self.match_entries(&entries, rules, &pack.name, gates, host, mappings_gates)
     }
 
-    /// Walk a pack directory and return raw file entries.
-    ///
-    /// Skips hidden files (except `.config`), special files
-    /// (`.dodot.toml`, `.dodotignore`), and files matching
-    /// pack-level ignore patterns.
     /// Walk the pack's top-level children only.
+    ///
+    /// Hidden entries (except `.config`), dodot's own files
+    /// (`.dodot.toml`, `.dodotignore`), and pack-level `ignore` patterns
+    /// are filtered out.
     ///
     /// Returns depth-1 entries (files and directories directly under
     /// the pack root). Nested files/dirs are **not** returned — handlers
@@ -250,7 +242,6 @@ impl<'a> Scanner<'a> {
                 // unstripped filename.
             }
 
-            // Gate evaluation: parse, look up label, evaluate.
             let (effective_filename, effective_rel_path) = match basename_gate {
                 BasenameGate::None => (filename.clone(), entry.relative_path.clone()),
                 BasenameGate::Found { label, stripped } => {
@@ -405,17 +396,14 @@ impl<'a> Scanner<'a> {
         for entry in entries {
             let name = &entry.name;
 
-            // Skip hidden files/dirs (except .config)
             if name.starts_with('.') && name != ".config" {
                 continue;
             }
 
-            // Skip special files
             if SPECIAL_FILES.contains(&name.as_str()) {
                 continue;
             }
 
-            // Skip ignored patterns
             if is_ignored(name, ignore_patterns) {
                 continue;
             }
@@ -434,7 +422,6 @@ impl<'a> Scanner<'a> {
                     is_dir: true,
                     gate_failure: None,
                 });
-                // Recurse into subdirectories
                 self.walk_dir(base, &entry.path, ignore_patterns, results)?;
             } else {
                 results.push(PackEntry {

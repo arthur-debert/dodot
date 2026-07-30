@@ -1,9 +1,8 @@
 //! Shell integration — generates `dodot-init.sh`.
 //!
-//! Unlike the Go implementation which ships a ~400-line shell script
-//! that re-discovers the datastore layout at runtime, we generate a
-//! flat, declarative script from the actual datastore state. This
-//! means:
+//! The script is generated flat and declarative from the actual
+//! datastore state, rather than re-discovering the datastore layout at
+//! runtime in shell. This means:
 //!
 //! - Zero logic duplication between Rust and shell
 //! - The script is just `source` and `PATH=` lines — trivially fast
@@ -16,9 +15,6 @@
 //! [ -f ~/.local/share/dodot/shell/dodot-init.sh ] && . ~/.local/share/dodot/shell/dodot-init.sh
 //! ```
 //!
-//! In the future, this can also be exposed as `dodot init-sh` or
-//! a minimal standalone binary for even faster shell startup.
-//!
 //! # Profiling wrapper (Phase 2 of profiling.lex)
 //!
 //! When the caller passes `profiling_enabled = true`, the generator
@@ -29,7 +25,7 @@
 //! without the variable fall through to the unchanged source/PATH
 //! path with a single `[ "$_dodot_prof" = "1" ]` test of overhead.
 //! When `profiling_enabled = false`, the generated script is
-//! byte-identical to the pre-Phase-2 form.
+//! byte-identical to the unwrapped form.
 //!
 //! Sources are *not* wrapped in a shell function: in zsh, `source`
 //! inside a function changes scoping for plain variable assignments
@@ -81,7 +77,6 @@ pub fn generate_init_script(
     writeln!(script, "# Regenerated on every `dodot up` / `dodot down`.").unwrap();
     writeln!(script).unwrap();
 
-    // Discover all packs with state
     let packs_dir = paths.data_dir().join("packs");
     if !fs.exists(&packs_dir) {
         append_empty_notice(&mut script);
@@ -115,7 +110,6 @@ pub fn generate_init_script(
                     if !entry.is_symlink {
                         continue;
                     }
-                    // Follow the symlink to get the actual file path
                     let target = fs.readlink(&entry.path)?;
                     shell_sources.push((pack_display.clone(), target));
                 }
@@ -137,7 +131,6 @@ pub fn generate_init_script(
         }
     }
 
-    // If nothing is deployed, add an explanatory comment
     if path_additions.is_empty() && shell_sources.is_empty() {
         append_empty_notice(&mut script);
         return Ok(script);
@@ -153,7 +146,6 @@ pub fn generate_init_script(
         );
     }
 
-    // Emit PATH additions
     if !path_additions.is_empty() {
         writeln!(script, "# PATH additions").unwrap();
         for (pack, target) in &path_additions {
@@ -167,7 +159,6 @@ pub fn generate_init_script(
         writeln!(script).unwrap();
     }
 
-    // Emit shell sources
     if !shell_sources.is_empty() {
         writeln!(script, "# Shell scripts").unwrap();
         for (pack, target) in &shell_sources {
@@ -192,7 +183,6 @@ pub fn generate_init_script(
         writeln!(script).unwrap();
     }
 
-    // Profiling epilogue (close the report, scrub our state).
     if profiling_active {
         emit_profiling_epilogue(&mut script);
     }
@@ -476,7 +466,6 @@ mod tests {
         assert!(script.contains("No shell scripts or PATH additions"));
         assert!(script.contains("dodot up"));
         assert!(script.contains("dodot status"));
-        // No source or PATH lines
         assert!(!script.contains("export PATH"));
         assert!(!script.contains(". \""));
     }
@@ -544,24 +533,19 @@ mod tests {
 
         let ds = make_datastore(&env);
 
-        // Shell scripts
         ds.create_data_link("git", "shell", &env.dotfiles_root.join("git/aliases.sh"))
             .unwrap();
         ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
             .unwrap();
 
-        // Path
         ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
             .unwrap();
 
         let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
 
-        // Should have both shell sources
         assert!(script.contains("# [git]"), "script:\n{script}");
         assert!(script.contains("# [vim]"), "script:\n{script}");
-        // Should have PATH addition
         assert!(script.contains("export PATH="), "script:\n{script}");
-        // Should have source lines
         let source_count = script.matches(". \"").count();
         assert_eq!(
             source_count, 2,
@@ -590,7 +574,6 @@ mod tests {
         assert!(content.starts_with("#!/bin/sh"));
         assert!(content.contains("aliases.sh"));
 
-        // Check executable permission
         let meta = std::fs::metadata(&script_path).unwrap();
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(meta.permissions().mode() & 0o111, 0o111);
@@ -606,18 +589,15 @@ mod tests {
 
         let ds = make_datastore(&env);
 
-        // Initially empty
         let script1 = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
         assert!(!script1.contains("aliases.sh"));
 
-        // Deploy shell script
         ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
             .unwrap();
 
         let script2 = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
         assert!(script2.contains("aliases.sh"));
 
-        // Remove state
         ds.remove_state("vim", "shell").unwrap();
 
         let script3 = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
@@ -628,7 +608,6 @@ mod tests {
     fn ignores_non_symlink_files_in_handler_dirs() {
         let env = TempEnvironment::builder().build();
 
-        // Create a non-symlink file in the shell handler dir
         let shell_dir = env.paths.handler_data_dir("vim", "shell");
         env.fs.mkdir_all(&shell_dir).unwrap();
         env.fs
@@ -701,16 +680,12 @@ mod tests {
 
         let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
 
-        // Preamble feature-detects bash 5+ / zsh + EPOCHREALTIME
         assert!(script.contains("BASH_VERSION"));
         assert!(script.contains("ZSH_VERSION"));
         assert!(script.contains("EPOCHREALTIME"));
-        // The profile dir comes from Pather, so the script should embed it.
         assert!(script.contains(env.paths.probes_shell_init_dir().to_str().unwrap()));
-        // File naming includes pid + RANDOM for collision-resistance.
         assert!(script.contains("$$"));
         assert!(script.contains("RANDOM"));
-        // Header lines we always emit.
         assert!(script.contains("# dodot shell-init profile v1"));
         assert!(script.contains("columns\\tphase\\tpack\\thandler\\ttarget"));
     }
@@ -763,7 +738,6 @@ mod tests {
 
         let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
 
-        // Errors-log sibling is derived from the profile-file path.
         assert!(
             script.contains("_dodot_err_file=\"${_dodot_prof_file%.tsv}.errors.log\""),
             "errors-log path must be a sibling of the profile TSV:\n{script}"
@@ -775,7 +749,6 @@ mod tests {
             script.contains("[ -f \"$_dodot_err_file\" ] || printf '# dodot shell-init errors v1"),
             "errors-log header must be seeded lazily on first stderr:\n{script}"
         );
-        // Stderr is redirected to the per-shell scratch file during the source.
         assert!(
             script.contains("2>\"$_dodot_err_tmp\""),
             "source must redirect stderr to scratch file:\n{script}"
@@ -786,7 +759,6 @@ mod tests {
             script.contains(": > \"$_dodot_err_tmp\""),
             "scratch file must be truncated before each source:\n{script}"
         );
-        // The record header uses the @@ sentinel + tab-separated target/exit.
         assert!(
             script.contains("printf '@@\\t%s\\t%s\\n'"),
             "errors-log records must use @@ header format:\n{script}"
@@ -806,16 +778,13 @@ mod tests {
             .unwrap();
 
         let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
-        // End-of-run timestamp.
         assert!(script.contains("# end_t"));
-        // We scrub our state to avoid leaking into the user's shell.
         assert!(script.contains("unset _dodot_prof"));
         assert!(script.contains("_dodot_prof_file"));
     }
 
     #[test]
     fn profiling_enabled_with_empty_datastore_skips_preamble() {
-        // No deployed entries → empty notice only, no profiling boilerplate.
         let env = TempEnvironment::builder().build();
         let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
         assert!(script.contains("No shell scripts or PATH additions"));
@@ -824,15 +793,8 @@ mod tests {
 
     #[test]
     fn profiled_source_initialises_rc_so_missing_file_isnt_reported_as_failure() {
-        // Regression: previously the profiled branch was
-        //
-        //   _dodot_rc=$?  # after `[ -f X ] && . X`
-        //
-        // which captured the file-test exit (1) when the file was
-        // absent — falsely classifying "file missing" as "source
-        // exited 1". The fix initialises _dodot_rc to 0 before the
-        // attempt, and only updates it inside the `&& { . X; rc=$?; }`
-        // group when the source actually ran.
+        // A missing file is not a source failure: initialize rc to zero
+        // and only update it when the source command actually runs.
         let env = TempEnvironment::builder()
             .pack("vim")
             .file("aliases.sh", "alias vi=vim")
@@ -843,12 +805,10 @@ mod tests {
             .unwrap();
 
         let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
-        // Pre-attempt initialisation present.
         assert!(
             script.contains("_dodot_rc=0;"),
             "profiled branch must seed _dodot_rc=0 before the source attempt:\n{script}"
         );
-        // Source is wrapped so the rc only updates when `.` ran.
         assert!(
             script.contains("&& { . "),
             "profiled branch must guard the rc update inside `&& {{ … }}`:\n{script}"

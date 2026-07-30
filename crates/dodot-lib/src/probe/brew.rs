@@ -1,11 +1,10 @@
 //! Homebrew-cask probe — advisory lookup of cask metadata.
 //!
-//! Implements Phase M6 of `docs/proposals/macos-paths.lex` §8.2. The
-//! cardinal rule from §8 holds: probes are *advisory*, never
-//! authoritative. The symlink resolver in §5 never consults this
-//! module, and a probe failure (no `brew` on PATH, malformed JSON,
-//! cache miss) never alters routing — it just means the user sees a
-//! less-rich suggestion or warning.
+//! See `docs/proposals/macos-paths.lex` §8.2. The cardinal rule from
+//! §8 holds: probes are *advisory*, never authoritative. The symlink
+//! resolver in §5 never consults this module, and a probe failure (no
+//! `brew` on PATH, malformed JSON, cache miss) never alters routing —
+//! it just means the user sees a less-rich suggestion or warning.
 //!
 //! ## What the probe surfaces
 //!
@@ -341,8 +340,7 @@ pub fn match_folders_to_installed_casks(
     out.installed_tokens = list_installed_casks(runner);
     for token in &out.installed_tokens {
         let info = if cache_only {
-            // Cache-only mode: read the on-disk entry if fresh, never
-            // spawn `brew info`. A miss leaves this token unmatched.
+            // A cache miss leaves this token unmatched.
             read_cache(&cache_path_for(cache_dir, token), fs)
                 .filter(|e| now_secs.saturating_sub(e.fetched_at) < CACHE_TTL_SECS)
                 .map(|e| e.info)
@@ -540,7 +538,6 @@ mod tests {
 
         let now = 1_000_000;
         let _ = info_cask("cursor", &cache, now, env.fs.as_ref(), &runner).unwrap();
-        // Simulate clock advance past TTL.
         let _ = info_cask(
             "cursor",
             &cache,
@@ -644,13 +641,10 @@ mod tests {
             env.fs.as_ref(),
             /*cache_only=*/ true,
         );
-        // Installed list still populated (brew list was called).
         assert!(result
             .installed_tokens
             .contains(&"visual-studio-code".into()));
-        // No info → no folder match.
         assert!(result.folder_to_token.is_empty());
-        // And brew info was never invoked.
         assert_eq!(
             runner.call_count(&["brew", "info", "--json=v2", "--cask", "visual-studio-code"]),
             0,

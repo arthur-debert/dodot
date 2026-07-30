@@ -271,7 +271,6 @@ mod tests {
 
     #[test]
     fn clean_state_is_a_noop() {
-        // baseline + source + deployed all line up. No mtime touched.
         let env = TempEnvironment::builder().build();
         let (src, _) = stage_one(&env, "app", "cfg.toml.tmpl", b"rendered", b"src");
         // Capture the source mtime before refresh; a no-op must not
@@ -288,14 +287,10 @@ mod tests {
 
     #[test]
     fn divergent_deployed_touches_source_mtime() {
-        // The core scenario: user edits the deployed file → source
-        // mtime gets bumped to match.
         let env = TempEnvironment::builder().build();
         let (src, deployed) = stage_one(&env, "app", "cfg.toml.tmpl", b"rendered", b"src");
 
-        // Edit the deployed file to a divergent value AFTER the
-        // baseline. Sleep briefly so the deployed mtime is strictly
-        // later than the source's.
+        // Ensure the deployed mtime is strictly later than the source.
         std::thread::sleep(std::time::Duration::from_millis(20));
         env.fs.write_file(&deployed, b"rendered EDITED").unwrap();
         let deployed_mtime = env.fs.modified(&deployed).unwrap();
@@ -306,7 +301,6 @@ mod tests {
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
         assert!(r.touched_any);
 
-        // Source mtime now equals the deployed mtime.
         let new_src_mtime = env.fs.modified(&src).unwrap();
         assert_eq!(new_src_mtime, deployed_mtime);
     }
@@ -330,7 +324,6 @@ mod tests {
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
         assert!(r.touched_any);
 
-        // mtime unchanged.
         assert_eq!(env.fs.modified(&src).unwrap(), before_src);
     }
 
@@ -357,7 +350,6 @@ mod tests {
         // removed the .tmpl). Refresh keeps going; the entry is
         // surfaced so the user knows the cache is stale.
         let env = TempEnvironment::builder().build();
-        // Stage a baseline whose source path doesn't exist on disk.
         let baseline = Baseline::build(
             &env.dotfiles_root.join("app/missing.toml.tmpl"),
             b"rendered",
@@ -374,7 +366,6 @@ mod tests {
                 "missing.toml",
             )
             .unwrap();
-        // Deployed file exists.
         let deployed = env
             .paths
             .data_dir()
@@ -405,7 +396,6 @@ mod tests {
                 "cfg.toml",
             )
             .unwrap();
-        // Don't lay down the deployed file.
 
         let ctx = make_ctx(&env);
         let r = refresh(&ctx, RefreshMode::Report).unwrap();
@@ -445,18 +435,14 @@ mod tests {
 
     #[test]
     fn divergent_with_equal_mtimes_still_bumps_source() {
-        // Edge case from PR review: if the deployed mtime happens to
-        // equal the source mtime (coarse FS, rapid edits within the
-        // same second), `set_modified(source, deployed_mtime)` would
+        // Coarse filesystems or rapid edits can leave deployed and
+        // source mtimes equal. `set_modified(source, deployed_mtime)` would
         // be a no-op — git's stat-cache wouldn't invalidate, and
         // refresh would silently fail at its core purpose. We bump
         // by 1s in that case so the source mtime *strictly* changes.
         let env = TempEnvironment::builder().build();
         let (src, deployed) = stage_one(&env, "app", "cfg.toml.tmpl", b"rendered", b"src");
 
-        // Force the deployed mtime to exactly match the current
-        // source mtime, then mutate the deployed bytes so refresh
-        // sees a divergence to act on.
         let pinned = env.fs.modified(&src).unwrap();
         env.fs.write_file(&deployed, b"rendered EDITED").unwrap();
         env.fs.set_modified(&deployed, pinned).unwrap();
@@ -466,8 +452,6 @@ mod tests {
         let r = refresh(&ctx, RefreshMode::Report).unwrap();
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
 
-        // Source mtime must STRICTLY exceed the original (no-op
-        // behaviour would leave it unchanged).
         let after = env.fs.modified(&src).unwrap();
         assert!(
             after > pinned,

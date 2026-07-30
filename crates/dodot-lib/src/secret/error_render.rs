@@ -14,18 +14,8 @@ use crate::DodotError;
 /// facing message. `Ok` produces an empty string — callers gate on
 /// emptiness to decide whether to surface the line at all.
 ///
-/// The shapes match `secrets.lex` §5.4:
-///
-/// - **NotInstalled**: tells the user the CLI is missing and provides
-///   the provider-supplied install hint plus the disable-in-config
-///   escape hatch.
-/// - **NotAuthenticated**: tells the user auth is missing and provides
-///   the provider-supplied signin / env-var hint.
-/// - **Misconfigured**: surfaces the provider's specific
-///   configuration problem verbatim (e.g. "password store not
-///   initialised at /home/x/.password-store").
-/// - **ProbeFailed**: surfaces the diagnostic verbatim — these are
-///   the cases where probe() couldn't reach a clean conclusion.
+/// The message shapes match `secrets.lex` §5.4; provider-supplied
+/// hints are surfaced verbatim.
 pub fn render_probe_outcome(scheme: &str, outcome: &ProbeResult) -> String {
     let config_key = crate::secret::registry::scheme_to_config_key(scheme);
     match outcome {
@@ -176,9 +166,7 @@ mod tests {
         )));
         let err = preflight(&reg).unwrap_err().to_string();
         assert!(err.contains("1 secret provider(s) need attention"));
-        // The Ok one isn't mentioned — silence is success.
         assert!(!err.contains("`pass`"));
-        // The failing one is.
         assert!(err.contains("`op` is not authenticated"));
         assert!(err.contains("OP_SERVICE_ACCOUNT_TOKEN"));
     }

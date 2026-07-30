@@ -21,9 +21,7 @@ pub mod rules;
 pub mod secret;
 pub mod shell;
 
-// The testing module is available:
-// - Always during `cargo test` (dev-dependencies provide tempfile)
-// - When the `test-utils` feature is enabled (for external consumers)
+// `test-utils` exposes the testing module to external consumers.
 #[cfg(any(test, feature = "test-utils"))]
 pub mod testing;
 

@@ -94,7 +94,6 @@ impl Preprocessor for UnarchivePreprocessor {
                 })?
                 .into_owned();
 
-            // Tar-slip guard: reject absolute paths and `..` components.
             if !entry_path_is_safe(&entry_path) {
                 return Err(DodotError::PreprocessorError {
                     preprocessor: "unarchive".into(),
@@ -169,7 +168,7 @@ mod tests {
         assert!(!pp.matches_extension("file.tar"));
         assert!(!pp.matches_extension("file.gz"));
         assert!(!pp.matches_extension("file.zip"));
-        assert!(!pp.matches_extension("tar.gz")); // no base name before extension? still matches
+        assert!(!pp.matches_extension("tar.gz"));
     }
 
     #[test]
@@ -198,13 +197,11 @@ mod tests {
             .done()
             .build();
 
-        // Create a tar.gz archive programmatically
         let archive_path = env.dotfiles_root.join("tools/bin.tar.gz");
         let file = std::fs::File::create(&archive_path).unwrap();
         let enc = GzEncoder::new(file, Compression::default());
         let mut builder = tar::Builder::new(enc);
 
-        // Add a file to the archive
         let content = b"#!/bin/sh\necho hello";
         let mut header = tar::Header::new_gnu();
         header.set_path("mytool").unwrap();
@@ -213,7 +210,6 @@ mod tests {
         header.set_cksum();
         builder.append(&header, &content[..]).unwrap();
 
-        // Add another file
         let content2 = b"#!/bin/sh\necho world";
         let mut header2 = tar::Header::new_gnu();
         header2.set_path("other-tool").unwrap();
@@ -225,7 +221,6 @@ mod tests {
         let enc = builder.into_inner().unwrap();
         enc.finish().unwrap();
 
-        // Now expand it
         let pp = UnarchivePreprocessor::new();
         let result = pp.expand(&archive_path, env.fs.as_ref()).unwrap();
 
@@ -265,7 +260,6 @@ mod tests {
         let enc = GzEncoder::new(file, Compression::default());
         let mut builder = tar::Builder::new(enc);
 
-        // Add a directory entry
         let mut dir_header = tar::Header::new_gnu();
         dir_header.set_path("subdir/").unwrap();
         dir_header.set_size(0);
@@ -274,7 +268,6 @@ mod tests {
         dir_header.set_cksum();
         builder.append(&dir_header, &[][..]).unwrap();
 
-        // Add a file inside the directory
         let content = b"nested file";
         let mut file_header = tar::Header::new_gnu();
         file_header.set_path("subdir/nested.txt").unwrap();

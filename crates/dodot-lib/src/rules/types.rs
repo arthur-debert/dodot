@@ -43,9 +43,7 @@ fn is_false(b: &bool) -> bool {
 pub struct PackEntry {
     /// Path relative to the pack root (e.g. `"vimrc"`, `"nvim/init.lua"`).
     pub relative_path: PathBuf,
-    /// Absolute path to the file.
     pub absolute_path: PathBuf,
-    /// Whether this entry is a directory.
     pub is_dir: bool,
     /// When `Some`, this entry was gated out by a directory-segment
     /// gate (`_<label>/`) whose predicate evaluated false on this host.
@@ -71,16 +69,13 @@ pub struct RuleMatch {
     /// Path relative to the pack root (e.g. `"vimrc"`, `"nvim/init.lua"`).
     pub relative_path: PathBuf,
 
-    /// Absolute path to the file.
     pub absolute_path: PathBuf,
 
-    /// Name of the pack this file belongs to.
     pub pack: String,
 
     /// Name of the handler that should process this file.
     pub handler: String,
 
-    /// Whether this entry is a directory.
     pub is_dir: bool,
 
     /// Handler-specific options from the matched rule.

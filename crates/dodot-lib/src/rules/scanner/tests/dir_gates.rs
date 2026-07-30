@@ -37,7 +37,6 @@ fn dir_gate_passing_descends_and_flattens() {
         .collect();
     assert!(names.contains(&"macos.sh".to_string()), "{names:?}");
     assert!(names.contains(&"shared".to_string()), "{names:?}");
-    // The gate dir itself must NOT surface as an entry.
     assert!(!names.iter().any(|n| n.starts_with("_darwin")), "{names:?}");
 }
 
@@ -58,7 +57,6 @@ fn dir_gate_failing_emits_gate_match() {
         .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
         .unwrap();
 
-    // Exactly two matches: the gate dir (failed) and `shared`.
     assert_eq!(matches.len(), 2, "{matches:?}");
 
     let gate_match = matches
@@ -157,8 +155,6 @@ fn dir_gate_nested_failing_inner_gate_drops_subtree() {
     let matches = scanner
         .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
         .unwrap();
-    // One gate match for the inner _x86_64 dir; install.sh does
-    // NOT surface.
     let gate = matches
         .iter()
         .find(|m| m.handler == crate::handlers::HANDLER_GATE);

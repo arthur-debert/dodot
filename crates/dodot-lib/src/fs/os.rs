@@ -74,9 +74,6 @@ impl Fs for OsFs {
             .mode(mode)
             .open(path)
             .map_err(|e| fs_err(path, e))?;
-        // Tighten the mode regardless of whether the file already
-        // existed, so the plaintext never sits at a permissive
-        // mode while the bytes are written.
         let perms = fs::Permissions::from_mode(mode);
         fs::set_permissions(path, perms).map_err(|e| fs_err(path, e))?;
         file.write_all(contents).map_err(|e| fs_err(path, e))?;
@@ -233,7 +230,6 @@ mod tests {
         assert!(fs.is_symlink(&link));
         assert_eq!(fs.readlink(&link).unwrap(), original);
 
-        // Reading through the symlink works
         let content = fs.read_to_string(&link).unwrap();
         assert_eq!(content, "content");
     }
@@ -365,7 +361,6 @@ mod tests {
         assert_eq!(meta.permissions().mode() & 0o777, 0o755);
     }
 
-    // Compile-time check: Fs must be object-safe
     #[allow(dead_code)]
     fn assert_object_safe(_: &dyn Fs) {}
 }

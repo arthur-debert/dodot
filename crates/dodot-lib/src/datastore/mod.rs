@@ -16,10 +16,10 @@ use crate::Result;
 /// been run by a handler, and if so, whether the recorded run matches
 /// the current file content.
 ///
-/// Mirrors the spec in #169: run-once handlers consult this to decide
-/// between *first-time-run* (NeverRan → execute), *already up to
-/// date* (RanCurrent → skip silently), and *file edited since last
-/// run* (RanDifferent → skip with notice, user runs `--force` to
+/// Run-once handlers consult this to decide between
+/// *first-time-run* (NeverRan → execute), *already up to date*
+/// (RanCurrent → skip silently), and *file edited since last run*
+/// (RanDifferent → skip with notice, user runs `--provision-rerun` to
 /// apply).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DidRunStatus {
@@ -29,10 +29,11 @@ pub enum DidRunStatus {
     RanCurrent,
     /// A sentinel exists for a *different* content hash — the file
     /// has changed since the last successful run. `previous_hash` is
-    /// the hex hash recorded in the existing sentinel; if the
-    /// `<sentinel>.snapshot` sibling file exists (created on or after
-    /// PR C of #169) its raw bytes are returned in `previous_snapshot`
-    /// so callers can render a diff.
+    /// the hex hash recorded in the existing sentinel; when the
+    /// `<sentinel>.snapshot` sibling file exists its raw bytes are
+    /// returned in `previous_snapshot` so callers can render a diff.
+    /// Sentinels written before snapshots existed have no sibling and
+    /// yield `previous_snapshot: None`.
     RanDifferent {
         previous_hash: String,
         previous_snapshot: Option<Vec<u8>>,
@@ -396,8 +397,6 @@ impl CommandRunner for ShellCommandRunner {
             })
         };
 
-        // Read stdout on the main thread: capture, scan for `# status:`,
-        // optionally passthrough.
         let mut stdout_buf = String::new();
         {
             let mut reader = BufReader::new(stdout_pipe);
@@ -461,12 +460,10 @@ impl CommandRunner for ShellCommandRunner {
         })
     }
 
-    /// Override of the default trait impl: reads stdout as raw
-    /// bytes (no `from_utf8_lossy` decode), so binary payloads
-    /// from age / gpg whole-file decryption survive verbatim.
-    /// Stderr is still buffered as text via the same drainer
-    /// pattern `run` uses — gpg and age both emit
-    /// human-readable diagnostics.
+    /// Reads stdout as raw bytes from the start, as
+    /// [`CommandRunner::run_bytes`] requires. Stderr is still
+    /// buffered as text via the same drainer pattern `run` uses —
+    /// gpg and age both emit human-readable diagnostics.
     fn run_bytes(&self, executable: &str, arguments: &[String]) -> Result<CommandOutputBytes> {
         use std::io::{Read, Write};
         use std::process::{Command, Stdio};
@@ -506,8 +503,7 @@ impl CommandRunner for ShellCommandRunner {
             })
         };
 
-        // Read stdout as raw bytes on the main thread. No
-        // line-by-line passthrough / status-line parsing here —
+        // No line-by-line passthrough / status-line parsing here —
         // those are install-script ergonomics and have no place in
         // a binary-payload pipe.
         let mut stdout_buf: Vec<u8> = Vec::new();
@@ -534,9 +530,6 @@ impl CommandRunner for ShellCommandRunner {
         let exit_code = status.code().unwrap_or(-1);
 
         if !status.success() && !stderr_text.is_empty() && !self.verbose {
-            // Mirror `run`'s "surface stderr on failure when not
-            // verbose" pattern so a quiet failure is still
-            // debuggable.
             let host_stderr = std::io::stderr();
             let mut h = host_stderr.lock();
             let _ = h.write_all(stderr_text.as_bytes());

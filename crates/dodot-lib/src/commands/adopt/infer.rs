@@ -23,7 +23,7 @@
 //! - `$HOME/.<X>` (file) — in-pack `home.<X>` (round-trips via Priority 1).
 //! - `$HOME/.<X>/...` (dir) — in-pack `_home/<X>/...` (round-trips via
 //!   Priority 2's `_home/` directory prefix).
-//! - `~/Library/Application Support/<X>/<rest>` (macOS, future) — pack
+//! - `~/Library/Application Support/<X>/<rest>` (macOS) — pack
 //!   `<X>`, in-pack `_app/<X>/<rest>` (round-trips via Priority 2's
 //!   `_app/` prefix per `docs/proposals/macos-paths.lex`).
 //!
@@ -41,7 +41,7 @@
 //! - HOME source: the `home.X` and `_home/X/` prefixes are pack-name
 //!   independent already, so the override-aware path equals the natural
 //!   path. Override changes only the *pack* the file lands in.
-//! - AppSupport source, override differs (future): use `_app/<X>/<rest>`.
+//! - AppSupport source, override differs: use `_app/<X>/<rest>`.
 //!
 //! ## Why HOME sources don't infer a pack name
 //!
@@ -409,8 +409,7 @@ fn resolve_app_support_relative(
 
     if rest_path.as_os_str().is_empty() {
         // Sole component: source IS the app's top-level Application
-        // Support directory. A directory expands; a loose file is
-        // refused (same shape as XDG's LooseXdgFile case).
+        // Support directory.
         if is_dir {
             return Ok(InferredTarget {
                 natural_pack: Some(first.clone()),
@@ -460,9 +459,6 @@ fn resolve_library_relative(rel: &Path, is_dir: bool) -> Result<InferredTarget, 
 
     let in_pack = PathBuf::from("_lib").join(rel);
     Ok(InferredTarget {
-        // No natural pack name to mine — bundle IDs and folder names
-        // like `Preferences`, `LaunchAgents` are not pack-shaped.
-        // Caller must supply `--into <pack>`.
         natural_pack: None,
         in_pack_natural: in_pack.clone(),
         in_pack_override: in_pack,
@@ -516,9 +512,6 @@ fn resolve_home_relative(
 
     // Delegate to the string-shaped helper so both inference and the
     // round-trip property test go through the same convention table.
-    // `derive_home_in_pack` returns `force_home`-bare-name, `home.X`,
-    // `_home/X`, or a "non-dotted refused" error — exactly the shape we
-    // need here.
     let stripped = first.strip_prefix('.').unwrap_or(&first);
     let in_pack_str = derive_home_in_pack(&first, is_dir, force_home).map_err(|_| {
         InferenceError::NonDottedHome {
@@ -610,7 +603,6 @@ pub(crate) fn is_gui_app_folder(name: &str) -> bool {
     if name.contains(' ') {
         return true;
     }
-    // Reverse-DNS: ≥2 dotted segments, every segment non-empty.
     let segments: Vec<&str> = name.split('.').collect();
     if segments.len() >= 2 && segments.iter().all(|s| !s.is_empty()) {
         return true;
@@ -628,8 +620,7 @@ pub(crate) fn is_gui_app_folder(name: &str) -> bool {
 /// Returns `Err(reason)` when the source has no automatic round-trip
 /// path — currently the non-dotted-non-force_home case. The inference
 /// entry point translates the same situation into a richer
-/// `InferenceError::NonDottedHome`; this thinner string-error variant
-/// matches the original `derive_pack_filename` shape.
+/// `InferenceError::NonDottedHome`.
 pub(crate) fn derive_home_in_pack(
     file_name: &str,
     is_dir: bool,
@@ -854,7 +845,6 @@ mod tests {
         // an XDG-rooted source's path also starts with HOME. Inference
         // must pick the *more specific* root (XDG) — checking HOME
         // first would produce a useless "nested under $HOME" verdict.
-        // This test pins that ordering as a regression guard.
         let p = pather("/u", "/u/.config");
         let t = infer_target(Path::new("/u/.config/nvim/init.lua"), false, &p, &[]).unwrap();
         assert_eq!(t.source_root, SourceRoot::XdgConfig);

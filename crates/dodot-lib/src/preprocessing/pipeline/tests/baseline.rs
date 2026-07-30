@@ -83,9 +83,7 @@ fn baseline_is_written_when_paths_provided_and_tracked_render_present() {
 
     assert_eq!(baseline.rendered_content, "name = rendered");
     assert_eq!(baseline.tracked_render, "name = \u{1e}rendered\u{1f}");
-    // Source hash is the SHA of the source file's bytes.
     assert_eq!(baseline.source_hash.len(), 64);
-    // Context hash matches the one the preprocessor emitted.
     assert!(
         baseline.context_hash.chars().all(|c| c == 'a' || c == 'b'),
         "context hash should be 0xab repeated, got: {}",
@@ -100,7 +98,7 @@ fn baseline_is_skipped_in_passive_mode() {
     // NOT touch the baseline cache. No baseline should be written
     // in that case — overwriting it would erase the
     // divergence-detection ground truth captured at the last
-    // `dodot up`. Per `secrets.lex` §7.4 / issue #121.
+    // `dodot up`. See `secrets.lex` §7.4.
     let env = TempEnvironment::builder()
         .pack("app")
         .file("config.toml.tracked", "src")
@@ -238,7 +236,6 @@ fn baseline_overwrites_on_repeated_up() {
         }]
     };
 
-    // First run.
     let mut registry1 = PreprocessorRegistry::new();
     registry1.register(Box::new(ScriptedPreprocessor {
         name: "ts",
@@ -258,7 +255,6 @@ fn baseline_overwrites_on_repeated_up() {
     )
     .unwrap();
 
-    // Second run with changed outputs.
     let mut registry2 = PreprocessorRegistry::new();
     registry2.register(Box::new(ScriptedPreprocessor {
         name: "ts",
@@ -353,9 +349,6 @@ fn end_to_end_baseline_for_real_template_preprocessor() {
         "tracked render must contain marker bytes, got: {:?}",
         baseline.tracked_render
     );
-    // Context hash is the template preprocessor's deterministic
-    // hex; non-empty.
     assert_eq!(baseline.context_hash.len(), 64);
-    // Rendered hash is SHA-256 hex.
     assert_eq!(baseline.rendered_hash.len(), 64);
 }

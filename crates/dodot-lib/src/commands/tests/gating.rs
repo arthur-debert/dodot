@@ -1,4 +1,4 @@
-//! Integration tests for gating behaviour: §7.4 passive-command contract (#121), cross-pack conflict detection, and the C3/C5/gate-before-preprocess regression suite.
+//! Integration tests for passive commands, cross-pack conflicts, and gating.
 
 #![allow(unused_imports)]
 
@@ -17,11 +17,11 @@ use standout_render::OutputMode;
 
 use super::support::{make_ctx, make_ctx_with_runner, CannedRunner};
 
-// ── §7.4 passive-command contract (#121) ───────────────────
+// ── §7.4 passive-command contract ───────────────────────────
 
 #[test]
 fn status_does_not_write_to_datastore() {
-    // §7.4: passive commands MUST NOT mutate the datastore.
+    // §7.4: passive commands must not mutate the datastore.
     // Running `up` once primes the data dir; running `status`
     // afterwards must leave that state byte-identical.
     let env = TempEnvironment::builder()
@@ -36,7 +36,6 @@ fn status_does_not_write_to_datastore() {
 
     let snapshot = snapshot_dir_contents(&env, env.paths.data_dir());
 
-    // Two consecutive status runs must leave data_dir unchanged.
     commands::status::status(None, &ctx).unwrap();
     commands::status::status(None, &ctx).unwrap();
 
@@ -50,7 +49,6 @@ fn status_does_not_write_to_datastore() {
 
 #[test]
 fn up_dry_run_does_not_write_to_datastore() {
-    // Pin the same §7.4 contract for `up --dry-run`.
     let env = TempEnvironment::builder()
         .pack("app")
         .file("config.toml.tmpl", "name = {{ name }}")
@@ -75,11 +73,9 @@ fn up_dry_run_does_not_write_to_datastore() {
 
 #[test]
 fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file() {
-    // The §7.4 unblocker: in Passive mode the rendered file isn't
-    // on disk, so the install handler used to fail to compute its
-    // sentinel. With `rendered_bytes` threaded through, dry-run now
-    // emits a Run intent with the same sentinel as the active path
-    // would — without ever writing the rendered file. (#121)
+    // In Passive mode the rendered file is not on disk, so the
+    // install handler computes the active-path sentinel from
+    // `rendered_bytes` without writing the file.
     let env = TempEnvironment::builder()
         .pack("app")
         .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
@@ -87,16 +83,13 @@ fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file
         .done()
         .build();
 
-    // First up establishes the baseline so Passive mode has
-    // something to read. no_provision = false so the install
+    // no_provision = false ensures the install
     // handler actually plans Run intents (the default test ctx
     // suppresses code-execution handlers).
     let mut ctx = make_ctx(&env);
     ctx.no_provision = false;
     commands::up::up(None, &ctx).unwrap();
 
-    // Capture the active sentinel (it lives in the executed
-    // RunCommand operation).
     let active_intents = crate::packs::orchestration::collect_pack_intents(
         &crate::packs::Pack::new(
             "app".into(),
@@ -117,9 +110,6 @@ fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file
         })
         .expect("active path must produce a Run intent for install.sh");
 
-    // Snapshot the rendered datastore file's existence — Passive
-    // must not modify it, but it should already exist from the
-    // earlier active up.
     let rendered_path = env
         .paths
         .handler_data_dir("app", "preprocessed")
@@ -130,9 +120,7 @@ fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file
     );
     let rendered_before = ctx.fs.read_file(&rendered_path).unwrap();
 
-    // Now plan via dry-run; the install handler must produce the
-    // same sentinel from in-memory bytes. Same no_provision = false
-    // so the handler actually emits intents.
+    // Keep provisioning enabled so dry-run emits the in-memory intent.
     let mut dry_ctx = make_ctx(&env);
     dry_ctx.no_provision = false;
     dry_ctx.dry_run = true;
@@ -172,13 +160,11 @@ fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file
 
 #[test]
 fn up_dry_run_first_time_pack_with_install_template_does_not_error() {
-    // Regression for Copilot review on PR #126: a first-time pack
+    // A first-time pack
     // containing `install.sh.tmpl` (no baseline yet, no rendered
     // file on disk) must not crash dry-run intent collection. The
-    // install handler used to read `m.absolute_path` unconditionally
-    // and propagate an Fs error; now it skips intent generation for
-    // the placeholder match instead. Same shape for `Brewfile.tmpl`
-    // / homebrew handler.
+    // install handler must skip intent generation for the placeholder
+    // match. The same applies to `Brewfile.tmpl` and the homebrew handler.
     let env = TempEnvironment::builder()
         .pack("setup")
         .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
@@ -191,10 +177,6 @@ fn up_dry_run_first_time_pack_with_install_template_does_not_error() {
     dry_ctx.no_provision = false;
     dry_ctx.dry_run = true;
 
-    // The fix: this returns Ok and emits zero Run intents (the
-    // placeholders skip intent generation cleanly). Pre-fix, the
-    // install/homebrew handlers tried to read missing rendered
-    // files and propagated an Fs error.
     let result = commands::up::up(None, &dry_ctx).unwrap();
     assert!(result.dry_run);
 }
@@ -204,7 +186,7 @@ fn passive_first_time_pack_surfaces_pending_placeholder() {
     // §7.4 acceptance: a passive command on a brand-new pack with
     // no baseline cache yet must surface a coherent placeholder
     // (template stripped name, status pending), never panic, never
-    // fall through to template evaluation. (#121)
+    // fall through to template evaluation.
     let env = TempEnvironment::builder()
         .pack("app")
         .file("greet.tmpl", "hello {{ name }}")
@@ -292,7 +274,6 @@ fn up_halts_on_cross_pack_symlink_conflict() {
         "expected CrossPackConflict, got: {err}"
     );
 
-    // Error message should include both packs and the target
     let msg = err.to_string();
     assert!(msg.contains("pack-a"), "msg: {msg}");
     assert!(msg.contains("pack-b"), "msg: {msg}");
@@ -301,8 +282,7 @@ fn up_halts_on_cross_pack_symlink_conflict() {
 
 #[test]
 fn up_halts_no_partial_deployment_on_conflict() {
-    // When a conflict is detected, NO packs should be deployed —
-    // not even the non-conflicting ones.
+    // A conflict blocks even otherwise independent packs.
     let env = TempEnvironment::builder()
         .pack("conflict-a")
         .file("home.aliases", "a")
@@ -318,7 +298,6 @@ fn up_halts_no_partial_deployment_on_conflict() {
     let ctx = make_ctx(&env);
     let _err = commands::up::up(None, &ctx).unwrap_err();
 
-    // Nothing should be deployed — check the innocent pack
     env.assert_no_handler_state("innocent", "symlink");
     env.assert_no_handler_state("conflict-a", "symlink");
     env.assert_no_handler_state("conflict-b", "symlink");
@@ -373,12 +352,10 @@ fn up_dry_run_still_detects_cross_pack_conflict() {
     );
 }
 
-/// Regression: `dodot up` on a cross-pack conflict must render the full
+/// `dodot up` on a cross-pack conflict must render the full
 /// per-pack listing, notes, and ignored-pack section — not a bare
-/// conflicts dump. Before the fix, the CLI handler hardcoded
-/// `packs: Vec::new()` on the `CrossPackConflict` branch, so users only
-/// saw the trailing conflicts section and lost all context about what
-/// *would* have been deployed.
+/// conflicts dump, so users retain the context of what would have been
+/// deployed.
 #[test]
 fn up_with_cross_pack_conflict_renders_full_status_view() {
     let env = TempEnvironment::builder()
@@ -398,7 +375,6 @@ fn up_with_cross_pack_conflict_renders_full_status_view() {
     let result = commands::up::up_or_status_for_conflict(None, &ctx)
         .expect("status fallback should produce Ok on cross-pack conflict");
 
-    // Top-level message explains why nothing deployed.
     assert_eq!(
         result.message.as_deref(),
         Some("Cross-pack conflicts prevent deployment."),
@@ -406,7 +382,6 @@ fn up_with_cross_pack_conflict_renders_full_status_view() {
         result.message
     );
 
-    // Full per-pack listing is present — the regression was this being empty.
     assert!(
         !result.packs.is_empty(),
         "up-with-conflict must render pack rows, not a bare conflicts dump"
@@ -428,7 +403,6 @@ fn up_with_cross_pack_conflict_renders_full_status_view() {
         pack_names
     );
 
-    // Conflicts section is still populated — same data the old branch showed.
     assert!(
         !result.conflicts.is_empty(),
         "expected conflicts section to be populated"
@@ -440,7 +414,6 @@ fn up_with_cross_pack_conflict_renders_full_status_view() {
         conflict.target
     );
 
-    // Nothing was actually deployed — rows should report pending, not deployed.
     for pack in &result.packs {
         for file in &pack.files {
             assert_ne!(
@@ -680,7 +653,6 @@ fn up_three_packs_partial_conflict() {
         "should detect the conflict even if not all packs are involved"
     );
 
-    // Verify nothing was deployed
     env.assert_no_handler_state("a", "symlink");
     env.assert_no_handler_state("b", "symlink");
     env.assert_no_handler_state("c", "symlink");
@@ -701,12 +673,9 @@ fn up_error_message_includes_all_conflict_details() {
     let err = commands::up::up(None, &ctx).unwrap_err();
 
     let msg = err.to_string();
-    // Should mention both packs
     assert!(msg.contains("alpha"), "msg: {msg}");
     assert!(msg.contains("beta"), "msg: {msg}");
-    // Should mention the handler
     assert!(msg.contains("symlink"), "msg: {msg}");
-    // Should mention the target path
     assert!(msg.contains(".aliases"), "msg: {msg}");
 }
 
@@ -778,14 +747,12 @@ fn status_shows_conflict_even_when_not_deployed() {
     let ctx = make_ctx(&env);
     let result = commands::status::status(None, &ctx).unwrap();
 
-    // Both packs should show as pending
     for pack in &result.packs {
         for file in &pack.files {
             assert_eq!(file.status, "pending");
         }
     }
 
-    // Conflict data should still be emitted.
     assert!(
         !result.conflicts.is_empty(),
         "should flag potential conflict even when undeployed"
@@ -934,7 +901,6 @@ fn pack_os_inactive_pack_emits_no_operations_in_up() {
 
     let ctx = make_ctx(&env);
     let result = commands::up::up(None, &ctx).unwrap();
-    // No deployed pack rows.
     assert!(result.packs.is_empty(), "packs: {:?}", result.packs);
 }
 
@@ -1031,11 +997,11 @@ fn adopt_only_os_user_defined_label_works() {
     env.assert_regular_file(&env.dotfiles_root.join("vim/_laptop/home.vimrc"), "x");
 }
 
-// ── Gate-before-preprocess regression ───────────────────────────
+// ── Gate-before-preprocess contract ─────────────────────────────
 
 #[test]
 fn gate_failed_template_does_not_render_at_up() {
-    // Regression guard: a gate-failed template (e.g.
+    // A gate-failed template (e.g.
     // `aliases._linux.sh.tmpl` on a darwin host) must NOT be expanded by
     // the template preprocessor. If the gate check ran AFTER preprocessing,
     // MiniJinja would render the template and fire secret-provider calls and
@@ -1064,8 +1030,7 @@ fn gate_failed_template_does_not_render_at_up() {
     let env = TempEnvironment::builder()
         .pack("p")
         .file(&template_name, "alias x={{ undefined_variable }}")
-        // Co-located plain file. Its deployment proves pack planning
-        // didn't abort because of the gated template.
+        // A co-located plain file detects an aborted pack plan.
         .file("home.profile", "export PATH=$PATH:~/.local/bin")
         .done()
         .build();
@@ -1073,7 +1038,6 @@ fn gate_failed_template_does_not_render_at_up() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // (1) The plain file must be deployed.
     let profile_link = env.home.join(".profile");
     assert!(
         env.fs.exists(&profile_link),
@@ -1081,7 +1045,6 @@ fn gate_failed_template_does_not_render_at_up() {
          because the gated template still reached the template engine: {profile_link:?}"
     );
 
-    // (2) No baseline cache for the gated source.
     let baseline_dir = ctx.paths.cache_dir().join("preprocessor/p/template");
     if env.fs.exists(&baseline_dir) {
         let baselines = env.fs.read_dir(&baseline_dir).unwrap_or_default();
@@ -1093,13 +1056,11 @@ fn gate_failed_template_does_not_render_at_up() {
         );
     }
 
-    // No rendered output in the preprocessed dir for the gated template.
     let preprocessed = ctx.paths.data_dir().join("packs/p/preprocessed/aliases.sh");
     assert!(
         !env.fs.exists(&preprocessed),
         "gated-out template was rendered to datastore at {preprocessed:?}"
     );
-    // And no shell stage link.
     let shell_link = ctx.paths.data_dir().join("packs/p/shell/aliases.sh");
     assert!(
         !env.fs.exists(&shell_link),
@@ -1109,11 +1070,10 @@ fn gate_failed_template_does_not_render_at_up() {
 
 #[test]
 fn up_catches_mappings_gates_filename_conflict() {
-    // Round-2 review feedback (orchestration.rs:637): the `up` path
-    // strips basename gates BEFORE match_entries, so the
+    // The `up` path strips basename gates before match_entries, so the
     // [mappings.gates] vs filename-gate conflict needs to fire in
-    // filter_basename_gates rather than match_entries. Without the
-    // fix, this combination would silently pass through `up`.
+    // filter_basename_gates rather than match_entries; otherwise this
+    // combination would silently pass through `up`.
     let env = TempEnvironment::builder()
         .pack("p")
         .file("install._darwin.sh", "echo x")
@@ -1130,9 +1090,7 @@ fn up_catches_mappings_gates_filename_conflict() {
 
 #[test]
 fn up_rejects_invalid_mappings_gates_glob() {
-    // Round-2 review feedback (rules/mod.rs:387): invalid glob
-    // patterns in [mappings.gates] used to be silently dropped via
-    // `.ok()`. They now hard-error so a typo is loud, not silent.
+    // Invalid [mappings.gates] globs hard-error so typos cannot be dropped.
     let env = TempEnvironment::builder()
         .pack("p")
         .file("vimrc", "x")
@@ -1150,8 +1108,7 @@ fn up_rejects_invalid_mappings_gates_glob() {
 
 #[test]
 fn status_surfaces_gated_template_under_original_name() {
-    // Round-3 review feedback (status.rs:545): without pre-preprocess
-    // gate filtering in the status path, a gated template would get
+    // Without pre-preprocess gate filtering, a gated template would get
     // partitioned by `preprocess_pack` and replaced by a virtual
     // entry whose path is the *stripped* virtual name (e.g.
     // `aliases.sh`), losing the on-disk source name (`aliases._linux.sh.tmpl`).
@@ -1190,9 +1147,8 @@ fn status_surfaces_gated_template_under_original_name() {
 
 #[test]
 fn up_skips_mappings_gated_template() {
-    // Round-3 review feedback (orchestration.rs:645): a
-    // `[mappings.gates]`-gated template must not reach the
-    // preprocessor. Like the basename-gate regression, we use a
+    // A `[mappings.gates]`-gated template must not reach the
+    // preprocessor. Like the basename-gate case, we use a
     // template that would error if rendered to prove the engine
     // never fired.
     let gated = if cfg!(target_os = "macos") {
@@ -1215,7 +1171,6 @@ fn up_skips_mappings_gated_template() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Plain co-located file deployed → pack planning succeeded.
     let profile_link = env.home.join(".profile");
     assert!(
         env.fs.exists(&profile_link),
@@ -1223,7 +1178,6 @@ fn up_skips_mappings_gated_template() {
          likely reached the engine: {profile_link:?}"
     );
 
-    // No baseline cache for the gated template.
     let baseline_dir = ctx.paths.cache_dir().join("preprocessor/p/template");
     if env.fs.exists(&baseline_dir) {
         let baselines = env.fs.read_dir(&baseline_dir).unwrap_or_default();
@@ -1236,7 +1190,7 @@ fn up_skips_mappings_gated_template() {
     }
 }
 
-// ── Ignored-pack parity + stale-state sweep (issue #222) ───────────
+// ── Ignored-pack parity + stale-state sweep ────────────────────────
 //
 // Two contracts:
 //   1. `up`, `down`, and `status` produce the SAME view for an ignored
@@ -1245,14 +1199,12 @@ fn up_skips_mappings_gated_template() {
 //      pack.
 //   2. A pack deployed and *then* marked `.dodotignore` must have its
 //      datastore state swept on the next up/down so nothing of it is
-//      read/sourced again (the gpg `alias.zsh` regression).
+//      read/sourced again (the gpg `alias.zsh` scenario).
 
-/// Collect the names a result surfaces in its "Ignored Packs" section.
 fn ignored_section(result: &commands::PackStatusResult) -> Vec<String> {
     result.ignored_packs.clone()
 }
 
-/// True when `warnings` carries the "pack '<name>' is ignored" notice.
 fn warns_ignored(result: &commands::PackStatusResult, name: &str) -> bool {
     result
         .warnings
@@ -1262,9 +1214,7 @@ fn warns_ignored(result: &commands::PackStatusResult, name: &str) -> bool {
 
 #[test]
 fn up_down_status_agree_for_explicitly_requested_ignored_pack() {
-    // `dodot up gpg` on an ignored pack used to print a generic
-    // "Packs deployed." with no warning and no Ignored Packs section,
-    // while `dodot status gpg` reported both. All three must agree.
+    // `up`, `down`, and `status` must agree on ignored-pack reporting.
     let env = TempEnvironment::builder()
         .pack("gpg")
         .file("alias.zsh", "alias g='echo hi'")
@@ -1292,7 +1242,6 @@ fn up_down_status_agree_for_explicitly_requested_ignored_pack() {
             warns_ignored(r, "gpg"),
             "{label} must warn that gpg is ignored"
         );
-        // The ignored pack must never appear as a deployable pack row.
         assert!(
             r.packs.iter().all(|p| p.name != "gpg"),
             "{label} must not render gpg as a deployable pack row"
@@ -1302,8 +1251,6 @@ fn up_down_status_agree_for_explicitly_requested_ignored_pack() {
 
 #[test]
 fn up_lists_ignored_packs_in_full_run() {
-    // A bare `dodot up` (no filter) surfaces ignored packs in the same
-    // section `status` does — parity for the unfiltered case.
     let env = TempEnvironment::builder()
         .pack("vim")
         .file("vimrc", "set nocompatible")
@@ -1324,14 +1271,11 @@ fn up_lists_ignored_packs_in_full_run() {
         ignored_section(&status),
         "up and status must surface the same ignored-pack set"
     );
-    // The active pack still deploys normally.
     assert!(up.packs.iter().any(|p| p.name == "vim"));
 }
 
 #[test]
 fn up_does_not_read_files_from_ignored_pack() {
-    // Nothing under a `.dodotignore` pack may be deployed: no symlink,
-    // no shell sourcing, no datastore state.
     let env = TempEnvironment::builder()
         .pack("gpg")
         .file("alias.zsh", "alias g='echo hi'")
@@ -1343,12 +1287,10 @@ fn up_does_not_read_files_from_ignored_pack() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // No datastore state for the ignored pack.
     assert!(
         ctx.datastore.list_pack_handlers("gpg").unwrap().is_empty(),
         "ignored pack must leave no datastore state"
     );
-    // The init script must not source the ignored pack's shell file.
     let init = env
         .fs
         .read_to_string(&ctx.paths.init_script_path())
@@ -1361,7 +1303,7 @@ fn up_does_not_read_files_from_ignored_pack() {
 
 #[test]
 fn up_sweeps_state_of_pack_ignored_after_deploy() {
-    // The gpg regression: deploy a pack, then mark it ignored. The next
+    // After a deployed pack becomes ignored, the next
     // `up` must tear down its stale datastore state so the regenerated
     // init script stops sourcing it.
     let env = TempEnvironment::builder()
@@ -1375,7 +1317,6 @@ fn up_sweeps_state_of_pack_ignored_after_deploy() {
 
     let ctx = make_ctx(&env);
 
-    // First up: gpg deploys normally and its shell file is sourced.
     commands::up::up(None, &ctx).unwrap();
     assert!(
         !ctx.datastore.list_pack_handlers("gpg").unwrap().is_empty(),
@@ -1390,18 +1331,15 @@ fn up_sweeps_state_of_pack_ignored_after_deploy() {
         "precondition: gpg's shell file should be sourced before ignore"
     );
 
-    // Now mark gpg ignored and run up again.
     env.fs
         .write_file(&env.dotfiles_root.join("gpg/.dodotignore"), b"")
         .unwrap();
     let up = commands::up::up(None, &ctx).unwrap();
 
-    // Stale state is gone …
     assert!(
         ctx.datastore.list_pack_handlers("gpg").unwrap().is_empty(),
         "up must sweep datastore state for a now-ignored pack"
     );
-    // … the regenerated init script no longer sources it …
     let init_after = env
         .fs
         .read_to_string(&ctx.paths.init_script_path())
@@ -1410,13 +1348,11 @@ fn up_sweeps_state_of_pack_ignored_after_deploy() {
         !init_after.contains("gpg/alias.zsh"),
         "init script must stop sourcing a now-ignored pack; was:\n{init_after}"
     );
-    // … and it now appears in the Ignored Packs section.
     assert_eq!(ignored_section(&up), vec!["gpg".to_string()]);
 }
 
 #[test]
 fn down_sweeps_state_of_pack_ignored_after_deploy() {
-    // Same sweep contract for `down`.
     let env = TempEnvironment::builder()
         .pack("gpg")
         .file("alias.zsh", "alias g='echo hi'")
@@ -1442,7 +1378,6 @@ fn down_sweeps_state_of_pack_ignored_after_deploy() {
         .unwrap();
     assert!(!init_after.contains("gpg/alias.zsh"));
     assert_eq!(ignored_section(&down), vec!["gpg".to_string()]);
-    // Sweeping leftover state counts as deactivation.
     assert_eq!(down.message.as_deref(), Some("Packs deactivated."));
 }
 
@@ -1464,7 +1399,6 @@ fn filtered_up_sweeps_now_ignored_pack_outside_the_filter() {
     commands::up::up(None, &ctx).unwrap();
     assert!(!ctx.datastore.list_pack_handlers("gpg").unwrap().is_empty());
 
-    // Ignore gpg, then run a FILTERED up that names only vim.
     env.fs
         .write_file(&env.dotfiles_root.join("gpg/.dodotignore"), b"")
         .unwrap();
@@ -1492,7 +1426,7 @@ fn filtered_up_sweeps_now_ignored_pack_outside_the_filter() {
 
 #[test]
 fn down_dry_run_reports_deactivation_for_now_ignored_pack() {
-    // Gemini's dry-run discrepancy: `down --dry-run` must report the
+    // `down --dry-run` must report the
     // same "Packs deactivated." outcome a real run would, when a
     // now-ignored pack still holds stale state.
     let env = TempEnvironment::builder()
@@ -1516,7 +1450,6 @@ fn down_dry_run_reports_deactivation_for_now_ignored_pack() {
         Some("Packs deactivated."),
         "dry-run must report the same outcome a real run would"
     );
-    // Dry-run must NOT actually mutate the datastore.
     assert!(
         !ctx.datastore.list_pack_handlers("gpg").unwrap().is_empty(),
         "down --dry-run must not remove state"
@@ -1525,8 +1458,6 @@ fn down_dry_run_reports_deactivation_for_now_ignored_pack() {
 
 #[test]
 fn up_mixed_selection_deploys_active_and_reports_ignored() {
-    // A mixed `up vim gpg`: vim deploys, gpg is reported ignored — the
-    // two outcomes coexist in one result.
     let env = TempEnvironment::builder()
         .pack("vim")
         .file("vimrc", "set nocompatible")

@@ -1,54 +1,21 @@
 name: shipit-release
 
-# dodot's shipit release caller (ADP02-WS08, the rust fleet cutover —
-# arthur-debert/shipit#841) — the WS09 BLESSED per-stage dispatch shape
-# (ADR-0054, workflows.lex §8), copied from arthur-debert/standout's
-# shipit-release.yml (#187, the pathfinder): one workflow_dispatch caller
-# with a `stage` choice (full | prepare | build | sign | publish), one
-# job per stage, each a single `uses:` line against the matching block,
-# gated `if: inputs.stage == '...'`, forwarding
-# `version`/`tag`/`run-id`/`unsigned` verbatim. Routing ONLY (ADR-0040):
-# the release plan — matrix, live stages, the post-RC-guard endpoint set,
-# required secrets — is preflight's, computed inside the blocks; nothing
-# is re-derived or wired stage-to-stage here.
+# This routing-only caller forwards dispatch inputs to the matching reusable
+# workflow. The reusable blocks own the release plan, matrix, live stages,
+# endpoints, and required secrets (ADR-0040/0054, workflows.lex §8).
 #
-# Every ref is the FULL remote `arthur-debert/shipit/...@v1` form — never
-# `./` relative (which would resolve against THIS repo, where no blocks
-# live), never SHA-pinned (the fleet rides the advance-major-moved `v1`,
-# ADR-0010).
+# Keep full remote `arthur-debert/shipit/...@v1` refs: relative refs resolve
+# against this repository, which does not contain the reusable blocks, and the
+# floating major follows ADR-0010.
 #
-# dodot's release surface (.shipit.toml [artifacts]) is the legacy-parity
-# 5-asset shape: the signed-darwin archive artifact (gh-release + crates
-# + brew) and the cargo-deb leg (gh-release). Unlike standout, the plan
-# HAS a real matrix and a live sign stage: `sign = true` on the archive
-# artifact routes the darwin tarball through the signer's archive leg
-# (shipit#800 — raw darwin CLI binary codesign+notarize).
+# The artifact and signing plan is declared in `.shipit.toml`; `sign = true`
+# gives this repository a live macOS signing stage (shipit#800).
 #
-# Secrets — the UNIFORM plan-required set (shipit#896): preflight
-# re-validates the WHOLE release plan at every stage entry, so EVERY
-# stage job (`prepare`, `sign`, `publish`) forwards the SAME secret set
-# as `full` — no per-stage subsetting; which secrets a stage actually
-# spends is the plan's call, not this caller's. (`build` declares no
-# secrets, so it forwards none.)
-#   RELEASE_TOKEN             prepare's tag+branch push through the
-#                             ruleset (a GITHUB_TOKEN push would not
-#                             re-trigger workflows).
-#   CARGO_REGISTRY_TOKEN      the crates endpoint's registry token,
-#                             mapped from this repo's legacy-named
-#                             CRATES_IO_KEY secret (the repo secret keeps
-#                             its legacy name; renaming it is a repo
-#                             settings change, not this caller's). The RC
-#                             guard drops the crates endpoint on an
-#                             -release-rc version centrally.
-#   HOMEBREW_TAP_TOKEN        the brew endpoint's tap push token
-#                             (arthur-debert/homebrew-tools carries
-#                             dodot.rb).
-#   APPLE_CERTIFICATE (+PASSWORD) the mac codesign identity, mapped from
-#                             this repo's legacy-named
-#                             APPLE_CERTIFICATE_P12_BASE64 secret (NOT
-#                             renamed, same reason as CRATES_IO_KEY).
-#   ASC_API_KEY_BASE64/_ID, ASC_API_ISSUER_ID  the ASC notary trio.
-# gh-release rides the workflow's own GITHUB_TOKEN (no registry entry).
+# `CRATES_IO_KEY` and `APPLE_CERTIFICATE_P12_BASE64` retain their repository
+# names but map to the reusable workflows' canonical secret names. GitHub
+# releases use the workflow's `GITHUB_TOKEN`.
+# Preflight validates the whole release plan at every stage entry; each
+# standalone caller forwards the secret subset accepted by its reusable block.
 
 on:
   workflow_dispatch:
@@ -99,11 +66,8 @@ on:
         type: boolean
         default: false
 
-# The standalone dispatch caller's grant (workflows.lex §8): `contents:
-# write` for prepare's push and publish's gh-release, `actions: read` for
-# the cross-run artifact downloads (`run-id` flips download-artifact onto
-# the REST API). The downloading blocks deliberately declare NO
-# `permissions:` key — a called workflow can only downgrade this token.
+# `contents: write` permits prepare and publish; `actions: read` permits
+# cross-run artifact downloads. Called workflows can only downgrade this grant.
 permissions:
   contents: write
   actions: read

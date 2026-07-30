@@ -1,6 +1,7 @@
 //! Probe — introspection for the deployed state.
 //!
-//! Today this module provides two read-only views over `<data_dir>`:
+//! Read-only views over `<data_dir>`, plus the markers `dodot up`
+//! writes there ([`cfprefsd_marker`], [`last_up`]):
 //!
 //! - [`deployment_map`] — the `pack / handler / source / deployed` map
 //!   that `dodot refresh` (see `docs/proposals/magic.lex`) also
@@ -8,11 +9,10 @@
 //!   and `down`.
 //! - [`data_dir_tree`] — a bounded-depth tree walk for `dodot probe
 //!   show-data-dir`.
+//! - [`shell_init`] — shell-startup timing profiles under
+//!   `<data_dir>/probes/shell-init/`.
 //!
-//! See `docs/proposals/profiling.lex` for the full feature spec. A
-//! later phase will add shell-init timing reports under
-//! `<data_dir>/probes/shell-init/`; that state lives in a sibling
-//! submodule when it lands.
+//! See `docs/proposals/profiling.lex` for the full feature spec.
 
 pub mod brew;
 pub mod cfprefsd_marker;

@@ -125,7 +125,7 @@ pub enum HandlerIntent {
     /// [`DataStore::did_run`](crate::datastore::DataStore::did_run)
     /// to drive the three-way policy: run on first encounter, skip
     /// silently when the recorded hash matches, surface a
-    /// "ran older version" notice when it doesn't (#169).
+    /// "ran older version" notice when it doesn't.
     ///
     /// `filename` is the basename of the run-once file (e.g.
     /// `install.sh`, `Brewfile`, `packages.nix`) — used by `did_run`

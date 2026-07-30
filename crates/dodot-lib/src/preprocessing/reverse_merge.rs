@@ -25,9 +25,8 @@
 //! secret-provider auth prompts in the variable context — auth fatigue
 //! that the magic.lex design specifically rules out. We rehydrate the
 //! cached tracked string via
-//! [`burgertocow::TrackedRender::from_tracked_string`] (added in
-//! burgertocow 0.3) and feed it into `generate_diff_with_markers`
-//! directly.
+//! [`burgertocow::TrackedRender::from_tracked_string`] and feed it
+//! into `generate_diff_with_markers` directly.
 
 use std::ops::Range;
 
@@ -80,11 +79,9 @@ impl ReverseMergeOutcome {
 /// bytes — so a rotated `{{ secret(...) }}` value (or a hand-edit
 /// to a secret line) does not propagate into a template-space diff
 /// that would replace the `secret(...)` expression with the literal
-/// rotated value. See `secrets.lex` §3.3 / burgertocow#13.
+/// rotated value. See `secrets.lex` §3.3.
 ///
-/// The legacy three-arg shape is preserved as
-/// [`reverse_merge_no_mask`] for callers that don't have a sidecar
-/// loaded yet (every existing call site keeps the same behavior).
+/// Callers without a sidecar loaded use [`reverse_merge_no_mask`].
 pub fn reverse_merge(
     template_src: &str,
     cached_tracked: &str,
@@ -109,9 +106,7 @@ pub fn reverse_merge(
     let mid = format!("\n{MARKER_MID}\n");
     let end = format!("\n{MARKER_END}\n");
     let markers = ConflictMarkers::new(&start, &mid, &end);
-    // Convert `SecretLineRange { start, end, .. }` to the
-    // `Range<usize>` shape `DiffOptions` consumes. Bound to a local
-    // `Vec` because `with_mask` takes a borrowed slice.
+    // Bound to a local `Vec` because `with_mask` takes a borrowed slice.
     let mask: Vec<Range<usize>> = secret_ranges.iter().map(|r| r.start..r.end).collect();
     let opts = DiffOptions::new(&markers).with_mask(&mask);
     let diff = generate_diff_with_markers_opts(template_src, &tracked, deployed, &opts);
@@ -161,8 +156,7 @@ pub fn reverse_merge(
 /// Convenience for callers that haven't loaded a secrets sidecar
 /// for this file (or are computing reverse-merge for a file that
 /// has no `secret(...)` calls). Equivalent to
-/// [`reverse_merge`] with an empty mask — burgertocow then behaves
-/// byte-identically to the pre-0.4 single-mask-less entry point.
+/// [`reverse_merge`] with an empty mask.
 pub fn reverse_merge_no_mask(
     template_src: &str,
     cached_tracked: &str,
@@ -206,9 +200,6 @@ mod tests {
         // pure-data edit and recommends no template change.
         let template = "name = {{ name }}\nport = 5432\n";
         let (rendered, tracked) = render(template, serde_json::json!({"name": "Alice"}));
-        // Re-render with a different value to simulate the deployed
-        // file as it would be after the next `dodot up` (or after
-        // the user manually edited the value).
         let _ = rendered;
         let deployed = "name = Bob\nport = 5432\n";
         let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
@@ -251,7 +242,6 @@ mod tests {
         // Conflict and leaves the source untouched.
         let template = "{% for i in items %}- {{ i }}\n{% endfor %}";
         let (_, tracked) = render(template, serde_json::json!({"items": ["a", "b", "c"]}));
-        // Inconsistent prefix edits per iteration:
         let deployed = "* a\n+ b\n- c\n";
         let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         assert!(
@@ -278,7 +268,6 @@ mod tests {
         let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         match outcome {
             ReverseMergeOutcome::Patched(patched) => {
-                // Template's loop body now uses `*` instead of `-`.
                 assert!(patched.contains("* {{ i }}"), "patched: {patched:?}");
             }
             other => panic!("expected Patched for consistent loop edit, got: {other:?}"),
@@ -315,8 +304,6 @@ mod tests {
         assert!(ReverseMergeOutcome::Conflict(String::new()).is_actionable());
     }
 
-    /// Helper for the masking tests below — build a single-line
-    /// `SecretLineRange` covering the given 0-indexed line.
     fn mask_line(line: usize, reference: &str) -> SecretLineRange {
         SecretLineRange {
             start: line,
@@ -347,14 +334,9 @@ mod tests {
         assert_eq!(rendered, "user = Ada\npassword = OLD\n");
         let deployed = "user = Ada\npassword = NEW_ROTATED\n";
 
-        // Without mask: a unified diff propagates the rotated value
-        // back to the template (or surfaces a conflict — either way,
-        // *not* Unchanged).
         let unmasked = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         assert_ne!(unmasked, ReverseMergeOutcome::Unchanged);
 
-        // With the line-1 mask: byte change on the masked line is
-        // invisible → Unchanged.
         let masked =
             reverse_merge(template, &tracked, deployed, &[mask_line(1, "pass:db")]).unwrap();
         assert_eq!(masked, ReverseMergeOutcome::Unchanged);
@@ -379,7 +361,6 @@ mod tests {
         match outcome {
             ReverseMergeOutcome::Patched(patched) => {
                 assert!(patched.contains("port = 9999"), "patched: {patched:?}");
-                // The masked line stays at "OLD" in the source.
                 assert!(
                     patched.contains("secret_line = OLD"),
                     "masked line must not propagate: {patched:?}"

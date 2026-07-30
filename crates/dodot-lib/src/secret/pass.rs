@@ -96,8 +96,7 @@ impl SecretProvider for PassProvider {
 
     fn probe(&self) -> ProbeResult {
         // Cheap binary-on-PATH check: `pass version` returns 0 with
-        // a banner. `pass --help` would also work; `version` is the
-        // canonical "I'm here" probe across most tool conventions.
+        // a banner.
         match self.runner.run("pass", &["version".into()]) {
             Ok(out) if out.exit_code == 0 => {}
             Ok(_) => {
@@ -138,10 +137,10 @@ impl SecretProvider for PassProvider {
             .runner
             .run("pass", &["show".into(), reference.into()])?;
         if out.exit_code != 0 {
-            // Map the most common "entry not found" pattern to a
-            // sharper error. `pass show missing/path` exits 1 and
-            // prints `Error: missing/path is not in the password
-            // store.` to stderr. Detect by exit + a stable phrase.
+            // `pass show missing/path` exits 1 and prints `Error:
+            // missing/path is not in the password store.` to stderr.
+            // That phrase is stable, so match on it to produce a
+            // sharper error than the raw CLI text.
             let stderr = out.stderr.trim();
             let err_msg = if stderr.contains("not in the password store") {
                 format!(
@@ -162,10 +161,8 @@ impl SecretProvider for PassProvider {
             };
             return Err(DodotError::Other(err_msg));
         }
-        // pass show emits: <password>\n[optional metadata lines]\n
-        // The first line is the password. Strip trailing `\n` only;
-        // a multi-line value (subsequent lines) is metadata, not
-        // password content.
+        // `pass show` emits `<password>\n[optional metadata lines]`;
+        // only the first line is the password.
         let first_line = out.stdout.split('\n').next().unwrap_or("");
         Ok(SecretString::new(first_line.to_string()))
     }

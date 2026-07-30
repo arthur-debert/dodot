@@ -136,7 +136,6 @@ mod tests {
 
     #[test]
     fn detects_a_full_three_line_block() {
-        // The canonical case — start, mid, end on three separate lines.
         let content = format!(
             "name = Alice\n{}\nhost = \"{{{{ env.DB_HOST }}}}\"\n{}\nhost = \"prod.db\"\n{}\nport = 5432\n",
             MARKER_START, MARKER_MID, MARKER_END
@@ -144,7 +143,6 @@ mod tests {
         assert!(contains_unresolved_markers(&content));
         let lines = find_unresolved_marker_lines(&content);
         assert_eq!(lines.len(), 3, "got: {lines:?}");
-        // Line numbers are 1-based.
         assert_eq!(lines[0].0, 2);
         assert_eq!(lines[1].0, 4);
         assert_eq!(lines[2].0, 6);
@@ -184,7 +182,6 @@ mod tests {
         assert!(contains_unresolved_markers(&content));
         let lines = find_unresolved_marker_lines(&content);
         assert_eq!(lines.len(), 1);
-        // Trailing \r must not survive into the reported line text.
         assert!(!lines[0].1.contains('\r'));
     }
 
@@ -283,14 +280,13 @@ mod tests {
 
     #[test]
     fn marker_constants_use_distinct_directional_chars() {
-        // Sanity test: the three markers must start with different
-        // characters so a one-line scan can tell them apart, and so
+        // The three markers start with different characters so a
+        // one-line scan can tell them apart, and so
         // they don't collide with git's own `<<<<<<<` / `>>>>>>>` /
         // `=======` markers (we use 6 chars, git uses 7).
         assert!(MARKER_START.starts_with('>'));
         assert!(MARKER_MID.starts_with('='));
         assert!(MARKER_END.starts_with('<'));
-        // 6-char prefixes, not 7.
         assert!(MARKER_START.starts_with(">>>>>> "));
         assert!(MARKER_MID.starts_with("====== "));
         assert!(MARKER_END.starts_with("<<<<<< "));

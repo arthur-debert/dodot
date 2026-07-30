@@ -1,23 +1,11 @@
-//! Test doubles for the secrets layer — `MockSecretProvider` and
-//! `PanickingProvider`.
+//! Test doubles for the secrets layer.
 //!
-//! `MockSecretProvider` is the workhorse: tier-0 unit tests register
-//! it with a canned `reference -> value` map, then exercise everything
-//! above the trait (the registry, the `secret()` MiniJinja function,
-//! the AST pre-walk, the sidecar) without spawning a single
-//! subprocess.
+//! `MockSecretProvider` supplies canned values without spawning a subprocess.
 //!
-//! `PanickingProvider` is the §7.4 contract pin: a provider whose
-//! `resolve()` calls `panic!()`. Tests that exercise Passive-mode
-//! flows (`dodot status`, `dodot up --dry-run`) register it; if the
-//! flow accidentally invokes a provider, the panic surfaces and the
-//! test fails loudly. Same shape as the
-//! `up_dry_run_does_not_write_to_datastore` pattern from Wave 4.
+//! `PanickingProvider` proves that Passive-mode flows do not resolve secrets.
 //!
 //! See `secrets-testing.lex` §6.1 / §6.2 for the doc on each.
 //!
-//! Available under `#[cfg(test)]` only — these are not for production
-//! use and should not appear in the public API surface.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -27,29 +15,20 @@ use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
 use crate::{DodotError, Result};
 
-/// In-memory `SecretProvider` for tier-0 unit tests.
-///
-/// Constructed with a scheme name; populated via [`MockSecretProvider::with`]
-/// (chainable). Tracks `resolve()` invocation count so batching /
-/// caching tests can assert the provider was hit the right number of
-/// times.
+/// In-memory `SecretProvider` with canned values and call tracking.
 pub struct MockSecretProvider {
     scheme: String,
     /// Maps `reference -> value`. The `reference` here is what the
     /// registry passes through to `resolve()` (i.e. post-scheme
     /// suffix) — for `op://V/I/F` that's `//V/I/F`.
     values: HashMap<String, String>,
-    /// `probe()` return value. Defaults to `Ok`. Tests that exercise
-    /// the error UX path use [`MockSecretProvider::with_probe`].
+    /// `probe()` return value. Defaults to `Ok`.
     probe_result: Mutex<ProbeResult>,
-    /// Number of times `resolve()` has been called.
     resolve_calls: AtomicUsize,
 }
 
 impl MockSecretProvider {
-    /// New mock provider for the given scheme. By default, every
-    /// reference resolves to `Err("not found")` and `probe()` returns
-    /// `Ok`. Add canned values via [`Self::with`].
+    /// By default, references resolve to `Err("not found")` and probing succeeds.
     pub fn new(scheme: impl Into<String>) -> Self {
         Self {
             scheme: scheme.into(),
@@ -59,21 +38,16 @@ impl MockSecretProvider {
         }
     }
 
-    /// Add a canned `reference -> value` mapping. Chainable.
     pub fn with(mut self, reference: impl Into<String>, value: impl Into<String>) -> Self {
         self.values.insert(reference.into(), value.into());
         self
     }
 
-    /// Override the `probe()` return value. Used by tests that
-    /// exercise the error UX (NotInstalled, NotAuthenticated, etc.).
     pub fn with_probe(self, result: ProbeResult) -> Self {
         *self.probe_result.lock().unwrap() = result;
         self
     }
 
-    /// How many times `resolve()` has been called on this instance.
-    /// Used by batching / caching tests.
     pub fn resolve_call_count(&self) -> usize {
         self.resolve_calls.load(Ordering::SeqCst)
     }

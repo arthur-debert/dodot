@@ -1,11 +1,4 @@
-//! Shared test fixtures for the per-intent test suites.
-//!
-//! `MockCommandRunner` records every `(executable, arguments)` call so
-//! `Run`-intent tests can assert on the recorded shape; `make_datastore`
-//! wires it through a `FilesystemDataStore` that points at the test's
-//! `TempEnvironment`. Both are `pub(super)` so the per-intent modules
-//! (`link`, `stage`, `run`) and the dispatcher tests in `mod.rs` can
-//! reach them via `super::test_support::*` without duplicating fixtures.
+//! Shared fixtures for per-intent tests.
 
 use std::sync::{Arc, Mutex};
 

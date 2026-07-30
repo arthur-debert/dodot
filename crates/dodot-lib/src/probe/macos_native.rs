@@ -1,9 +1,8 @@
 //! macOS-native metadata probes: `mdls` and `mdfind`.
 //!
-//! Implements Phase M6 of `docs/proposals/macos-paths.lex` §8.3. Same
-//! advisory-only contract as `probe::brew`: failures return `None`
-//! and never propagate; the resolver in §5 doesn't consult these
-//! either.
+//! See `docs/proposals/macos-paths.lex` §8.3. Same advisory-only
+//! contract as `probe::brew`: failures return `None` and never
+//! propagate; the resolver in §5 doesn't consult these either.
 //!
 //! ## Why these and not the others
 //!
@@ -92,7 +91,6 @@ fn parse_mdls_value(stdout: &str) -> Option<String> {
             if trimmed == "(null)" || trimmed.is_empty() {
                 return None;
             }
-            // Strip surrounding double quotes if present.
             let unquoted = trimmed
                 .strip_prefix('"')
                 .and_then(|s| s.strip_suffix('"'))

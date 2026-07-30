@@ -333,7 +333,6 @@ mod tests {
             .done()
             .build();
 
-        // Manually create a hidden dir
         env.fs
             .mkdir_all(&env.dotfiles_root.join(".hidden-pack"))
             .unwrap();
@@ -432,7 +431,6 @@ mod tests {
             .done()
             .build();
 
-        // Create a file at dotfiles root (not a pack)
         env.fs
             .write_file(&env.dotfiles_root.join("README.md"), b"# my dotfiles")
             .unwrap();
@@ -472,11 +470,8 @@ mod tests {
     fn parse_prefix_passes_through_unprefixed_names() {
         assert_eq!(parse_prefix("vim"), Ok(None));
         assert_eq!(parse_prefix("my-pack"), Ok(None));
-        // Digits without a separator → not a prefix.
         assert_eq!(parse_prefix("vim2"), Ok(None));
-        // Non-digit prefix → not a prefix.
         assert_eq!(parse_prefix("a01-foo"), Ok(None));
-        // Separator at position 0 (no digits) → not a prefix.
         assert_eq!(parse_prefix("-foo"), Ok(None));
         assert_eq!(parse_prefix("_foo"), Ok(None));
     }
@@ -543,7 +538,6 @@ mod tests {
 
     #[test]
     fn scan_interleaves_prefixed_and_unprefixed_via_lex() {
-        // `010-brew` < `020-zsh` < `nvim` < `starship`.
         let env = TempEnvironment::builder()
             .pack("nvim")
             .file("init.lua", "x")

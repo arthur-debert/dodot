@@ -23,7 +23,6 @@ use crate::Result;
 pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     info!(dry_run = ctx.dry_run, "starting down command");
 
-    // Validate pack names before doing anything
     let mut warnings = Vec::new();
     if let Some(names) = pack_filter {
         warnings = orchestration::validate_pack_names(names, ctx)?;
@@ -89,8 +88,6 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         orchestration::sweep_ignored_state(&ignored.sweep_dir_names, ctx)?;
     }
 
-    // Regenerate shell init script and deployment map (now reflecting
-    // the removed state).
     if !ctx.dry_run {
         info!("regenerating shell init script");
         shell::write_init_script(

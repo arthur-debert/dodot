@@ -1,14 +1,12 @@
 //! Externals handler — declarative remote-resource deployment.
 //!
 //! The trigger file is `externals.toml` at the pack root. Each section
-//! declares one external resource (currently `type = "file"`; the
-//! git-repo and archive variants land in later PRs). The handler parses
-//! the file and emits one [`HandlerIntent::Fetch`] per entry.
+//! declares one external resource (`file`, `git-repo`, `archive`, or
+//! `archive-file`). The handler parses the file and emits one
+//! [`HandlerIntent::Fetch`] per entry.
 //!
-//! The handler itself is read-only — fetching, hashing, and symlink
-//! creation all happen in `crate::execution::fetch`. This mirrors the
-//! existing handler/executor split: planning is idempotent and safe to
-//! re-run; I/O lives in the executor.
+//! Fetching, hashing, and symlink creation all happen in
+//! `crate::execution::fetch`.
 
 use std::path::{Path, PathBuf};
 
@@ -93,10 +91,8 @@ impl Handler for ExternalsHandler {
         pack: &str,
         datastore: &dyn DataStore,
     ) -> Result<HandlerStatus> {
-        // Coarse-grained for v1: report deployed if *any* sentinel
-        // exists for the pack/external pair. Per-entry status arrives
-        // when we add the `dodot status` external-aware rendering in a
-        // later PR.
+        // Coarse-grained: deployed if *any* sentinel exists for the
+        // pack/external pair, not per declared entry.
         let deployed = datastore.has_handler_state(pack, HANDLER_EXTERNAL)?;
         Ok(HandlerStatus {
             file: file.to_string_lossy().into_owned(),

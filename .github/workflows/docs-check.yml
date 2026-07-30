@@ -1,15 +1,7 @@
 name: Docs check
 
-# PR-time docs validation via the canonical mkdocs Component reusable
-# workflow at arthur-debert/release. Build-only (deploy is handled by
-# the existing docs.yml on push to main).
-#
-# Migration path: when dodot's Pages source is flipped from
-# "Deploy from a branch" → "GitHub Actions", this workflow should
-# absorb the deploy responsibility (set `deploy: true`) and the
-# legacy docs.yml gets removed. Until then, the two workflows split:
-#   - docs-check.yml: PR validation
-#   - docs.yml: main-branch deploy (legacy 3rd-party action)
+# When Pages moves from branch deployment to GitHub Actions, enable deployment
+# here and remove the main-branch-only `docs.yml` workflow.
 
 on:
   pull_request:
@@ -30,10 +22,8 @@ jobs:
     uses: arthur-debert/release/.github/workflows/mkdocs.yml@v3
     with:
       requirements: docs/requirements.txt
-      # 329 historical strict-mode warnings (broken refs, missing nav,
-      # etc.) — opt out during initial adoption. Flip to `true` after
-      # the cleanup pass.
+      # Strict mode remains disabled while 329 broken-reference and missing-nav
+      # warnings remain.
       strict: false
-      # Build-only here; main-branch docs.yml handles the deploy until
-      # dodot's Pages source flips from legacy/branch to "GitHub Actions".
+      # `docs.yml` owns deployment until Pages moves to GitHub Actions.
       deploy: 'false'

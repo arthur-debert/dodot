@@ -80,8 +80,8 @@ impl SecretProvider for OpProvider {
     }
 
     fn probe(&self) -> ProbeResult {
-        // Step 1: binary on PATH? `op --version` is fast and
-        // doesn't hit the network or unlock anything.
+        // `op --version` is fast and doesn't hit the network or
+        // unlock anything.
         match self.runner.run("op", &["--version".into()]) {
             Ok(out) if out.exit_code == 0 => {}
             Ok(_) => {
@@ -101,13 +101,12 @@ impl SecretProvider for OpProvider {
             }
         }
 
-        // Step 2: auth state. We require the non-interactive path
-        // (`OP_SERVICE_ACCOUNT_TOKEN`) because resolve()-time
-        // blocking on a desktop-app modal is exactly the
-        // auth-fatigue failure mode §7.4 was written to avoid.
-        // If the user prefers desktop-app integration on their
-        // workstation, they should still set the env var for dodot
-        // runs — the spec is unambiguous about that.
+        // We require the non-interactive path
+        // (`OP_SERVICE_ACCOUNT_TOKEN`) because resolve()-time blocking
+        // on a desktop-app modal is exactly the auth-fatigue failure
+        // mode §7.4 was written to avoid. Users who prefer desktop-app
+        // integration on their workstation still have to set the env
+        // var for dodot runs.
         if !self.has_service_token {
             return ProbeResult::NotAuthenticated {
                 hint: "set OP_SERVICE_ACCOUNT_TOKEN \
@@ -117,10 +116,9 @@ impl SecretProvider for OpProvider {
             };
         }
 
-        // Step 3: light service-account validity check. `op whoami`
-        // returns 0 when the token can authenticate, non-zero
-        // otherwise. Cheap, no vault reads, no items returned —
-        // safe to run on every probe.
+        // Service-account validity check. `op whoami` returns 0 when
+        // the token can authenticate, non-zero otherwise. Cheap, no
+        // vault reads, no items returned — safe to run on every probe.
         match self.runner.run("op", &["whoami".into()]) {
             Ok(out) if out.exit_code == 0 => ProbeResult::Ok,
             Ok(_) => ProbeResult::NotAuthenticated {
@@ -138,7 +136,6 @@ impl SecretProvider for OpProvider {
 
     fn resolve(&self, reference: &str) -> Result<SecretString> {
         Self::validate_reference(reference)?;
-        // Reconstruct the full URI form the CLI expects (op://...).
         let full = format!("op:{reference}");
         let out = self.runner.run("op", &["read".into(), full.clone()])?;
         if out.exit_code != 0 {
@@ -168,10 +165,8 @@ impl SecretProvider for OpProvider {
             return Err(DodotError::Other(err_msg));
         }
         // op read emits the value with a trailing newline. Strip
-        // exactly one trailing `\n` so values that legitimately end
-        // in `\n\n` keep one of them; in practice secret values
-        // shouldn't have either, but the principled move is to
-        // trim the CLI's added newline rather than `trim_end_matches`.
+        // exactly one trailing `\n` rather than `trim_end_matches`,
+        // so a value that legitimately ends in `\n\n` keeps one.
         let mut value = out.stdout;
         if value.ends_with('\n') {
             value.pop();

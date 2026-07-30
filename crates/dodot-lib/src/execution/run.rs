@@ -1,10 +1,10 @@
 //! `Run` intent: execute a run-once handler command (install scripts,
 //! Brewfile bundle, `nix profile install`), gated by [`DataStore::did_run`]'s
-//! three-way classification (#169).
+//! three-way classification.
 //!
 //! Policy: run on `NeverRan`, skip silently on `RanCurrent`, skip with
 //! a "ran older version" notice on `RanDifferent`. `provision_rerun =
-//! true` (the `--force` flag) bypasses both skip cases.
+//! true` (the `--provision-rerun` flag) bypasses both skip cases.
 
 use tracing::info;
 
@@ -29,7 +29,6 @@ impl<'a> Executor<'a> {
             unreachable!("execute_run called with non-Run intent");
         };
 
-        // Three-way policy via did_run, unless --force.
         if !self.provision_rerun {
             match self
                 .datastore
@@ -79,9 +78,9 @@ impl<'a> Executor<'a> {
         let cmd_str = format!("{} {}", executable, arguments.join(" "));
         info!(pack, handler = handler.as_str(), command = %cmd_str.trim(), "running command");
 
-        // Run the command. `force=true` here tells run_and_record to
-        // skip its own internal has_sentinel pre-check — we've already
-        // made the policy decision above via did_run.
+        // `force=true` here tells run_and_record to skip its own
+        // internal has_sentinel pre-check — we've already made the
+        // policy decision above via did_run.
         self.datastore
             .run_and_record(pack, handler, executable, arguments, sentinel, true)?;
 
@@ -232,7 +231,6 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
 
-        // Pre-create sentinel for the SAME hash as the intent.
         let sentinel_dir = env.paths.handler_data_dir("vim", "install");
         env.fs.mkdir_all(&sentinel_dir).unwrap();
         env.fs
@@ -270,8 +268,6 @@ mod tests {
 
     #[test]
     fn execute_run_skips_with_notice_when_older_version_ran() {
-        // Pre-create a sentinel for a DIFFERENT hash → did_run returns
-        // RanDifferent → policy: skip with "ran older version" notice.
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
 

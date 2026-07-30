@@ -36,8 +36,7 @@ use crate::handlers::{ExecutionPhase, HANDLER_INSTALL};
 /// as `<interpreter> -- <abs path>` (the `--` end-of-flags separator
 /// guards against scripts whose names start with a dash). No
 /// pre-flight content validation — a script's syntax errors surface
-/// at apply time via the interpreter, the same way `brew bundle`
-/// surfaces Brewfile errors. See the
+/// at apply time via the interpreter. See the
 /// [`RunOnceCommand`](crate::handlers::run_once::RunOnceCommand)
 /// lifecycle invariant.
 pub struct InstallCommand;
@@ -98,10 +97,8 @@ mod tests {
         assert_eq!(interpreter_for(Path::new("install.sh")), "bash");
         assert_eq!(interpreter_for(Path::new("install.bash")), "bash");
         assert_eq!(interpreter_for(Path::new("install.zsh")), "zsh");
-        // Unknown / missing extension falls back to bash.
         assert_eq!(interpreter_for(Path::new("install")), "bash");
         assert_eq!(interpreter_for(Path::new("install.ksh")), "bash");
-        // Path components don't interfere with extension lookup.
         assert_eq!(interpreter_for(Path::new("/a/b/install.zsh")), "zsh");
     }
 

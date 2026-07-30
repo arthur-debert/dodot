@@ -1,6 +1,4 @@
-# Thin caller of arthur-debert/release/.github/workflows/mkdocs.yml@v3.
-# Push-to-main only — PR-time docs validation lives in `docs-check.yml`
-# (which calls the same reusable workflow but skips deploy).
+# Main-branch deployment; pull requests build through docs-check.yml without deploying.
 
 name: Docs
 
@@ -14,9 +12,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  # All three required upfront — GitHub validates reusable-workflow
-  # permission compatibility at workflow-load time, including jobs
-  # gated behind `if:` (the deploy job is push-to-main-only).
+  # GitHub validates reusable-workflow permissions at load time, including
+  # jobs gated by `if:`.
   contents: read
   pages: write
   id-token: write

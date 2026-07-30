@@ -133,7 +133,6 @@ pub fn app(pack_name: &str, refresh: bool, ctx: &ExecutionContext) -> Result<Pro
                     folders.push((e.name.clone(), "force_app"));
                 }
             }
-            // _app/<X>/ subtree
             let app_dir = pack_path.join("_app");
             if ctx.fs.exists(&app_dir) {
                 if let Ok(children) = ctx.fs.read_dir(&app_dir) {

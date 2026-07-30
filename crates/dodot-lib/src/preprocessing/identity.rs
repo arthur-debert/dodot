@@ -11,9 +11,6 @@ use crate::preprocessing::{ExpandedFile, Preprocessor, TransformType};
 use crate::Result;
 
 /// A preprocessor that passes content through unchanged.
-///
-/// Useful for testing the preprocessing pipeline without depending
-/// on any transformation engine.
 pub struct IdentityPreprocessor {
     extension: String,
 }
@@ -162,7 +159,6 @@ mod tests {
             .done()
             .build();
 
-        // Write binary content directly
         let source = env.dotfiles_root.join("app/data.bin.identity");
         let binary = vec![0u8, 1, 2, 255, 128, 64];
         env.fs.write_file(&source, &binary).unwrap();
@@ -188,7 +184,6 @@ mod tests {
     #[test]
     fn double_extension_only_strips_last() {
         let pp = IdentityPreprocessor::new();
-        // Only the outermost .identity is stripped
         assert_eq!(pp.stripped_name("file.identity.identity"), "file.identity");
         assert!(pp.matches_extension("file.identity.identity"));
     }

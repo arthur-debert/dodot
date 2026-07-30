@@ -114,21 +114,17 @@ fn targets_without_prefix_is_not_a_conflict() {
 
 #[test]
 fn has_routing_prefix_unit() {
-    // File-level prefixes
     assert!(has_routing_prefix("home.bashrc"));
     assert!(has_routing_prefix("app.settings.json"));
     assert!(has_routing_prefix("xdg.mimeapps.list"));
     assert!(has_routing_prefix("lib.com.example.plist"));
-    // Subtree prefixes
     assert!(has_routing_prefix("_home/vimrc"));
     assert!(has_routing_prefix("_xdg/ghostty/config"));
     assert!(has_routing_prefix("_app/Code/User/settings.json"));
     assert!(has_routing_prefix("_lib/LaunchAgents/foo.plist"));
-    // Bare prefix dir names too — the catchall scanner can match
-    // those at the top level when nothing else inside them does.
+    // The catchall can surface bare prefix directories when their children do not match.
     assert!(has_routing_prefix("_home"));
     assert!(has_routing_prefix("_app"));
-    // Plain names — no prefix.
     assert!(!has_routing_prefix("vimrc"));
     assert!(!has_routing_prefix("subdir/home.conf"));
     // Empty-rest forms fall through, so they don't carry routing
@@ -223,7 +219,6 @@ fn plain_top_level_dir_produces_single_wholesale_intent() {
     } = &intents[0]
     {
         assert!(source.ends_with("warp/themes"));
-        // Under #48, top-level dirs deploy under the pack's XDG dir.
         assert!(
             user_path.ends_with(".config/warp/themes"),
             "user_path={}",
@@ -348,7 +343,6 @@ fn lib_prefix_emits_warning_on_non_macos() {
             warnings.is_empty(),
             "_lib/ should not warn on macOS; got {warnings:?}"
         );
-        // And the intent is generated as a real Link.
         let intents = handler
             .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
             .unwrap();
@@ -359,7 +353,6 @@ fn lib_prefix_emits_warning_on_non_macos() {
             warnings[0].contains("macOS-only path"),
             "warning text should mention macOS-only: {warnings:?}"
         );
-        // And the intent is *omitted* — `to_intents` skips it.
         let intents = handler
             .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
             .unwrap();
@@ -372,11 +365,10 @@ fn lib_prefix_emits_warning_on_non_macos() {
 
 #[test]
 fn top_level_app_and_lib_dirs_force_per_file_mode() {
-    // Regression: a top-level `_app` or `_lib` directory MUST NOT
+    // A top-level `_app` or `_lib` directory must not
     // be wholesale-linked — that would bake the prefix into the
     // deploy path (`~/.config/<pack>/_app/...`). Same per-file
-    // forcing as `_home` and `_xdg`. Discovered by the bats e2e
-    // suite for `_app/`.
+    // forcing as `_home` and `_xdg`.
     for prefix in ["_app", "_lib"] {
         let env = crate::testing::TempEnvironment::builder()
             .pack("macapps")
@@ -405,9 +397,7 @@ fn top_level_app_and_lib_dirs_force_per_file_mode() {
             expected,
             "prefix={prefix}: expected {expected} intents, got {intents:?}"
         );
-        // The user_path should NOT contain the literal prefix —
-        // the resolver stripped it. (Skip this check when no
-        // intents were produced.)
+        // No intent is the expected non-macOS `_lib/` case.
         if let Some(HandlerIntent::Link { user_path, .. }) = intents.first() {
             assert!(
                 !user_path.to_string_lossy().contains(&format!("/{prefix}/")),

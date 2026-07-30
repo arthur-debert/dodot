@@ -12,10 +12,10 @@
 //!   can't elide. Reduces the window where a stale-but-still-resident
 //!   buffer could be read by another process with sufficient
 //!   privilege.
-//! - **No `Debug` / `Display`.** The type is opaque to the standard
-//!   formatting machinery. A `tracing::error!("{e:?}", e=...)` that
-//!   accidentally captures a `SecretString` won't print the bytes; it
-//!   prints `SecretString(<redacted>)`.
+//! - **Redacted `Debug`, no `Display`.** A
+//!   `tracing::error!("{e:?}", e=...)` that accidentally captures a
+//!   `SecretString` won't print the bytes; it prints
+//!   `SecretString(<redacted>, len=N)`.
 //! - **No `Serialize`.** Same idea, for the JSON / TOML paths.
 //! - **No `Clone`.** Discourages duplicating the value into multiple
 //!   buffers; callers that genuinely need a copy can call
@@ -39,9 +39,10 @@ use zeroize::Zeroize;
 /// A resolved secret value, held briefly in process memory.
 ///
 /// Construct via [`SecretString::new`]; read via [`SecretString::expose`].
-/// Zeroes its buffer on drop. Has no `Debug` / `Display` / `Serialize`
-/// implementations; printing one through any of those paths produces
-/// `<redacted>`.
+/// Zeroes its buffer on drop. `Debug` prints
+/// `SecretString(<redacted>, len=N)`; `Display` and `Serialize` are not
+/// implemented at all. See the module docs for what this wrapper does
+/// and does not protect against.
 pub struct SecretString {
     inner: Vec<u8>,
 }
@@ -186,12 +187,6 @@ mod tests {
         assert_eq!(s2.expose().unwrap(), "next-value");
     }
 
-    // Compile-time check: SecretString does NOT implement Clone.
-    // (If a future change accidentally derives Clone, the line below
-    // would compile and this test would silently pass. Instead, the
-    // negative assertion lives as a doc-comment; rust-analyzer / human
-    // review catches re-introduced Clone derivations.)
-    //
-    //   let s = SecretString::new("x".into());
-    //   let _ = s.clone();   // <-- must fail to compile
+    // Absence of `Clone` is a compile-time API property; this runtime test
+    // module cannot assert it without a compile-fail harness.
 }

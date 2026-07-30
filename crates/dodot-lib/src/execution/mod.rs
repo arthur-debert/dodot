@@ -9,19 +9,6 @@
 //! [`mod@run`] for sentinel-gated command execution. This file owns the
 //! Executor struct, the per-call `execute()` entry point, and the
 //! match-based dispatchers (`execute_one`, `simulate`).
-//!
-//! ## Auto-executable permissions
-//!
-//! When `auto_chmod_exec` is enabled (the default), the executor
-//! ensures that files inside path-handler staged directories have
-//! execute permissions (`+x`). This matches the user's intent: files
-//! in `bin/` are there to be runnable, but execute bits can be lost
-//! in common workflows (git on macOS, manual file creation).
-//!
-//! Permission failures are reported as warnings in the operation
-//! results, not hard errors — the file is still staged and added to
-//! `$PATH`, it just won't be directly runnable until the user fixes
-//! permissions manually.
 
 mod fetch;
 mod link;
@@ -213,14 +200,12 @@ mod tests {
             ])
             .unwrap();
 
-        // All should succeed with dry-run messages
         assert_eq!(results.len(), 3); // Link=1, Stage=1, Run=1
         for r in &results {
             assert!(r.success);
             assert!(r.message.contains("[dry-run]"), "msg: {}", r.message);
         }
 
-        // Nothing should have been created
         env.assert_not_exists(&env.home.join(".vimrc"));
         env.assert_no_handler_state("vim", "symlink");
         env.assert_no_handler_state("vim", "shell");

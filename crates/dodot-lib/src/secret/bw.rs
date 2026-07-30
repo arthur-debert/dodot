@@ -8,11 +8,10 @@
 //! - `bw:gh-token#username` → resolves a different first-class field
 //!   (`username`, `password`, `notes`, `totp`, `uri`).
 //!
-//! Custom (user-defined) fields are out of scope for Phase S2; they
-//! require parsing the item JSON and walking the `fields` array, and
-//! the design intentionally keeps the Phase S2 surface narrow. A
-//! later phase can add `bw:<item>#field.<custom>` without breaking
-//! anything here.
+//! Custom (user-defined) fields are not supported: they'd require
+//! parsing the item JSON and walking the `fields` array. A
+//! `bw:<item>#field.<custom>` shape can be layered on later without
+//! breaking anything here.
 //!
 //! Resolution: `bw get <field> <item>` → emits the value on stdout,
 //! exit 0 on success, non-zero with diagnostic text on stderr for
@@ -37,9 +36,7 @@ use crate::{DodotError, Result};
 /// Listed in the same order as the `bw get --help` output.
 const FIRST_CLASS_FIELDS: &[&str] = &["password", "username", "notes", "totp", "uri"];
 
-/// Default field when the reference omits `#field`. Bitwarden items
-/// are predominantly used for credentials, so `password` is the
-/// principled default.
+/// Default field when the reference omits `#field`.
 const DEFAULT_FIELD: &str = "password";
 
 /// `SecretProvider` impl for the Bitwarden CLI (`bw`).
@@ -53,10 +50,9 @@ impl BwProvider {
     }
 
     /// Construct from the process environment. No env vars are read
-    /// at construction (auth comes from `BW_SESSION` which the bw
+    /// at construction (auth comes from `BW_SESSION`, which the bw
     /// binary reads itself); the function exists for symmetry with
-    /// `OpProvider::from_env` and to keep the call-site shape
-    /// uniform across providers.
+    /// `OpProvider::from_env`.
     pub fn from_env(runner: Arc<dyn CommandRunner>) -> Self {
         Self::new(runner)
     }
@@ -103,8 +99,8 @@ impl SecretProvider for BwProvider {
     }
 
     fn probe(&self) -> ProbeResult {
-        // Step 1: binary on PATH? `bw --version` doesn't hit the
-        // network and doesn't unlock anything.
+        // `bw --version` doesn't hit the network and doesn't unlock
+        // anything.
         match self.runner.run("bw", &["--version".into()]) {
             Ok(out) if out.exit_code == 0 => {}
             Ok(_) => {
@@ -124,11 +120,11 @@ impl SecretProvider for BwProvider {
             }
         }
 
-        // Step 2: vault state. `bw status` emits a JSON document
-        // with a `status` field of `unauthenticated` / `locked` /
-        // `unlocked`. We pattern-match on the substring rather than
-        // pulling in a JSON parser for this single field — the
-        // status enum is tiny and stable across bw versions.
+        // `bw status` emits a JSON document with a `status` field of
+        // `unauthenticated` / `locked` / `unlocked`. We pattern-match
+        // on the substring rather than pulling in a JSON parser for
+        // this single field — the status enum is tiny and stable
+        // across bw versions.
         match self.runner.run("bw", &["status".into()]) {
             Ok(out) if out.exit_code == 0 => {
                 let s = out.stdout.as_str();

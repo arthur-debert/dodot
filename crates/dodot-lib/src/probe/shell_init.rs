@@ -103,7 +103,6 @@ pub fn read_latest_profile(fs: &dyn Fs, paths: &dyn Pather) -> Result<Option<Pro
 
 /// Read up to `limit` most recent profiles, newest first.
 ///
-/// Profiles are returned in reverse chronological order (newest first).
 /// The cap exists because callers know how much they need — `--runs 5`
 /// asks for five — and the directory may have hundreds of files.
 ///
@@ -205,7 +204,6 @@ pub fn parse_errors_log(content: &str) -> Vec<ProfileErrorRecord> {
     for raw_line in content.lines() {
         let line = raw_line.trim_end_matches('\r');
         if let Some(rest) = line.strip_prefix("@@\t") {
-            // New record header. Flush any in-progress record first.
             flush(&mut current, &mut out);
             let mut parts = rest.splitn(2, '\t');
             let Some(target) = parts.next() else { continue };
@@ -255,7 +253,7 @@ pub fn parse_profile(filename: &str, content: &str) -> Profile {
                     "shell" => shell = val.to_string(),
                     "start_t" => start_t = val.parse::<f64>().ok(),
                     "end_t" => end_t = val.parse::<f64>().ok(),
-                    _ => {} // unknown header — ignore
+                    _ => {}
                 }
             }
             continue;
@@ -445,7 +443,6 @@ pub struct AggregatedView {
 pub fn aggregate_profiles(profiles: &[Profile]) -> AggregatedView {
     use std::collections::BTreeMap;
 
-    // Bucket durations by (pack, handler, target).
     let mut buckets: BTreeMap<(String, String, String), Vec<u64>> = BTreeMap::new();
     for p in profiles {
         for e in &p.entries {
@@ -638,7 +635,6 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             .into_iter()
             .map(|e| e.name)
             .collect();
-        // The three highest-numbered (newest) files survive.
         assert_eq!(
             remaining,
             vec![
@@ -680,8 +676,6 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let env = TempEnvironment::builder().build();
         let dir = env.paths.probes_shell_init_dir();
         env.fs.mkdir_all(&dir).unwrap();
-        // Five profile files (more than `keep`), plus two non-profile
-        // files that the rotator must leave alone.
         for i in 1..=5 {
             env.fs
                 .write_file(&dir.join(format!("profile-{i}-1-1.tsv")), b"")
@@ -694,19 +688,15 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             .write_file(&dir.join("notes.txt"), b"keep me")
             .unwrap();
 
-        // keep=2 forces the pruning path (5 profiles → 2 should remain).
         let removed = rotate_profiles(env.fs.as_ref(), env.paths.as_ref(), 2).unwrap();
         assert_eq!(removed, 3);
 
-        // The two newest profiles survive.
         assert!(env.fs.exists(&dir.join("profile-4-1-1.tsv")));
         assert!(env.fs.exists(&dir.join("profile-5-1-1.tsv")));
-        // The three oldest are gone.
         assert!(!env.fs.exists(&dir.join("profile-1-1-1.tsv")));
         assert!(!env.fs.exists(&dir.join("profile-2-1-1.tsv")));
         assert!(!env.fs.exists(&dir.join("profile-3-1-1.tsv")));
 
-        // Non-profile files are untouched.
         assert!(env.fs.exists(&dir.join("README")));
         assert!(env.fs.exists(&dir.join("notes.txt")));
     }
@@ -761,8 +751,6 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
 
     #[test]
     fn group_profile_sorts_across_packs() {
-        // Entries arrive in deliberately scrambled order; the result
-        // must still be (pack, handler)-sorted.
         let p = Profile {
             filename: "x".into(),
             shell: "bash".into(),
@@ -876,10 +864,8 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let v: Vec<u64> = (1..=10).collect();
         assert_eq!(percentile(&v, 50), 5);
         assert_eq!(percentile(&v, 95), 10);
-        // Single sample → all percentiles return it.
         assert_eq!(percentile(&[42], 50), 42);
         assert_eq!(percentile(&[42], 95), 42);
-        // Empty slice safely returns 0.
         assert_eq!(percentile(&[], 50), 0);
     }
 
@@ -911,7 +897,6 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             total_duration_us: 0,
             errors: Vec::new(),
             entries: vec![entry("vim", "shell", "/a", 120)],
-            // /b absent in this run (sparse target presence).
         };
         let agg = aggregate_profiles(&[p1, p2, p3]);
         assert_eq!(agg.runs, 3);
@@ -936,7 +921,6 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
 
     #[test]
     fn aggregate_targets_sort_by_pack_handler_target() {
-        // Inputs scrambled; output must be (pack, handler, target)-sorted.
         let p = Profile {
             filename: "p".into(),
             shell: "".into(),
@@ -1046,7 +1030,6 @@ warning: deprecated\n\
 
     #[test]
     fn parse_errors_log_skips_malformed_headers() {
-        // A header missing the exit status, and one with non-integer exit.
         let content = "@@\t/p/a.sh\n\
 some line\n\
 @@\t/p/b.sh\tnotanint\n\
@@ -1069,7 +1052,6 @@ real error\n\
     #[test]
     fn read_recent_loads_sibling_errors_log_when_present() {
         let env = TempEnvironment::builder().build();
-        // A profile with one source entry...
         write_profile(
             &env,
             "profile-1000-1-1.tsv",
@@ -1078,7 +1060,6 @@ real error\n\
 source\tvim\tshell\t/p/aliases.sh\t1.0\t1.001\t1\n\
 # end_t\t1.002\n",
         );
-        // ...and a sibling errors log containing one record.
         let dir = env.paths.probes_shell_init_dir();
         env.fs
             .write_file(

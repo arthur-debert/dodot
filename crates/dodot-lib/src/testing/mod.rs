@@ -1,5 +1,3 @@
-//! Test infrastructure for dodot.
-//!
 //! Provides [`TempEnvironment`] — an isolated, real-filesystem test
 //! environment with builder-pattern setup and rich assertion helpers.
 //!
@@ -56,16 +54,13 @@ static SHELL_ENV_LOCK: Mutex<()> = Mutex::new(());
 /// }
 /// ```
 pub struct ShellEnvGuard {
-    // The mutex guard is `'static` because the underlying mutex is
-    // a `static`. Holding it for the lifetime of `Self` keeps the
-    // lock until `drop` runs.
+    // The static guard keeps the process-global lock until `drop`.
     _lock: MutexGuard<'static, ()>,
     prev: Option<String>,
 }
 
 impl ShellEnvGuard {
-    /// Take the lock, set `$SHELL` to `value`. Restores the
-    /// previous value on drop.
+    /// Sets `$SHELL` while holding the lock and restores it on drop.
     pub fn set(value: &str) -> Self {
         let lock = SHELL_ENV_LOCK
             .lock()
@@ -75,8 +70,7 @@ impl ShellEnvGuard {
         Self { _lock: lock, prev }
     }
 
-    /// Take the lock, unset `$SHELL`. Restores the previous value
-    /// on drop.
+    /// Unsets `$SHELL` while holding the lock and restores it on drop.
     pub fn unset() -> Self {
         let lock = SHELL_ENV_LOCK
             .lock()
@@ -105,19 +99,14 @@ impl Drop for ShellEnvGuard {
 /// All XDG paths, HOME, and DOTFILES_ROOT point inside the temp dir.
 /// The directory is cleaned up when this struct is dropped.
 pub struct TempEnvironment {
-    /// Held to keep the temp directory alive for the lifetime of the env.
     _temp_dir: TempDir,
 
-    /// Simulated HOME directory.
     pub home: PathBuf,
 
-    /// Simulated dotfiles root (DOTFILES_ROOT).
     pub dotfiles_root: PathBuf,
 
-    /// Simulated XDG data dir for dodot.
     pub data_dir: PathBuf,
 
-    /// Simulated XDG config home (e.g. for symlink target mapping).
     pub config_home: PathBuf,
 
     /// Simulated `~/Library/Application Support` root. Pinned to a
@@ -125,15 +114,12 @@ pub struct TempEnvironment {
     /// `app_aliases` tests behave identically on Linux and macOS.
     pub app_support: PathBuf,
 
-    /// Real filesystem handle.
     pub fs: Arc<OsFs>,
 
-    /// Path resolver with all paths pointing at the temp directory.
     pub paths: Arc<XdgPather>,
 }
 
 impl TempEnvironment {
-    /// Start building a new test environment.
     pub fn builder() -> TempEnvironmentBuilder {
         TempEnvironmentBuilder {
             packs: Vec::new(),
@@ -143,7 +129,6 @@ impl TempEnvironment {
 
     // ── Assertion helpers ───────────────────────────────────────────
 
-    /// Assert that a symlink exists at `link` and points to `target`.
     pub fn assert_symlink(&self, link: &Path, target: &Path) {
         assert!(
             self.fs.is_symlink(link),
@@ -164,7 +149,6 @@ impl TempEnvironment {
         );
     }
 
-    /// Assert that a file exists at `path` with exactly `expected` contents.
     pub fn assert_file_contents(&self, path: &Path, expected: &str) {
         let actual = self
             .fs
@@ -178,7 +162,6 @@ impl TempEnvironment {
         );
     }
 
-    /// Assert that a file or directory exists at `path`.
     pub fn assert_exists(&self, path: &Path) {
         assert!(
             self.fs.exists(path),
@@ -187,7 +170,6 @@ impl TempEnvironment {
         );
     }
 
-    /// Assert that nothing exists at `path`.
     pub fn assert_not_exists(&self, path: &Path) {
         assert!(
             !self.fs.exists(path),
@@ -196,7 +178,6 @@ impl TempEnvironment {
         );
     }
 
-    /// Assert that `path` is a directory.
     pub fn assert_dir_exists(&self, path: &Path) {
         assert!(
             self.fs.is_dir(path),
@@ -222,10 +203,8 @@ impl TempEnvironment {
     ) {
         let datastore_link = self.paths.handler_data_dir(pack, handler).join(filename);
 
-        // Datastore link -> source
         self.assert_symlink(&datastore_link, source);
 
-        // User link -> datastore link
         self.assert_symlink(user_path, &datastore_link);
     }
 
@@ -244,7 +223,6 @@ impl TempEnvironment {
         }
     }
 
-    /// Assert that a sentinel file exists for a pack/handler.
     pub fn assert_sentinel(&self, pack: &str, handler: &str, sentinel: &str) {
         let sentinel_path = self.paths.handler_data_dir(pack, handler).join(sentinel);
         assert!(
@@ -255,8 +233,6 @@ impl TempEnvironment {
         );
     }
 
-    /// Assert a rendered (non-symlink) file exists in the datastore
-    /// with the expected content.
     pub fn assert_rendered_file(&self, pack: &str, handler: &str, filename: &str, expected: &str) {
         let path = self.paths.handler_data_dir(pack, handler).join(filename);
         assert!(
@@ -281,7 +257,6 @@ impl TempEnvironment {
         );
     }
 
-    /// Assert that a path is a regular file (not a symlink) with expected content.
     pub fn assert_regular_file(&self, path: &Path, expected: &str) {
         assert!(self.fs.exists(path), "expected {} to exist", path.display());
         assert!(
@@ -301,7 +276,6 @@ impl TempEnvironment {
         );
     }
 
-    /// Returns the list of file names in a directory.
     pub fn list_dir_names(&self, path: &Path) -> Vec<String> {
         self.fs
             .read_dir(path)
@@ -328,8 +302,6 @@ struct PackSpec {
 }
 
 impl TempEnvironmentBuilder {
-    /// Start defining a pack. Returns a [`PackSpecBuilder`] that must
-    /// be finished with [`.done()`](PackSpecBuilder::done).
     pub fn pack(self, name: &str) -> PackSpecBuilder {
         PackSpecBuilder {
             parent: self,
@@ -340,20 +312,16 @@ impl TempEnvironmentBuilder {
         }
     }
 
-    /// Add a file under the simulated HOME directory.
-    /// Useful for testing adopt (moving existing files into packs).
     pub fn home_file(mut self, relative_path: &str, contents: &str) -> Self {
         self.extra_home_files
             .push((relative_path.to_string(), contents.to_string()));
         self
     }
 
-    /// Build the environment, creating all directories and files.
     pub fn build(self) -> TempEnvironment {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
         let fs = Arc::new(OsFs::new());
 
-        // Set up directory hierarchy
         let home = temp_dir.path().join("home");
         let dotfiles_root = home.join("dotfiles");
         let data_dir = home.join(".local").join("share").join("dodot");
@@ -367,7 +335,6 @@ impl TempEnvironmentBuilder {
         // make assertions about regardless of host OS.
         let app_support = home.join("Library").join("Application Support");
 
-        // Create base directories
         for dir in [
             &home,
             &dotfiles_root,
@@ -382,7 +349,6 @@ impl TempEnvironmentBuilder {
                 .unwrap_or_else(|e| panic!("failed to create {}: {e}", dir.display()));
         }
 
-        // Create packs
         for pack in &self.packs {
             let pack_dir = dotfiles_root.join(&pack.name);
             fs.mkdir_all(&pack_dir).unwrap();
@@ -406,7 +372,6 @@ impl TempEnvironmentBuilder {
             }
         }
 
-        // Create extra home files
         for (rel_path, contents) in &self.extra_home_files {
             let file_path = home.join(rel_path);
             if let Some(parent) = file_path.parent() {
@@ -415,7 +380,6 @@ impl TempEnvironmentBuilder {
             fs.write_file(&file_path, contents.as_bytes()).unwrap();
         }
 
-        // Build the pather with all paths pointing inside temp dir
         let paths = Arc::new(
             XdgPather::builder()
                 .home(&home)
@@ -452,26 +416,22 @@ pub struct PackSpecBuilder {
 }
 
 impl PackSpecBuilder {
-    /// Add a file to this pack.
     pub fn file(mut self, relative_path: &str, contents: &str) -> Self {
         self.files
             .push((relative_path.to_string(), contents.to_string()));
         self
     }
 
-    /// Set the `.dodot.toml` config for this pack.
     pub fn config(mut self, toml_contents: &str) -> Self {
         self.config = Some(toml_contents.to_string());
         self
     }
 
-    /// Mark this pack as ignored (creates `.dodotignore`).
     pub fn ignored(mut self) -> Self {
         self.dodotignore = true;
         self
     }
 
-    /// Finish this pack and return to the parent builder.
     pub fn done(mut self) -> TempEnvironmentBuilder {
         self.parent.packs.push(PackSpec {
             name: self.name,
@@ -499,15 +459,12 @@ mod tests {
             .done()
             .build();
 
-        // Home and dotfiles root exist
         env.assert_dir_exists(&env.home);
         env.assert_dir_exists(&env.dotfiles_root);
 
-        // Pack directories exist
         env.assert_dir_exists(&env.dotfiles_root.join("vim"));
         env.assert_dir_exists(&env.dotfiles_root.join("git"));
 
-        // Files have correct contents
         env.assert_file_contents(&env.dotfiles_root.join("vim/vimrc"), "set nocompatible");
         env.assert_file_contents(&env.dotfiles_root.join("vim/gvimrc"), "set guifont=Mono");
         env.assert_file_contents(
@@ -515,7 +472,6 @@ mod tests {
             "[user]\n  name = test",
         );
 
-        // XDG directories exist
         env.assert_dir_exists(&env.data_dir);
         env.assert_dir_exists(&env.config_home);
     }
@@ -618,10 +574,8 @@ mod tests {
     fn assert_no_handler_state_passes_when_empty() {
         let env = TempEnvironment::builder().build();
 
-        // No state dir exists at all -- should pass
         env.assert_no_handler_state("vim", "symlink");
 
-        // Empty state dir -- should also pass
         let dir = env.paths.handler_data_dir("vim", "symlink");
         env.fs.mkdir_all(&dir).unwrap();
         env.assert_no_handler_state("vim", "symlink");
@@ -666,14 +620,12 @@ mod tests {
             .done()
             .build();
 
-        // Each has its own isolated dotfiles
         env1.assert_exists(&env1.dotfiles_root.join("a/f1"));
         env1.assert_not_exists(&env1.dotfiles_root.join("b"));
 
         env2.assert_exists(&env2.dotfiles_root.join("b/f2"));
         env2.assert_not_exists(&env2.dotfiles_root.join("a"));
 
-        // Different temp directories
         assert_ne!(env1.home, env2.home);
     }
 

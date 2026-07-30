@@ -33,7 +33,6 @@ pub enum Verbosity {
 /// Returns a `WorkerGuard` that must be kept alive until process exit to
 /// ensure buffered log lines are flushed on shutdown.
 pub fn init(log_dir: &Path, verbosity: Verbosity) -> tracing_appender::non_blocking::WorkerGuard {
-    // Ensure the log directory exists; fall back to a temp dir on failure.
     let log_dir = if fs::create_dir_all(log_dir).is_ok() {
         log_dir.to_path_buf()
     } else {
@@ -102,7 +101,6 @@ fn cleanup_old_logs(log_dir: &Path, max_age_days: u64) {
     for entry in entries.flatten() {
         let path = entry.path();
 
-        // Only clean up dodot log files
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) if n.starts_with("dodot.log") => n,
             _ => continue,

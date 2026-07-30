@@ -107,7 +107,6 @@ fn walk(fs: &dyn Fs, path: &Path, display_name: &str, remaining_depth: usize) ->
         });
     }
 
-    // Directory.
     if remaining_depth == 0 {
         // Report how many entries are hidden so the user knows the
         // subtree wasn't empty.
@@ -176,7 +175,6 @@ mod tests {
     #[test]
     fn missing_data_dir_returns_empty_root() {
         let env = TempEnvironment::builder().build();
-        // Remove the data dir to simulate a fresh install.
         env.fs.remove_dir_all(&env.data_dir).unwrap();
 
         let root = collect_data_dir_tree(env.fs.as_ref(), env.paths.as_ref(), 4).unwrap();
@@ -187,7 +185,6 @@ mod tests {
     #[test]
     fn depth_zero_returns_root_only_with_truncated_count() {
         let env = TempEnvironment::builder().build();
-        // Create a couple of files under data_dir so there's something to truncate.
         env.fs
             .write_file(&env.data_dir.join("a.txt"), b"hi")
             .unwrap();
@@ -284,9 +281,6 @@ mod tests {
     #[test]
     fn count_and_total_size_helpers_agree() {
         let env = TempEnvironment::builder().build();
-        // Start from a clean data_dir so we control the exact shape.
-        // (TempEnvironment pre-creates `shell/` and `packs/` — fine for
-        // realism, but confuses exact-count assertions.)
         env.fs.remove_dir_all(&env.data_dir).unwrap();
         env.fs.mkdir_all(&env.data_dir).unwrap();
 

@@ -1,13 +1,4 @@
-//! Shared test fixtures for the orchestration test suites.
-//!
-//! `MockCommandRunner` records every `(executable, arguments)` call so
-//! provisioning-flow tests can assert on the recorded shape;
-//! `make_context` wires it through a `FilesystemDataStore`, and
-//! `TestUpCommand` is a tiny `Command` impl that runs the handler
-//! pipeline and reports per-pack results — the same shape `up`/`down`
-//! use in production. All three are `pub(super)` so the dispatcher,
-//! planning, and resolve test suites can reach them via
-//! `super::test_support::*` without duplicating fixtures.
+//! Shared orchestration-test fixtures.
 
 use std::sync::{Arc, Mutex};
 
@@ -65,7 +56,7 @@ pub(super) fn make_context(env: &TempEnvironment) -> ExecutionContext {
         syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
         command_runner: runner,
         dry_run: false,
-        no_provision: true, // skip install/homebrew in tests
+        no_provision: true,
         provision_rerun: false,
         force: false,
         check_drift: false,
@@ -77,7 +68,6 @@ pub(super) fn make_context(env: &TempEnvironment) -> ExecutionContext {
     }
 }
 
-/// Simple command that runs the handler pipeline.
 pub(super) struct TestUpCommand;
 
 impl Command for TestUpCommand {
@@ -88,9 +78,7 @@ impl Command for TestUpCommand {
     fn execute_for_pack(&self, pack: &Pack, ctx: &ExecutionContext) -> Result<PackResult> {
         let operations: Vec<OperationResult> = run_handler_pipeline(pack, ctx)?;
         let success = operations.iter().all(|r| r.success);
-        // Mirror what the real up/down commands do: the user-facing
-        // pack identifier carried in `PackResult.pack_name` is the
-        // pack's display name, not its raw on-disk directory.
+        // Results use the display name rather than the raw on-disk directory.
         Ok(PackResult {
             pack_name: pack.display_name.clone(),
             success,

@@ -28,7 +28,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dodot-lib = { version = "5.2.2-rc.1", path = "../dodot-lib", features = ["test-utils"] }
 tempfile = "3"
 
-# cargo-deb configuration. Driven by `cargo deb -p dodot` in CI.
 # No maintainer scripts (debian/postinst, debian/prerm) — dodot has no
 # `completion --shell X print` CLI to register completions on configure,
 # and no other post-install state to manage. When that lands, add

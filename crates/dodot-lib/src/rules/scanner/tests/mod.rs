@@ -1,9 +1,4 @@
-//! Scanner tests.
-//!
-//! Shared fixtures (`make_pack`, `test_gates`, `host_pair`,
-//! `default_rules`) and the scanner integration tests live here.
-//! Gate-specific suites are sibling files: filename gates, directory
-//! gates (C2), and `[mappings.gates]` glob gates (C4).
+//! Scanner tests and shared fixtures.
 
 #![allow(unused_imports)]
 
@@ -173,7 +168,6 @@ fn scan_pack_skips_special_files() {
         .done()
         .build();
 
-    // Also manually create .dodotignore (even though it shouldn't be scanned)
     let pack_dir = env.dotfiles_root.join("test");
     env.fs
         .write_file(&pack_dir.join(".dodotignore"), b"")
@@ -295,7 +289,6 @@ fn scan_pack_priority_ordering() {
     let scanner = Scanner::new(env.fs.as_ref());
     let pack = make_pack("test", env.dotfiles_root.join("test"));
 
-    // Both *.sh and aliases.sh match — higher priority should win
     let rules = vec![
         Rule {
             pattern: "*.sh".into(),
@@ -685,15 +678,12 @@ fn shell_glob_does_not_recurse_into_subdirectories() {
         .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
         .unwrap();
 
-    // No nested entry should surface — the scanner is depth-1.
     assert!(
         !matches
             .iter()
             .any(|m| m.relative_path.to_string_lossy().contains('/')),
         "no nested matches expected: {matches:?}"
     );
-    // No shell-handler match should exist at all — the `scripts/`
-    // dir is matched as a dir and falls to the symlink catchall.
     assert!(
         !matches.iter().any(|m| m.handler == "shell"),
         "nested scripts must not route to shell: {matches:?}"

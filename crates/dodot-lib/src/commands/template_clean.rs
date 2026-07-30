@@ -4,7 +4,7 @@
 //! This is what makes `git status` / `git diff` / `git log -p` show
 //! the truth between commits, even when the user has only edited the
 //! deployed file. Git invokes us when reading a working-tree file
-//! whose mtime suggests it might have changed (refresh — R5 — is the
+//! whose mtime suggests it might have changed (`dodot refresh` is the
 //! thing that nudges those mtimes); we look up the cached baseline,
 //! compare the deployed bytes to the baseline's rendered hash, and:
 //!
@@ -17,12 +17,12 @@
 //! 2. **Slow path**: if the deployed file diverges, rehydrate the
 //!    cached `TrackedRender::from_tracked_string` and run
 //!    `burgertocow::generate_diff_with_markers` (with our
-//!    `MARKER_*` constants from R2) against the deployed bytes.
+//!    `MARKER_*` constants) against the deployed bytes.
 //!    Apply the resulting diff to the template via diffy and emit
 //!    the patched form. Conflict blocks land inline.
 //!
 //! No provider calls, ever. The whole point of caching
-//! `tracked_render` in R1 is so this filter never re-renders — that
+//! `tracked_render` is so this filter never re-renders — that
 //! would re-trigger any `secret(...)` provider auth on every
 //! `git status`, the auth-fatigue scenario magic.lex specifically
 //! rules out.
@@ -137,8 +137,7 @@ pub fn template_clean(
     // deployed file would land as a diff that rewrites the template
     // expression to the literal new value — defeating the
     // `secret(...)` abstraction. See `secrets.lex` §3.3 +
-    // burgertocow#13. Absent sidecar = empty mask = byte-identical
-    // to pre-Phase-S2 behavior.
+    // burgertocow#13.
     let secret_ranges = SecretsSidecar::load(fs, paths, &pack, &handler, &filename)?
         .map(|s| s.secret_line_ranges)
         .unwrap_or_default();
@@ -236,10 +235,7 @@ mod tests {
     use crate::testing::TempEnvironment;
     use burgertocow::Tracker;
 
-    /// Render a template through burgertocow the way R1's pipeline
-    /// does, so we get a tracked-render string that the filter will
-    /// be able to rehydrate. Mirrors the test helper in the
-    /// reverse_merge module.
+    /// Render a template and return the tracked string cached for rehydration.
     fn render(src: &str, ctx: serde_json::Value) -> (String, String) {
         let mut tracker = Tracker::new();
         tracker.add_template("t", src).unwrap();
@@ -247,9 +243,7 @@ mod tests {
         (tracked.output().to_string(), tracked.tracked().to_string())
     }
 
-    /// Stage a baseline + matching pack source + matching deployed
-    /// file. Returns the absolute paths so the test can edit either
-    /// side. Same shape as the helper in `commands::refresh::tests`.
+    /// Stage matching baseline, source, and deployed files.
     fn stage(
         env: &TempEnvironment,
         pack: &str,
@@ -474,12 +468,10 @@ mod tests {
         env.fs.write_file(&deployed, b"* a\n+ b\n- c\n").unwrap();
 
         let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
-        // Original template still present.
         assert!(
             out.contains("{% for i in items %}"),
             "original template must be retained: {out:?}"
         );
-        // Conflict block appended.
         assert!(
             out.contains(MARKER_START),
             "conflict block missing: {out:?}"
@@ -543,7 +535,6 @@ mod tests {
         env.fs.mkdir_all(deployed.parent().unwrap()).unwrap();
         env.fs.write_file(&deployed, b"name = EDITED\n").unwrap();
 
-        // Baseline with an empty tracked_render.
         let baseline = Baseline::build(&src, b"name = Alice\n", template.as_bytes(), None, None);
         baseline
             .write(
@@ -609,7 +600,6 @@ mod tests {
         let template = "name = {{ name }}\n";
         env.fs.write_file(&src, template.as_bytes()).unwrap();
 
-        // Lay down a corrupt baseline JSON (parse failure on load).
         let cache_path = env
             .paths
             .preprocessor_baseline_path("app", "preprocessed", "cfg");
@@ -618,7 +608,6 @@ mod tests {
 
         let mut stdin = std::io::Cursor::new(template.as_bytes().to_vec());
         let mut stdout: Vec<u8> = Vec::new();
-        // Must succeed — the inner Err is swallowed.
         template_clean_stdio(
             env.fs.as_ref(),
             env.paths.as_ref(),
@@ -628,7 +617,6 @@ mod tests {
             &mut stdout,
         )
         .expect("stdio must soft-fail to echo, not propagate Err");
-        // And the echoed bytes must equal the input verbatim.
         assert_eq!(stdout, template.as_bytes());
     }
 
@@ -656,9 +644,6 @@ mod tests {
             .write_file(&deployed, b"unrelated content\n")
             .unwrap();
 
-        // Baseline with a tracked_render that doesn't correspond to
-        // the template — burgertocow will see them as totally
-        // different.
         let baseline = Baseline::build(
             &src,
             b"different",
@@ -676,8 +661,6 @@ mod tests {
             )
             .unwrap();
 
-        // Must succeed (output may be anything; just not a panic or
-        // an Err).
         let _ = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
     }
 }

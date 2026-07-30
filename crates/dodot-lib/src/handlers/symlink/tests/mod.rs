@@ -1,12 +1,4 @@
-//! Tests for the symlink handler.
-//!
-//! Shared fixtures (`test_pather`, `default_config`) live here so the
-//! per-tier sub-modules can `use super::{...}` without re-defining each
-//! one. Small sections — default rule, pack-prefix interaction,
-//! protected paths, force_home matching — stay inline. The big topical
-//! suites live in sibling files: cascade priority resolution and the
-//! integration tests covering routing conflicts, custom targets,
-//! wholesale-vs-per-file behaviour, and `_lib/` warnings.
+//! Tests and shared fixtures for the symlink handler.
 
 #![allow(unused_imports)]
 
@@ -58,8 +50,7 @@ pub(super) fn default_config() -> HandlerConfig {
 
 #[test]
 fn top_level_file_goes_to_pack_xdg_dir() {
-    // Under #48: top-level files in a pack default to
-    // $XDG_CONFIG_HOME/<pack>/<file>, not $HOME/.<file>.
+    // Top-level files default to $XDG_CONFIG_HOME/<pack>/<file>.
     let config = HandlerConfig::default();
     let target = resolve_target("vim", "vimrc", &config, &test_pather());
     assert_eq!(target, PathBuf::from("/home/alice/.config/vim/vimrc"));
@@ -114,9 +105,8 @@ fn prefixed_pack_with_force_home_still_strips_prefix() {
     assert_eq!(target, PathBuf::from("/home/alice/.ssh/config"));
 }
 
-/// Regression for the 0.16.0 pilot: pack `ghostty` with top-level
-/// file `config` used to resolve to `$HOME/.config` (collision with
-/// XDG_CONFIG_HOME directory). Under #48 it goes under the pack.
+/// A top-level `config` file stays under the pack namespace instead of
+/// colliding with the XDG_CONFIG_HOME directory.
 #[test]
 fn top_level_file_named_config_goes_under_pack_no_xdg_collision() {
     let config = HandlerConfig::default();

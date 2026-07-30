@@ -34,13 +34,12 @@ use crate::{DodotError, Result};
 ///   baseline cache. No provider calls. No datastore writes. No
 ///   baseline writes.
 ///
-/// This enum is the single boolean the pipeline gates on. Active is
-/// the existing behavior; Passive is the §7.4-compliant read-only
-/// path. See issue #121.
+/// This enum is the single boolean the pipeline gates on. See issue
+/// #121.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreprocessMode {
     /// Run preprocessors, write rendered outputs to the datastore,
-    /// write baselines to the cache. The original `dodot up` path.
+    /// write baselines to the cache. The `dodot up` path.
     Active,
     /// Read everything from the baseline cache. Skip preprocessor
     /// expansion (no provider calls), skip datastore writes, skip
@@ -124,7 +123,7 @@ pub struct PreprocessResult {
     /// this map first and fall back to disk read for non-template
     /// files. Without this, Passive callers — where the rendered
     /// file isn't on disk — couldn't produce correct sentinels for
-    /// templated install scripts or Brewfiles. See issue #121.
+    /// templated install scripts or Brewfiles.
     pub rendered_bytes: HashMap<PathBuf, Arc<[u8]>>,
     /// Files whose deployed bytes diverged from the cached baseline and
     /// were therefore preserved instead of being overwritten. Empty
@@ -399,20 +398,13 @@ pub fn preprocess_pack(
             "expanding"
         );
 
-        // Safety gate: refuse to expand a source carrying unresolved
-        // dodot-conflict markers. Otherwise the markers would render
-        // verbatim through the template engine and deploy as broken
-        // config. Gated on `supports_reverse_merge` so non-tracking
+        // Safety gate (see `conflict::ensure_no_unresolved_markers`
+        // for the lossy-decode contract): refuse to expand a source
+        // carrying unresolved dodot-conflict markers, which would
+        // otherwise render verbatim and deploy as broken config.
+        // Gated on `supports_reverse_merge` so non-tracking
         // preprocessors (unarchive, identity) don't pay the read cost
         // — their sources can't naturally carry the marker token.
-        //
-        // Lossy UTF-8 conversion: we read raw bytes and decode lossily
-        // so a non-UTF-8 source for a reverse-merge-capable
-        // preprocessor still gets a clean scan rather than failing
-        // with a generic UTF-8 decode error. The marker token is
-        // ASCII, so the lossy decode preserves it. Templates today
-        // are always UTF-8 in practice; this is defence-in-depth for
-        // future preprocessors.
         // See preprocessing-pipeline.lex §6.3.
         if preprocessor.supports_reverse_merge() {
             let source_bytes = fs.read_file(&entry.absolute_path)?;
@@ -423,21 +415,17 @@ pub fn preprocess_pack(
             )?;
         }
 
-        // Expand the source file
         let expanded_files = preprocessor.expand(&entry.absolute_path, fs)?;
 
         for expanded in expanded_files {
-            // Reject unsafe paths from the preprocessor (tar-slip,
-            // absolute paths, parent-dir escapes) before any disk write.
             validate_safe_relative_path(
                 &expanded.relative_path,
                 preprocessor.name(),
                 &entry.absolute_path,
             )?;
 
-            // Compute the virtual relative path.
-            // If the source was in a subdirectory (e.g., "subdir/config.toml.identity"),
-            // the virtual entry should preserve the parent (e.g., "subdir/config.toml").
+            // A source in a subdirectory (e.g. "subdir/config.toml.identity")
+            // keeps its parent in the virtual entry ("subdir/config.toml").
             let virtual_relative = if let Some(parent) = entry.relative_path.parent() {
                 if parent == Path::new("") {
                     expanded.relative_path.clone()
@@ -471,38 +459,18 @@ pub fn preprocess_pack(
                 });
             }
 
-            // Write expanded content to datastore, preserving directory
-            // structure. Directories get mkdir'd; files get their content
-            // written. `write_rendered_file` creates any needed parent
-            // directories.
-            //
-            // Divergence guard (§6.4): for tracked-render preprocessors,
-            // check whether the deployed file has diverged from the
-            // cached baseline before overwriting. If it has, skip the
-            // *write* and record a SkippedRender so the caller can warn
-            // the user. `force = true` bypasses the guard. See
-            // `check_divergence` for the byte-level rule.
-            //
-            // The render itself (`preprocessor.expand` above) has
-            // already run by this point — moving the divergence check
-            // ahead of expansion would require knowing every output
-            // path before producing any of them, which the preprocessor
-            // contract doesn't expose. The cost of the spurious render
-            // is the cycles burned plus any one-shot side effects in
-            // expand (e.g. secret-provider prompts for templates that
-            // resolve `{{ secrets.X }}`). For divergent files this
-            // means the prompt fires even though the rendered bytes
-            // are immediately discarded; users who want to avoid that
-            // should resolve the divergence (`dodot transform check`)
-            // before the next `dodot up`. Tracked here for §6.4
-            // follow-up; not blocking the divergence-preservation
-            // contract this guard exists to keep.
-            //
-            // The guard fires regardless of `write_baselines` — it's a
-            // read-only check against the existing cache, and read-only
-            // callers (`dodot status`) need it just as much as `dodot
-            // up` does. Without this, status would re-render and
-            // overwrite the user's edited deployed file silently.
+            // The divergence guard (§6.4) runs *after*
+            // `preprocessor.expand` above: moving it ahead of expansion
+            // would require knowing every output path before producing
+            // any of them, which the preprocessor contract doesn't
+            // expose. The cost of the spurious render is the cycles
+            // burned plus any one-shot side effects in expand (e.g.
+            // secret-provider prompts for templates that resolve
+            // `{{ secrets.X }}`). For divergent files the prompt fires
+            // even though the rendered bytes are immediately discarded;
+            // users who want to avoid that should resolve the
+            // divergence (`dodot transform check`) before the next
+            // `dodot up`.
             let mut skip_path: Option<PathBuf> = None;
             // Divergence-guard gate: fires for any preprocessor
             // that produces a single file we can hash against the
@@ -591,31 +559,24 @@ pub fn preprocess_pack(
 
             // Persist a baseline record so future `dodot transform
             // check` / clean-filter calls can detect drift without
-            // re-rendering. Only write when:
+            // re-rendering. The gate mirrors the divergence guard, so
+            // the guard has data to compare against next run. Only
+            // write when:
             //   - the entry is a file (directory entries from archive
             //     preprocessors carry no rendered content),
-            //   - the preprocessor produced a tracked render (i.e. it's
-            //     a generative-with-tracking preprocessor, currently
-            //     just templates). Plain Generative preprocessors that
-            //     don't support reverse-merge (unarchive) skip the
-            //     baseline because the cache is only meaningful when
-            //     paired with burgertocow tracking, AND
+            //   - the preprocessor participates: templates supply
+            //     `tracked_render` (which both unlocks reverse-merge
+            //     and seeds the baseline), whole-file secrets supply
+            //     `deploy_mode` (no marker stream, but rendered_hash
+            //     is still meaningful for divergence detection per
+            //     `secrets.lex` §4.4). Preprocessors with neither
+            //     (unarchive) skip the baseline, AND
             //   - the divergence guard didn't skip the write (otherwise
             //     we'd update the baseline to match a render that never
             //     hit disk, breaking future divergence detection).
             //
-            // Mode-gating happens at the function boundary: this whole
-            // branch only runs in `PreprocessMode::Active`. Passive
-            // commands take the early-return at the top of the
-            // function and never reach this code.
-            // Baseline-write gate: write whenever the divergence
-            // guard would fire next time, so the guard has data to
-            // compare against. Templates supply `tracked_render`
-            // (which both unlocks reverse-merge and seeds the
-            // baseline); whole-file secrets supply `deploy_mode`
-            // (no marker stream — `tracked_render = None` — but
-            // rendered_hash is still meaningful for divergence
-            // detection per `secrets.lex` §4.4).
+            // Reached only in `PreprocessMode::Active` — Passive takes
+            // the early return at the top of the function.
             let should_write_baseline = !expanded.is_dir
                 && !was_skipped
                 && (expanded.tracked_render.is_some() || expanded.deploy_mode.is_some());
@@ -650,11 +611,9 @@ pub fn preprocess_pack(
                     );
                 }
 
-                // Secrets sidecar (secrets.lex §3.3). Always called;
-                // the writer no-ops when the render had no
-                // `secret(...)` calls AND removes a stale sidecar
-                // from a prior render that DID, so the on-disk
-                // state always matches the latest render.
+                // Secrets sidecar (secrets.lex §3.3). Always called so
+                // the on-disk state matches the latest render; see
+                // `SecretsSidecar::write` for the no-secrets case.
                 let sidecar = crate::preprocessing::baseline::SecretsSidecar::new(
                     expanded.secret_line_ranges.clone(),
                 );
@@ -753,7 +712,7 @@ pub fn preprocess_pack(
 /// This contract is what `secrets.lex` §7.4 demands: `dodot status`
 /// and `dodot up --dry-run` MUST NOT trigger template evaluation,
 /// MUST NOT surface provider auth prompts, and MUST NOT mutate disk
-/// state. See issue #121.
+/// state.
 ///
 /// Limitation: this assumes a 1:1 source→virtual relationship via
 /// `stripped_name`. That holds for templates (the only shipped
@@ -802,17 +761,11 @@ fn preprocess_pack_passive(
             .handler_data_dir(&pack.name, PREPROCESSED_HANDLER)
             .join(&virtual_relative);
 
-        // Try to load the cached baseline. If absent, this is a
-        // first-time template that has never been deployed: surface
-        // a placeholder virtual entry (no rendered_bytes) so callers
-        // like `dodot status` can render it as "pending" under the
-        // stripped name. Critically, we do NOT fall through to
-        // template evaluation — that's the §7.4 violation we're
-        // here to fix. Handlers that need rendered bytes for
-        // sentinel hashing (`install`, `homebrew`) will fall back
-        // to disk-read on the missing datastore path and report
-        // pending; symlink-targeted templates render cleanly as
-        // pending without needing the bytes at all.
+        // A missing baseline means a first-time template that has
+        // never been deployed. It surfaces as a placeholder virtual
+        // entry with no rendered bytes; falling through to template
+        // evaluation here would be the §7.4 violation this path
+        // exists to avoid.
         let cache_filename = cache_filename_for(&virtual_relative);
         let baseline =
             match Baseline::load(fs, paths, &pack.name, PREPROCESSED_HANDLER, &cache_filename)? {
@@ -833,8 +786,7 @@ fn preprocess_pack_passive(
         // can surface the same `Health::Preserved` row that the
         // active path does. The byte comparison is local and free
         // of side effects — no provider calls, no template eval —
-        // so it stays inside the §7.4 envelope. Skipped only when a
-        // baseline exists (no baseline → no comparison reference).
+        // so it stays inside the §7.4 envelope.
         if baseline.is_some() {
             if let Ok(DivergenceCheck::Skip {
                 state,
@@ -856,12 +808,10 @@ fn preprocess_pack_passive(
         }
 
         // Carry the baseline's rendered content forward as the
-        // in-memory bytes for downstream sentinel hashing when a
-        // baseline exists. Without a baseline (first-time pack), no
-        // bytes are available — handlers that need them will see
-        // `m.rendered_bytes == None` and fall back to disk read,
-        // which correctly fails for the missing datastore file and
-        // shows up as "pending" in status.
+        // in-memory bytes for downstream sentinel hashing. Without a
+        // baseline, handlers fall back to a disk read that correctly
+        // fails for the missing datastore file and shows up as
+        // "pending" in status.
         if let Some(b) = baseline {
             let bytes: Arc<[u8]> = Arc::from(b.rendered_content.into_bytes());
             rendered_bytes.insert(datastore_path.clone(), bytes);

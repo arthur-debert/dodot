@@ -16,8 +16,8 @@ use crate::{DodotError, Result};
 /// can delete the sentinel + snapshot pair to roll a file back to
 /// `NeverRan`.
 ///
-/// Old sentinels predating PR C of #169 have no sibling — `did_run`
-/// surfaces `previous_snapshot: None` in that case so `dodot status`
+/// Sentinels written before snapshots existed have no sibling —
+/// `did_run` surfaces `previous_snapshot: None` then, so `dodot status`
 /// can render the `ran older version` state without diff details
 /// (and `dodot status --diff` can omit the entry from its output).
 pub(crate) const SNAPSHOT_SUFFIX: &str = ".snapshot";
@@ -162,14 +162,12 @@ impl DataStore for FilesystemDataStore {
 
         self.fs.mkdir_all(&link_dir)?;
 
-        // Idempotent: if the link already points to the correct source, skip.
         if self.fs.is_symlink(&link_path) {
             if let Ok(current_target) = self.fs.readlink(&link_path) {
                 if current_target == source_file {
                     return Ok(link_path);
                 }
             }
-            // Wrong target — remove and re-create.
             self.fs.remove_file(&link_path)?;
         }
 
@@ -178,23 +176,18 @@ impl DataStore for FilesystemDataStore {
     }
 
     fn create_user_link(&self, datastore_path: &Path, user_path: &Path) -> Result<()> {
-        // Create parent directory
         if let Some(parent) = user_path.parent() {
             self.fs.mkdir_all(parent)?;
         }
 
-        // If something already exists at user_path, handle it
         if self.fs.is_symlink(user_path) {
-            // Existing symlink — check if it's correct
             if let Ok(current_target) = self.fs.readlink(user_path) {
                 if current_target == datastore_path {
-                    return Ok(()); // Already correct
+                    return Ok(());
                 }
             }
-            // Wrong target — remove and re-create
             self.fs.remove_file(user_path)?;
         } else if self.fs.exists(user_path) {
-            // Exists but is not a symlink — conflict
             return Err(crate::DodotError::SymlinkConflict {
                 path: user_path.to_path_buf(),
             });
@@ -212,7 +205,6 @@ impl DataStore for FilesystemDataStore {
         sentinel: &str,
         force: bool,
     ) -> Result<()> {
-        // Idempotent: skip if sentinel exists
         if !force && self.has_sentinel(pack, handler, sentinel)? {
             return Ok(());
         }
@@ -266,7 +258,6 @@ impl DataStore for FilesystemDataStore {
         }
         result?;
 
-        // Record sentinel
         let sentinel_dir = self.paths.handler_data_dir(pack, handler);
         self.fs.mkdir_all(&sentinel_dir)?;
 
@@ -280,13 +271,12 @@ impl DataStore for FilesystemDataStore {
 
         // Snapshot the file we just ran so that a future `did_run`
         // can return its previous content for diff display when the
-        // current file's hash differs (notify-don't-rerun, #169 PR
-        // C). The path of the file ran is the last argument by
-        // convention — same as the header-block read above. Snapshot
-        // writes are best-effort: if the read or write fails, log
-        // and move on. The sentinel itself is already recorded, so
-        // the user's run state is correct; only the diff capability
-        // is lost.
+        // current file's hash differs. The path of the file ran is
+        // the last argument by convention — same as the header-block
+        // read above. Snapshot writes are best-effort: if the read or
+        // write fails, log and move on. The sentinel itself is
+        // already recorded, so the user's run state is correct; only
+        // the diff capability is lost.
         if let Some(path_str) = script_path.as_deref() {
             let snapshot_path = sentinel_dir.join(format!("{sentinel}{SNAPSHOT_SUFFIX}"));
             match self.fs.read_file(Path::new(path_str)) {
@@ -352,19 +342,14 @@ impl DataStore for FilesystemDataStore {
             return Ok(DidRunStatus::NeverRan);
         }
 
-        // RanCurrent if any sentinel records the current hash.
         if matches.iter().any(|(_, h)| h == current_hash) {
             return Ok(DidRunStatus::RanCurrent);
         }
 
-        // For tie-break between multiple non-matching sentinels, pick
-        // the sentinel with the most recent `completed|<unix-ts>`
-        // payload (written by `run_and_record`). This is the closest
-        // signal we have to "most recent prior run" without needing
-        // mtime access through the Fs trait. Sentinels whose payload
-        // doesn't parse fall to the bottom of the ranking (timestamp
-        // 0); ties on timestamp break by lexical order on the
-        // sentinel filename for determinism.
+        // Tie-break on the `completed|<unix-ts>` payload rather than
+        // mtime, which the Fs trait doesn't expose. Sentinels whose
+        // payload doesn't parse fall to the bottom (timestamp 0); the
+        // lexical fallback keeps ties deterministic.
         let prior = matches
             .into_iter()
             .map(|(name, hash)| {
@@ -621,13 +606,11 @@ mod tests {
         let source = env.dotfiles_root.join("vim/vimrc");
         let link_path = ds.create_data_link("vim", "symlink", &source).unwrap();
 
-        // Link should be in the handler data dir
         assert_eq!(
             link_path,
             env.paths.handler_data_dir("vim", "symlink").join("vimrc")
         );
 
-        // Link should point to source
         env.assert_symlink(&link_path, &source);
     }
 
@@ -662,14 +645,11 @@ mod tests {
         let source1 = env.dotfiles_root.join("vim/vimrc");
         let source2 = env.dotfiles_root.join("vim/vimrc-new");
 
-        // Create initial link to source1
         let link_dir = env.paths.handler_data_dir("vim", "symlink");
         env.fs.mkdir_all(&link_dir).unwrap();
-        // Manually create a link named "vimrc-new" pointing to source1 (wrong target)
         let wrong_link = link_dir.join("vimrc-new");
         env.fs.symlink(&source1, &wrong_link).unwrap();
 
-        // Now create_data_link should fix it to point at source2
         let link_path = ds.create_data_link("vim", "symlink", &source2).unwrap();
         env.assert_symlink(&link_path, &source2);
     }
@@ -684,7 +664,6 @@ mod tests {
         let datastore_path = env.data_dir.join("packs/vim/symlink/vimrc");
         let user_path = env.home.join(".vimrc");
 
-        // Create the datastore file so the symlink target exists
         env.fs.mkdir_all(datastore_path.parent().unwrap()).unwrap();
         env.fs.write_file(&datastore_path, b"link target").unwrap();
 
@@ -718,7 +697,6 @@ mod tests {
         let datastore_path = env.data_dir.join("packs/vim/symlink/vimrc");
         let user_path = env.home.join(".vimrc");
 
-        // Create a regular file at the user path
         env.fs.write_file(&user_path, b"existing content").unwrap();
 
         let err = ds
@@ -743,10 +721,8 @@ mod tests {
         env.fs.write_file(&wrong_target, b"wrong").unwrap();
         env.fs.write_file(&correct_target, b"right").unwrap();
 
-        // Create wrong symlink
         env.fs.symlink(&wrong_target, &user_path).unwrap();
 
-        // Should fix it
         ds.create_user_link(&correct_target, &user_path).unwrap();
         env.assert_symlink(&user_path, &correct_target);
     }
@@ -765,16 +741,12 @@ mod tests {
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
 
-        // Step 1: data link
         let datastore_path = ds.create_data_link("vim", "symlink", &source).unwrap();
 
-        // Step 2: user link
         ds.create_user_link(&datastore_path, &user_path).unwrap();
 
-        // Verify the full chain
         env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
 
-        // Reading through the chain should yield the original content
         let content = env.fs.read_to_string(&user_path).unwrap();
         assert_eq!(content, "set nocompatible");
     }
@@ -801,7 +773,6 @@ mod tests {
         assert!(ds.has_sentinel("vim", "install", "install.sh-abc").unwrap());
         assert_eq!(runner.calls(), vec!["echo hello"]);
 
-        // Sentinel file should contain "completed|..."
         let sentinel_path = env
             .paths
             .handler_data_dir("vim", "install")
@@ -820,7 +791,6 @@ mod tests {
         ds.run_and_record("vim", "install", "echo", &["second".into()], "s1", false)
             .unwrap();
 
-        // Command only ran once
         assert_eq!(runner.calls(), vec!["echo first"]);
     }
 
@@ -839,7 +809,6 @@ mod tests {
             "expected CommandFailed, got: {err}"
         );
 
-        // No sentinel should be created on failure
         assert!(!ds.has_sentinel("vim", "install", "s1").unwrap());
     }
 
@@ -867,7 +836,6 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
 
-        // Should not error
         ds.remove_state("nonexistent", "handler").unwrap();
     }
 
@@ -1041,7 +1009,6 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
 
-        // handler_data_dir doesn't exist yet — write_rendered_file should create it
         let handler_dir = env.paths.handler_data_dir("newpack", "preprocessed");
         assert!(!env.fs.exists(&handler_dir));
 
@@ -1158,18 +1125,13 @@ mod tests {
 
     #[test]
     fn extract_sentinel_hash_rejects_non_sentinels() {
-        // No dash.
         assert_eq!(extract_sentinel_hash("install.sh"), None);
-        // Hash too short.
         assert_eq!(extract_sentinel_hash("install.sh-abc"), None);
-        // Hash has uppercase (we expect lowercase).
         assert_eq!(extract_sentinel_hash("install.sh-ABCDEF0123456789"), None);
-        // Snapshot sibling files — the suffix is ".snapshot", not 16 hex chars.
         assert_eq!(
             extract_sentinel_hash("install.sh-abcdef0123456789.snapshot"),
             None
         );
-        // Hash contains non-hex.
         assert_eq!(extract_sentinel_hash("install.sh-abcdef012345xyz9"), None);
     }
 
@@ -1213,7 +1175,6 @@ mod tests {
             .build();
         let (ds, _) = make_datastore(&env);
 
-        // Run with one hash, then ask about a different one.
         ds.run_and_record(
             "vim",
             "install",
@@ -1247,8 +1208,7 @@ mod tests {
 
     #[test]
     fn did_run_different_without_snapshot_returns_none() {
-        // Pre-PR-C sentinel: no .snapshot sibling. did_run should
-        // still classify as RanDifferent but with previous_snapshot=None.
+        // Legacy sentinels without snapshots still classify as RanDifferent.
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
 
@@ -1260,7 +1220,6 @@ mod tests {
                 b"completed|12345",
             )
             .unwrap();
-        // No .snapshot file written — simulates pre-upgrade state.
 
         let status = ds
             .did_run("vim", "install", "install.sh", "bbbbbbbbbbbbbbbb")
@@ -1284,7 +1243,6 @@ mod tests {
 
         let sentinel_dir = env.paths.handler_data_dir("vim", "install");
         env.fs.mkdir_all(&sentinel_dir).unwrap();
-        // Sentinel for a *different* filename.
         env.fs
             .write_file(
                 &sentinel_dir.join("install.bash-aaaaaaaaaaaaaaaa"),
@@ -1313,14 +1271,12 @@ mod tests {
         let sentinel_dir = env.paths.handler_data_dir("vim", "install");
         env.fs.mkdir_all(&sentinel_dir).unwrap();
 
-        // Older run, hash sorts LATER lexically.
         env.fs
             .write_file(
                 &sentinel_dir.join("install.sh-ffffffffffffffff"),
                 b"completed|100",
             )
             .unwrap();
-        // Newer run, hash sorts EARLIER lexically.
         env.fs
             .write_file(
                 &sentinel_dir.join("install.sh-1111111111111111"),
@@ -1439,11 +1395,9 @@ mod tests {
         )
         .unwrap();
 
-        // Sentinel exists.
         assert!(ds
             .has_sentinel("vim", "install", "missing.sh-abcdef0123456789")
             .unwrap());
-        // Snapshot does not.
         let snapshot_path = env
             .paths
             .handler_data_dir("vim", "install")

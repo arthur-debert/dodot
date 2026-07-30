@@ -214,8 +214,6 @@ mod tests {
             Arc::new(NoopCommandRunner),
         );
 
-        // Seed handler state by linking the bin dir as the path handler
-        // would once executed.
         let bin_dir = env.dotfiles_root.join("dev/bin");
         ds.create_data_link("dev", HANDLER_PATH, &bin_dir).unwrap();
 

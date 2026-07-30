@@ -10,8 +10,8 @@
 //!
 //! The dot-separated key path is translated to SOPS's bracketed
 //! `--extract` syntax (`["database"]["password"]`). Array indexing
-//! (`[0]`) is not supported in this phase; nested map keys cover
-//! the dotfile use case fully.
+//! (`[0]`) is not supported; nested map keys cover the dotfile use
+//! case fully.
 //!
 //! Auth: SOPS picks up its identity from the in-tree `.sops.yaml` +
 //! whichever key source it's configured to use (age, gpg, cloud
@@ -54,14 +54,12 @@ impl SopsProvider {
     /// would otherwise produce an empty bracket pair, which SOPS
     /// rejects with an opaque error).
     ///
-    /// Each segment is escaped before being wrapped in quotes:
-    /// `\` → `\\`, `"` → `\"`. SOPS's `--extract` uses a
-    /// JSON-string-like syntax for each bracket key, so segments
-    /// containing literal quotes or backslashes (legal YAML/JSON
-    /// keys) need the same escaping the language requires.
-    /// Without this, a key like `db."backup"` would land as
-    /// `["db.\"backup\""]` invalidly closed and SOPS would reject
-    /// the call with an opaque parse error.
+    /// SOPS's `--extract` uses a JSON-string-like syntax for each
+    /// bracket key, so each segment is escaped before being wrapped
+    /// in quotes: `\` → `\\`, `"` → `\"`. Without this, a key
+    /// containing a literal quote (legal in YAML/JSON) produces an
+    /// unbalanced bracket expression and SOPS rejects the call with
+    /// an opaque parse error.
     ///
     /// `dot_path` is the original user-facing path returned
     /// alongside `extract` so error messages can reference what
@@ -135,14 +133,10 @@ impl SecretProvider for SopsProvider {
                     .into(),
             },
         }
-        // Note: we deliberately don't try to probe the key state
-        // (age key, gpg-agent, KMS creds). SOPS auth depends on the
-        // in-tree `.sops.yaml` + whichever key backend it's configured
-        // for, and a meaningful auth probe would require an actual
-        // decrypt of a known file — which we don't have. Decryption
-        // failures surface at resolve time with the SOPS error text
-        // passed through verbatim, which is more diagnostic than any
-        // probe message we could synthesize.
+        // Key state (age key, gpg-agent, KMS creds) is deliberately
+        // not probed — a meaningful auth probe would require an
+        // actual decrypt of a known file, which we don't have. See
+        // the module docs.
     }
 
     fn resolve(&self, reference: &str) -> Result<SecretString> {
@@ -539,7 +533,6 @@ mod tests {
         ));
         let p = SopsProvider::new(runner, root());
         let v = p.resolve("s.yaml#k").unwrap();
-        // Two newlines in stdout → one stays in resolved value.
         assert_eq!(v.expose().unwrap(), "multi-line-value\n");
     }
 }

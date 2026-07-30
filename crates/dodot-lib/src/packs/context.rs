@@ -5,10 +5,6 @@
 //! flags that scope a single invocation (`dry_run`, `force`, view/group
 //! mode, …). Production wires up [`ExecutionContext::production`];
 //! tests assemble fields directly.
-//!
-//! Lives in its own file so the orchestration pipeline can stay focused
-//! on `execute()` / `plan_pack()` without the constructor weighing
-//! every read.
 
 use std::sync::Arc;
 
