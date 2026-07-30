@@ -185,4 +185,6 @@ mod tests {
         let s2 = SecretString::new("next-value".into());
         assert_eq!(s2.expose().unwrap(), "next-value");
     }
+
+    // The non-`Clone` contract is documented at the module boundary.
 }
