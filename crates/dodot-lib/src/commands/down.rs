@@ -140,7 +140,12 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
     if !ctx.dry_run && !selected_orphans.is_empty() {
         orchestration::sweep_pack_state(&selected_orphans, ctx)?;
         warnings.push(format!(
-            "removed state for packs no longer in {}: {}",
+            "removed state for {} no longer in {}: {}",
+            if selected_orphans.len() == 1 {
+                "pack"
+            } else {
+                "packs"
+            },
             ctx.paths.dotfiles_root().display(),
             display_names(&selected_orphans),
         ));

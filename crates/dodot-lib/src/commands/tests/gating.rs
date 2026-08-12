@@ -1606,9 +1606,9 @@ fn down_unknown_name_still_errors_when_orphans_exist() {
 
 #[test]
 fn down_dry_run_reports_orphaned_pack() {
-    let (_env, ctx) = orphaned_emacs_env();
+    let (env, ctx) = orphaned_emacs_env();
 
-    let mut dry_ctx = make_ctx(&_env);
+    let mut dry_ctx = make_ctx(&env);
     dry_ctx.dry_run = true;
     let down = commands::down::down(None, &dry_ctx).unwrap();
 

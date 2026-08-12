@@ -336,8 +336,13 @@ pub fn orphan_warning(dir_names: &[String], ctx: &ExecutionContext) -> String {
         .map(|d| packs::display_name_for(d))
         .collect::<Vec<_>>()
         .join(", ");
+    let (noun, verb, pronoun) = if dir_names.len() == 1 {
+        ("pack", "exists", "it")
+    } else {
+        ("packs", "exist", "them")
+    };
     format!(
-        "warning: packs with deployed state no longer exist in {}: {} — run `dodot down` to remove it",
+        "warning: {noun} with deployed state no longer {verb} in {}: {} — run `dodot down` to remove {pronoun}",
         ctx.paths.dotfiles_root().display(),
         names,
     )
