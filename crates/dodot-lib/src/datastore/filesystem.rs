@@ -397,6 +397,19 @@ impl DataStore for FilesystemDataStore {
         Ok(!entries.is_empty())
     }
 
+    fn list_packs(&self) -> Result<Vec<String>> {
+        let root = self.paths.packs_data_root();
+        if !self.fs.exists(&root) {
+            return Ok(Vec::new());
+        }
+        let entries = self.fs.read_dir(&root)?;
+        Ok(entries
+            .into_iter()
+            .filter(|e| e.is_dir)
+            .map(|e| e.name)
+            .collect())
+    }
+
     fn list_pack_handlers(&self, pack: &str) -> Result<Vec<String>> {
         let pack_dir = self.paths.pack_data_dir(pack);
         if !self.fs.exists(&pack_dir) {
@@ -904,6 +917,38 @@ mod tests {
 
         let handlers = ds.list_pack_handlers("nonexistent").unwrap();
         assert!(handlers.is_empty());
+    }
+
+    // ── list_packs ──────────────────────────────────────────────
+
+    #[test]
+    fn list_packs_returns_pack_dirs_with_state() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "x")
+            .done()
+            .pack("git")
+            .file("gitconfig", "y")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        ds.create_data_link("vim", "symlink", &env.dotfiles_root.join("vim/vimrc"))
+            .unwrap();
+        ds.create_data_link("git", "symlink", &env.dotfiles_root.join("git/gitconfig"))
+            .unwrap();
+
+        let mut packs = ds.list_packs().unwrap();
+        packs.sort();
+        assert_eq!(packs, vec!["git", "vim"]);
+    }
+
+    #[test]
+    fn list_packs_empty_when_no_datastore() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        assert!(ds.list_packs().unwrap().is_empty());
     }
 
     // ── list_handler_sentinels ──────────────────────────────────

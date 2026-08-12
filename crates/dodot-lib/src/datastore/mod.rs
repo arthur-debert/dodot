@@ -1,6 +1,6 @@
 //! State management for dodot.
 //!
-//! The [`DataStore`] trait defines dodot's 8-method storage API.
+//! The [`DataStore`] trait defines dodot's storage API.
 //! [`FilesystemDataStore`] implements it using symlinks and sentinel
 //! files on a real (or test) filesystem via the [`Fs`](crate::fs::Fs) trait.
 
@@ -57,6 +57,7 @@ pub enum DidRunStatus {
 /// - [`did_run`](DataStore::did_run) — three-way classification used
 ///   by the run-once handlers
 /// - [`has_handler_state`](DataStore::has_handler_state)
+/// - [`list_packs`](DataStore::list_packs)
 /// - [`list_pack_handlers`](DataStore::list_pack_handlers)
 /// - [`list_handler_sentinels`](DataStore::list_handler_sentinels)
 pub trait DataStore: Send + Sync {
@@ -131,6 +132,16 @@ pub trait DataStore: Send + Sync {
 
     /// Checks if any state exists for a pack/handler pair.
     fn has_handler_state(&self, pack: &str, handler: &str) -> Result<bool>;
+
+    /// Lists the pack directory names that have a subtree in the
+    /// datastore `packs/` tree.
+    ///
+    /// Names are on-disk directory names (datastore keys, e.g.
+    /// `010-nvim`), not display names. This is the enumeration source
+    /// for detecting state whose pack no longer exists in the dotfiles
+    /// root (issue #255) — unlike pack discovery, it walks the
+    /// *datastore*, so it sees packs the repo has since deleted.
+    fn list_packs(&self) -> Result<Vec<String>>;
 
     /// Lists handler names that have state for a pack.
     fn list_pack_handlers(&self, pack: &str) -> Result<Vec<String>>;

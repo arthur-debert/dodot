@@ -93,9 +93,16 @@ pub trait Pather: Send + Sync {
         self.dotfiles_root().join(pack)
     }
 
+    /// Root of the per-pack datastore tree (e.g. `.../data/packs`).
+    /// Each child directory is one pack's state subtree, named by the
+    /// pack's on-disk directory name.
+    fn packs_data_root(&self) -> PathBuf {
+        self.data_dir().join("packs")
+    }
+
     /// Data directory for a specific pack (e.g. `.../data/packs/{pack}`).
     fn pack_data_dir(&self, pack: &str) -> PathBuf {
-        self.data_dir().join("packs").join(pack)
+        self.packs_data_root().join(pack)
     }
 
     /// Data directory for a specific handler within a pack

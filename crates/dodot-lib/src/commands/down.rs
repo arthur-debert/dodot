@@ -8,6 +8,15 @@
 //! line.
 //!
 //! Dry-run keeps the per-handler "would remove" rendering.
+//!
+//! Besides packs discovered in the repo, `down` also removes *orphaned*
+//! datastore state — state for packs deleted from the dotfiles root
+//! since they were deployed (issue #255). A no-args `down` sweeps every
+//! orphan; `down <pack>` accepts an orphaned pack name (dir or display
+//! form) even though the repo scan no longer knows it. Orphans can't
+//! render through `status` (there is no pack to show), so a real run
+//! reports what it swept via the warnings channel; dry-run lists them
+//! with the same "would remove" rows as normal packs.
 
 use tracing::{debug, info};
 
@@ -23,9 +32,26 @@ use crate::Result;
 pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     info!(dry_run = ctx.dry_run, "starting down command");
 
+    // Orphaned state: datastore subtrees whose pack no longer exists in
+    // the dotfiles root. Scanned before validation so `dodot down
+    // <orphan>` is accepted instead of rejected as PackNotFound — the
+    // repo scan can't know a deleted pack, but the datastore does.
+    // (#255)
+    let orphan_dirs = orchestration::scan_orphaned(ctx)?;
+    let matches_orphan = |name: &str| {
+        orphan_dirs
+            .iter()
+            .any(|d| d == name || packs::display_name_for(d) == name)
+    };
+
     let mut warnings = Vec::new();
     if let Some(names) = pack_filter {
-        warnings = orchestration::validate_pack_names(names, ctx)?;
+        let repo_names: Vec<String> = names
+            .iter()
+            .filter(|n| !matches_orphan(n))
+            .cloned()
+            .collect();
+        warnings = orchestration::validate_pack_names(&repo_names, ctx)?;
     }
 
     let root_config = ctx.config_manager.root_config()?;
@@ -65,12 +91,72 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         affected_packs.push(pack.display_name.clone());
 
         if ctx.dry_run {
-            dry_run_display.push(build_dry_run_display(pack, &handlers, ctx)?);
+            dry_run_display.push(build_dry_run_display(
+                &pack.name,
+                &pack.display_name,
+                &handlers,
+                ctx,
+            )?);
         } else {
             for handler in &handlers {
                 ctx.datastore.remove_state(&pack.name, handler)?;
             }
         }
+    }
+
+    // Remove orphaned state (#255). Unfiltered for a no-args run —
+    // `down` removes *all* deployed state, including state for packs
+    // the repo has since deleted. A filtered run only touches orphans
+    // named in the filter (scoped intent); any orphan left behind is
+    // warned about below so the user knows a plain `dodot down` clears
+    // it. Orphans can't render through the post-removal status pass
+    // (there is no pack in the repo to show), so a real run reports
+    // them via the warnings channel instead.
+    let selected_orphans: Vec<String> = match pack_filter {
+        None => orphan_dirs.clone(),
+        Some(names) => orphan_dirs
+            .iter()
+            .filter(|d| {
+                names
+                    .iter()
+                    .any(|n| n == *d || n == packs::display_name_for(d))
+            })
+            .cloned()
+            .collect(),
+    };
+    for dir in &selected_orphans {
+        info!(pack = %dir, "removing orphaned pack state");
+        any_removed = true;
+        if ctx.dry_run {
+            let handlers = ctx.datastore.list_pack_handlers(dir)?;
+            dry_run_display.push(build_dry_run_display(
+                dir,
+                packs::display_name_for(dir),
+                &handlers,
+                ctx,
+            )?);
+        }
+    }
+    if !ctx.dry_run && !selected_orphans.is_empty() {
+        orchestration::sweep_pack_state(&selected_orphans, ctx)?;
+        warnings.push(format!(
+            "removed state for {} no longer in {}: {}",
+            if selected_orphans.len() == 1 {
+                "pack"
+            } else {
+                "packs"
+            },
+            ctx.paths.dotfiles_root().display(),
+            display_names(&selected_orphans),
+        ));
+    }
+    let remaining_orphans: Vec<String> = orphan_dirs
+        .iter()
+        .filter(|d| !selected_orphans.contains(d))
+        .cloned()
+        .collect();
+    if !remaining_orphans.is_empty() {
+        warnings.push(orchestration::orphan_warning(&remaining_orphans, ctx));
     }
 
     // Sweep stale state for now-ignored packs so the regenerated
@@ -81,11 +167,11 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
     // something was deactivated. The count is computed in both dry-run
     // and real runs so `down --dry-run` reports the same outcome a real
     // run would produce; only the mutation is gated on `!dry_run`.
-    if orchestration::ignored_packs_with_state(&ignored.sweep_dir_names, ctx)? > 0 {
+    if orchestration::packs_with_state(&ignored.sweep_dir_names, ctx)? > 0 {
         any_removed = true;
     }
     if !ctx.dry_run {
-        orchestration::sweep_ignored_state(&ignored.sweep_dir_names, ctx)?;
+        orchestration::sweep_pack_state(&ignored.sweep_dir_names, ctx)?;
     }
 
     if !ctx.dry_run {
@@ -128,18 +214,32 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
     })
 }
 
+/// Render the given orphaned pack dir names as user-facing display
+/// names, comma-joined, for the warnings channel.
+fn display_names(dirs: &[String]) -> String {
+    dirs.iter()
+        .map(|d| packs::display_name_for(d))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Build the per-pack dry-run display: lists what would be removed,
 /// per-handler. For symlink handlers we list individual data-link entries
 /// since the user usually wants to know which files would be affected.
+///
+/// Takes the datastore key (`dir_name`) and user-facing name separately
+/// so orphaned packs — which have no repo-side [`packs::Pack`] — render
+/// the same way as discovered ones.
 fn build_dry_run_display(
-    pack: &packs::Pack,
+    dir_name: &str,
+    display_name: &str,
     handlers: &[String],
     ctx: &ExecutionContext,
 ) -> Result<DisplayPack> {
     let mut files = Vec::new();
     for handler in handlers {
         if handler == HANDLER_SYMLINK {
-            let handler_dir = ctx.paths.handler_data_dir(&pack.name, handler);
+            let handler_dir = ctx.paths.handler_data_dir(dir_name, handler);
             let entries = ctx.fs.read_dir(&handler_dir)?;
             for entry in entries {
                 files.push(DisplayFile {
@@ -164,5 +264,5 @@ fn build_dry_run_display(
             });
         }
     }
-    Ok(DisplayPack::new(pack.display_name.clone(), files))
+    Ok(DisplayPack::new(display_name.to_string(), files))
 }

@@ -67,6 +67,17 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // regenerated init script. (issue #222)
     let ignored = orchestration::scan_ignored(pack_filter, ctx)?;
 
+    // Surface orphaned state — datastore subtrees for packs deleted
+    // from the dotfiles root since they were deployed. `up` only warns:
+    // the init script regenerated below still carries the orphans (it
+    // is driven off the whole datastore), and sweeping here would let a
+    // misresolved dotfiles root silently wipe legitimate state on
+    // deploy. `dodot down` is the removal path. (issue #255)
+    let orphaned = orchestration::scan_orphaned(ctx)?;
+    if !orphaned.is_empty() {
+        planning_warnings.push(orchestration::orphan_warning(&orphaned, ctx));
+    }
+
     // Phase 1: Discover packs and collect intents
     let packs = orchestration::prepare_packs(pack_filter, ctx)?;
 
@@ -205,7 +216,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         // the regenerated (global) init script below stops sourcing
         // them — unfiltered, since the init script covers every pack
         // regardless of this run's filter. (#222)
-        orchestration::sweep_ignored_state(&ignored.sweep_dir_names, ctx)?;
+        orchestration::sweep_pack_state(&ignored.sweep_dir_names, ctx)?;
         info!("regenerating shell init script");
         let root_config = ctx.config_manager.root_config()?;
         shell::write_init_script(
