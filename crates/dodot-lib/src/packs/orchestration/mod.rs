@@ -202,7 +202,7 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
 /// now-ignored pack's leftover state, or it would keep getting sourced.
 pub struct IgnoredScan {
     /// Raw on-disk directory names (datastore keys) for **every** ignored
-    /// pack, ignoring `pack_filter`. Used by [`sweep_ignored_state`] so
+    /// pack, ignoring `pack_filter`. Used by [`sweep_pack_state`] so
     /// the global init regeneration never re-sources a stale pack.
     pub sweep_dir_names: Vec<String>,
     /// Display names (prefix stripped) of the ignored packs that match
@@ -246,25 +246,27 @@ pub fn scan_ignored(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> R
     })
 }
 
-/// Tear down any leftover datastore state for `.dodotignore`-marked
-/// packs.
+/// Tear down all datastore state for the given pack dir names.
 ///
-/// A pack that was deployed and *then* marked ignored leaves its shell /
-/// path / symlink state in the datastore. Because the regenerated
-/// init script is driven entirely off the datastore `packs/` tree, that
-/// stale state keeps getting sourced on every shell startup even though
-/// the pack now reports as ignored — exactly the gpg `alias.zsh` error
-/// in issue #222. Removing the state here, before the caller regenerates
-/// the init script, makes "ignored" mean "nothing of this pack is read
-/// or deployed" across up/down.
+/// The stale-state sweep behind two symptoms of the same bug class:
 ///
-/// Pass the **unfiltered** [`IgnoredScan::sweep_dir_names`]: the init
-/// script is global, so even a filtered `up`/`down` must sweep every
-/// ignored pack or a now-ignored pack outside the filter would still be
-/// sourced. Datastore is keyed by on-disk directory name, not display
-/// name. Returns the dir names that actually had state removed, so the
-/// caller can reflect "something was deactivated" in its message.
-pub fn sweep_ignored_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<Vec<String>> {
+/// - A pack deployed and *then* `.dodotignore`-marked leaves its shell /
+///   path / symlink state in the datastore (issue #222). Callers pass
+///   the **unfiltered** [`IgnoredScan::sweep_dir_names`] here: the init
+///   script is regenerated from the whole datastore, so even a filtered
+///   `up`/`down` must sweep every ignored pack or a now-ignored pack
+///   outside the filter would still be sourced.
+/// - A pack deployed and *then* deleted from the dotfiles repo leaves
+///   "orphaned" state the repo-driven pack discovery never visits
+///   (issue #255). `down` passes the [`scan_orphaned`] result here.
+///
+/// Either way the regenerated init script is driven entirely off the
+/// datastore `packs/` tree, so leftover state keeps getting sourced on
+/// every shell startup until it is removed. Datastore is keyed by
+/// on-disk directory name, not display name. Returns the dir names that
+/// actually had state removed, so the caller can reflect "something was
+/// deactivated" in its message.
+pub fn sweep_pack_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<Vec<String>> {
     let mut swept = Vec::new();
     for dir in dir_names {
         let handlers = ctx.datastore.list_pack_handlers(dir)?;
@@ -273,17 +275,17 @@ pub fn sweep_ignored_state(dir_names: &[String], ctx: &ExecutionContext) -> Resu
         }
         swept.push(dir.clone());
         for handler in handlers {
-            debug!(pack = %dir, %handler, "sweeping state for now-ignored pack");
+            debug!(pack = %dir, %handler, "sweeping stale pack state");
             ctx.datastore.remove_state(dir, &handler)?;
         }
     }
     Ok(swept)
 }
 
-/// Count of ignored packs that currently hold datastore state, without
-/// removing anything. Lets `down --dry-run` report "would deactivate"
-/// consistently with what a real run would sweep.
-pub fn ignored_packs_with_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<usize> {
+/// Count of the given pack dirs that currently hold datastore state,
+/// without removing anything. Lets `down --dry-run` report "would
+/// deactivate" consistently with what a real run would sweep.
+pub fn packs_with_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<usize> {
     let mut n = 0;
     for dir in dir_names {
         if !ctx.datastore.list_pack_handlers(dir)?.is_empty() {
@@ -291,6 +293,54 @@ pub fn ignored_packs_with_state(dir_names: &[String], ctx: &ExecutionContext) ->
         }
     }
     Ok(n)
+}
+
+/// Scan the datastore for orphaned pack state: `packs/` subtrees that
+/// still hold handler state but whose pack directory no longer exists
+/// under the dotfiles root (issue #255).
+///
+/// Pack discovery enumerates the *repo*, so state keyed by a pack name
+/// the repo has since deleted is never visited by `up`/`down` — while
+/// the init script and deployment map are regenerated from the *whole*
+/// datastore, keeping the orphaned state live in every shell. `down`
+/// sweeps what this returns; `up` surfaces it as a warning (it does not
+/// sweep, so a misresolved dotfiles root can't silently wipe legitimate
+/// state on deploy).
+///
+/// Returns on-disk directory names (datastore keys), sorted. A datastore
+/// subtree with no handler state is not reported — there is nothing to
+/// remove.
+pub fn scan_orphaned(ctx: &ExecutionContext) -> Result<Vec<String>> {
+    let root = ctx.paths.dotfiles_root();
+    let mut orphans = Vec::new();
+    for dir in ctx.datastore.list_packs()? {
+        if ctx.fs.exists(&root.join(&dir)) {
+            continue;
+        }
+        if ctx.datastore.list_pack_handlers(&dir)?.is_empty() {
+            continue;
+        }
+        orphans.push(dir);
+    }
+    orphans.sort();
+    Ok(orphans)
+}
+
+/// The shared warning line for orphaned state left in place: `up` emits
+/// it whenever [`scan_orphaned`] finds anything, and a filtered `down`
+/// emits it for orphans outside its filter. Names render in display
+/// form (the form `dodot down <pack>` accepts).
+pub fn orphan_warning(dir_names: &[String], ctx: &ExecutionContext) -> String {
+    let names = dir_names
+        .iter()
+        .map(|d| packs::display_name_for(d))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "warning: packs with deployed state no longer exist in {}: {} — run `dodot down` to remove it",
+        ctx.paths.dotfiles_root().display(),
+        names,
+    )
 }
 
 /// Execute a pre-collected set of intents.

@@ -1481,3 +1481,200 @@ fn up_mixed_selection_deploys_active_and_reports_ignored() {
     assert_eq!(ignored_section(&up), ignored_section(&status));
     assert!(warns_ignored(&up, "gpg"));
 }
+
+// ── issue #255: orphaned datastore state ────────────────────
+//
+// A pack deployed and then DELETED from the dotfiles repo leaves its
+// datastore subtree behind: pack discovery enumerates the repo, so
+// `up`/`down` never visit the stale state, while the init script and
+// deployment map are regenerated from the whole datastore — the orphan
+// keeps getting sourced in every shell. `down` must sweep orphans;
+// `up` must surface them.
+
+/// Deploy vim + emacs, then delete emacs from the repo — emacs state
+/// becomes orphaned.
+fn orphaned_emacs_env() -> (TempEnvironment, ExecutionContext) {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .pack("emacs")
+        .file("alias.zsh", "alias e='emacs -nw'")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+    assert!(!ctx
+        .datastore
+        .list_pack_handlers("emacs")
+        .unwrap()
+        .is_empty());
+
+    env.fs
+        .remove_dir_all(&env.dotfiles_root.join("emacs"))
+        .unwrap();
+    (env, ctx)
+}
+
+#[test]
+fn down_no_args_sweeps_orphaned_pack_state() {
+    let (env, ctx) = orphaned_emacs_env();
+
+    let down = commands::down::down(None, &ctx).unwrap();
+
+    assert!(
+        ctx.datastore
+            .list_pack_handlers("emacs")
+            .unwrap()
+            .is_empty(),
+        "down must sweep datastore state for a pack deleted from the repo"
+    );
+    let init = env
+        .fs
+        .read_to_string(&ctx.paths.init_script_path())
+        .unwrap();
+    assert!(
+        !init.contains("emacs/alias.zsh"),
+        "init script must stop sourcing an orphaned pack; was:\n{init}"
+    );
+    assert_eq!(down.message.as_deref(), Some("Packs deactivated."));
+    assert!(
+        down.warnings.iter().any(|w| w.contains("emacs")),
+        "down should report which orphaned packs it removed state for; warnings: {:?}",
+        down.warnings
+    );
+}
+
+#[test]
+fn down_accepts_orphaned_pack_name() {
+    let (_env, ctx) = orphaned_emacs_env();
+
+    let down = commands::down::down(Some(&["emacs".to_string()]), &ctx).unwrap();
+
+    assert!(
+        ctx.datastore
+            .list_pack_handlers("emacs")
+            .unwrap()
+            .is_empty(),
+        "`down <pack>` must work for an orphaned pack name"
+    );
+    // vim was not in the filter — its state must survive.
+    assert!(
+        !ctx.datastore.list_pack_handlers("vim").unwrap().is_empty(),
+        "filtered down must not touch packs outside the filter"
+    );
+    assert_eq!(down.message.as_deref(), Some("Packs deactivated."));
+}
+
+#[test]
+fn down_resolves_orphan_by_display_name() {
+    // Orphan keyed by its on-disk dir name `010-emacs`; the user types
+    // the display name `emacs`, same as for a live pack.
+    let env = TempEnvironment::builder()
+        .pack("010-emacs")
+        .file("alias.zsh", "alias e='emacs -nw'")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+    env.fs
+        .remove_dir_all(&env.dotfiles_root.join("010-emacs"))
+        .unwrap();
+
+    commands::down::down(Some(&["emacs".to_string()]), &ctx).unwrap();
+
+    assert!(
+        ctx.datastore
+            .list_pack_handlers("010-emacs")
+            .unwrap()
+            .is_empty(),
+        "orphan must resolve via display name like a live pack"
+    );
+}
+
+#[test]
+fn down_unknown_name_still_errors_when_orphans_exist() {
+    let (_env, ctx) = orphaned_emacs_env();
+
+    let err = commands::down::down(Some(&["nope".to_string()]), &ctx).unwrap_err();
+    assert!(matches!(
+        err,
+        crate::DodotError::PackNotFound { ref name } if name == "nope"
+    ));
+}
+
+#[test]
+fn down_dry_run_reports_orphaned_pack() {
+    let (_env, ctx) = orphaned_emacs_env();
+
+    let mut dry_ctx = make_ctx(&_env);
+    dry_ctx.dry_run = true;
+    let down = commands::down::down(None, &dry_ctx).unwrap();
+
+    assert_eq!(down.message.as_deref(), Some("Packs deactivated."));
+    assert!(
+        !ctx.datastore
+            .list_pack_handlers("emacs")
+            .unwrap()
+            .is_empty(),
+        "down --dry-run must not remove orphaned state"
+    );
+    // The would-be-swept orphan renders like any other pack removal.
+    let emacs = down
+        .packs
+        .iter()
+        .find(|p| p.name == "emacs")
+        .expect("dry-run must list the orphaned pack");
+    assert!(
+        emacs
+            .files
+            .iter()
+            .any(|f| f.status_label.contains("would remove")),
+        "orphan rows should carry the dry-run 'would remove' label"
+    );
+}
+
+#[test]
+fn filtered_down_leaves_unrelated_orphans_and_warns() {
+    let (_env, ctx) = orphaned_emacs_env();
+
+    let down = commands::down::down(Some(&["vim".to_string()]), &ctx).unwrap();
+
+    assert!(
+        !ctx.datastore
+            .list_pack_handlers("emacs")
+            .unwrap()
+            .is_empty(),
+        "a filtered down must not sweep orphans outside the filter"
+    );
+    assert!(
+        down.warnings
+            .iter()
+            .any(|w| w.contains("emacs") && w.contains("dodot down")),
+        "filtered down should warn about orphans it left behind; warnings: {:?}",
+        down.warnings
+    );
+}
+
+#[test]
+fn up_warns_about_orphaned_state_without_sweeping() {
+    let (_env, ctx) = orphaned_emacs_env();
+
+    let up = commands::up::up(None, &ctx).unwrap();
+
+    assert!(
+        up.warnings
+            .iter()
+            .any(|w| w.contains("emacs") && w.contains("dodot down")),
+        "up must surface orphaned state; warnings: {:?}",
+        up.warnings
+    );
+    assert!(
+        !ctx.datastore
+            .list_pack_handlers("emacs")
+            .unwrap()
+            .is_empty(),
+        "up must not sweep orphaned state (misresolved-root safety)"
+    );
+}
