@@ -1,0 +1,1 @@
+- feat: new `dodot reset` command — factory-reset everything dodot owns under its data dir (`~/.local/share/dodot`) as a troubleshooting escape hatch; confirms interactively by default, `--force` skips the prompt, `--dry-run` previews, and the dotfiles repo is never touched (#256)

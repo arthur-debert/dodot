@@ -161,6 +161,45 @@ fn print_warnings(warnings: &[String]) {
     }
 }
 
+/// `dodot reset [--dry-run] [--force]` — factory-reset all dodot-owned
+/// state under the data dir (troubleshooting escape hatch, issue #256).
+///
+/// Destructive, so it confirms first: interactive y/N prompt (default
+/// No) on a TTY, `--force` to skip it — the only way to run reset
+/// non-interactively. `--dry-run` needs no confirmation (it mutates
+/// nothing) and previews the removals. A declined prompt exits
+/// silently with a stderr note; nothing is removed.
+pub fn reset_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::MessageResult> {
+    let ctx = build_ctx(matches)?;
+    let force = flag_or_false(matches, "force");
+
+    if !ctx.dry_run && !force {
+        if !crate::interactive::stdin_is_tty() {
+            return Err(anyhow::anyhow!(
+                "dodot reset wipes all dodot state and needs confirmation.\n  \
+                 Re-run with --force to skip the prompt, or --dry-run to preview."
+            ));
+        }
+        let data_dir = ctx.paths.data_dir().display().to_string();
+        let confirmed = crate::interactive::prompt_confirm(&[
+            &format!("This removes everything dodot has set up ({data_dir}):"),
+            "deployed symlinks stop working, shell wiring is gone, and install",
+            "scripts / Brewfiles will run again on the next `dodot up`.",
+            "Your dotfiles repo is not touched.",
+        ])?;
+        if !confirmed {
+            eprintln!("Reset cancelled — nothing removed.");
+            return Ok(Output::Silent);
+        }
+    }
+
+    let result = commands::reset::reset(&ctx)?;
+    Ok(Output::Render(result))
+}
+
 pub fn list_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,

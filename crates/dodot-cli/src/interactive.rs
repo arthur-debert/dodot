@@ -48,3 +48,26 @@ pub fn prompt_yes_no_show(prompt_lines: &[&str]) -> io::Result<YesNoShow> {
         _ => YesNoShow::No,
     })
 }
+
+/// Ask a y/N question on stderr and return whether the user confirmed.
+///
+/// `prompt_lines` are printed verbatim (one per line); a final
+/// `Proceed? [y/N]` marker is appended automatically. Unlike
+/// [`prompt_yes_no_show`], empty input maps to **No** — this is the
+/// prompt for destructive actions (`dodot reset`), where a stray
+/// Enter must never wipe state.
+pub fn prompt_confirm(prompt_lines: &[&str]) -> io::Result<bool> {
+    let mut stderr = io::stderr().lock();
+    for line in prompt_lines {
+        writeln!(stderr, "{line}")?;
+    }
+    write!(stderr, "Proceed? [y/N] ")?;
+    stderr.flush()?;
+
+    let mut buf = String::new();
+    let stdin = io::stdin();
+    stdin.lock().read_line(&mut buf)?;
+    let answer = buf.trim().to_ascii_lowercase();
+
+    Ok(matches!(answer.as_str(), "y" | "yes"))
+}
