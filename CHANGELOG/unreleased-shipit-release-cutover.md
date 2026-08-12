@@ -1,1 +1,0 @@
-- ci: releases are now cut through the shipit release pipeline (`shipit-release.yml`, #240); the legacy `release.yml` caller is retired after the release-candidate proof

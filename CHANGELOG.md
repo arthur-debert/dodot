@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 5.3.0 - 2026-08-12
+
+- fix: `dodot down` now sweeps datastore state for packs that no longer exist in the dotfiles repo (orphaned packs), `dodot down <pack>` accepts an orphaned pack's name, and `dodot up` reports orphaned state instead of silently re-sourcing it on every shell startup — previously a pack deleted from the repo (or a moved dotfiles clone) left its state deployed forever with no way to remove it (#255)
+- feat: new `dodot reset` command — factory-reset everything dodot owns under its data dir (`~/.local/share/dodot`) as a troubleshooting escape hatch; confirms interactively by default, `--force` skips the prompt, `--dry-run` previews, and the dotfiles repo is never touched (#256)
 - ci: releases are now cut through the shipit release pipeline (`shipit-release.yml`, #240); the legacy `release.yml` caller is retired after the release-candidate proof
 
 ## 5.2.0 - 2026-06-22
