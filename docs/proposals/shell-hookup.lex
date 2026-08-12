@@ -26,7 +26,7 @@ Design Specification: Shell Hookup — dodot's Own Install
         Two neighboring failure modes share the same root (the user cannot see activation state) and are solved by the same evidence:
 
         - *Stale shells*: the user runs `dodot up`, then keeps working in a terminal opened before the run. That shell sourced an older generation of the init script; newly deployed packs are silently absent until they open a new one.
-        - *Broken hooks*: a previously working hookup breaks — the rc file was rewritten, the hook line commented out, the shell changed. Deployments keep reporting green while every new shell silently loads nothing (observed in practice after a dotfiles-repo move; see [./../../CHANGELOG/5.3.0.md]).
+        - *Broken hooks*: a previously working hookup breaks — the rc file was rewritten, the hook line commented out, the shell changed. Deployments keep reporting green while every new shell silently loads nothing (observed in practice after a dotfiles-repo move; see the 5.3.0 changelog).
 
     1.4. Goals
 
@@ -116,7 +116,7 @@ Design Specification: Shell Hookup — dodot's Own Install
             [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
             # <<< dodot shell hookup <<<
 
-        :: sh ::
+        :: shell ::
 
         - *Idempotent*: an existing block is replaced in place, never duplicated. Removal is exact.
         - *Direct source, not eval*: sourcing the generated file beats `eval "$(dodot init-sh)"` on two counts — no binary invocation on every shell start, and no bootstrap cycle when the dodot binary itself is not on PATH until init runs (true whenever dodot is installed via a package manager whose PATH entry dodot's own init provides). The guard makes a missing or reset datastore a silent no-op instead of an error. The emitted path honors the resolved data dir at write time; `dodot install` re-run heals a moved data dir.
@@ -183,6 +183,6 @@ Design Specification: Shell Hookup — dodot's Own Install
 
 10. Further Notes
 
-    - Grew out of the 2026-08-12 incident and planning session that also produced the orphaned-pack sweep and `dodot reset` (released in [./../../CHANGELOG/5.3.0.md]): all three are children of the same lesson — dodot's state model is only as trustworthy as its visibility into what shells actually do.
+    - Grew out of the 2026-08-12 incident and planning session that also produced the orphaned-pack sweep and `dodot reset` (released in 5.3.0): all three are children of the same lesson — dodot's state model is only as trustworthy as its visibility into what shells actually do.
     - Prior art consulted: starship/zoxide (print-the-eval convention), conda init (managed rc block, and its reputation — hence dry-by-default and the marked block's strict idempotence), rustup (bash_profile chaining on macOS), fzf install (write-then-verify loop), fish conf.d (drop-in directory as the no-editing ideal).
     - Terminology for the grill/issue leg: "hookup" = the rc wiring; "activation" = a shell actually sourcing init; "generation" = one regeneration of the init script; "evidence" = signals 1–2; "probe" = signal 3.
