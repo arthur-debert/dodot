@@ -299,6 +299,8 @@ fn build_app() -> App {
         .expect("register transform.install-hook")
         .command("refresh", handlers::refresh_handler, "refresh")
         .expect("register refresh")
+        .command("reset", handlers::reset_handler, "message")
+        .expect("register reset")
         .command(
             "template.install-filter",
             handlers::template_install_filter_handler,
@@ -375,6 +377,7 @@ fn build_app() -> App {
                 commands: vec![
                     Some("transform".into()),
                     Some("refresh".into()),
+                    Some("reset".into()),
                     Some("tutorial".into()),
                     Some("init-sh".into()),
                     Some("prompts".into()),
@@ -775,6 +778,22 @@ fn build_clap_command() -> ClapCommand {
                          templates. Read-only. Useful before the first `dodot up` \
                          to inventory which providers a repo needs.",
                     ),
+                ),
+        )
+        .subcommand(
+            ClapCommand::new("reset")
+                .about("Resets all dodot setup, useful for troubleshooting")
+                .arg(
+                    Arg::new("dry-run")
+                        .long("dry-run")
+                        .help("Show what would be removed without making changes")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .long("force")
+                        .help("Skip the confirmation prompt (required when stdin is not a terminal)")
+                        .action(ArgAction::SetTrue),
                 ),
         )
         .subcommand(

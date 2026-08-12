@@ -3,6 +3,7 @@
 mod adopt;
 mod gating;
 mod probe;
+mod reset;
 mod support;
 
 #[allow(unused_imports)]

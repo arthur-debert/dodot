@@ -16,6 +16,7 @@ pub mod list;
 pub mod probe;
 pub mod prompts;
 pub mod refresh;
+pub mod reset;
 pub mod secret;
 pub mod status;
 pub mod template_clean;
@@ -233,7 +234,9 @@ impl DisplayConflict {
     }
 }
 
-fn shorten_path(p: &std::path::Path, home: &std::path::Path) -> String {
+/// Display a path as `~/...` when it lives under `home`. Shared by
+/// conflict display and `reset`'s data-dir headline.
+pub(crate) fn shorten_path(p: &std::path::Path, home: &std::path::Path) -> String {
     if let Ok(rel) = p.strip_prefix(home) {
         format!("~/{}", rel.display())
     } else {
