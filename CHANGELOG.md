@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## 5.4.0 - 2026-08-13
+
 - feat: shared `status` / `up` / `down` rows now use icon, pack, filename, and terminal-edge status columns; icon and filename are muted, pack is regular, and only the full status is severity-colored; filenames clip to preserve long right-aligned statuses; ignored packs render as `∅ <pack> .dodotignore ignored` after a blank separator with no `Ignored Packs` heading (#269, #270)
 
 ## 5.3.1 - 2026-08-13
