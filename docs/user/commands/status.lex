@@ -14,7 +14,7 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
     For each active pack:
 
-    - Every source file dodot saw, as `pack/file` with the handler symbol and current deployment status.
+    - Every source file dodot saw, as separate icon, pack, filename, and status columns. The icon and filename are muted, the pack is regular, and only the status carries its severity colour.
     - Files filtered out (`ignore` / `skip` / `gate`) and why they were filtered.
     - Files affected by preprocessing — under their *post-preprocessing* filename, not the source filename. (A source `config.toml.tmpl` shows as `config.toml`.)
 
@@ -22,6 +22,7 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
     - Cross-pack conflicts surface as warnings on the affected rows, with both packs named so the conflict is visible without having to run `up`.
     - Packs whose `[pack] os` doesn't match the current host show in a separate "inactive on this OS" section.
+    - Packs carrying `.dodotignore` follow the active rows after a blank line. They use `∅` as the icon, `.dodotignore` as the filename, and `ignored` as the status; there is no separate heading.
 
     Status states for a single row, by handler family:
 
@@ -49,6 +50,8 @@ The read-only "what does dodot see?" command. For every pack and every source fi
     - `⚙` shell source / homebrew
     - `+` added to `$PATH`
     - `×` install script
+
+    Full rows expand to the detected terminal width. The pack column is padded so filenames align, status is right-aligned to the terminal edge, and long filenames are clipped in the middle with an ellipsis. When terminal width cannot be detected, dodot uses 80 columns.
 
 4. Examples
 

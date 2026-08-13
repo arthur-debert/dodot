@@ -61,7 +61,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     };
 
     // Discover `.dodotignore`-marked packs so we can both report them in
-    // the same "Ignored Packs" section `status` shows and sweep any
+    // the same ignored rows `status` shows and sweep any
     // stale datastore state they left behind. Without the sweep, a pack
     // deployed before it was ignored keeps getting sourced from the
     // regenerated init script. (issue #222)
@@ -334,7 +334,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         warnings: planning_warnings,
         notes,
         conflicts: Vec::new(),
-        ignored_packs: ignored.display_names,
+        ignored_packs: ignored.display_packs,
         inactive_packs: Vec::new(),
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),

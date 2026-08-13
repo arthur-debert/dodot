@@ -177,11 +177,22 @@ fn detect_display_collisions(packs: &[Pack]) -> Result<()> {
     Ok(())
 }
 
-/// Result of scanning the dotfiles root: active packs + names of
+/// A pack that was skipped during discovery, e.g. via `.dodotignore`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct IgnoredPack {
+    /// On-disk directory name, retained for filtering and datastore sweeping.
+    pub name: String,
+    /// User-facing pack name with any ordering prefix removed.
+    pub display_name: String,
+    /// Marker file that caused discovery to ignore this pack.
+    pub ignore_file: String,
+}
+
+/// Result of scanning the dotfiles root: active packs plus metadata for
 /// pack-shaped directories skipped via `.dodotignore`.
 pub struct DiscoveredPacks {
     pub packs: Vec<Pack>,
-    pub ignored: Vec<String>,
+    pub ignored: Vec<IgnoredPack>,
 }
 
 /// Scan the dotfiles root once, partitioning pack-shaped directories into
@@ -243,7 +254,11 @@ pub fn scan_packs(
         }
 
         if fs.exists(&entry.path.join(".dodotignore")) {
-            ignored.push(name.clone());
+            ignored.push(IgnoredPack {
+                name: name.clone(),
+                display_name: display_name_for(name).to_string(),
+                ignore_file: ".dodotignore".into(),
+            });
             continue;
         }
 
@@ -255,7 +270,7 @@ pub fn scan_packs(
     }
 
     packs.sort_by(|a, b| a.name.cmp(&b.name));
-    ignored.sort();
+    ignored.sort_by(|a, b| a.name.cmp(&b.name));
 
     detect_display_collisions(&packs)?;
 
@@ -385,7 +400,7 @@ mod tests {
             .pack("vim")
             .file("vimrc", "x")
             .done()
-            .pack("disabled")
+            .pack("010-disabled")
             .file("stuff", "x")
             .ignored()
             .done()
@@ -400,7 +415,18 @@ mod tests {
         assert_eq!(names, vec!["vim"]);
         assert_eq!(
             result.ignored,
-            vec!["disabled".to_string(), "old".to_string()]
+            vec![
+                IgnoredPack {
+                    name: "010-disabled".into(),
+                    display_name: "disabled".into(),
+                    ignore_file: ".dodotignore".into(),
+                },
+                IgnoredPack {
+                    name: "old".into(),
+                    display_name: "old".into(),
+                    ignore_file: ".dodotignore".into(),
+                },
+            ]
         );
     }
 

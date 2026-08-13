@@ -131,9 +131,11 @@ teardown() {
 @test "ignored packs excluded from status and up" {
     run dodot status
     [ "$status" -eq 0 ]
-    # The ignored pack appears under "Ignored Packs" so users aren't
-    # baffled, but its contents are not scanned.
-    assert_output_contains "Ignored Packs"
+    # The ignored pack appears as a normal status row with its marker file,
+    # but its contents are not scanned.
+    assert_output_contains "∅ ignored-pack"
+    assert_output_contains ".dodotignore"
+    assert_output_not_contains "Ignored Packs"
     assert_output_not_contains "notes.txt"
 
     dodot up

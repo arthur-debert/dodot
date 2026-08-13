@@ -59,7 +59,14 @@ teardown() {
 
     # Source the generated init script in a real shell so a clean
     # run is observed (writes a shell-init profile).
-    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+    # macOS still ships Bash 3.2, which lacks EPOCHREALTIME and therefore
+    # cannot emit shell-init profiles. Prefer zsh when it is available;
+    # Linux CI falls back to its profiling-capable Bash.
+    if command -v zsh >/dev/null 2>&1; then
+        zsh -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+    else
+        bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+    fi
 
     run dodot status
     [ "$status" -eq 0 ]
@@ -97,11 +104,12 @@ teardown() {
     run dodot status
     [ "$status" -eq 0 ]
     assert_output_contains "vim"
-    # Ignored packs are not scanned/deployed, but are listed under an
-    # "Ignored Packs" heading so users aren't baffled when a directory
-    # they expected doesn't appear in the main listing.
-    assert_output_contains "Ignored Packs"
+    # Ignored packs are not scanned/deployed, but are listed with a ∅
+    # icon and .dodotignore reason so users aren't baffled when a
+    # directory they expected doesn't appear in the main listing.
+    assert_output_contains "∅"
     assert_output_contains "disabled"
+    assert_output_contains ".dodotignore"
     # The ignored pack's contents should NOT be scanned or shown.
     assert_output_not_contains "file"
 }

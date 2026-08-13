@@ -221,12 +221,25 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
     ("secret-list.jinja", render::TEMPLATE_SECRET_LIST),
 ];
 
+fn pack_status_width(terminal_width: Option<usize>) -> usize {
+    terminal_width.unwrap_or(80)
+}
+
 fn build_app() -> App {
     App::builder()
         .help_handling(true)
         .templates(EmbeddedTemplates::new(TEMPLATE_ENTRIES, ""))
         .styles(standout::embed_styles!("src/styles"))
         .default_theme("dodot")
+        // Human pack-status rows fill the detected terminal width. Pipes and
+        // other width-less render targets use the same stable 80-column
+        // fallback as the library renderer and fixed-width tests.
+        .context_fn(
+            "terminal_width",
+            |ctx: &standout::context::RenderContext<'_>| {
+                pack_status_width(ctx.terminal_width).into()
+            },
+        )
         .command("status", handlers::status_handler, "pack-status")
         .expect("register status")
         .command("up", handlers::up_handler, "pack-status")
@@ -897,4 +910,15 @@ fn build_clap_command() -> ClapCommand {
                         ),
                 ),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pack_status_width;
+
+    #[test]
+    fn pack_status_width_uses_standout_value_with_80_column_fallback() {
+        assert_eq!(pack_status_width(Some(132)), 132);
+        assert_eq!(pack_status_width(None), 80);
+    }
 }
