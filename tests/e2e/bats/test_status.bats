@@ -49,6 +49,18 @@ teardown() {
     assert_output_contains "not sourced"
 
     dodot up
+
+    # Deployed but not yet observed in a shell startup: still the
+    # pending presentation — dodot claims "sourced" only after
+    # seeing the file survive a real shell-init run.
+    run dodot status
+    [ "$status" -eq 0 ]
+    assert_output_contains "not sourced"
+
+    # Source the generated init script in a real shell so a clean
+    # run is observed (writes a shell-init profile).
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+
     run dodot status
     [ "$status" -eq 0 ]
     assert_output_contains "sourced"
