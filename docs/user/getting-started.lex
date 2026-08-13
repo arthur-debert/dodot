@@ -51,11 +51,11 @@ Getting started
         $ cd ~/dotfiles
         $ dodot status nvim
 
-        nvim/aliases.sh                  ⚙ pending
-        nvim/bin                         + pending
+        nvim/aliases.sh                  ⚙ not sourced
+        nvim/bin                         + not in PATH
         nvim/init.lua                    ➞ pending
         nvim/lua                         ➞ pending
-        nvim/Brewfile                    ⚙ pending
+        nvim/Brewfile                    ⚙ brew packages not installed
 
     :: shell ::
 

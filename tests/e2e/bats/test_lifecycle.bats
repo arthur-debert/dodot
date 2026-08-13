@@ -25,10 +25,10 @@ teardown() {
     [ "$status" -eq 0 ]
     assert_output_contains "deployed"
 
-    # 3. Status after up — deployed
+    # 3. Status after up — linked
     run dodot status
     [ "$status" -eq 0 ]
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
 
     # Symlinks exist
     assert_exists "$HOME/.vimrc"
@@ -51,7 +51,7 @@ teardown() {
 
     dodot up
     run dodot status
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
 
     dodot down
     run dodot status
@@ -60,7 +60,7 @@ teardown() {
     # Re-deploy
     dodot up
     run dodot status
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
 
     # Symlink chain works
     assert_file_contains "$HOME/.vimrc" "set nocompatible"
@@ -80,7 +80,7 @@ teardown() {
 
     # All handlers should be active
     run dodot status
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
     assert_output_not_contains "not sourced"
     assert_output_contains "sourced"
     assert_output_contains "in PATH"
@@ -100,7 +100,7 @@ teardown() {
     # Deploy only vim
     dodot up vim
     run dodot status vim
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
     run dodot status git
     assert_output_contains "pending"
 

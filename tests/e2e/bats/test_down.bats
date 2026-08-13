@@ -44,9 +44,9 @@ teardown() {
     [ "$status" -eq 0 ]
     assert_output_contains "dry run"
 
-    # State should still be deployed
+    # State should still be linked.
     run dodot status
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
 }
 
 @test "down removes selected packs only" {
@@ -56,11 +56,11 @@ teardown() {
     dodot up
     dodot down vim
 
-    # vim should be pending, git still deployed
+    # vim should be pending, git still linked.
     run dodot status vim
     assert_output_contains "pending"
     run dodot status git
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
 }
 
 @test "down on already-inactive packs is safe" {

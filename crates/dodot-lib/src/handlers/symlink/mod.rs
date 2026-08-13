@@ -169,7 +169,7 @@ impl Handler for SymlinkHandler {
             message: if has_state {
                 "linked".into()
             } else {
-                "symlink pending".into()
+                "pending".into()
             },
         })
     }

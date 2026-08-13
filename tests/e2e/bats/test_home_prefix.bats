@@ -106,7 +106,7 @@ teardown() {
 
     # Status after deploy
     run dodot status
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
 
     # Down
     dodot down

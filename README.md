@@ -62,11 +62,11 @@ nvim/
 ```sh
 $ dodot status nvim
 
-nvim/aliases.sh                  ⚙ pending
-nvim/bin                         + pending
+nvim/aliases.sh                  ⚙ not sourced
+nvim/bin                         + not in PATH
 nvim/init.lua                    ➞ pending
 nvim/lua                         ➞ pending
-nvim/Brewfile                    ⚙ pending
+nvim/Brewfile                    ⚙ brew packages not installed
 ```
 
 Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<name>` — the pack name namespaces config under XDG, matching the convention modern tools (nvim, helix, ghostty, kitty, …) follow. Files like `~/.bashrc` that legacy tools expect in `$HOME` go through `force_home` (auto-handled for canonical names) or the per-file `home.X` opt-in prefix.

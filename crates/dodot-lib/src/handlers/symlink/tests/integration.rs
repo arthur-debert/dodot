@@ -5,18 +5,54 @@
 #![allow(unused_imports)]
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use crate::datastore::{DataStore, FilesystemDataStore, NoopCommandRunner};
 use crate::handlers::symlink::*;
 use crate::handlers::{Handler, HandlerConfig, HandlerScope, HANDLER_SYMLINK};
 use crate::operations::HandlerIntent;
 use crate::packs::Pack;
 use crate::paths::Pather;
 use crate::rules::RuleMatch;
+use crate::testing::TempEnvironment;
 
 use super::{default_config, test_pather};
 
 // ── Routing-override conflicts ──────────────────────────────
+
+#[test]
+fn check_status_uses_steady_state_messages() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompat")
+        .done()
+        .build();
+    let ds = FilesystemDataStore::new(
+        env.fs.clone(),
+        env.paths.clone(),
+        Arc::new(NoopCommandRunner),
+    );
+    let handler = SymlinkHandler;
+
+    let pending = handler
+        .check_status(Path::new("vimrc"), "vim", &ds)
+        .unwrap();
+
+    assert!(!pending.deployed);
+    assert_eq!(pending.message, "pending");
+
+    let source = env.dotfiles_root.join("vim/vimrc");
+    ds.create_data_link("vim", HANDLER_SYMLINK, &source)
+        .unwrap();
+
+    let linked = handler
+        .check_status(Path::new("vimrc"), "vim", &ds)
+        .unwrap();
+
+    assert!(linked.deployed);
+    assert_eq!(linked.message, "linked");
+}
 
 #[test]
 fn targets_plus_home_prefix_is_a_conflict() {
