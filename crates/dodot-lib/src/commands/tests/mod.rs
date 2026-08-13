@@ -418,6 +418,16 @@ fn up_and_status_produce_matching_labels() {
 
     let ctx = make_ctx(&env);
 
+    // Shell rows report the newest observed shell-init run, so seed a
+    // clean profile for aliases.sh up front — both the up rendering
+    // and the status call then see the same observation.
+    let target = env
+        .dotfiles_root
+        .join("multi/aliases.sh")
+        .display()
+        .to_string();
+    write_shell_profile(&env, 1714000001, &[(&target, 0)]);
+
     let up_result = commands::up::up(None, &ctx).unwrap();
     let status_result = commands::status::status(None, &ctx).unwrap();
 
@@ -559,6 +569,18 @@ fn status_surfaces_syntax_error_sidecar_for_deployed_shell_file() {
     ctx.syntax_checker = Arc::new(FlagAliases);
     commands::up::up(None, &ctx).unwrap();
 
+    // Runtime history exists for both files — including a FAILING run
+    // for aliases.sh — but the syntax-error sidecar is the harder
+    // signal and must take precedence over runtime history; env.sh's
+    // clean newest run renders as sourced.
+    let aliases_target = env
+        .dotfiles_root
+        .join("vim/aliases.sh")
+        .display()
+        .to_string();
+    let env_target = env.dotfiles_root.join("vim/env.sh").display().to_string();
+    write_shell_profile(&env, 1714000001, &[(&aliases_target, 1), (&env_target, 0)]);
+
     // Status flags aliases.sh as broken and leaves
     // env.sh as plain deployed.
     let result = commands::status::status(None, &ctx).unwrap();
@@ -589,11 +611,35 @@ fn status_surfaces_syntax_error_sidecar_for_deployed_shell_file() {
     assert_eq!(env_row.status_label, "sourced");
 }
 
+/// Write one fake shell-init profile TSV under the probes dir. `t0`
+/// orders profiles (higher = newer); `entries` adds one `source` row
+/// per (absolute target path, exit status) pair. The pack column is a
+/// fixed placeholder — status matches runs by phase + target only.
+fn write_shell_profile(env: &TempEnvironment, t0: u64, entries: &[(&str, i32)]) {
+    let probes_dir = env.paths.probes_shell_init_dir();
+    env.fs.mkdir_all(&probes_dir).unwrap();
+    let mut body =
+        format!("# dodot shell-init profile v1\n# shell\tbash 5.0\n# start_t\t{t0}.000000\n");
+    for (target, exit) in entries {
+        body.push_str(&format!(
+            "source\tvim\tshell\t{target}\t{t0}.000100\t{t0}.000900\t{exit}\n"
+        ));
+    }
+    body.push_str(&format!("# end_t\t{t0}.001000\n"));
+    env.fs
+        .write_file(
+            &probes_dir.join(format!("profile-{t0:010}-100-1.tsv")),
+            body.as_bytes(),
+        )
+        .unwrap();
+}
+
 #[test]
-fn status_surfaces_runtime_failures_from_recent_profiles() {
-    // A clean source (passes syntax) that exits non-zero in 2 of the
-    // 3 most recent shell startups should be flagged as broken with a
-    // footnote summarizing the failure rate.
+fn status_shell_latest_failure_reports_newest_exit() {
+    // The row verdict comes from the NEWEST observed run. Distinct
+    // exit codes for the old vs. new failure: oldest=2, newest=1, so
+    // the label must say `exited 1` — and nothing else: the failure
+    // count lives in the warning footnote, not the row.
     let env = TempEnvironment::builder()
         .pack("vim")
         .file("aliases.sh", "alias vi=vim")
@@ -603,33 +649,14 @@ fn status_surfaces_runtime_failures_from_recent_profiles() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Write three fake profile TSVs by hand. Distinct exit codes for
-    // the old vs. new failure — if the aggregator overwrites
-    // last_failure_exit while iterating newest→oldest, this test
-    // catches it: oldest=2, newest=1, so the label must say "exited 1"
-    // (the most-recent failure), not "exited 2".
-    let source_path = env.dotfiles_root.join("vim/aliases.sh");
-    let target = source_path.display().to_string();
-    let probes_dir = env.paths.probes_shell_init_dir();
-    env.fs.mkdir_all(&probes_dir).unwrap();
-    let make_profile = |t0: u64, exit: i32| {
-        let body = format!(
-            "# dodot shell-init profile v1\n\
-             # shell\tbash 5.0\n\
-             # start_t\t{t0}.000000\n\
-             source\tvim\tshell\t{target}\t{t0}.000100\t{t0}.000900\t{exit}\n\
-             # end_t\t{t0}.001000\n",
-        );
-        env.fs
-            .write_file(
-                &probes_dir.join(format!("profile-{t0:010}-100-1.tsv")),
-                body.as_bytes(),
-            )
-            .unwrap();
-    };
-    make_profile(1714000001, 2); // oldest failure
-    make_profile(1714000002, 0); // clean run in the middle
-    make_profile(1714000003, 1); // most recent failure
+    let target = env
+        .dotfiles_root
+        .join("vim/aliases.sh")
+        .display()
+        .to_string();
+    write_shell_profile(&env, 1714000001, &[(&target, 2)]); // oldest failure
+    write_shell_profile(&env, 1714000002, &[(&target, 0)]); // clean middle run
+    write_shell_profile(&env, 1714000003, &[(&target, 1)]); // newest failure
 
     let result = commands::status::status(None, &ctx).unwrap();
     let row = result.packs[0]
@@ -639,76 +666,87 @@ fn status_surfaces_runtime_failures_from_recent_profiles() {
         .expect("aliases.sh row missing");
 
     assert_eq!(row.status, "broken", "row: {row:?}");
-    // Label must report the *most recent* failure's exit code (1),
-    // not the older one (2).
-    assert!(
-        row.status_label.contains("exited 1") && row.status_label.contains("2/3"),
-        "status_label was: {}",
-        row.status_label
+    assert_eq!(
+        row.status_label, "exited 1",
+        "row label is the newest run's verdict alone"
     );
-    assert!(
-        !row.status_label.contains("exited 2"),
-        "status_label should report newest failure, not older: {}",
-        row.status_label
-    );
+
     let note_idx = row.note_ref.expect("expected note ref") as usize;
     let note = &result.notes[note_idx - 1];
-    assert!(
-        note.body.contains("2 of 3 recent shell startups"),
-        "note body: {}",
-        note.body
-    );
-    assert!(
-        note.body.contains("last failure: exit 1"),
-        "note should mention most recent failure exit code: {}",
-        note.body
-    );
-    // The footnote should point users at the per-file probe view (not
-    // `--history`, which only shows aggregate counts).
-    assert!(
-        note.body.contains("dodot probe shell-init vim/aliases.sh"),
-        "note should point at the filtered probe view: {}",
-        note.body
+    assert_eq!(note.kind, "warning", "run history is a warning: {note:?}");
+    assert_eq!(note.body, "2 of the last 3 runs failed");
+    // Timeline is oldest→newest so its last symbol matches the row
+    // verdict: ✗ ✓ ✗.
+    assert_eq!(note.timeline, Some(vec![false, true, false]));
+    assert_eq!(
+        note.command.as_deref(),
+        Some("dodot probe shell-init vim/aliases.sh"),
+        "footnote points at the per-file probe view for history + stderr"
     );
 }
 
 #[test]
-fn status_inlines_captured_stderr_into_runtime_failure_footnote() {
-    // When a recent failing run also has a sibling errors.log entry,
-    // the status footnote should inline a snippet of the stderr so the
-    // user sees the actual error inline, not just the exit code.
+fn status_shell_latest_success_keeps_row_deployed_despite_history() {
+    // Historical failures must not turn a currently successful row
+    // red or roll the pack up as an error — they only add a
+    // warning-kind footnote.
     let env = TempEnvironment::builder()
         .pack("vim")
         .file("aliases.sh", "alias vi=vim")
         .done()
         .build();
+
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    let source_path = env.dotfiles_root.join("vim/aliases.sh");
-    let target = source_path.display().to_string();
-    let probes_dir = env.paths.probes_shell_init_dir();
-    env.fs.mkdir_all(&probes_dir).unwrap();
-    let prof_name = "profile-1714000003-100-1.tsv";
-    let body = format!(
-        "# dodot shell-init profile v1\n\
-         # shell\tbash 5.0\n\
-         # start_t\t1714000003.000000\n\
-         source\tvim\tshell\t{target}\t1714000003.000100\t1714000003.000900\t1\n\
-         # end_t\t1714000003.001000\n",
+    let target = env
+        .dotfiles_root
+        .join("vim/aliases.sh")
+        .display()
+        .to_string();
+    write_shell_profile(&env, 1714000001, &[(&target, 1)]); // old failure
+    write_shell_profile(&env, 1714000002, &[(&target, 0)]); // newest run clean
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let pack = &result.packs[0];
+    let row = pack
+        .files
+        .iter()
+        .find(|f| f.name == "aliases.sh")
+        .expect("aliases.sh row missing");
+
+    assert_eq!(row.status, "deployed", "row: {row:?}");
+    assert_eq!(row.status_label, "sourced");
+    assert_eq!(
+        pack.summary_status, "deployed",
+        "recent instability must not roll the pack up as broken"
     );
-    env.fs
-        .write_file(&probes_dir.join(prof_name), body.as_bytes())
-        .unwrap();
-    let err_log = format!(
-        "# dodot shell-init errors v1\n@@\t{target}\t1\nzsh: command not found: gpg-agent\n"
-    );
-    env.fs
-        .write_file(
-            &probes_dir.join("profile-1714000003-100-1.errors.log"),
-            err_log.as_bytes(),
-        )
-        .unwrap();
+
+    let note_idx = row.note_ref.expect("expected note ref") as usize;
+    let note = &result.notes[note_idx - 1];
+    assert_eq!(note.kind, "warning");
+    assert_eq!(note.body, "1 of the last 2 runs failed");
+    assert_eq!(note.timeline, Some(vec![false, true]));
+}
+
+#[test]
+fn status_shell_clean_history_renders_sourced_without_note() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let target = env
+        .dotfiles_root
+        .join("vim/aliases.sh")
+        .display()
+        .to_string();
+    write_shell_profile(&env, 1714000001, &[(&target, 0)]);
+    write_shell_profile(&env, 1714000002, &[(&target, 0)]);
 
     let result = commands::status::status(None, &ctx).unwrap();
     let row = result.packs[0]
@@ -716,23 +754,214 @@ fn status_inlines_captured_stderr_into_runtime_failure_footnote() {
         .iter()
         .find(|f| f.name == "aliases.sh")
         .expect("aliases.sh row missing");
-    let note_idx = row.note_ref.expect("expected note ref") as usize;
-    let note = &result.notes[note_idx - 1];
+
+    assert_eq!(row.status, "deployed", "row: {row:?}");
+    assert_eq!(row.status_label, "sourced");
+    assert!(row.note_ref.is_none(), "clean history needs no footnote");
+    assert!(result.notes.is_empty(), "notes: {:?}", result.notes);
+}
+
+#[test]
+fn status_shell_unobserved_renders_pending() {
+    // Deployed chain but no shell-init run has been observed yet:
+    // dodot claims `sourced` only after seeing it happen, so the row
+    // keeps the pending presentation.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let row = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.name == "aliases.sh")
+        .expect("aliases.sh row missing");
+
+    assert_eq!(row.status, "pending", "row: {row:?}");
+    assert_eq!(row.status_label, "not sourced");
+    assert!(row.note_ref.is_none());
+}
+
+#[test]
+fn status_shell_unrelated_profile_entries_do_not_count() {
+    // Profiles exist but none of them sourced this file — unrelated
+    // entries never count as applicable runs, so the row stays on the
+    // pending presentation instead of borrowing another file's runs.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .file("env.sh", "export FOO=bar")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let other = env.dotfiles_root.join("vim/env.sh").display().to_string();
+    write_shell_profile(&env, 1714000001, &[(&other, 1)]);
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let row = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.name == "aliases.sh")
+        .expect("aliases.sh row missing");
+
+    assert_eq!(row.status, "pending", "row: {row:?}");
+    assert_eq!(row.status_label, "not sourced");
+    assert!(row.note_ref.is_none());
+}
+
+#[test]
+fn status_shell_profiling_disabled_keeps_chain_verdict() {
+    // With `[profiling]` off no observation can ever arrive, so the
+    // chain verdict stands — the row must not pin itself on a pending
+    // state it could never leave.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join(".dodot.toml"),
+            b"[profiling]\nenabled = false\n",
+        )
+        .unwrap();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let row = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.name == "aliases.sh")
+        .expect("aliases.sh row missing");
+
+    assert_eq!(row.status, "deployed", "row: {row:?}");
+    assert_eq!(row.status_label, "sourced");
+}
+
+#[test]
+fn pack_status_renders_flaky_timeline_with_semantic_styles() {
+    // TermDebug mode renders style names as bracket tags, pinning the
+    // exact style boundaries: warning marker, per-run ✓/✗ symbols in
+    // deployed/error styles (oldest→newest), warning prose around a
+    // normal-emphasis probe command — under `Warnings:`, never under
+    // a red-only `Errors:` header.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let target = env
+        .dotfiles_root
+        .join("vim/aliases.sh")
+        .display()
+        .to_string();
+    write_shell_profile(&env, 1714000001, &[(&target, 0)]);
+    write_shell_profile(&env, 1714000002, &[(&target, 0)]);
+    write_shell_profile(&env, 1714000003, &[(&target, 0)]);
+    write_shell_profile(&env, 1714000004, &[(&target, 1)]);
+    write_shell_profile(&env, 1714000005, &[(&target, 1)]);
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
+
+    // Row: newest run failed → broken verdict + warning-styled marker.
     assert!(
-        note.body.contains("stderr:"),
-        "footnote should label the stderr excerpt: {}",
-        note.body
+        out.contains("[broken]exited 1[/broken] [warning][1][/warning]"),
+        "row should carry broken verdict + warning marker, got:\n{out}"
+    );
+    // Footnote: warning marker, ✓/✗ timeline oldest→newest, warning
+    // prose with the probe command in normal emphasis.
+    assert!(
+        out.contains(
+            "[warning][1][/warning] [deployed]✓[/deployed] [deployed]✓[/deployed] \
+             [deployed]✓[/deployed] [error]✗[/error] [error]✗[/error] \
+             [warning]2 of the last 5 runs failed, see[/warning] \
+             dodot probe shell-init vim/aliases.sh [warning]for more.[/warning]"
+        ),
+        "footnote should render the styled timeline, got:\n{out}"
     );
     assert!(
-        note.body.contains("zsh: command not found: gpg-agent"),
-        "footnote should inline the captured stderr: {}",
-        note.body
+        out.contains("Warnings:"),
+        "run history renders under Warnings:, got:\n{out}"
     );
     assert!(
-        note.body.contains("dodot probe shell-init vim/aliases.sh"),
-        "footnote should point at the per-file probe view: {}",
-        note.body
+        !out.contains("Errors:"),
+        "run history must not present under Errors:, got:\n{out}"
     );
+}
+
+#[test]
+fn pack_status_renders_latest_success_row_green_with_warning_marker() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let target = env
+        .dotfiles_root
+        .join("vim/aliases.sh")
+        .display()
+        .to_string();
+    write_shell_profile(&env, 1714000001, &[(&target, 1)]);
+    write_shell_profile(&env, 1714000002, &[(&target, 0)]);
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
+
+    assert!(
+        out.contains("[deployed]sourced[/deployed] [warning][1][/warning]"),
+        "currently-clean row stays deployed-styled with a warning marker, got:\n{out}"
+    );
+    assert!(
+        out.contains(
+            "[error]✗[/error] [deployed]✓[/deployed] \
+             [warning]1 of the last 2 runs failed, see[/warning] \
+             dodot probe shell-init vim/aliases.sh [warning]for more.[/warning]"
+        ),
+        "timeline reads oldest→newest so the last symbol matches the row, got:\n{out}"
+    );
+    assert!(!out.contains("Errors:"), "got:\n{out}");
+}
+
+#[test]
+fn pack_status_renders_unobserved_shell_row_as_pending() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
+
+    assert!(
+        out.contains("[pending]not sourced[/pending]"),
+        "unobserved deployed shell file renders the pending presentation, got:\n{out}"
+    );
+    assert!(!out.contains("Warnings:"), "got:\n{out}");
+    assert!(!out.contains("Errors:"), "got:\n{out}");
 }
 
 #[test]
@@ -1723,6 +1952,15 @@ fn status_shell_handler_verified_deployed() {
 
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
+
+    // "Verified" for shell files means observed: seed a clean
+    // shell-init run so the row can claim `sourced`.
+    let target = env
+        .dotfiles_root
+        .join("vim/aliases.sh")
+        .display()
+        .to_string();
+    write_shell_profile(&env, 1714000001, &[(&target, 0)]);
 
     let result = commands::status::status(None, &ctx).unwrap();
     let file = result.packs[0]

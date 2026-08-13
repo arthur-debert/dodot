@@ -74,9 +74,14 @@ teardown() {
 
     dodot up
 
+    # Observe a clean shell-init run: shell rows report "sourced"
+    # only after the file is seen surviving a real shell startup.
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+
     # All handlers should be active
     run dodot status
     assert_output_contains "deployed"
+    assert_output_not_contains "not sourced"
     assert_output_contains "sourced"
     assert_output_contains "in PATH"
 

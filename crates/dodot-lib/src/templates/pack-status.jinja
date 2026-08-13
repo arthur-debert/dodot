@@ -1,9 +1,9 @@
-{%- macro render_pack(pack, view_mode) -%}
+{%- macro render_pack(pack, view_mode, notes) -%}
 {%- if view_mode == "short" -%}
 {{ pack.name | col(32) }} ({{ pack.summary_count }}) [{{ pack.summary_status }}]{{ pack.summary_status }}[/{{ pack.summary_status }}]
 {% else -%}
 [pack-name]{{ pack.name }}[/pack-name]
-{% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]{% if file.note_ref %} [dim][{{ file.note_ref }}][/dim]{% endif %}
+{% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]{% if file.note_ref %}{% if notes[file.note_ref - 1].kind == "warning" %} [warning][{{ file.note_ref }}][/warning]{% else %} [dim][{{ file.note_ref }}][/dim]{% endif %}{% endif %}
 {% endfor %}
 {%- endif -%}
 {%- endmacro -%}
@@ -17,20 +17,23 @@
 {% for name in inactive_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
 {% endfor %}
 {% endif %}{% set deployed_group = packs | selectattr("summary_status", "equalto", "deployed") | list %}{% if deployed_group %}[group-banner-deployed]Deployed Packs[/group-banner-deployed]
-{% for pack in deployed_group %}{{ render_pack(pack, view_mode) }}{% endfor %}
+{% for pack in deployed_group %}{{ render_pack(pack, view_mode, notes) }}{% endfor %}
 {% endif %}{% set pending_group = packs | selectattr("summary_status", "equalto", "pending") | list %}{% if pending_group %}[group-banner-pending]Pending Packs[/group-banner-pending]
-{% for pack in pending_group %}{{ render_pack(pack, view_mode) }}{% endfor %}
+{% for pack in pending_group %}{{ render_pack(pack, view_mode, notes) }}{% endfor %}
 {% endif %}{% set error_group = packs | selectattr("summary_status", "equalto", "error") | list %}{% if error_group %}[group-banner-error]Error Packs[/group-banner-error]
-{% for pack in error_group %}{{ render_pack(pack, view_mode) }}{% endfor %}
-{% endif %}{% else %}{% for pack in packs %}{{ render_pack(pack, view_mode) }}{% endfor %}{% if ignored_packs %}[pack-name]Ignored Packs[/pack-name]
+{% for pack in error_group %}{{ render_pack(pack, view_mode, notes) }}{% endfor %}
+{% endif %}{% else %}{% for pack in packs %}{{ render_pack(pack, view_mode, notes) }}{% endfor %}{% if ignored_packs %}[pack-name]Ignored Packs[/pack-name]
 {% for name in ignored_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
 {% endfor %}{% endif %}{% if inactive_packs %}[pack-name]Inactive on this OS[/pack-name]
 {% for name in inactive_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
-{% endfor %}{% endif %}{% endif %}{% if notes %}
+{% endfor %}{% endif %}{% endif %}{% if notes %}{% set error_notes = notes | selectattr("kind", "equalto", "error") | list %}{% set warning_notes = notes | selectattr("kind", "equalto", "warning") | list %}{% if error_notes %}
 [header]Errors:[/header]
-{% for note in notes %}  [dim][{{ loop.index }}][/dim] {{ note.body }}
+{% for note in notes %}{% if note.kind == "error" %}  [dim][{{ loop.index }}][/dim] {{ note.body }}
 {% if note.hint %}      [dim]hint:[/dim] {{ note.hint }}
-{% endif %}{% endfor %}{% endif %}{% if conflicts %}
+{% endif %}{% endif %}{% endfor %}{% endif %}{% if warning_notes %}
+[header]Warnings:[/header]
+{% for note in notes %}{% if note.kind == "warning" %}  [warning][{{ loop.index }}][/warning] {% if note.timeline %}{% for ok in note.timeline %}{% if ok %}[deployed]✓[/deployed] {% else %}[error]✗[/error] {% endif %}{% endfor %}{% endif %}{% if note.command %}[warning]{{ note.body }}, see[/warning] {{ note.command }} [warning]for more.[/warning]{% else %}[warning]{{ note.body }}[/warning]{% endif %}
+{% endif %}{% endfor %}{% endif %}{% endif %}{% if conflicts %}
 [conflict-header] Cross-pack conflicts [/conflict-header]
 {% for c in conflicts %}
 {% if c.kind == "symlink" %}The target path [conflict-target]{{ c.target }}[/conflict-target] would be used by multiple packs:

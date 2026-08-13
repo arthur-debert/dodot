@@ -173,7 +173,7 @@ fn aggregate_status(files: &[DisplayFile]) -> (String, usize) {
     }
 }
 
-/// A command-wide note (error / inline conflict) referenced by
+/// A command-wide note (error / warning) referenced by
 /// `DisplayFile.note_ref`. Indices into `PackStatusResult.notes` are
 /// 1-based; position in the vec matches the `[N]` shown inline.
 #[derive(Debug, Clone, Serialize)]
@@ -181,6 +181,38 @@ pub struct DisplayNote {
     pub body: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub hint: Option<String>,
+    /// Note severity: `"error"` (hard failure — renders under
+    /// `Errors:` with a dim `[N]` marker) or `"warning"`
+    /// (informational instability — renders under `Warnings:` with a
+    /// warning-styled marker). A warning must never present as a
+    /// current error: it doesn't change the row verdict it annotates.
+    pub kind: String,
+    /// Shell-init run timeline for runtime-history warnings: one
+    /// entry per applicable run, oldest→newest, `true` = exited zero.
+    /// The template renders it as ✓/✗ symbols (deployed/error styles)
+    /// ahead of the note body. `None` for plain notes.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub timeline: Option<Vec<bool>>,
+    /// Follow-up command rendered in normal emphasis inside the
+    /// warning prose (e.g. `dodot probe shell-init vim/aliases.sh`).
+    /// `None` for plain notes.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub command: Option<String>,
+}
+
+impl DisplayNote {
+    /// Plain error-kind note — the shape every hard-failure footnote
+    /// uses. Warning notes are built field-by-field at their one
+    /// construction site (`status::Health::footnote`).
+    pub fn error(body: String) -> Self {
+        DisplayNote {
+            body,
+            hint: None,
+            kind: "error".into(),
+            timeline: None,
+            command: None,
+        }
+    }
 }
 
 /// One claimant of a cross-pack conflict, formatted for display.
