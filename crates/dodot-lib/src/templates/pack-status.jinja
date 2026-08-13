@@ -3,10 +3,10 @@
 {%- set right_col = "[" ~ status_tag ~ "]" ~ status_label ~ "[/" ~ status_tag ~ "]" -%}
 {%- if note_ref %}{% set right_col = right_col ~ " [dim][" ~ note_ref ~ "][/dim]" %}{% endif -%}
 {%- set status_width = right_col | display_width -%}
-{%- set file_tbl = tabular([{"width": 1, "style": "dim"}, {"width": 20}, {"width": "fill", "truncate": "middle", "style": "dim"}, {"width": status_width, "align": "right", "anchor": "right"}], separator=" ", width=output_width) -%}
+{%- set file_tbl = tabular([{"width": 20}, {"width": 1, "style": "dim"}, {"width": "fill", "truncate": "middle", "style": "dim"}, {"width": status_width, "align": "right", "anchor": "right"}], separator=" ", width=output_width) -%}
 {{ file_tbl.row([
-  icon,
   pack_name,
+  icon,
   file_name,
   right_col
 ]) }}
@@ -15,12 +15,20 @@
 {%- if view_mode == "short" -%}
 {{ pack.name | col(32) }} ({{ pack.summary_count }}) [{{ pack.summary_status }}]{{ pack.summary_status }}[/{{ pack.summary_status }}]
 {% else -%}
-{% for file in pack.files %}{{ render_row(file.symbol, pack.name, file.name, file.status, file.status_label, file.note_ref) }}
+{% for file in pack.files %}{{ render_row(file.symbol, pack.name if loop.first else "", file.name, file.status, file.status_label, file.note_ref) }}
 {% endfor %}
 {%- endif -%}
 {%- endmacro -%}
 {%- macro render_ignored_pack(pack) -%}
-{{ render_row("∅", pack.display_name, pack.ignore_file, "ignored-pack", "ignored", none) }}
+{%- set right_col = "[ignored-pack]ignored[/ignored-pack]" -%}
+{%- set status_width = right_col | display_width -%}
+{%- set file_tbl = tabular([{"width": 1, "style": "dim"}, {"width": 20}, {"width": "fill", "truncate": "middle", "style": "dim"}, {"width": status_width, "align": "right", "anchor": "right"}], separator=" ", width=output_width) -%}
+{{ file_tbl.row([
+  "∅",
+  pack.display_name,
+  pack.ignore_file,
+  right_col
+]) }}
 {%- endmacro -%}
 {%- macro render_note(note, index) -%}
   [{{ index }}] {% if note.timeline %}{% for ok in note.timeline %}{% if ok %}[deployed]✓[/deployed] {% else %}[error]✗[/error] {% endif %}{% endfor %}{% endif %}[{{ note.kind }}]{{ note.body }}{% if note.command %}, see [/{{ note.kind }}][diagnostic-command]{{ note.command }}[/diagnostic-command][{{ note.kind }}] for more.{% endif %}[/{{ note.kind }}]

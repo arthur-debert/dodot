@@ -928,7 +928,7 @@ fn pack_status_renders_flaky_timeline_with_semantic_styles() {
 
     // Row: newest run failed, but only the status text carries the verdict.
     assert!(
-        out.contains("[dim]⚙[/dim] vim")
+        out.contains("vim                  [dim]⚙[/dim]")
             && out.contains("[dim]aliases.sh")
             && out.contains("[broken]exited 1[/broken] [dim][1][/dim]"),
         "row should isolate the broken verdict to its status, got:\n{out}"
@@ -982,7 +982,7 @@ fn pack_status_renders_latest_success_row_green_with_warning_marker() {
     let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
     assert!(
-        out.contains("[dim]⚙[/dim] vim")
+        out.contains("vim                  [dim]⚙[/dim]")
             && out.contains("[dim]aliases.sh")
             && out.contains("[deployed]sourced[/deployed] [dim][1][/dim]"),
         "currently-clean row styles only its status and marker, got:\n{out}"
@@ -1018,7 +1018,7 @@ fn pack_status_renders_unobserved_shell_row_as_pending() {
     let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
     assert!(
-        out.contains("[dim]⚙[/dim] vim")
+        out.contains("vim                  [dim]⚙[/dim]")
             && out.contains("[dim]aliases.sh")
             && out.contains("[pending]not sourced[/pending]"),
         "unobserved shell row styles only its pending status, got:\n{out}"
@@ -2484,7 +2484,7 @@ fn full_mode_renders_80_column_rows_with_isolated_status_style() {
     let row = text.lines().next().expect("status row");
     assert_eq!(standout_render::tabular::display_width(row), 80, "{row:?}");
     assert!(
-        row.starts_with("➞ vim                  "),
+        row.starts_with("vim                  ➞ "),
         "filename should start in column 24 after a 20-column pack: {row:?}"
     );
     assert!(row.contains('…'), "long filenames should clip: {row:?}");
@@ -2500,7 +2500,7 @@ fn full_mode_renders_80_column_rows_with_isolated_status_style() {
         "row should contain the dimmed icon: {output}"
     );
     assert!(
-        output.contains(" vim "),
+        output.contains("vim "),
         "row should contain the pack name: {output}"
     );
     assert!(
@@ -2617,4 +2617,71 @@ fn by_status_groups_packs_under_banners() {
     );
     assert!(output.contains("vim"), "output: {output}");
     assert!(output.contains("nvim"), "output: {output}");
+}
+
+#[test]
+fn multi_file_pack_and_ignored_pack_rendering() {
+    use crate::commands::{DisplayFile, DisplayPack, PackStatusResult};
+    use crate::packs::IgnoredPack;
+
+    let result = PackStatusResult {
+        message: None,
+        dry_run: false,
+        packs: vec![DisplayPack::new(
+            "tmux".into(),
+            vec![
+                DisplayFile {
+                    name: "tmux.conf".into(),
+                    symbol: "➞".into(),
+                    description: "".into(),
+                    status: "deployed".into(),
+                    status_label: "deployed".into(),
+                    handler: "symlink".into(),
+                    note_ref: None,
+                },
+                DisplayFile {
+                    name: "tmux.conf.local".into(),
+                    symbol: "➞".into(),
+                    description: "".into(),
+                    status: "deployed".into(),
+                    status_label: "deployed".into(),
+                    handler: "symlink".into(),
+                    note_ref: None,
+                },
+            ],
+        )],
+        warnings: Vec::new(),
+        notes: Vec::new(),
+        conflicts: Vec::new(),
+        ignored_packs: vec![IgnoredPack {
+            name: "vscode".into(),
+            display_name: "vscode".into(),
+            ignore_file: ".dodotignore".into(),
+        }],
+        inactive_packs: Vec::new(),
+        view_mode: "full".into(),
+        group_mode: "name".into(),
+        diffs: Vec::new(),
+    };
+
+    let text = render::render("pack-status", &result, OutputMode::Text).unwrap();
+    let mut lines = text.lines();
+
+    let row1 = lines.next().unwrap();
+    assert!(
+        row1.starts_with("tmux                 ➞ tmux.conf"),
+        "first row shows pack name: {row1:?}"
+    );
+
+    let row2 = lines.next().unwrap();
+    assert!(
+        row2.starts_with("                     ➞ tmux.conf.local"),
+        "second row suppresses pack name: {row2:?}"
+    );
+
+    let ignored_row = lines.find(|l| !l.trim().is_empty()).unwrap();
+    assert!(
+        ignored_row.starts_with("∅ vscode               .dodotignore"),
+        "ignored packs keep explicit layout: {ignored_row:?}"
+    );
 }
