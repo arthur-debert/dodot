@@ -131,7 +131,7 @@ pub trait RunOnceCommand: Send + Sync {
 
     /// Human-readable status message when a current-hash sentinel
     /// exists. Default: `"ran"`. Override for per-handler copy
-    /// (e.g. `"brew packages installed"`).
+    /// (e.g. `"installed"`).
     fn status_deployed(&self) -> &str {
         "ran"
     }

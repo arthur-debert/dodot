@@ -40,18 +40,25 @@ expected_app_root() {
     assert_exists "$root/global-settings.json"
 }
 
-@test "status shows app. file deploy path with prefix stripped" {
+@test "status JSON reports app. file target with prefix stripped" {
     create_pack_file "vscode" "app.global-settings.json" '{"x": 1}'
+    dodot up
 
-    run dodot status
+    run dodot status --output json
     [ "$status" -eq 0 ]
-    # The mapping line shows source `app.global-settings.json` ➞ deploy
-    # path under app_support; the deploy half drops the `app.` prefix.
+    local target
     if [[ "$(uname)" == "Darwin" ]]; then
-        assert_output_contains "Application Support/global-settings.json"
+        target="~/Library/Application Support/global-settings.json"
     else
-        assert_output_contains ".config/global-settings.json"
+        target="~/.config/global-settings.json"
     fi
+    jq -e --arg target "$target" '
+        .packs[]
+        | select(.name == "vscode")
+        | .files[]
+        | select(.name == "app.global-settings.json")
+        | .description == $target
+    ' <<<"$output" >/dev/null
 }
 
 # ── xdg. file prefix ────────────────────────────────────────────

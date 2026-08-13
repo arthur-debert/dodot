@@ -53,7 +53,7 @@ Secrets
         port = 5432
 
         $ dodot up app
-        ... symlink:  app/config.toml -> ~/.config/app/config.toml: deployed
+        app/config.toml                   ➞ linked
 
         $ cat ~/.config/app/config.toml
         db_password = "hunter2"
@@ -124,7 +124,7 @@ Secrets
         # identity defaults to ~/.config/age/identity.txt; override here if needed.
 
         $ dodot up ssh
-        ... symlink:  ssh/id_ed25519 -> ~/.config/ssh/id_ed25519: deployed
+        ssh/id_ed25519                    ➞ linked
 
         $ ls -la ~/.local/share/dodot/packs/ssh/preprocessed/id_ed25519
         -rw-------  ...  id_ed25519

@@ -453,7 +453,7 @@ fn up_and_status_produce_matching_labels() {
     );
 
     // Spot-check the actual labels: should be the steady-state vocabulary
-    // ("deployed", "sourced", "in PATH"), not the executor vocabulary
+    // ("linked", "sourced", "in PATH"), not the executor vocabulary
     // ("staged X", "executed: X").
     let labels: Vec<&str> = up_labels.values().map(String::as_str).collect();
     assert!(
@@ -465,8 +465,8 @@ fn up_and_status_produce_matching_labels() {
         "expected shell handler to render as 'sourced', got: {labels:?}"
     );
     assert!(
-        labels.contains(&"deployed"),
-        "expected symlink handler to render as 'deployed', got: {labels:?}"
+        labels.contains(&"linked"),
+        "expected symlink handler to render as 'linked', got: {labels:?}"
     );
     assert!(
         labels.iter().all(|l| !l.starts_with("staged ")),
@@ -879,19 +879,20 @@ fn pack_status_renders_flaky_timeline_with_semantic_styles() {
     let result = commands::status::status(None, &ctx).unwrap();
     let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
-    // Row: newest run failed → broken verdict + warning-styled marker.
+    // Row: newest run failed → whole-row broken verdict + plain marker.
     assert!(
-        out.contains("[broken]exited 1[/broken] [warning][1][/warning]"),
-        "row should carry broken verdict + warning marker, got:\n{out}"
+        out.contains("[broken]vim/aliases.sh") && out.contains("⚙ exited 1 [1][/broken]"),
+        "row should carry broken verdict + marker, got:\n{out}"
     );
-    // Footnote: warning marker, ✓/✗ timeline oldest→newest, warning
-    // prose with the probe command in normal emphasis.
+    // Footnote: plain marker, ✓/✗ timeline oldest→newest, warning
+    // prose around a muted normal-colour probe command.
     assert!(
         out.contains(
-            "[warning][1][/warning] [deployed]✓[/deployed] [deployed]✓[/deployed] \
+            "[1] [deployed]✓[/deployed] [deployed]✓[/deployed] \
              [deployed]✓[/deployed] [error]✗[/error] [error]✗[/error] \
-             [warning]2 of the last 5 runs failed, see[/warning] \
-             dodot probe shell-init vim/aliases.sh [warning]for more.[/warning]"
+             [warning]2 of the last 5 runs failed, see [/warning]\
+             [diagnostic-command]dodot probe shell-init vim/aliases.sh[/diagnostic-command]\
+             [warning] for more.[/warning]"
         ),
         "footnote should render the styled timeline, got:\n{out}"
     );
@@ -928,14 +929,15 @@ fn pack_status_renders_latest_success_row_green_with_warning_marker() {
     let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
     assert!(
-        out.contains("[deployed]sourced[/deployed] [warning][1][/warning]"),
-        "currently-clean row stays deployed-styled with a warning marker, got:\n{out}"
+        out.contains("[deployed]vim/aliases.sh") && out.contains("⚙ sourced [1][/deployed]"),
+        "currently-clean row stays deployed-styled with a marker, got:\n{out}"
     );
     assert!(
         out.contains(
             "[error]✗[/error] [deployed]✓[/deployed] \
-             [warning]1 of the last 2 runs failed, see[/warning] \
-             dodot probe shell-init vim/aliases.sh [warning]for more.[/warning]"
+             [warning]1 of the last 2 runs failed, see [/warning]\
+             [diagnostic-command]dodot probe shell-init vim/aliases.sh[/diagnostic-command]\
+             [warning] for more.[/warning]"
         ),
         "timeline reads oldest→newest so the last symbol matches the row, got:\n{out}"
     );
@@ -957,7 +959,7 @@ fn pack_status_renders_unobserved_shell_row_as_pending() {
     let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
     assert!(
-        out.contains("[pending]not sourced[/pending]"),
+        out.contains("[pending]vim/aliases.sh") && out.contains("⚙ not sourced[/pending]"),
         "unobserved deployed shell file renders the pending presentation, got:\n{out}"
     );
     assert!(!out.contains("Warnings:"), "got:\n{out}");
@@ -1849,7 +1851,7 @@ fn status_verified_deployed_after_up() {
     let result = commands::status::status(None, &ctx).unwrap();
     let file = &result.packs[0].files[0];
     assert_eq!(file.status, "deployed", "should be verified deployed");
-    assert_eq!(file.status_label, "deployed");
+    assert_eq!(file.status_label, "linked");
 }
 
 #[test]
@@ -2381,6 +2383,122 @@ fn short_mode_renders_one_line_per_pack_with_count() {
     assert!(
         !output.contains("init.lua"),
         "short mode should not render individual files: {output}"
+    );
+}
+
+#[test]
+fn full_mode_renders_flat_status_styled_file_rows() {
+    use crate::commands::{DisplayFile, DisplayPack, PackStatusResult};
+
+    let result = PackStatusResult {
+        message: None,
+        dry_run: false,
+        packs: vec![DisplayPack::new(
+            "vim".into(),
+            vec![DisplayFile {
+                name: "init.lua".into(),
+                symbol: "➞".into(),
+                description: "SHOULD NOT RENDER".into(),
+                status: "deployed".into(),
+                status_label: "linked".into(),
+                handler: "symlink".into(),
+                note_ref: None,
+            }],
+        )],
+        warnings: Vec::new(),
+        notes: Vec::new(),
+        conflicts: Vec::new(),
+        ignored_packs: Vec::new(),
+        inactive_packs: Vec::new(),
+        view_mode: "full".into(),
+        group_mode: "name".into(),
+        diffs: Vec::new(),
+    };
+
+    let output = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
+
+    assert!(
+        output.contains("[deployed]vim/init.lua"),
+        "row should start with the pack/file path under the row status tag: {output}"
+    );
+    assert!(
+        output.contains("➞ linked[/deployed]"),
+        "handler icon and status label should share the row status tag: {output}"
+    );
+    assert!(
+        !output.contains("[pack-name]vim[/pack-name]"),
+        "full output should not render pack-only header rows: {output}"
+    );
+    assert!(
+        !output.contains("SHOULD NOT RENDER"),
+        "full output should not include the handler-description column: {output}"
+    );
+}
+
+#[test]
+fn diagnostics_render_severity_headings_plain_markers_and_muted_commands() {
+    use crate::commands::{DisplayNote, PackStatusResult};
+
+    let result = PackStatusResult {
+        message: None,
+        dry_run: false,
+        packs: Vec::new(),
+        warnings: Vec::new(),
+        notes: vec![
+            DisplayNote {
+                body: "target exists".into(),
+                hint: None,
+                kind: "error".into(),
+                timeline: None,
+                command: Some("dodot status git".into()),
+            },
+            DisplayNote {
+                body: "1 of the last 2 runs failed".into(),
+                hint: None,
+                kind: "warning".into(),
+                timeline: Some(vec![false, true]),
+                command: Some("dodot probe shell-init vim/aliases.sh".into()),
+            },
+        ],
+        conflicts: Vec::new(),
+        ignored_packs: Vec::new(),
+        inactive_packs: Vec::new(),
+        view_mode: "full".into(),
+        group_mode: "name".into(),
+        diffs: Vec::new(),
+    };
+
+    let output = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
+
+    assert!(output.contains("[error]Errors:[/error]"), "got:\n{output}");
+    assert!(
+        output.contains("[warning]Warnings:[/warning]"),
+        "got:\n{output}"
+    );
+    assert!(
+        output.contains(
+            "[1] [error]target exists, see [/error]\
+             [diagnostic-command]dodot status git[/diagnostic-command]\
+             [error] for more.[/error]"
+        ),
+        "error note should keep marker plain and command muted: {output}"
+    );
+    assert!(
+        output.contains(
+            "[2] [error]✗[/error] [deployed]✓[/deployed] \
+             [warning]1 of the last 2 runs failed, see [/warning]\
+             [diagnostic-command]dodot probe shell-init vim/aliases.sh[/diagnostic-command]\
+             [warning] for more.[/warning]"
+        ),
+        "warning note should keep marker plain, timeline styled, and command muted: {output}"
+    );
+    assert!(
+        !output.contains("[warning][2][/warning]"),
+        "diagnostic list markers should not carry severity styling: {output}"
+    );
+    assert!(
+        !output.contains("`dodot"),
+        "diagnostic commands should render without Markdown backticks: {output}"
     );
 }
 

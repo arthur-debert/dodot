@@ -24,7 +24,7 @@ Template Expansion
         name = "Alice"
 
         $ dodot up git
-        ... symlink:  git/gitconfig -> ~/.gitconfig: deployed
+        git/gitconfig                     ➞ linked
 
         $ cat ~/.gitconfig
         [user]

@@ -20,7 +20,7 @@ teardown() {
     assert_output_contains "pending"
 }
 
-@test "status shows deployed after up" {
+@test "status shows linked after up" {
     create_pack_file "vim" "home.vimrc" "set nocompatible"
 
     dodot up
@@ -28,7 +28,7 @@ teardown() {
     [ "$status" -eq 0 ]
     assert_output_contains "vim"
     assert_output_contains "vimrc"
-    assert_output_contains "deployed"
+    assert_output_contains "linked"
 }
 
 @test "status filters by pack name" {

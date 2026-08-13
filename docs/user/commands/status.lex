@@ -14,7 +14,7 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
     For each active pack:
 
-    - Every source file dodot saw, with the handler symbol, the deploy target, and the current deployment status.
+    - Every source file dodot saw, as `pack/file` with the handler symbol and current deployment status.
     - Files filtered out (`ignore` / `skip` / `gate`) and why they were filtered.
     - Files affected by preprocessing — under their *post-preprocessing* filename, not the source filename. (A source `config.toml.tmpl` shows as `config.toml`.)
 
@@ -25,10 +25,10 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
     Status states for a single row, by handler family:
 
-        | Handler family    | Pending             | Deployed                          | Error                                                |
-        | symlink           | not yet linked      | linked at the deploy target       | target exists but isn't dodot's, or the link is broken |
-        | shell / path      | not registered      | registered in shell-init / PATH   | (rare — registration writes are atomic)              |
-        | install / homebrew| sentinel missing    | sentinel matches current source   | sentinel exists but its checksum no longer matches   |
+        | Handler family    | Pending                                  | Deployed            | Error                                                |
+        | symlink           | pending                                  | linked              | target exists but isn't dodot's, or the link is broken |
+        | shell / path      | not sourced / not in PATH                | sourced / in PATH   | (rare — registration writes are atomic)              |
+        | install / homebrew| brew packages not installed              | ran / installed     | sentinel exists but its checksum no longer matches   |
 
     :: table align=llll ::
 

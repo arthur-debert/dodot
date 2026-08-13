@@ -2,11 +2,14 @@
 {%- if view_mode == "short" -%}
 {{ pack.name | col(32) }} ({{ pack.summary_count }}) [{{ pack.summary_status }}]{{ pack.summary_status }}[/{{ pack.summary_status }}]
 {% else -%}
-[pack-name]{{ pack.name }}[/pack-name]
-{% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]{% if file.note_ref %}{% if notes[file.note_ref - 1].kind == "warning" %} [warning][{{ file.note_ref }}][/warning]{% else %} [dim][{{ file.note_ref }}][/dim]{% endif %}{% endif %}
+{% for file in pack.files %}[{{ file.status }}]{{ (pack.name ~ "/" ~ file.name) | col(32) }} {{ file.symbol }} {{ file.status_label }}{% if file.note_ref %} [{{ file.note_ref }}]{% endif %}[/{{ file.status }}]
 {% endfor %}
 {%- endif -%}
 {%- endmacro -%}
+{%- macro render_note(note, index) -%}
+  [{{ index }}] {% if note.timeline %}{% for ok in note.timeline %}{% if ok %}[deployed]✓[/deployed] {% else %}[error]✗[/error] {% endif %}{% endfor %}{% endif %}[{{ note.kind }}]{{ note.body }}{% if note.command %}, see [/{{ note.kind }}][diagnostic-command]{{ note.command }}[/diagnostic-command][{{ note.kind }}] for more.{% endif %}[/{{ note.kind }}]
+{% if note.hint %}      [{{ note.kind }}]hint: {{ note.hint }}[/{{ note.kind }}]
+{% endif %}{%- endmacro -%}
 {% if conflicts %}[conflict-banner] ✗ Cross-pack conflicts detected — see details below [/conflict-banner]
 {% endif %}{% if message %}[message]{{ message }}[/message]
 {% endif %}{% if dry_run %}[dry-run]  (dry run — no changes made)[/dry-run]
@@ -27,13 +30,10 @@
 {% endfor %}{% endif %}{% if inactive_packs %}[pack-name]Inactive on this OS[/pack-name]
 {% for name in inactive_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
 {% endfor %}{% endif %}{% endif %}{% if notes %}{% set error_notes = notes | selectattr("kind", "equalto", "error") | list %}{% set warning_notes = notes | selectattr("kind", "equalto", "warning") | list %}{% if error_notes %}
-[header]Errors:[/header]
-{% for note in notes %}{% if note.kind == "error" %}  [dim][{{ loop.index }}][/dim] {{ note.body }}
-{% if note.hint %}      [dim]hint:[/dim] {{ note.hint }}
-{% endif %}{% endif %}{% endfor %}{% endif %}{% if warning_notes %}
-[header]Warnings:[/header]
-{% for note in notes %}{% if note.kind == "warning" %}  [warning][{{ loop.index }}][/warning] {% if note.timeline %}{% for ok in note.timeline %}{% if ok %}[deployed]✓[/deployed] {% else %}[error]✗[/error] {% endif %}{% endfor %}{% endif %}{% if note.command %}[warning]{{ note.body }}, see[/warning] {{ note.command }} [warning]for more.[/warning]{% else %}[warning]{{ note.body }}[/warning]{% endif %}
-{% endif %}{% endfor %}{% endif %}{% endif %}{% if conflicts %}
+[error]Errors:[/error]
+{% for note in notes %}{% if note.kind == "error" %}{{ render_note(note, loop.index) }}{% endif %}{% endfor %}{% endif %}{% if warning_notes %}
+[warning]Warnings:[/warning]
+{% for note in notes %}{% if note.kind == "warning" %}{{ render_note(note, loop.index) }}{% endif %}{% endfor %}{% endif %}{% endif %}{% if conflicts %}
 [conflict-header] Cross-pack conflicts [/conflict-header]
 {% for c in conflicts %}
 {% if c.kind == "symlink" %}The target path [conflict-target]{{ c.target }}[/conflict-target] would be used by multiple packs:

@@ -51,12 +51,11 @@ Getting started
         $ cd ~/dotfiles
         $ dodot status nvim
 
-        nvim
-            aliases.sh  ⚙ shell profile               pending
-            bin         + $PATH/bin                   pending
-            init.lua    ➞ ~/.config/nvim/init.lua     pending
-            lua         ➞ ~/.config/nvim/lua          pending
-            Brewfile    ⚙ brew install                pending
+        nvim/aliases.sh                  ⚙ not sourced
+        nvim/bin                         + not in PATH
+        nvim/init.lua                    ➞ pending
+        nvim/lua                         ➞ pending
+        nvim/Brewfile                    ⚙ brew packages not installed
 
     :: shell ::
 
@@ -73,11 +72,10 @@ Getting started
         $ dodot up nvim
 
         Packs deployed.
-        nvim
-            init.lua    ➞ ~/.config/nvim/init.lua    deployed
-            lua         ➞ ~/.config/nvim/lua         deployed
-            aliases.sh  ⚙ shell profile               sourced
-            Brewfile    ⚙ brew install              installed
+        nvim/init.lua                    ➞ linked
+        nvim/lua                         ➞ linked
+        nvim/aliases.sh                  ⚙ sourced
+        nvim/Brewfile                    ⚙ installed
 
     :: shell ::
 

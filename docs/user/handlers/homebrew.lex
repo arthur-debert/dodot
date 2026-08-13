@@ -26,7 +26,7 @@ Runs `brew bundle` against your source `Brewfile` once per content-hash, tracked
     `dodot up` and `dodot status` report one of three states for the Brewfile:
 
     - **`brew packages not installed`** — no sentinel exists. `dodot up` will run `brew bundle` on the next invocation.
-    - **`brew packages installed`** — a sentinel exists for the *current* content hash. The bundle has run, and the source hasn't changed since. `dodot up` is a no-op.
+    - **`installed`** — a sentinel exists for the *current* content hash. The bundle has run, and the source hasn't changed since. `dodot up` is a no-op.
     - **`brew packages older version (N lines added, M removed)`** — a sentinel exists, but for a *different* content hash. The bundle ran successfully against an earlier version of the Brewfile, and you've edited it since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --provision-rerun`.
 
     For sentinels written before the snapshot convention was introduced, the third state shows `brew packages older version (no diff data)` — the run state is still tracked, but dodot has no record of the prior content to summarize what changed. Manual `brew uninstall` of packages the Brewfile still lists likewise stays sticky: the sentinel records "we ran with this content," and dodot considers the work done until the file changes or `--provision-rerun` is passed.
