@@ -142,7 +142,7 @@ impl Health {
                 _ => "pending".into(),
             },
             Health::Deployed => match handler {
-                "symlink" => "deployed".into(),
+                "symlink" => "linked".into(),
                 "shell" => "sourced".into(),
                 "path" => "in PATH".into(),
                 "install" | "homebrew" | "nix" => run_once_status_messages(handler).deployed,

@@ -11,6 +11,7 @@
 .error                { font-weight: bold; }
 .dry-run              { font-style: italic; }
 .dim                  { dim: true; }
+.diagnostic-command   { dim: true; }
 .header               { font-weight: bold; }
 .conflict-banner      { font-weight: bold; }
 .conflict-header      { font-weight: bold; }

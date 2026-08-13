@@ -167,7 +167,7 @@ impl Handler for SymlinkHandler {
             handler: HANDLER_SYMLINK.into(),
             deployed: has_state,
             message: if has_state {
-                "symlink deployed".into()
+                "linked".into()
             } else {
                 "symlink pending".into()
             },

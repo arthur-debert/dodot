@@ -40,7 +40,7 @@ impl RunOnceCommand for BrewfileCommand {
     }
 
     fn status_deployed(&self) -> &str {
-        "brew packages installed"
+        "installed"
     }
 
     fn status_pending(&self) -> &str {
@@ -67,7 +67,7 @@ mod tests {
     fn brewfile_command_identity() {
         assert_eq!(BrewfileCommand.handler_name(), HANDLER_HOMEBREW);
         assert_eq!(BrewfileCommand.phase(), ExecutionPhase::Provision);
-        assert_eq!(BrewfileCommand.status_deployed(), "brew packages installed");
+        assert_eq!(BrewfileCommand.status_deployed(), "installed");
         assert_eq!(
             BrewfileCommand.status_pending(),
             "brew packages not installed"

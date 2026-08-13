@@ -165,9 +165,8 @@ Conditional Running
     Status output (running on linux):
 
         $ dodot status
-          shared-tools/
-            vimrc                  ➞ ~/.config/vim/vimrc       deployed
-            …
+          shared-tools/vimrc                 ➞ linked
+          …
           Inactive on this OS
             mac-tools (os=darwin, current=linux)
 
