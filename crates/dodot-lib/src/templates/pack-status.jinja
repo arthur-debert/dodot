@@ -1,8 +1,9 @@
 {%- set output_width = terminal_width | default(80) -%}
-{%- set file_tbl = tabular([{"width": 1, "style": "dim"}, {"width": 20}, {"width": "fill", "truncate": "middle", "style": "dim"}, {"width": 20, "align": "right", "anchor": "right"}], separator=" ", width=output_width) -%}
 {%- macro render_row(icon, pack_name, file_name, status_tag, status_label, note_ref) -%}
 {%- set right_col = "[" ~ status_tag ~ "]" ~ status_label ~ "[/" ~ status_tag ~ "]" -%}
 {%- if note_ref %}{% set right_col = right_col ~ " [dim][" ~ note_ref ~ "][/dim]" %}{% endif -%}
+{%- set status_width = right_col | display_width -%}
+{%- set file_tbl = tabular([{"width": 1, "style": "dim"}, {"width": 20}, {"width": "fill", "truncate": "middle", "style": "dim"}, {"width": status_width, "align": "right", "anchor": "right"}], separator=" ", width=output_width) -%}
 {{ file_tbl.row([
   icon,
   pack_name,

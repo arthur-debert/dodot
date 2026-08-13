@@ -226,7 +226,7 @@ fn status_lists_ignored_packs() {
     );
     assert!(
         ignored_row.contains("[dim].dodotignore")
-            && ignored_row.contains("[/dim]              [ignored-pack]ignored"),
+            && ignored_row.contains("[/dim] [ignored-pack]ignored"),
         "{ignored_row}"
     );
     assert!(
@@ -2465,7 +2465,7 @@ fn full_mode_renders_80_column_rows_with_isolated_status_style() {
                 symbol: "➞".into(),
                 description: "SHOULD NOT RENDER".into(),
                 status: "deployed".into(),
-                status_label: "linked".into(),
+                status_label: "stale: user link missing, re-deploy to fix".into(),
                 handler: "symlink".into(),
                 note_ref: None,
             }],
@@ -2489,8 +2489,8 @@ fn full_mode_renders_80_column_rows_with_isolated_status_style() {
     );
     assert!(row.contains('…'), "long filenames should clip: {row:?}");
     assert!(
-        row.ends_with("linked"),
-        "status should touch column 80: {row:?}"
+        row.ends_with("stale: user link missing, re-deploy to fix"),
+        "full status should survive and touch column 80: {row:?}"
     );
 
     let output = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
@@ -2504,14 +2504,12 @@ fn full_mode_renders_80_column_rows_with_isolated_status_style() {
         "row should contain the pack name: {output}"
     );
     assert!(
-        output.contains("[dim]a-very-long-")
-            && output.contains('…')
-            && output.contains("config.toml[/dim]"),
+        output.contains("[dim]a-very") && output.contains('…') && output.contains("ig.toml[/dim]"),
         "row should contain the dimmed, middle-clipped file name: {output}"
     );
     assert!(
-        output.contains("[deployed]linked[/deployed]"),
-        "row should contain the deployed status tag: {output}"
+        output.contains("[deployed]stale: user link missing, re-deploy to fix[/deployed]"),
+        "row should contain the full deployed status tag: {output}"
     );
     assert!(
         !output.contains("[deployed]vim"),
