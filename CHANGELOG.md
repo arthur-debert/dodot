@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## 5.4.1 - 2026-08-13
+
 - fix: active shared `status` / `up` / `down` rows now render pack, handler icon, filename, and terminal-edge status; the pack name appears only on its first file row, leaving subsequent pack cells blank; existing alignment, middle truncation, right-aligned status, styling, short view, and explicit ignored-row `∅ | pack | .dodotignore | ignored` layout remain intact (#273, #274)
 
 ## 5.4.0 - 2026-08-13
