@@ -67,7 +67,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
     }
 
     // Discover `.dodotignore`-marked packs so `down` reports them in the
-    // same "Ignored Packs" section `status` shows and sweeps any stale
+    // same ignored rows `status` shows and sweeps any stale
     // datastore state they left behind. (issue #222)
     let ignored = orchestration::scan_ignored(pack_filter, ctx)?;
 
@@ -206,7 +206,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         warnings,
         notes: Vec::new(),
         conflicts: Vec::new(),
-        ignored_packs: ignored.display_names,
+        ignored_packs: ignored.display_packs,
         inactive_packs: Vec::new(),
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),

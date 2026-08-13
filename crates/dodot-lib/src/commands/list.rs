@@ -52,9 +52,9 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
         ));
     }
     for dir in scanned.ignored {
-        let display = packs::display_name_for(&dir).to_string();
+        let display = dir.display_name.clone();
         entries.push((
-            dir,
+            dir.name,
             ListPack {
                 name: display,
                 ignored: true,

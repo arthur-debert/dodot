@@ -895,7 +895,9 @@ fn by_status_folds_ignored_packs_into_ignored_group() {
 
     let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
 
-    assert!(output.contains("Ignored Packs"), "output: {output}");
+    assert!(!output.contains("Ignored Packs"), "output: {output}");
+    assert!(output.contains(".dodotignore"), "output: {output}");
+    assert!(output.contains("\n\n∅ disabled"), "output: {output}");
     assert!(output.contains("disabled"), "output: {output}");
     assert!(output.contains("Pending Packs"), "output: {output}");
 }

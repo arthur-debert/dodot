@@ -1194,7 +1194,7 @@ fn up_skips_mappings_gated_template() {
 //
 // Two contracts:
 //   1. `up`, `down`, and `status` produce the SAME view for an ignored
-//      pack — the warning + the "Ignored Packs" section — instead of
+//      pack — the warning plus the ignored row — instead of
 //      `up` printing a bare "Packs deployed." with no mention of the
 //      pack.
 //   2. A pack deployed and *then* marked `.dodotignore` must have its
@@ -1202,7 +1202,11 @@ fn up_skips_mappings_gated_template() {
 //      read/sourced again (the gpg `alias.zsh` scenario).
 
 fn ignored_section(result: &commands::PackStatusResult) -> Vec<String> {
-    result.ignored_packs.clone()
+    result
+        .ignored_packs
+        .iter()
+        .map(|p| p.name.clone())
+        .collect()
 }
 
 fn warns_ignored(result: &commands::PackStatusResult, name: &str) -> bool {
@@ -1236,7 +1240,7 @@ fn up_down_status_agree_for_explicitly_requested_ignored_pack() {
         assert_eq!(
             ignored_section(r),
             vec!["gpg".to_string()],
-            "{label} must list gpg in the Ignored Packs section"
+            "{label} must list gpg in the ignored rows"
         );
         assert!(
             warns_ignored(r, "gpg"),
@@ -1417,10 +1421,10 @@ fn filtered_up_sweeps_now_ignored_pack_outside_the_filter() {
         "now-ignored pack must not survive a filtered up; init was:\n{init}"
     );
     // gpg is outside the filter, so it does NOT appear in this run's
-    // Ignored Packs section — reporting stays scoped to the request.
+    // ignored rows — reporting stays scoped to the request.
     assert!(
-        !up.ignored_packs.contains(&"gpg".to_string()),
-        "filtered up should not report unrelated ignored packs"
+        !up.ignored_packs.iter().any(|p| p.name == "gpg"),
+        "gpg should not be reported as ignored for a direct `up vim`"
     );
 }
 

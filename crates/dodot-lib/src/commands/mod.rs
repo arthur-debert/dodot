@@ -336,11 +336,12 @@ pub struct PackStatusResult {
     /// Cross-pack conflicts to display at the end of the output.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts: Vec<DisplayConflict>,
-    /// Names of pack-shaped directories skipped because they carry a
-    /// `.dodotignore` marker. Surfaced by `status` so users aren't
-    /// baffled when a directory they expected doesn't appear.
+    /// Pack-shaped directories skipped because they carry an ignore marker,
+    /// including the matching marker filename used by the shared status row.
+    /// Surfaced by `status`, `up`, and `down` so users aren't baffled when a
+    /// directory they expected doesn't appear.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub ignored_packs: Vec<String>,
+    pub ignored_packs: Vec<crate::packs::IgnoredPack>,
     /// Packs gated out by `[pack] os` on the current host. Each entry
     /// is a pre-formatted display string (e.g. `"mac-tools (os=darwin,
     /// current=linux)"`) so the template renders them under their own
@@ -352,8 +353,8 @@ pub struct PackStatusResult {
     /// each pack to a single summary line.
     pub view_mode: String,
     /// `"name"` (default) lists packs in their discovery order;
-    /// `"status"` groups packs under Ignored / Deployed / Pending /
-    /// Error banners.
+    /// `"status"` groups active packs under Deployed / Pending / Error
+    /// banners. Ignored rows follow the groups after a blank separator.
     pub group_mode: String,
     /// Unified diffs for run-once files whose recorded content hash
     /// no longer matches the source on disk. Populated only when the

@@ -195,8 +195,8 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
 /// Result of [`scan_ignored`]: the `.dodotignore`-marked packs split by
 /// the two distinct jobs they serve.
 ///
-/// Reporting (the "Ignored Packs" section) is scoped to what the user
-/// asked about, so it respects `pack_filter`. The stale-state sweep is
+/// Reporting (the ignored rows) is scoped to what the user asked about, so
+/// it respects `pack_filter`. The stale-state sweep is
 /// **not** — the init script is regenerated from the *whole* datastore,
 /// so a filtered `dodot up <other-pack>` must still tear down every
 /// now-ignored pack's leftover state, or it would keep getting sourced.
@@ -205,10 +205,9 @@ pub struct IgnoredScan {
     /// pack, ignoring `pack_filter`. Used by [`sweep_pack_state`] so
     /// the global init regeneration never re-sources a stale pack.
     pub sweep_dir_names: Vec<String>,
-    /// Display names (prefix stripped) of the ignored packs that match
-    /// `pack_filter`, for the rendered "Ignored Packs" section — same
-    /// form and scope `status` surfaces.
-    pub display_names: Vec<String>,
+    /// Display metadata for ignored packs that match `pack_filter`, for the
+    /// rendered ignored rows — the same form and scope `status` surfaces.
+    pub display_packs: Vec<crate::packs::IgnoredPack>,
 }
 
 /// Scan the dotfiles root for `.dodotignore`-marked packs.
@@ -217,7 +216,7 @@ pub struct IgnoredScan {
 /// `status` all need so the three commands report (and sweep) the same
 /// set — the divergence that let `dodot up <ignored>` print a generic
 /// "Packs deployed." while `dodot status <ignored>` showed the pack in
-/// its "Ignored Packs" section (issue #222). The returned
+/// its ignored rows (issue #222). The returned
 /// [`IgnoredScan`] separates the filtered reporting set from the
 /// unfiltered sweep set; see its docs for why they differ.
 pub fn scan_ignored(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<IgnoredScan> {
@@ -229,20 +228,20 @@ pub fn scan_ignored(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> R
     )?
     .ignored;
 
-    let display_names = all_ignored
+    let sweep_dir_names: Vec<String> = all_ignored.iter().map(|p| p.name.clone()).collect();
+
+    let display_packs = all_ignored
         .iter()
-        .filter(|dir| match pack_filter {
+        .filter(|p| match pack_filter {
             None => true,
-            Some(names) => names
-                .iter()
-                .any(|n| n == *dir || n == packs::display_name_for(dir)),
+            Some(names) => names.iter().any(|n| n == &p.name || n == &p.display_name),
         })
-        .map(|d| packs::display_name_for(d).to_string())
+        .cloned()
         .collect();
 
     Ok(IgnoredScan {
-        sweep_dir_names: all_ignored,
-        display_names,
+        sweep_dir_names,
+        display_packs,
     })
 }
 

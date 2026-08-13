@@ -683,11 +683,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
     if let Some(names) = pack_filter {
         all_packs.retain(|p| names.iter().any(|n| n == &p.display_name || n == &p.name));
-        ignored_packs.retain(|name| {
-            names
-                .iter()
-                .any(|n| n == name || n == crate::packs::display_name_for(name))
-        });
+        ignored_packs.retain(|p| names.iter().any(|n| n == &p.name || n == &p.display_name));
     }
 
     let registry = handlers::create_registry(ctx.fs.as_ref(), ctx.command_runner.as_ref());
@@ -1028,15 +1024,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         warnings.extend(collect_drift_warnings(ctx, &active_packs)?);
     }
 
-    // Surface ignored packs by their display name, not the raw
-    // on-disk directory — the prefix grammar must stay invisible to
-    // the rendered "Ignored Packs" section just like every other
-    // user-facing surface.
-    let ignored_display: Vec<String> = ignored_packs
-        .iter()
-        .map(|d| crate::packs::display_name_for(d).to_string())
-        .collect();
-
     Ok(PackStatusResult {
         message: None,
         dry_run: false,
@@ -1044,7 +1031,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         warnings,
         notes,
         conflicts: display_conflicts,
-        ignored_packs: ignored_display,
+        ignored_packs,
         inactive_packs,
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),

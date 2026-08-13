@@ -57,7 +57,7 @@ pub struct ExecutionContext {
     pub view_mode: crate::commands::ViewMode,
     /// How packs are ordered in pack-status output: `Name` (flat
     /// alphabetical / discovery order) or `Status` (grouped under
-    /// Ignored / Deployed / Pending / Error banners). Consumed by
+    /// Deployed / Pending / Error banners, followed by ignored rows). Consumed by
     /// every command that renders through the `pack-status` template;
     /// ignored by commands that emit `message` / `list` output.
     pub group_mode: crate::commands::GroupMode,

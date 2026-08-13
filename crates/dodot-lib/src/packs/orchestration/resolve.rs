@@ -36,9 +36,9 @@ pub fn resolve_pack_dir_name(input: &str, ctx: &ExecutionContext) -> crate::Resu
     if let Some(dir) = scanned
         .ignored
         .iter()
-        .find(|d| d.as_str() == input || packs::display_name_for(d) == input)
+        .find(|d| d.name == *input || d.display_name == *input)
     {
-        return Ok(dir.clone());
+        return Ok(dir.name.clone());
     }
     Err(crate::DodotError::PackNotFound { name: input.into() })
 }
@@ -70,7 +70,7 @@ pub fn validate_pack_names(names: &[String], ctx: &ExecutionContext) -> crate::R
         if scanned
             .ignored
             .iter()
-            .any(|dir| dir == input || packs::display_name_for(dir) == input)
+            .any(|dir| dir.name == *input || dir.display_name == *input)
         {
             warnings.push(format!("warning: pack '{}' is ignored, skipping", input));
             continue;

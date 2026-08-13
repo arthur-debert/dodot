@@ -201,17 +201,52 @@ fn status_lists_ignored_packs() {
             .collect::<Vec<_>>(),
         vec!["vim"]
     );
-    assert_eq!(result.ignored_packs, vec!["disabled".to_string()]);
+    assert_eq!(result.ignored_packs.len(), 1);
+    assert_eq!(result.ignored_packs[0].name, "disabled");
+    assert_eq!(result.ignored_packs[0].display_name, "disabled");
+    assert_eq!(result.ignored_packs[0].ignore_file, ".dodotignore");
 
     let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
-    assert!(output.contains("Ignored Packs"), "output: {output}");
-    assert!(output.contains("disabled"), "output: {output}");
+    assert!(!output.contains("Ignored Packs"), "output: {output}");
+    assert!(
+        output.contains("\n\n∅ disabled"),
+        "ignored row should follow active rows after one blank line: {output}"
+    );
+    assert!(output.contains(".dodotignore"), "output: {output}");
+    assert!(output.ends_with("ignored\n"), "output: {output}");
+
+    let styled = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
+    let ignored_row = styled
+        .lines()
+        .find(|line| line.contains("disabled"))
+        .expect("ignored row");
+    assert!(
+        ignored_row.starts_with("[dim]∅[/dim] disabled"),
+        "{ignored_row}"
+    );
+    assert!(
+        ignored_row.contains("[dim].dodotignore")
+            && ignored_row.contains("[/dim] [ignored-pack]ignored"),
+        "{ignored_row}"
+    );
+    assert!(
+        ignored_row.ends_with("[ignored-pack]ignored[/ignored-pack]"),
+        "{ignored_row}"
+    );
+    assert!(
+        !ignored_row.contains("[ignored-pack]disabled"),
+        "{ignored_row}"
+    );
+
+    let json = render::render("pack-status", &result, OutputMode::Json).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(value["ignored_packs"][0]["ignore_file"], ".dodotignore");
 }
 
 #[test]
 fn status_pack_filter_applies_to_ignored_packs() {
     // `dodot status <name>` should narrow both the main listing and the
-    // ignored-packs section to just the requested name.
+    // ignored rows to just the requested name.
     let env = TempEnvironment::builder()
         .pack("vim")
         .file("vimrc", "x")
@@ -231,7 +266,19 @@ fn status_pack_filter_applies_to_ignored_packs() {
     let result = commands::status::status(Some(&filter), &ctx).unwrap();
 
     assert!(result.packs.is_empty(), "filter should exclude vim");
-    assert_eq!(result.ignored_packs, vec!["disabled".to_string()]);
+    let ignored_names: Vec<String> = result
+        .ignored_packs
+        .iter()
+        .map(|p| p.name.clone())
+        .collect();
+    assert_eq!(ignored_names, vec!["disabled".to_string()]);
+
+    let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
+    assert!(!output.starts_with('\n'), "ignored-only output: {output:?}");
+    assert!(
+        output.starts_with("∅ disabled"),
+        "ignored-only output: {output:?}"
+    );
 }
 
 // ── status: correct target paths ────────────────────────────
@@ -879,10 +926,16 @@ fn pack_status_renders_flaky_timeline_with_semantic_styles() {
     let result = commands::status::status(None, &ctx).unwrap();
     let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
-    // Row: newest run failed → whole-row broken verdict + plain marker.
+    // Row: newest run failed, but only the status text carries the verdict.
     assert!(
-        out.contains("[broken]vim/aliases.sh") && out.contains("⚙ exited 1 [1][/broken]"),
-        "row should carry broken verdict + marker, got:\n{out}"
+        out.contains("[dim]⚙[/dim] vim")
+            && out.contains("[dim]aliases.sh")
+            && out.contains("[broken]exited 1[/broken] [dim][1][/dim]"),
+        "row should isolate the broken verdict to its status, got:\n{out}"
+    );
+    assert!(
+        !out.contains("[broken]vim"),
+        "pack must stay unstyled: {out}"
     );
     // Footnote: plain marker, ✓/✗ timeline oldest→newest, warning
     // prose around a muted normal-colour probe command.
@@ -929,8 +982,14 @@ fn pack_status_renders_latest_success_row_green_with_warning_marker() {
     let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
     assert!(
-        out.contains("[deployed]vim/aliases.sh") && out.contains("⚙ sourced [1][/deployed]"),
-        "currently-clean row stays deployed-styled with a marker, got:\n{out}"
+        out.contains("[dim]⚙[/dim] vim")
+            && out.contains("[dim]aliases.sh")
+            && out.contains("[deployed]sourced[/deployed] [dim][1][/dim]"),
+        "currently-clean row styles only its status and marker, got:\n{out}"
+    );
+    assert!(
+        !out.contains("[deployed]vim"),
+        "pack must stay unstyled: {out}"
     );
     assert!(
         out.contains(
@@ -959,8 +1018,14 @@ fn pack_status_renders_unobserved_shell_row_as_pending() {
     let out = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
     assert!(
-        out.contains("[pending]vim/aliases.sh") && out.contains("⚙ not sourced[/pending]"),
-        "unobserved deployed shell file renders the pending presentation, got:\n{out}"
+        out.contains("[dim]⚙[/dim] vim")
+            && out.contains("[dim]aliases.sh")
+            && out.contains("[pending]not sourced[/pending]"),
+        "unobserved shell row styles only its pending status, got:\n{out}"
+    );
+    assert!(
+        !out.contains("[pending]vim"),
+        "pack must stay unstyled: {out}"
     );
     assert!(!out.contains("Warnings:"), "got:\n{out}");
     assert!(!out.contains("Errors:"), "got:\n{out}");
@@ -2387,7 +2452,7 @@ fn short_mode_renders_one_line_per_pack_with_count() {
 }
 
 #[test]
-fn full_mode_renders_flat_status_styled_file_rows() {
+fn full_mode_renders_80_column_rows_with_isolated_status_style() {
     use crate::commands::{DisplayFile, DisplayPack, PackStatusResult};
 
     let result = PackStatusResult {
@@ -2396,11 +2461,11 @@ fn full_mode_renders_flat_status_styled_file_rows() {
         packs: vec![DisplayPack::new(
             "vim".into(),
             vec![DisplayFile {
-                name: "init.lua".into(),
+                name: "a-very-long-middle-section-that-must-be-clipped-config.toml".into(),
                 symbol: "➞".into(),
                 description: "SHOULD NOT RENDER".into(),
                 status: "deployed".into(),
-                status_label: "linked".into(),
+                status_label: "stale: user link missing, re-deploy to fix".into(),
                 handler: "symlink".into(),
                 note_ref: None,
             }],
@@ -2415,20 +2480,42 @@ fn full_mode_renders_flat_status_styled_file_rows() {
         diffs: Vec::new(),
     };
 
+    let text = render::render("pack-status", &result, OutputMode::Text).unwrap();
+    let row = text.lines().next().expect("status row");
+    assert_eq!(standout_render::tabular::display_width(row), 80, "{row:?}");
+    assert!(
+        row.starts_with("➞ vim                  "),
+        "filename should start in column 24 after a 20-column pack: {row:?}"
+    );
+    assert!(row.contains('…'), "long filenames should clip: {row:?}");
+    assert!(
+        row.ends_with("stale: user link missing, re-deploy to fix"),
+        "full status should survive and touch column 80: {row:?}"
+    );
+
     let output = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
 
     assert!(
-        output.contains("[deployed]vim/init.lua"),
-        "row should start with the pack/file path under the row status tag: {output}"
+        output.contains("[dim]➞[/dim]"),
+        "row should contain the dimmed icon: {output}"
     );
     assert!(
-        output.contains("➞ linked[/deployed]"),
-        "handler icon and status label should share the row status tag: {output}"
+        output.contains(" vim "),
+        "row should contain the pack name: {output}"
     );
     assert!(
-        !output.contains("[pack-name]vim[/pack-name]"),
-        "full output should not render pack-only header rows: {output}"
+        output.contains("[dim]a-very") && output.contains('…') && output.contains("ig.toml[/dim]"),
+        "row should contain the dimmed, middle-clipped file name: {output}"
     );
+    assert!(
+        output.contains("[deployed]stale: user link missing, re-deploy to fix[/deployed]"),
+        "row should contain the full deployed status tag: {output}"
+    );
+    assert!(
+        !output.contains("[deployed]vim"),
+        "pack must be regular: {output}"
+    );
+    assert_eq!(output.matches("[deployed]").count(), 1, "{output}");
     assert!(
         !output.contains("SHOULD NOT RENDER"),
         "full output should not include the handler-description column: {output}"
