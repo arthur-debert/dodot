@@ -464,10 +464,7 @@ fn render_intents(
                     let (status, status_label, note_ref) = if op.success {
                         (status_style(true).to_string(), op.message.clone(), None)
                     } else {
-                        notes.push(DisplayNote {
-                            body: op.message.clone(),
-                            hint: None,
-                        });
+                        notes.push(DisplayNote::error(op.message.clone()));
                         (
                             "error".to_string(),
                             "error".to_string(),
@@ -487,10 +484,7 @@ fn render_intents(
                 .collect();
 
             if let Some(err) = &pr.error {
-                notes.push(DisplayNote {
-                    body: err.clone(),
-                    hint: None,
-                });
+                notes.push(DisplayNote::error(err.clone()));
                 files.push(DisplayFile {
                     name: String::new(),
                     symbol: "×".into(),
@@ -567,16 +561,16 @@ pub(crate) fn overlay_errors(
                     // "would conflict" note alongside the actual failure.
                     let file = &mut display_pack.files[idx];
                     if let Some(existing) = file.note_ref {
-                        notes[(existing - 1) as usize] = DisplayNote { body, hint: None };
+                        notes[(existing - 1) as usize] = DisplayNote::error(body);
                     } else {
-                        notes.push(DisplayNote { body, hint: None });
+                        notes.push(DisplayNote::error(body));
                         file.note_ref = Some(notes.len() as u32);
                     }
                     file.status = "error".into();
                     file.status_label = "error".into();
                 }
                 None => {
-                    notes.push(DisplayNote { body, hint: None });
+                    notes.push(DisplayNote::error(body));
                     display_pack.files.push(DisplayFile {
                         name: name.clone(),
                         symbol: handler_symbol(&handler).into(),
@@ -613,16 +607,16 @@ pub(crate) fn overlay_errors(
                 Some(idx) => {
                     let file = &mut display_pack.files[idx];
                     if let Some(existing) = file.note_ref {
-                        notes[(existing - 1) as usize] = DisplayNote { body, hint: None };
+                        notes[(existing - 1) as usize] = DisplayNote::error(body);
                     } else {
-                        notes.push(DisplayNote { body, hint: None });
+                        notes.push(DisplayNote::error(body));
                         file.note_ref = Some(notes.len() as u32);
                     }
                     file.status = "error".into();
                     file.status_label = "error".into();
                 }
                 None => {
-                    notes.push(DisplayNote { body, hint: None });
+                    notes.push(DisplayNote::error(body));
                     display_pack.files.push(DisplayFile {
                         name: String::new(),
                         symbol: "×".into(),

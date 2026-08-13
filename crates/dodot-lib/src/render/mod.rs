@@ -130,10 +130,12 @@ about: {}
 
 /// Status / up / down — pack-level output with file listings.
 ///
-/// Per-item errors are surfaced as `[N]` markers next to the status label;
-/// their bodies render in a dedicated `Errors:` section at the bottom so
-/// the per-file columns stay single-line and aligned regardless of how
-/// long an individual error message is.
+/// Per-item notes are surfaced as `[N]` markers next to the status label
+/// (dim for errors, warning-styled for warnings); their bodies render in
+/// dedicated `Errors:` / `Warnings:` sections at the bottom — split by
+/// note kind so recent-instability warnings never present as current
+/// errors — keeping the per-file columns single-line and aligned
+/// regardless of how long an individual note is.
 pub const TEMPLATE_PACK_STATUS: &str = include_str!("../templates/pack-status.jinja");
 
 /// List — just pack names.

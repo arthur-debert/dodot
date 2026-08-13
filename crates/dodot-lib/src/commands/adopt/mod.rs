@@ -362,10 +362,11 @@ pub fn adopt(
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| f.source.display().to_string());
-        result.notes.push(DisplayNote {
-            body: format!("adopt failed: {}: {}", f.source.display(), f.reason),
-            hint: None,
-        });
+        result.notes.push(DisplayNote::error(format!(
+            "adopt failed: {}: {}",
+            f.source.display(),
+            f.reason
+        )));
         let note_ref = Some(result.notes.len() as u32);
         if let Some(pack) = result.packs.iter_mut().find(|p| p.name == pack_display) {
             pack.files.push(DisplayFile {

@@ -7,6 +7,13 @@
 //! Additionally, status performs cross-pack conflict detection and surfaces
 //! potential conflicts as warnings — even for packs that aren't deployed
 //! yet. This lets users see problems before they run `up`.
+//!
+//! Deployed shell sources are verified observationally: when
+//! `[profiling]` is enabled, the row reports the newest shell-init run
+//! recorded for the file (`sourced` / `exited N`), historical failures
+//! in the recent window surface as a warning footnote with a ✓/✗
+//! timeline, and a file no run has observed yet renders the pending
+//! presentation — dodot claims `sourced` only after seeing it happen.
 
 use tracing::{debug, info};
 
@@ -30,7 +37,10 @@ use crate::Result;
 
 /// Deployment health for a single file, determined by chain verification.
 enum Health {
-    /// Not deployed (no data link in datastore).
+    /// Not deployed (no data link in datastore). Also the
+    /// presentation for a deployed shell source that no shell-init
+    /// run has observed yet (see [`verify_staged`]) — dodot claims
+    /// `sourced` only after seeing it happen.
     Pending,
     /// Not deployed AND a non-dodot file/symlink already occupies the
     /// target path — `dodot up` would fail without `--force`. The reason
@@ -39,10 +49,26 @@ enum Health {
     /// Deployed and all links verified correct.
     Deployed,
     /// Deployed and the chain is healthy, but the file has a known
-    /// quality issue: pre-flight syntax error or recurring runtime
-    /// failures observed by the profiling instrumentation. `label` is
-    /// the short status-column text, `reason` is the footnote body.
+    /// quality issue: a pre-flight syntax error recorded by `dodot up`.
+    /// `label` is the short status-column text, `reason` is the
+    /// footnote body. A syntax error always wins over runtime history —
+    /// a file that doesn't parse has no meaningful exit-code data.
     DeployedWithError { label: String, reason: String },
+    /// Deployed with a healthy chain, and the shell-init profiling
+    /// instrumentation observed the file in at least one recent
+    /// startup, at least one of which exited non-zero. The row verdict
+    /// comes from the NEWEST run only — `sourced` (deployed style)
+    /// when it exited zero, `exited N` (broken style) when it didn't —
+    /// while the whole window renders as a warning footnote with a
+    /// ✓/✗ timeline, so historical instability never masquerades as
+    /// current state (and never rolls a currently-clean file or its
+    /// pack up as an error).
+    RecentFailures {
+        history: RunHistory,
+        /// `dodot probe shell-init <pack>/<file>` — rendered in
+        /// normal emphasis inside the warning footnote.
+        probe_command: String,
+    },
     /// Deployed but the chain is broken.
     Broken(String),
     /// Data link exists and is healthy, but the user link is not at the
@@ -80,6 +106,16 @@ impl Health {
             Health::PendingConflict { .. } => "warning",
             Health::Deployed => "deployed",
             Health::DeployedWithError { .. } => "broken",
+            // Newest observed run decides: a currently-clean file
+            // stays green no matter how bumpy the recent history —
+            // the history lives in the warning footnote instead.
+            Health::RecentFailures { history, .. } => {
+                if history.latest_exit() == 0 {
+                    "deployed"
+                } else {
+                    "broken"
+                }
+            }
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
             // "ran older version" rolls up to the same bucket as
@@ -113,6 +149,15 @@ impl Health {
                 _ => "deployed".into(),
             },
             Health::DeployedWithError { label, .. } => label.clone(),
+            // Only shell sources carry run history, so the success
+            // label is the shell handler's deployed vocabulary.
+            Health::RecentFailures { history, .. } => {
+                if history.latest_exit() == 0 {
+                    "sourced".into()
+                } else {
+                    format!("exited {}", history.latest_exit())
+                }
+            }
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
             Health::RanOlderVersion { label } => label.clone(),
@@ -121,17 +166,64 @@ impl Health {
         }
     }
 
-    /// If this health carries a footnote-worthy reason (pending conflict,
-    /// deployed-with-error), return it. `None` otherwise.
-    fn footnote_reason(&self) -> Option<String> {
+    /// If this health carries a footnote, build the command-wide note
+    /// for it. Hard failures (pending conflict, syntax error, gate
+    /// mismatch) are error-kind notes; run history is a warning-kind
+    /// note with a ✓/✗ timeline — recent instability annotates the
+    /// row, it must never present as a current error. `None` for
+    /// footnote-less healths.
+    fn footnote(&self) -> Option<DisplayNote> {
         match self {
-            Health::PendingConflict { reason } => Some(reason.clone()),
-            Health::DeployedWithError { reason, .. } => Some(reason.clone()),
+            Health::PendingConflict { reason } => Some(DisplayNote::error(reason.clone())),
+            Health::DeployedWithError { reason, .. } => Some(DisplayNote::error(reason.clone())),
             Health::Gated {
                 expected, actual, ..
-            } => Some(format!("expected {expected}; got {actual}")),
+            } => Some(DisplayNote::error(format!(
+                "expected {expected}; got {actual}"
+            ))),
+            Health::RecentFailures {
+                history,
+                probe_command,
+            } => Some(DisplayNote {
+                body: format!(
+                    "{} of the last {} runs failed",
+                    history.runs_failed(),
+                    history.runs_seen()
+                ),
+                hint: None,
+                kind: "warning".into(),
+                timeline: Some(history.exits.iter().map(|&e| e == 0).collect()),
+                command: Some(probe_command.clone()),
+            }),
             _ => None,
         }
+    }
+}
+
+/// Exit statuses of the recent shell-init runs that sourced one
+/// deployed shell file, oldest→newest — so the last entry is the
+/// newest run, whose exit code decides the row verdict. Built from
+/// the last [`RUNTIME_FAILURE_WINDOW`] profiles; profiles that never
+/// touched the file don't count. Never empty: an unobserved file
+/// yields no history at all (see [`recent_run_history`]).
+struct RunHistory {
+    exits: Vec<i32>,
+}
+
+impl RunHistory {
+    /// Exit status of the newest observed run.
+    fn latest_exit(&self) -> i32 {
+        *self.exits.last().expect("RunHistory is never empty")
+    }
+
+    /// Number of applicable runs observed in the window.
+    fn runs_seen(&self) -> usize {
+        self.exits.len()
+    }
+
+    /// How many of those runs exited non-zero.
+    fn runs_failed(&self) -> usize {
+        self.exits.iter().filter(|&&e| e != 0).count()
     }
 }
 
@@ -308,13 +400,22 @@ fn verify_symlink(
 /// Verify shell/path handler chain for a single file.
 ///
 /// Checks: data link exists → points to source → source exists.
-/// For shell handler, also checks for a syntax-error sidecar from the
-/// pre-flight check that runs at `dodot up` time — its presence flips
-/// a healthy chain to `DeployedWithError`.
+/// For the shell handler, two post-deploy quality signals layer on a
+/// healthy chain: a syntax-error sidecar from the `dodot up`
+/// pre-flight (a hard error that always wins), and — when
+/// `observe_runtime` is set, i.e. `[profiling]` is enabled — the
+/// observation-driven verdict from recent shell-init profiles. The
+/// row then reports the NEWEST applicable run (`sourced` on exit
+/// zero, `exited N` otherwise), recent failures render as a warning
+/// footnote, and a file no run has observed yet gets the pending
+/// presentation — dodot claims `sourced` only after seeing it. With
+/// profiling off no observation can ever arrive, so the chain
+/// verdict stands.
 fn verify_staged(
     source: &std::path::Path,
     pack: &str,
     handler: &str,
+    observe_runtime: bool,
     ctx: &ExecutionContext,
 ) -> Health {
     let filename = match source.file_name() {
@@ -345,7 +446,7 @@ fn verify_staged(
 
     // Shell handler only: layered post-deploy quality checks. Both
     // signals fire only for shell sources. Syntax error wins over
-    // runtime failures — fix-the-parse is the more fundamental issue,
+    // runtime history — fix-the-parse is the more fundamental issue,
     // and a file that doesn't parse can't have meaningful runtime
     // exit-code data anyway.
     if handler == "shell" {
@@ -365,12 +466,23 @@ fn verify_staged(
             }
         }
 
-        // (2) Runtime exit-code data from the profiling instrumentation,
-        //     if any has been collected. Returns None when profiling is
-        //     off, when no profiles exist yet, or when this source has
-        //     run cleanly in every recent shell.
-        if let Some((label, reason)) = recent_runtime_failures(source, pack, &filename_str, ctx) {
-            return Health::DeployedWithError { label, reason };
+        // (2) Observation-driven verdict from the shell-init
+        //     profiles. Skipped entirely when profiling is off —
+        //     no observation can ever arrive, so the chain verdict
+        //     below stands rather than pinning the row on a pending
+        //     state it could never leave.
+        if observe_runtime {
+            return match recent_run_history(source, ctx) {
+                // Deployed but never seen in a shell startup: the
+                // pending presentation ("not sourced"), not a claim
+                // of success we haven't observed.
+                None => Health::Pending,
+                Some(history) if history.runs_failed() == 0 => Health::Deployed,
+                Some(history) => Health::RecentFailures {
+                    history,
+                    probe_command: format!("dodot probe shell-init {pack}/{filename_str}"),
+                },
+            };
         }
     }
 
@@ -501,106 +613,46 @@ fn unified_diff(filename: &str, prev: &[u8], cur: &[u8]) -> String {
     opts.create_patch(&prev_s, &cur_s).to_string()
 }
 
-/// How many recent shell-init profiles to scan for runtime failures.
+/// How many recent shell-init profiles to scan for run history.
 /// Five is enough to catch the "fails sometimes" case without making
 /// status I/O-heavy; users who want deeper history reach for
 /// `dodot probe shell-init --history`.
 const RUNTIME_FAILURE_WINDOW: usize = 5;
 
-/// Maximum number of stderr characters to inline into the status
-/// footnote. Long stderr (stack traces, dumps) is truncated with an
-/// ellipsis; the user can run `dodot probe shell-init <pack>/<file>`
-/// for the full text.
-const STATUS_STDERR_BUDGET: usize = 240;
-
-/// Look at the last few shell-init profiles for any non-zero exit
-/// status from `source`. Returns `Some((short_label, footnote_body))`
-/// if at least one failure was seen; `None` otherwise (including when
-/// profiling is off, so no profiles exist).
-///
-/// When the most recent failing run also has stderr captured (in its
-/// sibling `errors.log`), the footnote inlines a trimmed excerpt so
-/// the user sees the actual error message without having to chase
-/// down a separate command. The pointer at the bottom of the footnote
-/// directs them to the per-file probe view for the full picture.
-fn recent_runtime_failures(
-    source: &std::path::Path,
-    pack: &str,
-    filename: &str,
-    ctx: &ExecutionContext,
-) -> Option<(String, String)> {
+/// Collect the exit status of every recent shell-init run that
+/// sourced `source`, oldest→newest. `None` when no applicable run has
+/// been observed — no profiles yet, or no recent profile contains the
+/// file. Unrelated profile entries never count. Classification (clean
+/// / flaky / currently failing) happens at the caller; this only
+/// reports what was observed. Per-run stderr stays behind
+/// `dodot probe shell-init <pack>/<file>` — the status footnote
+/// carries counts and the ✓/✗ timeline, not error text.
+fn recent_run_history(source: &std::path::Path, ctx: &ExecutionContext) -> Option<RunHistory> {
     let profiles = crate::probe::shell_init::read_recent_profiles(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         RUNTIME_FAILURE_WINDOW,
     )
     .ok()?;
-    if profiles.is_empty() {
-        return None;
-    }
     let target_str = source.to_string_lossy();
 
-    // `profiles` is newest-first. We want the *most recent* non-zero
-    // exit for the label/footnote — set on the first failure we see
-    // and never overwritten. (An older failure is irrelevant to the
-    // user's current understanding of the file's state.)
-    let mut runs_seen = 0;
-    let mut runs_failed = 0;
-    let mut last_failure_exit: Option<i32> = None;
-    let mut last_failure_stderr: Option<String> = None;
-    for profile in &profiles {
-        if let Some(entry) = profile
-            .entries
-            .iter()
-            .find(|e| e.phase == "source" && e.target == target_str)
-        {
-            runs_seen += 1;
-            if entry.exit_status != 0 {
-                runs_failed += 1;
-                if last_failure_exit.is_none() {
-                    last_failure_exit = Some(entry.exit_status);
-                    // Pull the matching stderr record, if the run has
-                    // an errors.log sibling. Pre-stderr-capture profiles
-                    // and clean-stderr failures both yield None here.
-                    last_failure_stderr = profile
-                        .errors
-                        .iter()
-                        .find(|er| er.target == target_str)
-                        .map(|er| er.message.trim_end().to_string())
-                        .filter(|s| !s.is_empty());
-                }
-            }
-        }
-    }
-    let last_exit = last_failure_exit?;
-    if runs_failed == 0 {
+    // `profiles` is newest-first; reverse so the timeline reads
+    // oldest→newest and the last entry is the newest verdict.
+    let mut exits: Vec<i32> = profiles
+        .iter()
+        .filter_map(|profile| {
+            profile
+                .entries
+                .iter()
+                .find(|e| e.phase == "source" && e.target == target_str)
+                .map(|e| e.exit_status)
+        })
+        .collect();
+    if exits.is_empty() {
         return None;
     }
-
-    let label = format!("exited {last_exit} ({runs_failed}/{runs_seen})");
-    let mut reason = format!(
-        "non-zero exit in {runs_failed} of {runs_seen} recent shell startups (last failure: exit {last_exit})."
-    );
-    if let Some(stderr) = last_failure_stderr {
-        reason.push_str(" stderr: ");
-        reason.push_str(&truncate_for_footnote(&stderr, STATUS_STDERR_BUDGET));
-    }
-    reason.push_str(&format!(
-        " Run `dodot probe shell-init {pack}/{filename}` for per-run history and full stderr."
-    ));
-    Some((label, reason))
-}
-
-/// Trim multi-line stderr to a single-line excerpt that fits the
-/// footnote budget. Newlines become `↵` so the user sees a hint that
-/// more lines exist; over-long messages get an ellipsis.
-fn truncate_for_footnote(stderr: &str, budget: usize) -> String {
-    let one_line = stderr.replace('\n', " ↵ ");
-    if one_line.chars().count() <= budget {
-        return one_line;
-    }
-    let truncated: String = one_line.chars().take(budget).collect();
-    format!("{truncated}…")
+    exits.reverse();
+    Some(RunHistory { exits })
 }
 
 /// Run the `status` command: scan packs and verify deployment chain per file.
@@ -616,6 +668,9 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     }
 
     let root_config = ctx.config_manager.root_config()?;
+    // Shell rows are verified observationally (newest shell-init run)
+    // only when profiling is on; with it off the chain verdict stands.
+    let observe_runtime = root_config.profiling.enabled;
     let packs::DiscoveredPacks {
         packs: mut all_packs,
         ignored: mut ignored_packs,
@@ -843,7 +898,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                         actual,
                     }
                 }
-                "shell" | "path" => verify_staged(&m.absolute_path, &pack.name, &m.handler, ctx),
+                "shell" | "path" => verify_staged(
+                    &m.absolute_path,
+                    &pack.name,
+                    &m.handler,
+                    observe_runtime,
+                    ctx,
+                ),
                 h if h == HANDLER_INSTALL || h == HANDLER_HOMEBREW || h == HANDLER_NIX => {
                     run_once_health(
                         &m.absolute_path,
@@ -877,15 +938,14 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             };
 
             let status_label = health.label(&m.handler);
-            // For PendingConflict, allocate a command-wide note index and
-            // stash the reason in the global notes list. The row keeps
-            // its plain handler label; the template renders `[N]` next
-            // to it and the body appears in the notes section.
-            let note_ref = health.footnote_reason().map(|reason| {
-                notes.push(DisplayNote {
-                    body: reason,
-                    hint: None,
-                });
+            // For footnote-carrying healths, allocate a command-wide
+            // note index and stash the note in the global list. The
+            // row keeps its plain handler label; the template renders
+            // `[N]` next to it (dim for errors, warning-styled for
+            // run-history warnings) and the body appears in the
+            // matching notes section.
+            let note_ref = health.footnote().map(|note| {
+                notes.push(note);
                 notes.len() as u32
             });
             files.push(DisplayFile {
@@ -921,11 +981,8 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             let user_target_display = format_path_relative_to_home(user_path, home);
             let health = verify_symlink(source, user_path, &pack.name, ctx);
             let status_label = health.label(HANDLER_SYMLINK);
-            let note_ref = health.footnote_reason().map(|reason| {
-                notes.push(DisplayNote {
-                    body: reason,
-                    hint: None,
-                });
+            let note_ref = health.footnote().map(|note| {
+                notes.push(note);
                 notes.len() as u32
             });
             files.push(DisplayFile {
