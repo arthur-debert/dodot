@@ -44,24 +44,32 @@ teardown() {
 
 # ── Status display ──────────────────────────────────────────────
 
-@test "status shows ~/.bashrc not ~/.home.bashrc" {
+@test "status JSON routes home.bashrc to ~/.bashrc" {
     create_pack_file "shell" "home.bashrc" "# bashrc"
 
-    run dodot status
+    run dodot status --output json
     [ "$status" -eq 0 ]
-    assert_output_contains "~/.bashrc"
-    assert_output_not_contains "~/.home.bashrc"
+    jq -e '
+        .packs[]
+        | select(.name == "shell")
+        | .files[]
+        | select(.name == "home.bashrc")
+        | .description == "~/.bashrc"
+    ' <<<"$output" >/dev/null
 }
 
-@test "status shows correct target for mix of home. and regular files" {
+@test "status JSON reports targets for multiple home. files" {
     create_pack_file "vim" "home.vimrc" "set nocompatible"
     create_pack_file "vim" "home.gvimrc" "set guifont=Mono"
 
-    run dodot status
+    run dodot status --output json
     [ "$status" -eq 0 ]
-    assert_output_contains "~/.vimrc"
-    assert_output_contains "~/.gvimrc"
-    assert_output_not_contains "~/.home.vimrc"
+    jq -e '
+        .packs[]
+        | select(.name == "vim")
+        | any(.files[]; .name == "home.vimrc" and .description == "~/.vimrc")
+          and any(.files[]; .name == "home.gvimrc" and .description == "~/.gvimrc")
+    ' <<<"$output" >/dev/null
 }
 
 # ── Subdirectory files are NOT stripped ──────────────────────────
@@ -77,11 +85,15 @@ teardown() {
     # ~/.config/app/subdir/, not ~/.config/subdir/.
     create_pack_file "app" "subdir/home.conf" "config"
 
-    run dodot status
+    run dodot status --output json
     [ "$status" -eq 0 ]
-    # Status shows the wholesale subdir entry, not the nested file.
-    assert_output_contains "subdir"
-    assert_output_contains "~/.config/app/subdir"
+    jq -e '
+        .packs[]
+        | select(.name == "app")
+        | .files[]
+        | select(.name == "subdir")
+        | .description == "~/.config/app/subdir"
+    ' <<<"$output" >/dev/null
 
     # After deploy, the nested file is reachable through the dir symlink,
     # and its name retains the literal `home.` prefix (no stripping).
@@ -96,24 +108,44 @@ teardown() {
     create_pack_file "shell" "home.bashrc" "# my bashrc"
 
     # Status before deploy
-    run dodot status
-    assert_output_contains "~/.bashrc"
-    assert_output_contains "pending"
+    run dodot status --output json
+    [ "$status" -eq 0 ]
+    jq -e '
+        .packs[]
+        | select(.name == "shell")
+        | .files[]
+        | select(.name == "home.bashrc")
+        | .description == "~/.bashrc" and .status_label == "pending"
+    ' <<<"$output" >/dev/null
 
     # Deploy
     dodot up
     assert_exists "$HOME/.bashrc"
 
     # Status after deploy
-    run dodot status
-    assert_output_contains "linked"
+    run dodot status --output json
+    [ "$status" -eq 0 ]
+    jq -e '
+        .packs[]
+        | select(.name == "shell")
+        | .files[]
+        | select(.name == "home.bashrc")
+        | .status_label == "linked"
+    ' <<<"$output" >/dev/null
 
     # Down
     dodot down
 
     # Status after down
-    run dodot status
-    assert_output_contains "pending"
+    run dodot status --output json
+    [ "$status" -eq 0 ]
+    jq -e '
+        .packs[]
+        | select(.name == "shell")
+        | .files[]
+        | select(.name == "home.bashrc")
+        | .status_label == "pending"
+    ' <<<"$output" >/dev/null
 
     # Source file still in pack (unchanged)
     assert_exists "$DOTFILES_ROOT/shell/home.bashrc"
