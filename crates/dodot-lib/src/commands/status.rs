@@ -1036,7 +1036,32 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
         diffs,
+        shell_hookup: shell_hookup_notice(ctx),
     })
+}
+
+/// Evaluate the shell-hookup evidence for a `status` render.
+///
+/// The reference generation is whatever the init script on disk says:
+/// `status` regenerates nothing, so "current" means "what a shell
+/// started right now would load". `up` deliberately does NOT reuse
+/// this — it judges against the pre-regeneration generation instead
+/// (`up::activation_notice`).
+///
+/// `status` is a report, so it also shows the quiet healthy line; the
+/// states and their copy come from `shell-hookup.lex` §5.
+pub(crate) fn shell_hookup_notice(
+    ctx: &ExecutionContext,
+) -> Option<crate::shell::ActivationNotice> {
+    use crate::shell::activation;
+    let reference = activation::read_script_generation(ctx.fs.as_ref(), ctx.paths.as_ref());
+    activation::notice_for(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+        ctx.env_init_gen,
+        reference,
+        true,
+    )
 }
 
 /// Run `--check-drift` over the supplied packs and emit a one-line
@@ -1253,6 +1278,7 @@ mod tests {
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
             host_facts: Arc::new(crate::gates::HostFacts::detect()),
+            env_init_gen: None,
         }
     }
 

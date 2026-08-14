@@ -65,6 +65,7 @@ pub(super) fn make_context(env: &TempEnvironment) -> ExecutionContext {
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,
         host_facts: Arc::new(crate::gates::HostFacts::detect()),
+        env_init_gen: None,
     }
 }
 
