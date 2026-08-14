@@ -5,7 +5,10 @@
 directory to [item]$PATH[/item]. This is what wires shell aliases, login files,
 and pack [item]bin/[/item] directories into your interactive shell.
 
-You do not run this directly. You [item]eval[/item] it from your shell rc:
+You do not run this directly — your shell rc does, once per machine.
+[item]dodot install --write[/item] sets that up for you and then verifies it by
+starting a shell; this is the manual alternative, for when you would
+rather own the line yourself:
 
   [example]eval "$(dodot init-sh)"[/example]
 
@@ -30,5 +33,6 @@ shows up in your next shell automatically.[/desc]
   dodot init-sh | less           [dim]# read what dodot would source[/dim][/example]
 
 [header]SEE ALSO[/header]
+  [item]dodot install[/item]              [desc]Wires this up for you, and verifies that it fires[/desc]
   [item]dodot probe shell-init[/item]      [desc]See per-source timings + errors from your last shell startup[/desc]
-  [item]docs/user/getting-started.lex[/item]   [desc]Section 2 — Shell Integration[/desc]
+  [item]docs/user/getting-started.lex[/item]   [desc]Section 6 — Shell Integration[/desc]

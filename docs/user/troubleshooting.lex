@@ -106,10 +106,26 @@ Troubleshooting
 
     7.1. "Aliases / PATH additions from a pack don't take effect"
 
-        - Did you add `eval "$(dodot init-sh)"` to your rc? See [./shell-integration.lex] §3.
-        - Is the eval in a per-session file (`~/.bashrc`, `~/.zshrc`) and not a login-only file (`~/.profile`)?
+        Start by asking dodot, rather than guessing:
+
+            dodot status
+
+        :: shell ::
+
+        The line below the pack rows tells you which of these you're looking at:
+
+        - `shell hookup: ok` — the hookup is fine, so the problem is elsewhere. Skip to the checks below.
+        - `Deployed, but no shell has loaded dodot yet.` — nothing in your shell startup loads dodot. Run `dodot install --write`; it wires the hook and then verifies it by starting a shell.
+        - `This shell started before your last dodot up.` — open a new shell.
+
+        For a measured answer rather than an inferred one — including the case where the hook is in your rc but something earlier in the file fails before reaching it — run `dodot install --write` (safe to re-run; an existing block is replaced, never duplicated) or a plain `dodot up`. Those are the two commands that start a shell to find out. The four states and every message are in [./shell-integration.lex] §5.
+
+        If the hookup is healthy and a specific pack still isn't landing:
+
+        - Is the hookup in a per-session file (`~/.bashrc`, `~/.zshrc`) and not a login-only file (`~/.profile`)? On macOS with bash, Terminal opens login shells that never read `~/.bashrc` — `dodot install --write` chains `~/.bash_profile` for you; a hand-wired line needs you to do it.
         - Did you open a new shell? Already-running shells hold their old environment.
         - Check the script: `dodot init-sh | less`. Does it list the source you expected?
+        - Is the hookup in there twice — a hand-written `eval "$(dodot init-sh)"` *and* dodot's managed block? That double-sources everything. `dodot install` reports which forms it found.
 
     7.2. "A sourced script is failing silently"
 

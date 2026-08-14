@@ -39,7 +39,8 @@ For terminology, see [./glossary/pack.lex] and [./glossary/handler.lex].
 5. Misc
 
     - [./commands/config.lex] — inspect, generate, or edit configuration.
-    - [./commands/init-sh.lex] — print the shell integration script (you `eval` it from your rc).
+    - [./commands/install.lex] — wire dodot into your shell startup, and verify that it fires.
+    - [./commands/init-sh.lex] — print the shell integration script, to wire it up by hand.
     - [./commands/tutorial.lex] — interactive 10-minute walkthrough using your real dotfiles.
     - [./commands/refresh.lex] — touch source mtimes when deployed bytes diverged. Almost always wrapped in the Tier-2 alias.
     - [./commands/secret.lex] — inspect secret providers and template references. Read-only.

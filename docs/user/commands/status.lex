@@ -33,7 +33,35 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
     :: table align=llll ::
 
-3. Display options
+    Below the rows, `status` reports whether shells are actually loading dodot — see [#3].
+
+3. Shell hookup
+
+    Deploying a pack and a shell loading it are two different things, and `status` reports both. After the per-pack rows it prints one line about *activation*: whether any shell has sourced dodot's init script.
+
+        shell hookup: ok
+
+    :: shell ::
+
+    That is the healthy case. The others:
+
+        ⚠ Deployed, but no shell has loaded dodot yet.
+        Run `dodot install --write` to wire it up, or add this to your shell rc file yourself: [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
+
+    :: shell ::
+
+        This shell started before your last `dodot up`.
+        Open a new shell to pick up the current deployment.
+
+    :: shell ::
+
+    `status` reads evidence the init script leaves behind — a generation stamp in your environment, and a heartbeat file — and never starts a shell to find out. That keeps it as passive as the rest of the command. The consequence is that `status` can say "no shell has loaded dodot yet" or "this shell is stale", but it can never report the *measured* verdict: only `dodot up` and `dodot install --write` start a shell, and only they can tell you a hookup is verified broken.
+
+    The four activation states and what each means are documented once, in [./../shell-integration.lex] §5.
+
+    Before anything is deployed there is no init script to load, so `status` says nothing about the hookup at all.
+
+4. Display options
 
     Display options:
         | Flag           | Effect                                                                 |
@@ -53,7 +81,7 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
     Full rows expand to the detected terminal width. The pack column is padded so filenames align, status is right-aligned to the terminal edge, and long filenames are clipped in the middle with an ellipsis. When terminal width cannot be detected, dodot uses 80 columns.
 
-4. Examples
+5. Examples
 
         # Daily drivers
         dodot status                   # everything
@@ -69,8 +97,9 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
     :: shell ::
 
-5. Watch out for
+6. Watch out for
 
+    - *A hookup that broke reads as stale, not broken.* `status` only has evidence to work with: if a shell once loaded dodot and the hookup has since been broken, the heartbeat is still on disk and `status` reports _stale shell_. Opening a new shell won't help, and `dodot up` or `dodot install --write` is what will actually measure it and say so.
     - *Status is Passive.* It never calls secret providers, never renders templates against live secrets, never writes to the datastore. A row showing as `pending` because its preprocessor wasn't evaluated is *expected* — actual evaluation happens during `dodot up`. This also means `status` is safe to run when your secret backend is offline or locked.
     - *Conflicts are warnings, not errors.* A cross-pack conflict in `status` is a heads-up; `up` is what halts. So a clean `status` is reassuring; a conflict in `status` means `up` will fail until you resolve it.
     - *Status reflects the current host.* Gated rows depend on host facts (OS, arch, hostname). Running `status` on macOS and on Linux can show different rows for the same pack — that's the gate machinery working as intended.

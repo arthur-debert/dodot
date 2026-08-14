@@ -63,13 +63,34 @@ The "make my live config match what's in this repo" command. Discovers your pack
     - Shell additions (sourced scripts, `$PATH` entries) are live in *new* shell sessions. Already-open shells keep their prior environment until you `source ~/.zshrc` (or whichever rc) or open a new shell.
     - On macOS, plist changes update the on-disk binary file, but `cfprefsd` may keep serving stale values to running apps from its in-memory cache. After `up` detects a plist change relative to the previous run, dodot offers a `killall cfprefsd` prompt; you can also run that by hand at any time.
 
-6. First-time-on-this-repo prompt
+6. The shell hookup check
+
+    A successful `up` proves your packs are deployed. It proves nothing about whether any shell will ever *load* them — those are two layers that fail independently, and the second is the one you actually experience. So `up` ends by reporting on it.
+
+    When it has evidence — a shell has loaded the current init script — `up` says nothing; there is nothing to say. When it has no evidence either way, it stops guessing and measures, announcing itself first:
+
+        verifying shell integration (zsh)…
+
+    :: shell ::
+
+    That starts your shell (interactive, non-login, five-second timeout) and checks whether the init script ran in it. On a machine that was never wired up, the answer is no:
+
+        Deployed, but a new shell did not load dodot.
+        The dodot hook is missing from ~/.zshrc — run `dodot install --write` to add it.
+
+    :: shell ::
+
+    The check is self-limiting. It fires when the cheap evidence is inconclusive — the fresh-install case and the broken-hookup case — and the first real shell activation retires it. A healthy machine never pays for a shell spawn. `--dry-run` never spawns one either.
+
+    See [./install.lex] for the fix, and [./../shell-integration.lex] §5 for the four activation states and the full set of messages.
+
+7. First-time-on-this-repo prompt
 
     On the first `up` that detects features needing git-side wiring (templates, plists, or the pre-commit hook), dodot offers to install them in one Y/n — the *install ladder*. Three rungs, in dependency order: pre-commit hook, plist clean/smudge filter, template clean filter. Pick `Yes` to install whichever rungs apply, `Show` to preview the changes first, `No` to dismiss the ladder forever. (You can resurface it later with `dodot prompts reset magic.install_ladder`.)
 
     See [./git-augmentation.lex] for what each rung does and when you'd want it.
 
-7. Examples
+8. Examples
 
         # Daily drivers
         dodot up                       # deploy every active pack
@@ -88,7 +109,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     :: shell ::
 
-8. Watch out for
+9. Watch out for
 
     - *`--force` is local, not cross-pack.* It overwrites a file at the target location, but cross-pack conflicts (two packs pointing at the same path) ignore `--force` — the fix is in your packs, not in flag-twiddling.
     - *`.dodotignore`'d packs aren't reconciled.* Adding a `.dodotignore` marker to a previously-deployed pack stops it from being discovered, but `up` only reconciles discovered packs, so the previous deployment's symlinks are *not* cleaned up. Run `dodot down <pack>` *before* dropping the marker. See [./../handlers/controlling-activation.lex] §4.
