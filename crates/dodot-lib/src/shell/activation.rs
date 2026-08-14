@@ -336,14 +336,19 @@ impl ActivationNotice {
 }
 
 /// The rc-file line that wires a shell up to the generated init
-/// script, with `$HOME` shortened to `~` for display.
+/// script, with the home prefix written back as `$HOME`.
+///
+/// `$HOME` rather than `~` because the path is quoted: a shell expands
+/// `$HOME` inside double quotes but not `~`, so a tilde would make the
+/// line source a literal `~` path once pasted. Quoting itself is not
+/// optional — it is what keeps a home directory with spaces working.
 ///
 /// This is the manual hook: `dodot install` (spec §4) lands in a later
 /// work stream, and until it does, telling the user to run a command
 /// that doesn't exist is worse than telling them nothing.
 pub fn hook_line(init_script_path: &Path, home: &Path) -> String {
     let shown = match init_script_path.strip_prefix(home) {
-        Ok(rel) => format!("~/{}", rel.display()),
+        Ok(rel) => format!("$HOME/{}", rel.display()),
         Err(_) => init_script_path.display().to_string(),
     };
     format!("[ -f \"{shown}\" ] && . \"{shown}\"")
@@ -503,9 +508,11 @@ mod tests {
             Path::new("/home/u/.local/share/dodot/shell/dodot-init.sh"),
             Path::new("/home/u"),
         );
+        // `$HOME`, not `~`: the paths are quoted, and a quoted tilde
+        // stays literal when the user pastes the line into their rc.
         assert_eq!(
             hook,
-            "[ -f \"~/.local/share/dodot/shell/dodot-init.sh\" ] && . \"~/.local/share/dodot/shell/dodot-init.sh\""
+            "[ -f \"$HOME/.local/share/dodot/shell/dodot-init.sh\" ] && . \"$HOME/.local/share/dodot/shell/dodot-init.sh\""
         );
 
         let notice =
@@ -537,6 +544,6 @@ mod tests {
             Path::new("/home/u"),
         );
         assert!(hook.contains("/opt/dodot/shell/dodot-init.sh"), "{hook}");
-        assert!(!hook.contains('~'), "{hook}");
+        assert!(!hook.contains("$HOME"), "{hook}");
     }
 }

@@ -12,7 +12,7 @@
 //! Users source it from their shell profile:
 //!
 //! ```sh
-//! [ -f ~/.local/share/dodot/shell/dodot-init.sh ] && . ~/.local/share/dodot/shell/dodot-init.sh
+//! [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
 //! ```
 //!
 //! # Activation evidence (shell-hookup.lex §2.1)
