@@ -79,6 +79,27 @@ pub struct ExecutionContext {
     /// evaluation is a function of its inputs and tests can inject a
     /// stamp instead of mutating process-global environment.
     pub env_init_gen: Option<u64>,
+    /// Whether this invocation may spawn a shell to *measure*
+    /// activation — signal 3 of the hookup ladder
+    /// (`docs/proposals/shell-hookup.lex` §3).
+    ///
+    /// Defaults to
+    /// [`ProbePolicy::Never`](crate::shell::ProbePolicy::Never)
+    /// everywhere except [`Self::production`], so no test can spawn a
+    /// real shell by forgetting to opt out; probe tests opt *in*, with
+    /// a fabricated shell in `shell_env`. `status` never probes
+    /// whatever this says (spec §9) — it reads evidence only.
+    pub shell_probe: crate::shell::ProbePolicy,
+    /// The user's shell and `$ZDOTDIR`, snapshotted once.
+    ///
+    /// One source of truth for two consumers that must agree: the
+    /// probe spawns `shell_env.shell`, and the rc ladder
+    /// ([`crate::shell::rc`]) resolves the file that same shell reads
+    /// — so a failed probe's diagnosis always names the rc file of the
+    /// shell that was actually measured. Default (both `None`) in
+    /// tests, which is why a test that never opts in cannot reach the
+    /// developer's real `~/.zshrc` either.
+    pub shell_env: crate::shell::ShellEnv,
 }
 
 impl ExecutionContext {
@@ -150,6 +171,8 @@ impl ExecutionContext {
             verbose,
             host_facts: Arc::new(HostFacts::detect()),
             env_init_gen: crate::shell::activation::read_env_stamp(),
+            shell_probe: crate::shell::ProbePolicy::production(),
+            shell_env: crate::shell::ShellEnv::from_process(),
         })
     }
 }

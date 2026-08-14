@@ -173,6 +173,10 @@ pub const TEMPLATE_TEMPLATE_INSTALL_FILTER: &str =
 /// `dodot transform status` per-file state list.
 pub const TEMPLATE_TRANSFORM_STATUS: &str = include_str!("../templates/transform-status.jinja");
 
+/// `dodot install` — the shell, the resolved rc file, the hook line,
+/// and (after `--write`) the probe's measured verdict.
+pub const TEMPLATE_INSTALL: &str = include_str!("../templates/install.jinja");
+
 /// `dodot git-show-alias` print-for-paste output.
 pub const TEMPLATE_GIT_SHOW_ALIAS: &str = include_str!("../templates/git-show-alias.jinja");
 

@@ -37,9 +37,13 @@
 //!   mark the invoking shell stale on every single `up`, which is noise,
 //!   not news.
 //!
-//! The empirical probe (spec §3) and `dodot install` (spec §4) are not
-//! part of this module: the states below are decided on evidence alone,
-//! and the never-activated notice points at the manual hook line.
+//! The empirical probe (spec §3) lives in [`crate::shell::probe`] and
+//! the rc-file machinery behind `dodot install` (spec §4) in
+//! [`crate::shell::rc`]. Everything below is decided on evidence
+//! alone; a caller that is allowed to spawn a shell goes through
+//! [`probe::notice_with_probe`](crate::shell::probe::notice_with_probe)
+//! instead, which starts here and only measures when these signals
+//! come back inconclusive.
 
 use std::path::Path;
 
@@ -145,9 +149,16 @@ pub enum HeartbeatState {
     Absent,
 }
 
-/// The user-facing activation state (spec §5). `verified broken` is
-/// deliberately absent: it requires the probe, which this slice does
-/// not ship.
+/// The user-facing activation state (spec §5).
+///
+/// The first three are decided on evidence alone. [`VerifiedBroken`]
+/// is the one state only a measurement can reach — see
+/// [`crate::shell::probe`] — and it takes precedence over the others
+/// when the probe has run: with evidence alone, a hookup that used to
+/// work and then broke looks like a stale shell, so the user gets
+/// "open a new shell" for a problem no new shell will fix.
+///
+/// [`VerifiedBroken`]: ActivationState::VerifiedBroken
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivationState {
     /// Evidence says shells are loading dodot at the current
@@ -159,6 +170,9 @@ pub enum ActivationState {
     StaleShell,
     /// No evidence of any activation, ever. The new-user failure story.
     NeverActivated,
+    /// The probe spawned a shell and it did not load dodot. Measured,
+    /// not inferred.
+    VerifiedBroken,
 }
 
 impl ActivationState {
@@ -169,6 +183,7 @@ impl ActivationState {
             ActivationState::Healthy => "healthy",
             ActivationState::StaleShell => "stale-shell",
             ActivationState::NeverActivated => "never-activated",
+            ActivationState::VerifiedBroken => "verified-broken",
         }
     }
 }
@@ -328,12 +343,31 @@ impl ActivationNotice {
                 severity: "warning".into(),
                 message: "Deployed, but no shell has loaded dodot yet.".into(),
                 hint: Some(format!(
-                    "Add this to your shell rc file, then open a new shell: {hook_line}"
+                    "Run `dodot install --write` to wire it up, or add this to your shell rc \
+                     file yourself: {hook_line}"
+                )),
+            }),
+            // Only the probe reaches this state, and it renders its own
+            // diagnosis (`probe::Verdict::notice`). This arm is the
+            // answer for a caller that folds the state through the
+            // evidence path anyway: same headline, generic next step.
+            ActivationState::VerifiedBroken => Some(ActivationNotice {
+                state: state.as_str().into(),
+                severity: "error".into(),
+                message: VERIFIED_BROKEN_MESSAGE.into(),
+                hint: Some(format!(
+                    "Run `dodot install --write` to wire the hook, or add this to your shell rc \
+                     file yourself: {hook_line}"
                 )),
             }),
         }
     }
 }
+
+/// Headline for a hookup the probe measured as broken. Shared so the
+/// evidence path and [`crate::shell::probe`] can never drift into two
+/// different phrasings of the same finding.
+pub const VERIFIED_BROKEN_MESSAGE: &str = "Deployed, but a new shell did not load dodot.";
 
 /// The rc-file line that wires a shell up to the generated init
 /// script, with the home prefix written back as `$HOME`.
@@ -343,9 +377,10 @@ impl ActivationNotice {
 /// line source a literal `~` path once pasted. Quoting itself is not
 /// optional — it is what keeps a home directory with spaces working.
 ///
-/// This is the manual hook: `dodot install` (spec §4) lands in a later
-/// work stream, and until it does, telling the user to run a command
-/// that doesn't exist is worse than telling them nothing.
+/// The single source of truth for the hook line. `dodot install
+/// --write` writes exactly this string inside its marked block
+/// ([`crate::shell::rc`]), and every message that offers a manual
+/// alternative prints it — one line, one definition.
 pub fn hook_line(init_script_path: &Path, home: &Path) -> String {
     let shown = match init_script_path.strip_prefix(home) {
         Ok(rel) => format!("$HOME/{}", rel.display()),
@@ -524,9 +559,10 @@ mod tests {
             hint.contains(&hook),
             "hint should carry the hook line: {hint}"
         );
-        // WS02 ships `dodot install`; until then, pointing at it would
-        // be pointing at a command that does not exist.
-        assert!(!hint.contains("dodot install"), "hint: {hint}");
+        // WS02 ships `dodot install`, so the hint now leads with the
+        // command that does this for you — the manual line stays for
+        // users who would rather wire it themselves.
+        assert!(hint.contains("dodot install --write"), "hint: {hint}");
     }
 
     #[test]

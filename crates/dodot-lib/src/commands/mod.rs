@@ -12,6 +12,7 @@ pub mod fill;
 pub mod git_alias;
 pub mod git_filters;
 pub mod init;
+pub mod install;
 pub mod list;
 pub mod probe;
 pub mod prompts;

@@ -396,6 +396,27 @@ pub fn git_install_alias_handler(
     )?))
 }
 
+/// `dodot install [--write] [--rc <file>]` — report (or wire) the
+/// shell hookup.
+///
+/// Dry by default: without `--write` this only reads. `--write` splices
+/// the marked block into the resolved rc file and then spawns a shell
+/// to verify the result, so the command ends on a measurement rather
+/// than a promise (`docs/proposals/shell-hookup.lex` §4).
+pub fn install_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::install::InstallResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let opts = commands::install::InstallOptions {
+        write: matches.get_flag("write"),
+        rc: matches
+            .get_one::<String>("rc")
+            .map(std::path::PathBuf::from),
+    };
+    Ok(Output::Render(commands::install::install(&ctx, &opts)?))
+}
+
 /// `dodot template clean --path <path>` — git clean filter
 /// passthrough for template sources. Reads stdin (the working-tree
 /// source bytes), looks up the matching baseline in the cache,

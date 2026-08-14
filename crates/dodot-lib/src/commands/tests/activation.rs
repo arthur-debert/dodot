@@ -154,8 +154,8 @@ fn the_never_activated_notice_renders_as_a_prominent_block() {
         "the warning must reach rendered output: {text}"
     );
     assert!(
-        text.contains("Add this to your shell rc file"),
-        "the hook line must reach rendered output: {text}"
+        text.contains("dodot install --write") && text.contains("dodot-init.sh"),
+        "the fix — the command and the manual line — must reach rendered output: {text}"
     );
 
     let tagged = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
