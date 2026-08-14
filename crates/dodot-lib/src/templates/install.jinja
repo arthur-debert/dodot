@@ -1,0 +1,22 @@
+{% if wrote and outcome == "unchanged" %}[message]{{ rc_path }} already has dodot's hook block — nothing to change.[/message]
+{% elif wrote %}[message]Wired dodot into {{ rc_path }} ({{ outcome }}).[/message]
+{% else %}[message]dodot install — nothing written yet. Re-run with --write to apply.[/message]
+{% endif %}
+[header]Shell[/header]
+  {% if shell %}{{ shell }}{% else %}unknown (writing where --rc points){% endif %}
+[header]Startup file[/header]
+  {{ rc_path }}{% if not rc_exists %} [dim](does not exist yet; --write creates it)[/dim]{% endif %}
+[header]Hook[/header]
+{% if hook_presence == "managed-block" %}  [deployed]present[/deployed] [dim](dodot's managed block)[/dim]
+{% elif hook_presence == "manual" %}  [deployed]present[/deployed] [dim](wired by hand — dodot leaves it alone)[/dim]
+{% else %}  [pending]not found in that file[/pending]
+{% endif %}  [usage]{{ hook_line }}[/usage]
+{% if notes %}[header]Notes[/header]
+{% for note in notes %}  [dim]{{ note }}[/dim]
+{% endfor %}{% endif %}{% if shell_hookup %}
+{% if shell_hookup.severity == "error" %}[error]✗ {{ shell_hookup.message }}[/error]
+{% elif shell_hookup.severity == "warning" %}[warning]⚠ {{ shell_hookup.message }}[/warning]
+{% elif shell_hookup.severity == "ok" %}[deployed]✓ {{ shell_hookup.message }}[/deployed]
+{% else %}[message]{{ shell_hookup.message }}[/message]
+{% endif %}{% if shell_hookup.hint %}  [dim]{{ shell_hookup.hint }}[/dim]
+{% endif %}{% endif %}

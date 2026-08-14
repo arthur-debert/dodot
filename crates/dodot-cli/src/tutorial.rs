@@ -275,6 +275,12 @@ impl TutorialEnv {
             verbose: false,
             host_facts: std::sync::Arc::new(dodot_lib::gates::HostFacts::detect()),
             env_init_gen: dodot_lib::shell::activation::read_env_stamp(),
+            // The tutorial narrates its own steps and prompts between
+            // them; spawning a shell mid-walkthrough would print over
+            // that script. Evidence only here — the user's next real
+            // `dodot up` measures.
+            shell_probe: dodot_lib::shell::ProbePolicy::Never,
+            shell_env: dodot_lib::shell::ShellEnv::from_process(),
         }
     }
 }

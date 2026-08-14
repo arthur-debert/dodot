@@ -3,6 +3,8 @@
 mod activation;
 mod adopt;
 mod gating;
+mod hookup;
+mod install;
 mod probe;
 mod reset;
 mod support;

@@ -173,6 +173,8 @@ mod tests {
             verbose: false,
             host_facts: Arc::new(crate::gates::HostFacts::detect()),
             env_init_gen: None,
+            shell_probe: crate::shell::ProbePolicy::Never,
+            shell_env: crate::shell::ShellEnv::default(),
         }
     }
 

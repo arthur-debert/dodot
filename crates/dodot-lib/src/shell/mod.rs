@@ -9,7 +9,9 @@
 //! - Changes to the datastore layout only need to happen in Rust
 //!
 //! The generated script is written to `data_dir/shell/dodot-init.sh`.
-//! Users source it from their shell profile:
+//! `dodot install --write` wires the line below into the user's rc
+//! file ([`rc`]), and [`probe`] measures whether a new shell actually
+//! runs it. Users can also add it by hand:
 //!
 //! ```sh
 //! [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
@@ -62,8 +64,12 @@ use crate::paths::Pather;
 use crate::Result;
 
 pub mod activation;
+pub mod probe;
+pub mod rc;
 pub mod validate;
 pub use activation::{ActivationNotice, ActivationState, INIT_GEN_ENV};
+pub use probe::ProbePolicy;
+pub use rc::ShellEnv;
 pub use validate::{
     error_sidecar_path, validate_shell_sources, NoopSyntaxChecker, ShellValidationFailure,
     ShellValidationReport, SyntaxCheckResult, SyntaxChecker, SystemSyntaxChecker, ERRORS_SUBDIR,

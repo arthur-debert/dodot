@@ -37,6 +37,7 @@ const HELP_TEXTS: &[(&str, &str)] = &[
     ("addignore", include_str!("help/addignore.txt")),
     ("tutorial", include_str!("help/tutorial.txt")),
     ("init-sh", include_str!("help/init-sh.txt")),
+    ("install", include_str!("help/install.txt")),
     ("plist", include_str!("help/plist.txt")),
     (
         "git-install-filters",

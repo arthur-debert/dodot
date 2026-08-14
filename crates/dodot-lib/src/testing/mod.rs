@@ -25,11 +25,15 @@ use tempfile::TempDir;
 use crate::fs::{Fs, OsFs};
 use crate::paths::{Pather, XdgPather};
 
-/// Shared lock for tests that mutate `$SHELL`. `std::env::set_var` /
-/// `remove_var` are process-global, and cargo runs tests in
-/// parallel — without this lock, two tests touching `$SHELL` can
-/// interleave and observe each other's writes. Held by
-/// [`ShellEnvGuard`] for the duration of the guard's lifetime.
+/// Shared lock for tests that mutate the process environment.
+/// `std::env::set_var` / `remove_var` are process-global, and cargo
+/// runs tests in parallel — without this lock, two tests touching the
+/// environment can interleave and observe each other's writes. Held by
+/// [`ShellEnvGuard`] and [`EnvVarGuard`] for the duration of the
+/// guard's lifetime.
+///
+/// One lock for every variable, not one per name: the lock is not
+/// reentrant, so a single test must hold at most one guard at a time.
 static SHELL_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// RAII guard that takes the shared `$SHELL` lock, sets `$SHELL` to
@@ -89,6 +93,47 @@ impl Drop for ShellEnvGuard {
         match self.prev.take() {
             Some(p) => std::env::set_var("SHELL", p),
             None => std::env::remove_var("SHELL"),
+        }
+    }
+}
+
+/// [`ShellEnvGuard`] for an arbitrary variable — same lock, same
+/// restore-on-drop (including on panic), same one-guard-at-a-time
+/// rule.
+///
+/// Used where the value under test *is* an inherited environment
+/// variable: the shell-hookup probe scrubbing `DODOT_INIT_*` out of
+/// the shell it spawns, for instance, can only be tested by first
+/// putting one there.
+pub struct EnvVarGuard {
+    _lock: MutexGuard<'static, ()>,
+    key: String,
+    prev: Option<String>,
+}
+
+impl EnvVarGuard {
+    /// Sets `key` while holding the lock and restores it on drop.
+    pub fn set(key: &str, value: &str) -> Self {
+        let lock = SHELL_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let prev = std::env::var(key).ok();
+        std::env::set_var(key, value);
+        Self {
+            _lock: lock,
+            key: key.to_string(),
+            prev,
+        }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        // Restore before `_lock` drops — fields drop in declaration
+        // order, so the next guard sees a clean baseline.
+        match self.prev.take() {
+            Some(p) => std::env::set_var(&self.key, p),
+            None => std::env::remove_var(&self.key),
         }
     }
 }

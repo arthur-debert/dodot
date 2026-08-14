@@ -743,6 +743,7 @@ dependencies = [
  "diffy",
  "flate2",
  "glob",
+ "libc",
  "minijinja",
  "plist",
  "serde",

@@ -367,18 +367,31 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
 ///
 /// A fresh install has no heartbeat and no stamp, so this is where the
 /// new-user failure story gets caught: at the end of a green first
-/// `up`, pointing at the manual hook line. WS02 replaces that
-/// evidence-only warning with the probe's measured verdict.
+/// `up`. And it is the one place a *measurement* is worth its cost —
+/// when the cheap signals come back inconclusive, `up` spawns the
+/// user's shell and reports what actually happened
+/// (`shell::probe::notice_with_probe`, spec §3.1). A green first `up`
+/// ends on a measured verdict, not a promise; a healthy machine never
+/// spawns anything.
 ///
-/// A `--dry-run` deployed nothing and wrote no init script, so this
-/// stays silent there (see `activation::notice_for`).
+/// A `--dry-run` regenerated no script, so measuring the current one
+/// would report on a world this run did not create — evidence only
+/// there, which `activation::notice_for` keeps silent anyway when
+/// nothing has ever been deployed.
 fn activation_notice(
     ctx: &ExecutionContext,
     pre_up_generation: Option<u64>,
 ) -> Option<crate::shell::ActivationNotice> {
-    crate::shell::activation::notice_for(
+    let policy = if ctx.dry_run {
+        crate::shell::ProbePolicy::Never
+    } else {
+        ctx.shell_probe
+    };
+    crate::shell::probe::notice_with_probe(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
+        &policy,
+        &ctx.shell_env,
         ctx.env_init_gen,
         pre_up_generation,
         false,
