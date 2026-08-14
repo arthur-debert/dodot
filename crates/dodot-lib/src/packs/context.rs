@@ -72,6 +72,13 @@ pub struct ExecutionContext {
     /// matching avoid re-running `hostname(1)`/env reads. Constructed
     /// by [`Self::production`]; tests build via `HostFacts::for_tests`.
     pub host_facts: Arc<HostFacts>,
+    /// The init-script generation the calling shell exported
+    /// (`DODOT_INIT_GEN`), if any — signal 1 of the shell-hookup
+    /// ladder (`docs/proposals/shell-hookup.lex` §2.1). Snapshotted at
+    /// context construction by [`Self::production`] so activation
+    /// evaluation is a function of its inputs and tests can inject a
+    /// stamp instead of mutating process-global environment.
+    pub env_init_gen: Option<u64>,
 }
 
 impl ExecutionContext {
@@ -142,6 +149,7 @@ impl ExecutionContext {
             group_mode: crate::commands::GroupMode::default(),
             verbose,
             host_facts: Arc::new(HostFacts::detect()),
+            env_init_gen: crate::shell::activation::read_env_stamp(),
         })
     }
 }

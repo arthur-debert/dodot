@@ -1,5 +1,6 @@
 //! Integration tests for the command API.
 
+mod activation;
 mod adopt;
 mod gating;
 mod probe;
@@ -2478,6 +2479,7 @@ fn full_mode_renders_80_column_rows_with_isolated_status_style() {
         view_mode: "full".into(),
         group_mode: "name".into(),
         diffs: Vec::new(),
+        shell_hookup: None,
     };
 
     let text = render::render("pack-status", &result, OutputMode::Text).unwrap();
@@ -2553,6 +2555,7 @@ fn diagnostics_render_severity_headings_plain_markers_and_muted_commands() {
         view_mode: "full".into(),
         group_mode: "name".into(),
         diffs: Vec::new(),
+        shell_hookup: None,
     };
 
     let output = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
@@ -2662,6 +2665,7 @@ fn multi_file_pack_and_ignored_pack_rendering() {
         view_mode: "full".into(),
         group_mode: "name".into(),
         diffs: Vec::new(),
+        shell_hookup: None,
     };
 
     let text = render::render("pack-status", &result, OutputMode::Text).unwrap();

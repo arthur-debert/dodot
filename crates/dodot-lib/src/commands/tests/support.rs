@@ -86,6 +86,7 @@ pub(super) fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,
         host_facts: Arc::new(crate::gates::HostFacts::detect()),
+        env_init_gen: None,
     }
 }
 
@@ -116,5 +117,6 @@ pub(super) fn make_ctx_with_runner(
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,
         host_facts: Arc::new(crate::gates::HostFacts::detect()),
+        env_init_gen: None,
     }
 }

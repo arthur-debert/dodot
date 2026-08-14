@@ -583,10 +583,15 @@ pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
     let ctx = ExecutionContext::production(&dotfiles_root, false)?;
     let root_config = ctx.config_manager.root_config()?;
+    // Stamped now, not read off the written script: this script is
+    // about to be sourced by the shell running the `eval`, so "now" is
+    // exactly when this activation happens. A later `up` bumps the
+    // generation past it and correctly ages this shell into stale.
     let script = dodot_lib::shell::generate_init_script(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         root_config.profiling.enabled,
+        dodot_lib::shell::activation::current_generation(),
     )?;
     print!("{script}");
     Ok(())

@@ -23,6 +23,9 @@ Storage
         |       +-- install/              # sentinels (e.g. "install.sh-a1b2c3d4e5f6a7b8")
         |       +-- preprocessed/         # preprocessor output (rendered files)
         |           +-- <stripped-name>
+        +-- probes/
+        |   +-- hookup/
+        |       +-- heartbeat             # last shell activation (a generation)
         +-- shell/
             +-- dodot-init.sh             # generated shell integration script
 
@@ -124,6 +127,32 @@ Storage
     No logic in the shell script beyond that. Regenerated on every `dodot up` and `dodot down` so it always reflects current state.
 
     The script is what users source via `eval "$(dodot init-sh)"`; `init-sh` simply prints the generated contents to stdout.
+
+    6.1. The Generation Contract
+
+        Every generated script — profiled or not, empty datastore or not — opens with two lines of *activation evidence*:
+
+        Evidence block:
+
+            export DODOT_INIT_GEN=<generation>
+            echo <generation> > '<data_dir>/probes/hookup/heartbeat' 2>/dev/null || :
+
+        :: shell ::
+
+        A *generation* is the unix second the script was written at. `write_init_script` stamps `shell::activation::current_generation()`; `generate_init_script` takes it as an argument, so tests pin it and the emitted script stays deterministic. `dodot init-sh` stamps the current second too — that shell is activating right now.
+
+        Three readers consume it, all in `shell::activation`:
+
+        - `read_env_stamp` — `DODOT_INIT_GEN` from the calling shell's environment. Present means *this* shell sourced init; the value says which generation.
+        - `read_heartbeat` — the marker's contents. Present means *some* shell has activated on this machine; absent means none ever has.
+        - `read_script_generation` — the `export` line of the script on disk, i.e. the generation a shell started right now would load.
+
+        Two invariants keep the evidence honest:
+
+        - *The write side owns the directory.* `write_init_script` creates `probes/hookup/` so the emitted redirect never has to. A `mkdir -p` in the script would cost a process on every shell start.
+        - *One export, one redirect.* No command substitution, no `dodot` invocation, nothing that forks. The heartbeat is a truncating write of static content, which is also what makes concurrent shell startups safe: last writer wins, and every writer writes the same bytes.
+
+        `dodot up` and `dodot status` evaluate the two signals against a reference generation into one activation state (healthy / stale shell / never activated). `status` compares against the script on disk; `up` captures the generation *before* it regenerates, because comparing against the script it just wrote would call every shell stale on every deploy. See `docs/proposals/shell-hookup.lex` §2 and §5.
 
 7. Path Safety
 

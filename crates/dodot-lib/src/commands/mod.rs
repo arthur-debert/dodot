@@ -364,6 +364,14 @@ pub struct PackStatusResult {
     /// against packs with no `ran older version` entries).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub diffs: Vec<DisplayDiff>,
+    /// Shell-hookup activation state, when there is something to say
+    /// about it: the prominent "no shell has loaded dodot yet" banner,
+    /// the "open a new shell" hint, or (in `status` only) the quiet
+    /// "hookup: ok" line. `None` means silence — deployment output is
+    /// not the place to celebrate a working hookup. See
+    /// `docs/proposals/shell-hookup.lex` §5.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell_hookup: Option<crate::shell::ActivationNotice>,
 }
 
 /// View style for pack-status output.
