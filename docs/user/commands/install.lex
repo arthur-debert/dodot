@@ -124,7 +124,7 @@ Run it with `--write` and it splices its own marked block into that file, then s
 
     A broken verdict always carries a diagnosis, because "it didn't work" is not actionable on its own:
 
-    - *The hook is missing from the file.* `The dodot hook is missing from ~/.zshrc — run `dodot install --write` to add it.`
+    - *The hook is missing from the file.* `The dodot hook is missing from ~/.zshrc — run dodot install --write to add it.`
     - *The hook is there but nothing reached it.* `The dodot hook is in ~/.zshrc but was never reached — something earlier in that file is failing before it.` This is the case a static scan of your rc would call fine.
     - *An older init script was loaded.* `Your shell sourced an older init script (generation …, current is …) — check for a second dodot hook or a stale copy.`
     - *dodot can't name the file.* `dodot could not tell which rc file your shell reads. Add this line to it: …`

@@ -258,7 +258,7 @@ fn an_unverifiable_probe_degrades_instead_of_wedging_up() {
 }
 
 #[test]
-fn the_probed_shell_does_not_inherit_this_processs_stamp() {
+fn the_probed_shell_does_not_inherit_this_process_stamp() {
     // An inherited stamp would make an unhooked shell look verified.
     let env = env_with_shell_pack();
     let _guard = crate::testing::EnvVarGuard::set(INIT_GEN_ENV, "999999");
