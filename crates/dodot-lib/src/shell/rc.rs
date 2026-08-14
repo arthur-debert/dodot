@@ -1,6 +1,6 @@
 //! Where the shell hookup lives — shell detection, the rc-file
 //! ladder, and dodot's marked block
-//! (`docs/proposals/shell-hookup.lex` §4).
+//! (`docs/proposals/shipped/shell-hookup.lex` §4).
 //!
 //! Two consumers share this module, and the split matters:
 //!

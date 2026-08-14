@@ -3,7 +3,7 @@
 //! `dodot up` proves the datastore is correct. It proves nothing about
 //! whether any shell ever *sources* the generated init script, which is
 //! the only layer users experience. This module carries the evidence
-//! half of that gap (`docs/proposals/shell-hookup.lex` §2):
+//! half of that gap (`docs/proposals/shipped/shell-hookup.lex` §2):
 //!
 //! - The **generation stamp** — the init script exports
 //!   [`INIT_GEN_ENV`] with the generation it was written at. Any dodot

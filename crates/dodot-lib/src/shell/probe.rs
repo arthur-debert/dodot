@@ -1,5 +1,5 @@
 //! The verification probe — measuring whether a *new* shell would
-//! activate dodot (`docs/proposals/shell-hookup.lex` §3).
+//! activate dodot (`docs/proposals/shipped/shell-hookup.lex` §3).
 //!
 //! Signals 1 and 2 (the environment stamp and the heartbeat, both in
 //! [`crate::shell::activation`]) answer "is this shell live?" and "has

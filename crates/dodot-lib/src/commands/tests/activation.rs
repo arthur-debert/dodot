@@ -1,5 +1,5 @@
 //! Shell-hookup activation surfacing in `up` and `status`
-//! (`docs/proposals/shell-hookup.lex` §5).
+//! (`docs/proposals/shipped/shell-hookup.lex` §5).
 //!
 //! The evidence ladder itself is unit-tested in
 //! `shell::activation`; these tests pin the part users see — which

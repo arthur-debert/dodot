@@ -1,7 +1,7 @@
 Design Specification: Shell Hookup — dodot's Own Install
 
     :: note ::
-        *Status: proposal.* Epic INS01. Written from the 2026-08-12 planning session; decomposition into work streams happens in a later issue-planning session.
+        *Status: shipped.* Epic INS01, delivered across three work streams. Where the shipped behaviour differs from this document, the code is the authority: `dodot status` reports the evidence signals only and carries no last-probe verdict ([#3.1]), a bare `dodot install` never spawns a shell (only `--write` probes), and plain `sh` is refused by the rc ladder rather than guessed at.
 
     dodot's deployment model is two-layered: `dodot up` materializes pack state into the datastore, and *shells activate it* by sourcing the generated init script. Everything dodot verifies and reports today lives in the first layer. Nothing verifies the second — and the second is the only one users experience. This proposal closes that gap with three cooperating pieces: an init script that leaves *evidence* it ran, a gated empirical *probe* that measures activation when no evidence exists yet, and a `dodot install` command that wires the shell hook and confirms its own work. Where earlier discussion of this problem reached for heuristics ("guess the rc file, grep it"), the design principle throughout is *evidence over guessing*: the static scan survives only as a diagnostic aid and a write-target selector, never as the verdict.
 

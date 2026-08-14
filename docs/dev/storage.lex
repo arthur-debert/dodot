@@ -152,7 +152,7 @@ Storage
         - *The write side owns the directory.* `write_init_script` creates `probes/hookup/` so the emitted redirect never has to. A `mkdir -p` in the script would cost a process on every shell start.
         - *One export, one redirect.* No command substitution, no `dodot` invocation, nothing that forks. The heartbeat is a truncating write of static content, which is also what makes concurrent shell startups safe: last writer wins, and every writer writes the same bytes.
 
-        `dodot up` and `dodot status` evaluate the two signals against a reference generation into one activation state (healthy / stale shell / never activated). `status` compares against the script on disk; `up` captures the generation *before* it regenerates, because comparing against the script it just wrote would call every shell stale on every deploy. See `docs/proposals/shell-hookup.lex` §2 and §5.
+        `dodot up` and `dodot status` evaluate the two signals against a reference generation into one activation state (healthy / stale shell / never activated). `status` compares against the script on disk; `up` captures the generation *before* it regenerates, because comparing against the script it just wrote would call every shell stale on every deploy. See `docs/proposals/shipped/shell-hookup.lex` §2 and §5.
 
 7. Path Safety
 

@@ -145,7 +145,7 @@ pub trait Pather: Send + Sync {
     /// the shell-init profiles, so probe data stays under one roof
     /// without the heartbeat landing in the directory the profile
     /// reader and rotator scan. See
-    /// `docs/proposals/shell-hookup.lex` §2.1.
+    /// `docs/proposals/shipped/shell-hookup.lex` §2.1.
     fn probes_hookup_dir(&self) -> PathBuf {
         self.data_dir().join("probes").join("hookup")
     }
@@ -155,7 +155,7 @@ pub trait Pather: Send + Sync {
     /// that wrote it, as ASCII decimal. Absent until some shell has
     /// sourced `dodot-init.sh` at least once — that absence is what
     /// distinguishes "never activated" from "activated, just not
-    /// here". See `docs/proposals/shell-hookup.lex` §2.1.
+    /// here". See `docs/proposals/shipped/shell-hookup.lex` §2.1.
     fn hookup_heartbeat_path(&self) -> PathBuf {
         self.probes_hookup_dir().join("heartbeat")
     }

@@ -1,5 +1,5 @@
 //! `dodot install` — wiring dodot into shell startup
-//! (`docs/proposals/shell-hookup.lex` §4).
+//! (`docs/proposals/shipped/shell-hookup.lex` §4).
 //!
 //! Everything dodot verified before this epic lived in the deployment
 //! layer; the hookup — the one line in an rc file that makes any of it

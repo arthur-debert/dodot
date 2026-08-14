@@ -74,14 +74,14 @@ pub struct ExecutionContext {
     pub host_facts: Arc<HostFacts>,
     /// The init-script generation the calling shell exported
     /// (`DODOT_INIT_GEN`), if any — signal 1 of the shell-hookup
-    /// ladder (`docs/proposals/shell-hookup.lex` §2.1). Snapshotted at
+    /// ladder (`docs/proposals/shipped/shell-hookup.lex` §2.1). Snapshotted at
     /// context construction by [`Self::production`] so activation
     /// evaluation is a function of its inputs and tests can inject a
     /// stamp instead of mutating process-global environment.
     pub env_init_gen: Option<u64>,
     /// Whether this invocation may spawn a shell to *measure*
     /// activation — signal 3 of the hookup ladder
-    /// (`docs/proposals/shell-hookup.lex` §3).
+    /// (`docs/proposals/shipped/shell-hookup.lex` §3).
     ///
     /// Defaults to
     /// [`ProbePolicy::Never`](crate::shell::ProbePolicy::Never)

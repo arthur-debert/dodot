@@ -370,7 +370,7 @@ pub struct PackStatusResult {
     /// the "open a new shell" hint, or (in `status` only) the quiet
     /// "hookup: ok" line. `None` means silence — deployment output is
     /// not the place to celebrate a working hookup. See
-    /// `docs/proposals/shell-hookup.lex` §5.
+    /// `docs/proposals/shipped/shell-hookup.lex` §5.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell_hookup: Option<crate::shell::ActivationNotice>,
 }

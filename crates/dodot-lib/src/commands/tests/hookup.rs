@@ -1,5 +1,5 @@
 //! Which commands measure shell activation, and when
-//! (`docs/proposals/shell-hookup.lex` §3.1, §5, §9).
+//! (`docs/proposals/shipped/shell-hookup.lex` §3.1, §5, §9).
 //!
 //! `shell::probe` covers the spawn mechanics and the verdict rendering;
 //! this file covers the decision *around* them — the gate that keeps a

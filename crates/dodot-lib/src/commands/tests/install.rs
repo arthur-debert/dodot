@@ -1,5 +1,5 @@
 //! `dodot install` — the rc-file ladder, the marked block, and the
-//! refusals (`docs/proposals/shell-hookup.lex` §4).
+//! refusals (`docs/proposals/shipped/shell-hookup.lex` §4).
 //!
 //! Every context here carries a *fabricated* shell environment and the
 //! default `ProbePolicy::Never`, so nothing in this file can reach the

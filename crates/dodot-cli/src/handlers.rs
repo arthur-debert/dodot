@@ -402,7 +402,7 @@ pub fn git_install_alias_handler(
 /// Dry by default: without `--write` this only reads. `--write` splices
 /// the marked block into the resolved rc file and then spawns a shell
 /// to verify the result, so the command ends on a measurement rather
-/// than a promise (`docs/proposals/shell-hookup.lex` §4).
+/// than a promise (`docs/proposals/shipped/shell-hookup.lex` §4).
 pub fn install_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
