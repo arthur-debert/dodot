@@ -14,6 +14,12 @@ the **pack-level rollup** is constrained to `pending`/`deployed`/`error`. Symbol
 `➞` symlink · `⚙` shell/homebrew/nix · `+` `$PATH` · `×` install · `·` skip/gate
 (not deployed). The icon set in `status --help` lists only the first four.
 
+Below the pack rows, one **shell hookup** line reports whether shells are actually
+loading dodot: `shell hookup: ok`, `Deployed, but no shell has loaded dodot yet.`
+(fix: `dodot install --write`), or `This shell started before your last dodot up.`
+(fix: open a new shell). `status` reads evidence only and never starts a shell, so
+it cannot report a measured verdict — `up` and `install --write` can.
+
 - `--check-drift` — hash deployed external files, report divergence (opt-in, slow).
 - `--diff` — for provisioning files reporting "older version", show the unified diff.
 - `--full` / `--short` — per-file detail vs one line per pack (default `--full`).
@@ -73,8 +79,15 @@ Idempotent; reverse with `rm <pack>/.dodotignore`.
 
 ## Shell integration
 
-- `dodot init-sh` — print the shell init script; add `eval "$(dodot init-sh)"` to
-  `~/.zshrc` / `~/.bashrc`.
+- `dodot install` [`--write`] [`--rc FILE`] — wire dodot into the user's shell
+  startup. Dry by default: bare, it reports the detected shell, the rc file it
+  would write, whether a hook is already there, and the exact line. `--write`
+  splices an idempotent marked block (`# >>> dodot shell hookup >>>`) and then
+  starts a shell to verify the hook fires. bash/zsh only; any other shell is
+  refused with the line to paste. Deleting the block is a complete uninstall.
+- `dodot init-sh` — print the shell init script; the manual alternative is
+  `eval "$(dodot init-sh)"` in `~/.zshrc` / `~/.bashrc`. Still supported; prefer
+  `dodot install --write` unless the user wants to own the rc line.
 - `dodot git-show-alias` / `dodot git-install-alias` [`--shell SHELL`] — the git
   wrapper alias that runs `dodot refresh --quiet` so `git status`/`git diff` see
   deployed-side template edits (show vs write-to-rc).

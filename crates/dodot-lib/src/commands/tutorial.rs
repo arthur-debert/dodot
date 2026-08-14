@@ -2,8 +2,11 @@
 //!
 //! The interactive driver lives in `dodot-cli`; this module provides
 //! the building blocks it composes: pack classification, shell-
-//! integration detection (read-only inspection plus an explicit
-//! append helper), JSON state persistence for resume, and the
+//! hookup detection (read-only inspection plus an explicit append
+//! helper for the manual eval line — `dodot install` is what the
+//! step recommends, and [`crate::shell::rc`] is the real rc ladder;
+//! the detection here is a shallow guess), JSON state persistence
+//! for resume, and the
 //! serializable [`TutorialCtx`] that the CLI passes to step
 //! templates. Reads are pure; writes (`append_shell_integration`,
 //! `save_state`, `clear_state`) only run on explicit user consent
@@ -177,7 +180,14 @@ pub fn discover_and_classify(ctx: &ExecutionContext) -> Result<Vec<TutorialPack>
 
 // ── Shell integration detection ─────────────────────────────────
 
-/// What we found out about the `eval "$(dodot init-sh)"` line.
+/// What we found out about the user's shell hookup.
+///
+/// The tutorial recommends `dodot install --write`, which owns a
+/// marked block; the fields here describe the manual `eval
+/// "$(dodot init-sh)"` line the tutorial can still write on request.
+/// [`Self::line_present`] answers the question the step actually
+/// turns on — "is this user wired up at all?" — and so counts either
+/// form.
 #[derive(Debug, Clone, Serialize)]
 pub struct ShellIntegration {
     /// Detected user shell (`zsh`, `bash`, `fish`, `unknown`).
@@ -187,7 +197,9 @@ pub struct ShellIntegration {
     /// Absolute path of the rc file, for actual writes.
     #[serde(skip)]
     pub rc_path_abs: PathBuf,
-    /// True if the eval line is already present in the rc file.
+    /// True if *either* hookup form is already in the rc file: the
+    /// hand-written eval line, or the block `dodot install --write`
+    /// writes. Drives whether the step prompts at all.
     pub line_present: bool,
     /// The full eval line we'd suggest adding.
     pub eval_line: String,
@@ -195,8 +207,19 @@ pub struct ShellIntegration {
 
 /// Detect the shell init situation for the user.
 ///
-/// Reads `$SHELL`, picks a likely rc file, checks whether the
-/// `dodot init-sh` eval line is already there. Pure read-only.
+/// Reads `$SHELL`, picks a likely rc file, checks whether *either*
+/// hookup form is already there: the hand-written `dodot init-sh`
+/// eval line, or the marked block `dodot install --write` splices in,
+/// which sources `dodot-init.sh` by path and never names the command.
+/// Matching only the eval line would tell a user who already ran
+/// `dodot install --write` to wire up a hookup they have. Pure
+/// read-only.
+///
+/// This is a deliberately shallow guess — it does not honour
+/// `ZDOTDIR`, follow a symlinked rc, or know about the macOS
+/// `.bash_profile` chain. [`crate::shell::rc`] is the real ladder, and
+/// `dodot install` is what the tutorial points users at; this only has
+/// to be right often enough to skip a step nobody needs.
 pub fn detect_shell_integration(home: &Path) -> ShellIntegration {
     let shell_env = std::env::var("SHELL").unwrap_or_default();
     let shell_kind = shell_env.rsplit('/').next().unwrap_or("").to_lowercase();
@@ -217,7 +240,7 @@ pub fn detect_shell_integration(home: &Path) -> ShellIntegration {
     };
 
     let line_present = std::fs::read_to_string(&rc_path_abs)
-        .map(|c| c.contains("dodot init-sh"))
+        .map(|c| c.contains("dodot init-sh") || c.contains("dodot-init.sh"))
         .unwrap_or(false);
 
     ShellIntegration {
@@ -417,5 +440,30 @@ mod tests {
         assert_eq!(integ.shell_kind, "zsh");
         assert!(!integ.line_present);
         assert!(integ.eval_line.contains("dodot init-sh"));
+    }
+
+    #[test]
+    fn detect_shell_sees_both_hookup_forms() {
+        // The tutorial's shell step exists to stop a user shipping a
+        // pack whose shell snippets never load. Either hookup form
+        // means that job is done — the managed block `dodot install
+        // --write` writes sources the script by path and never spells
+        // out `dodot init-sh`, so matching only the eval line would
+        // re-prompt a user who is already wired up.
+        for rc in [
+            "eval \"$(dodot init-sh)\"\n",
+            "# >>> dodot shell hookup >>>\n\
+             [ -f \"$HOME/.local/share/dodot/shell/dodot-init.sh\" ] \
+             && . \"$HOME/.local/share/dodot/shell/dodot-init.sh\"\n\
+             # <<< dodot shell hookup <<<\n",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join(".zshrc"), rc).unwrap();
+            let _g = crate::testing::ShellEnvGuard::set("/bin/zsh");
+            assert!(
+                detect_shell_integration(dir.path()).line_present,
+                "should recognise this hookup: {rc}"
+            );
+        }
     }
 }
