@@ -319,6 +319,133 @@ fn macos_bash_gets_the_login_shell_chain() {
     );
 }
 
+/// The chain is rung 2 of the ladder, and `--rc` overrides the whole
+/// ladder (spec §4.3 rung 5). Chaining an override that points at the
+/// profile would write a second block with the *same markers* over the
+/// hook block, leaving the user a file that chains to a `.bashrc`
+/// nobody wired — and a report claiming `managed-block`.
+#[test]
+fn an_rc_override_at_the_profile_keeps_its_hook_and_gets_no_chain() {
+    let env = TempEnvironment::builder().build();
+    let mut ctx = ctx_for(
+        &env,
+        ShellEnv {
+            shell: Some("/bin/bash".into()),
+            zdotdir: None,
+        },
+    );
+    ctx.host_facts = std::sync::Arc::new(crate::gates::HostFacts {
+        os: "darwin".into(),
+        arch: "arm64".into(),
+        hostname: None,
+        username: None,
+    });
+    let profile = env.home.join(".bash_profile");
+
+    let r = install(
+        &ctx,
+        &InstallOptions {
+            write: true,
+            rc: Some(profile.clone()),
+        },
+    )
+    .unwrap();
+
+    let body = env.fs.read_to_string(&profile).unwrap();
+    assert!(
+        body.contains(&r.hook_line),
+        "the hook the user asked for must survive the chain step: {body}"
+    );
+    assert_eq!(
+        body.matches(BLOCK_START).count(),
+        1,
+        "one block, and it is the hook's: {body}"
+    );
+    assert!(
+        !body.contains(".bashrc"),
+        "login shells read this file directly; there is nothing to chain to: {body}"
+    );
+    assert_eq!(r.hook_presence, "managed-block");
+}
+
+/// A `--rc` override anywhere else is left alone too — no chain, and no
+/// `~/.bash_profile` conjured next to a file the user chose.
+#[test]
+fn an_rc_override_elsewhere_gets_no_macos_chain() {
+    let env = TempEnvironment::builder().build();
+    let mut ctx = ctx_for(
+        &env,
+        ShellEnv {
+            shell: Some("/bin/bash".into()),
+            zdotdir: None,
+        },
+    );
+    ctx.host_facts = std::sync::Arc::new(crate::gates::HostFacts {
+        os: "darwin".into(),
+        arch: "arm64".into(),
+        hostname: None,
+        username: None,
+    });
+    let custom = env.home.join(".config/bash/rc.sh");
+
+    install(
+        &ctx,
+        &InstallOptions {
+            write: true,
+            rc: Some(custom.clone()),
+        },
+    )
+    .unwrap();
+
+    assert!(env
+        .fs
+        .read_to_string(&custom)
+        .unwrap()
+        .contains(BLOCK_START));
+    assert!(
+        !env.fs.exists(&env.home.join(".bash_profile")),
+        "--rc overrides the whole ladder, chain included"
+    );
+}
+
+/// The chain still fires for a `~/.bashrc` that lives in a dotfiles
+/// repo: bash opens `~/.bashrc` whatever it points at, so the nominal
+/// path is what the rung-2 rule reads.
+#[test]
+fn macos_bash_chains_a_symlinked_bashrc_too() {
+    let env = TempEnvironment::builder().build();
+    let mut ctx = ctx_for(
+        &env,
+        ShellEnv {
+            shell: Some("/bin/bash".into()),
+            zdotdir: None,
+        },
+    );
+    ctx.host_facts = std::sync::Arc::new(crate::gates::HostFacts {
+        os: "darwin".into(),
+        arch: "arm64".into(),
+        hostname: None,
+        username: None,
+    });
+    let repo_rc = env.home.join("dotfiles/bash/bashrc");
+    env.fs.mkdir_all(repo_rc.parent().unwrap()).unwrap();
+    env.fs.write_file(&repo_rc, b"# repo rc\n").unwrap();
+    env.fs.symlink(&repo_rc, &env.home.join(".bashrc")).unwrap();
+
+    install(&ctx, &write()).unwrap();
+
+    assert!(env
+        .fs
+        .read_to_string(&repo_rc)
+        .unwrap()
+        .contains(BLOCK_START));
+    assert!(env
+        .fs
+        .read_to_string(&env.home.join(".bash_profile"))
+        .unwrap()
+        .contains(".bashrc"));
+}
+
 #[test]
 fn linux_bash_gets_no_profile_chain() {
     let env = TempEnvironment::builder().build();

@@ -173,6 +173,17 @@ pub struct RcTarget {
     pub notes: Vec<String>,
 }
 
+impl RcTarget {
+    /// The path the ladder (or `--rc`) named, before symlink
+    /// resolution — the file *the shell* opens at startup, which is
+    /// what rung-2 rules are about. [`path`](Self::path) is where the
+    /// bytes land; a symlinked `~/.bashrc` is still `~/.bashrc` to
+    /// bash.
+    pub fn nominal(&self) -> &Path {
+        self.link_source.as_deref().unwrap_or(&self.path)
+    }
+}
+
 /// Resolve the rc file for `shell`, honoring an explicit `--rc`
 /// override (spec §4.3).
 ///
@@ -530,6 +541,11 @@ fn is_manual_hook_line(line: &str) -> bool {
 /// `.profile` and never `.bashrc` — where the hook block lands. If
 /// neither profile reaches `.bashrc`, the hook is written but never
 /// read, which is exactly the silent failure this epic exists to kill.
+///
+/// Only ask this when the hook block actually landed in `~/.bashrc`:
+/// the returned profile is written with the same managed-block markers,
+/// so chaining a file that already holds the hook block would replace
+/// the hook with the chain line.
 pub fn bash_chain_target(fs: &dyn Fs, home: &Path) -> Option<PathBuf> {
     for name in [".bash_profile", ".profile"] {
         let path = home.join(name);

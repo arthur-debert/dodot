@@ -136,8 +136,9 @@ pub fn install(ctx: &ExecutionContext, opts: &InstallOptions) -> Result<InstallR
     })
 }
 
-/// Write the marked block, plus the macOS bash chain when that is what
-/// stands between the block and a login shell reading it.
+/// Write the marked block, plus — only when the ladder itself chose
+/// `~/.bashrc` — the macOS bash chain, which is what stands between
+/// that file and a login shell reading it.
 fn write_hookup(
     ctx: &ExecutionContext,
     shell: Option<HookupShell>,
@@ -162,8 +163,25 @@ fn write_hookup(
     // and never `.bashrc` — where the block just landed. Without the
     // chain the hook is written and never read, which is the exact
     // silent failure this epic exists to kill.
-    if shell == Some(HookupShell::Bash) && ctx.host_facts.os == "darwin" {
-        if let Some(profile) = rc::bash_chain_target(ctx.fs.as_ref(), home) {
+    //
+    // Only when the block landed in `~/.bashrc` itself: the chain is
+    // rung 2 of the ladder, and `--rc` overrides the whole ladder
+    // (spec §4.3 rung 5). Chaining for an override would be wrong at
+    // both ends — pointless for a file login shells already read, and
+    // destructive when the override *is* `~/.bash_profile`, where the
+    // chain block's identical markers would replace the hook block
+    // written a few lines above. The nominal path is what matters: a
+    // symlinked `~/.bashrc` is still the file bash opens.
+    if shell == Some(HookupShell::Bash)
+        && ctx.host_facts.os == "darwin"
+        && target.nominal() == home.join(".bashrc")
+    {
+        // Never the file we just wrote, for the same marker-collision
+        // reason — a `~/.bashrc` symlinked at a profile is pathological
+        // but must not cost the user their hook.
+        if let Some(profile) =
+            rc::bash_chain_target(ctx.fs.as_ref(), home).filter(|p| p != &target.path)
+        {
             rc::write_block(
                 ctx.fs.as_ref(),
                 &profile,
