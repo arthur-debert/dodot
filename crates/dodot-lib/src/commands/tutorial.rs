@@ -4,8 +4,9 @@
 //! the building blocks it composes: pack classification, shell-
 //! hookup detection (read-only inspection plus an explicit append
 //! helper for the manual eval line — `dodot install` is what the
-//! step recommends, and [`crate::shell::rc`] is the real rc ladder;
-//! the detection here is a shallow guess), JSON state persistence
+//! step recommends, and [`crate::shell::rc`] is both the real rc
+//! ladder and the hook classifier this module defers to; only the
+//! rc path picked here is a shallow guess), JSON state persistence
 //! for resume, and the
 //! serializable [`TutorialCtx`] that the CLI passes to step
 //! templates. Reads are pure; writes (`append_shell_integration`,
@@ -199,7 +200,9 @@ pub struct ShellIntegration {
     pub rc_path_abs: PathBuf,
     /// True if *either* hookup form is already in the rc file: the
     /// hand-written eval line, or the block `dodot install --write`
-    /// writes. Drives whether the step prompts at all.
+    /// writes. Classified by [`crate::shell::rc::scan_hook`], so a
+    /// commented-out line does not count. Drives whether the step
+    /// prompts at all.
     pub line_present: bool,
     /// The full eval line we'd suggest adding.
     pub eval_line: String,
@@ -207,16 +210,19 @@ pub struct ShellIntegration {
 
 /// Detect the shell init situation for the user.
 ///
-/// Reads `$SHELL`, picks a likely rc file, checks whether *either*
-/// hookup form is already there: the hand-written `dodot init-sh`
-/// eval line, or the marked block `dodot install --write` splices in,
-/// which sources `dodot-init.sh` by path and never names the command.
-/// Matching only the eval line would tell a user who already ran
-/// `dodot install --write` to wire up a hookup they have. Pure
-/// read-only.
+/// Reads `$SHELL`, picks a likely rc file, then hands that file's
+/// text to [`crate::shell::rc::scan_hook`] — the same classifier
+/// `dodot install` uses — so *either* hookup form counts: the
+/// hand-written `dodot init-sh` eval line, or the marked block
+/// `dodot install --write` splices in, which sources `dodot-init.sh`
+/// by path and never names the command. Matching only the eval line
+/// would tell a user who already ran `dodot install --write` to wire
+/// up a hookup they have; a raw substring search over the whole file
+/// would go the other way and read a commented-out line as wired up.
+/// Pure read-only.
 ///
-/// This is a deliberately shallow guess — it does not honour
-/// `ZDOTDIR`, follow a symlinked rc, or know about the macOS
+/// Only the rc *path* is a deliberately shallow guess — it does not
+/// honour `ZDOTDIR`, follow a symlinked rc, or know about the macOS
 /// `.bash_profile` chain. [`crate::shell::rc`] is the real ladder, and
 /// `dodot install` is what the tutorial points users at; this only has
 /// to be right often enough to skip a step nobody needs.
@@ -240,7 +246,7 @@ pub fn detect_shell_integration(home: &Path) -> ShellIntegration {
     };
 
     let line_present = std::fs::read_to_string(&rc_path_abs)
-        .map(|c| c.contains("dodot init-sh") || c.contains("dodot-init.sh"))
+        .map(|c| crate::shell::rc::scan_hook(&c).is_present())
         .unwrap_or(false);
 
     ShellIntegration {
@@ -463,6 +469,27 @@ mod tests {
             assert!(
                 detect_shell_integration(dir.path()).line_present,
                 "should recognise this hookup: {rc}"
+            );
+        }
+    }
+
+    #[test]
+    fn detect_shell_ignores_commented_out_hookups() {
+        // Detection routes through `shell::rc::scan_hook`, so a hook
+        // a user commented out — or merely mentioned in prose — is
+        // not a hookup. Counting it would silently skip the step for
+        // the user who most needs it.
+        for rc in [
+            "# eval \"$(dodot init-sh)\"\n",
+            "  #  . \"$HOME/.local/share/dodot/shell/dodot-init.sh\"\n",
+            "# see docs: dodot init-sh prints the script\n",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join(".zshrc"), rc).unwrap();
+            let _g = crate::testing::ShellEnvGuard::set("/bin/zsh");
+            assert!(
+                !detect_shell_integration(dir.path()).line_present,
+                "should not count this as a hookup: {rc}"
             );
         }
     }

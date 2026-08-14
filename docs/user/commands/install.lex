@@ -52,7 +52,7 @@ Run it with `--write` and it splices its own marked block into that file, then s
 
 3. `--write` and the marked block
 
-    `--write` appends exactly this to the target file:
+    `--write` writes exactly this block into the target file — appended at the end, or replaced in place when the block is already there:
 
         # >>> dodot shell hookup >>>
         [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
