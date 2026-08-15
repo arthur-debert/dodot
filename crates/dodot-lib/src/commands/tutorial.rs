@@ -198,10 +198,12 @@ pub struct ShellIntegration {
     /// false the step is informational only: dodot refuses to guess
     /// an rc file for other shells, so there is nothing to offer.
     pub supported: bool,
-    /// The rc file the shell actually reads at startup, display form
+    /// The rc file the hook belongs in, display form
     /// (`~/`-relative) — resolved by [`crate::shell::rc::resolve_rc`],
     /// the same ladder `dodot install` writes through (`ZDOTDIR`,
-    /// symlinks, the lot). Empty for unsupported shells.
+    /// symlinks, the lot). Not always read directly: macOS bash
+    /// login shells reach `~/.bashrc` only via the profile chain
+    /// `install --write` adds. Empty for unsupported shells.
     pub rc_path: String,
     /// True if *either* hookup form is already in the resolved rc
     /// file: the hand-written eval line, or the block `dodot install
@@ -217,8 +219,8 @@ pub struct ShellIntegration {
 /// Detect the shell init situation for the user. Pure read-only.
 ///
 /// `shell::rc` is the single answer to both halves of the question:
-/// [`crate::shell::rc::resolve_rc`] names the rc file the shell
-/// actually reads — honouring `ZDOTDIR` (including the `~/.zshenv`
+/// [`crate::shell::rc::resolve_rc`] names the rc file the hook
+/// belongs in — honouring `ZDOTDIR` (including the `~/.zshenv`
 /// peek) and following a symlinked rc — and
 /// [`crate::shell::rc::scan_hook_file`] classifies what is in it, so
 /// *either* hookup form counts: the hand-written `dodot init-sh`

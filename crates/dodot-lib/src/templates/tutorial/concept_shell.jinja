@@ -9,9 +9,9 @@ worked:
 
   [message]dodot install --write[/message]
 
-It writes a marked block to [pack-name]{{ shell_integration.rc_path }}[/pack-name] — the file your shell
-actually reads — and ends on a measured verdict. I can run it for
-you now, or you can run it yourself later.
+It writes a marked block to [pack-name]{{ shell_integration.rc_path }}[/pack-name], makes sure your
+shell's startup actually reaches that file, and ends on a measured
+verdict. I can run it for you now, or you can run it yourself later.
 {% else %}dodot can wire up bash and zsh by itself; for your shell
 ({{ shell_integration.shell_kind }}) it won't guess a startup file. If you haven't already, add
 this line to whatever file your shell reads at startup:
