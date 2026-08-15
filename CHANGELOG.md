@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- fix: reconcile `--help` text and docs with actual CLI behavior (#233). `dodot refresh`, `transform`, `secret`, `template`, `git-show-alias`, and `git-install-alias` now have per-command `--help` instead of falling back to the top-level menu (with a test so no registered command regresses to the fallback again); `init --help` no longer claims starter files that only `fill` creates; `fill --help` no longer lists a `bin/` it never makes; `probe --help` lists the macOS-only `app` subcommand; and `docs/user/commands/transform.lex` now matches the binary — snake_case `transform status` state names (`output_changed`, `both_changed`, `missing_source`, …) and the real conflict model (conflict blocks are reported in `transform check` output, never written into the source file).
+
 ## 5.5.0 - 2026-08-15
 
 - feat: `dodot up` and `dodot status` now report whether shells are actually loading dodot, instead of reporting green on a deployment no shell ever activates — the generated init script leaves evidence it ran (a generation stamp and a heartbeat), and the states are surfaced as healthy, "this shell predates your last `up`", or "no shell has loaded dodot yet" (#262)

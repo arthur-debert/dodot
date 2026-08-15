@@ -21,7 +21,7 @@ always live — the deployed file [item]is[/item] the source file, through a sym
 
 [header]HELPERS[/header]
   [item]adopt[/item]         [desc]Move existing files into a pack, leaving symlinks behind[/desc]
-  [item]init[/item]          [desc]Create a new pack with starter files[/desc]
+  [item]init[/item]          [desc]Create a new pack (directory + commented [item].dodot.toml[/item])[/desc]
   [item]fill[/item]          [desc]Add missing handler placeholders to an existing pack[/desc]
   [item]addignore[/item]     [desc]Mark a directory so dodot skips it during discovery[/desc]
 

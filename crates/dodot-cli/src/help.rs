@@ -50,6 +50,15 @@ const HELP_TEXTS: &[(&str, &str)] = &[
     ("prompts", include_str!("help/prompts.txt")),
     ("reset", include_str!("help/reset.txt")),
     ("config", include_str!("help/config.txt")),
+    ("refresh", include_str!("help/refresh.txt")),
+    ("transform", include_str!("help/transform.txt")),
+    ("secret", include_str!("help/secret.txt")),
+    ("template", include_str!("help/template.txt")),
+    ("git-show-alias", include_str!("help/git-show-alias.txt")),
+    (
+        "git-install-alias",
+        include_str!("help/git-install-alias.txt"),
+    ),
     (
         "probe.deployment-map",
         include_str!("help/probe-deployment-map.txt"),
@@ -252,6 +261,25 @@ mod tests {
     fn every_registered_command_has_help() {
         for (path, expected) in HELP_TEXTS {
             assert_eq!(lookup(path), *expected, "path {path:?} should self-match");
+        }
+    }
+
+    /// Every subcommand clap knows about must have its own help text —
+    /// `lookup` falling back to the top-level menu for a real command
+    /// means `dodot <cmd> --help` silently shows the wrong screen
+    /// (issue #233 item 3: refresh/transform/secret/git-install-alias
+    /// shipped without per-command help).
+    #[test]
+    fn every_clap_subcommand_has_dedicated_help() {
+        let top_level = lookup("");
+        for cmd in crate::build_clap_command().get_subcommands() {
+            let name = cmd.get_name();
+            assert_ne!(
+                lookup(name),
+                top_level,
+                "`dodot {name} --help` falls back to top-level help; \
+                 add src/help/{name}.txt and register it in HELP_TEXTS"
+            );
         }
     }
 

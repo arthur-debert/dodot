@@ -1,0 +1,33 @@
+[header]dodot refresh[/header] — Make git see deployed-side template edits.
+
+[desc]When you edit a [item]deployed[/item] file produced by a template (the rendered
+output, not the [item].tmpl[/item] source), git does not normally notice — its
+stat-cache says the source mtime is unchanged, so it never re-reads.
+[item]refresh[/item] walks every cached preprocessor baseline, hashes each
+deployed file, and copies the deployed file's mtime onto the template
+source whenever the bytes have diverged. The next [item]git status[/item] /
+[item]git diff[/item] re-reads the source and the edit surfaces normally.
+
+You usually do not run this by hand: the intended pattern is a shell
+alias that wraps git in [item]dodot refresh --quiet[/item] first — see
+[item]dodot git-install-alias[/item]. Without templates in your repo, [item]refresh[/item]
+is a no-op.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot refresh [--quiet | --list-paths][/usage]
+
+[header]OPTIONS[/header]
+  [item]--quiet[/item]        [desc]Touch mtimes silently (use this in shell aliases)[/desc]
+  [item]--list-paths[/item]   [desc]Print the source paths that need a touch, one per
+                 line, without writing any mtimes — for editor /
+                 file-watcher integrations[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot refresh                  [dim]# touch diverged sources, print a report[/dim]
+  dodot refresh --list-paths     [dim]# what would be touched, no writes[/dim]
+  alias git='dodot refresh --quiet && command git'   [dim]# the Tier 2 wrapper[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot git-install-alias[/item]         [desc]Install the git-wrapping shell alias[/desc]
+  [item]dodot transform check[/item]           [desc]Reverse-merge the edits back to source[/desc]
+  [item]docs/user/commands/refresh.lex[/item]  [desc]Full command reference[/desc]

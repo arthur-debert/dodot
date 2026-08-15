@@ -1,0 +1,34 @@
+[header]dodot template[/header] — Template-source git integration.
+
+[desc]The git plumbing for template sources ([item].tmpl[/item] files):
+
+[item]dodot template clean[/item] is the git [item]clean filter[/item] for templates —
+reads the source on stdin, writes the patched (deployed-edit-merged)
+form on stdout. Invoked by git when it reads a template source; you
+normally never run it by hand. When a deployed-side edit overlaps a
+template expression, the filter output carries a [item]dodot-conflict[/item]
+block so the conflict shows up in [item]git diff[/item].
+
+[item]dodot template install-filter[/item] registers that filter in the dotfiles
+repo's [item].git/config[/item] ([item][filter "dodot-template"][/item]). Per-clone,
+per-machine, idempotent. Pair it with a committed [item].gitattributes[/item]
+line:
+
+    [example]*.tmpl filter=dodot-template[/example][/desc]
+
+[header]USAGE[/header]
+  [usage]dodot template install-filter[/usage]
+  [usage]dodot template clean --path <PATH>  < source > patched[/usage]
+
+[header]OPTIONS (clean)[/header]
+  [item]--path <PATH>[/item]   [desc]Working-tree path of the file being filtered
+                  (git's [item]%f[/item]; required)[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot template install-filter      [dim]# register the filter, once per clone[/dim]
+  echo '*.tmpl filter=dodot-template' >> .gitattributes[/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot transform[/item]                  [desc]Actually write the merged form back to source[/desc]
+  [item]dodot refresh[/item]                    [desc]Make git re-read diverged sources[/desc]
+  [item]docs/user/commands/template.lex[/item]  [desc]Full command reference[/desc]
