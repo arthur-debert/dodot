@@ -36,8 +36,9 @@
 //! # Why we refuse to expand a source containing markers
 //!
 //! Once a conflict block lands in the template source (via a
-//! hand-merge of the clean filter's view, or pasted from `transform
-//! check`'s report), the template no longer renders cleanly: MiniJinja sees
+//! hand-merge of the clean filter's view, or pasted from
+//! `transform check`'s report), the template no longer renders cleanly:
+//! MiniJinja sees
 //! the marker lines as plain text, the rendered output deploys with
 //! the marker lines verbatim, and the user's app reads garbage. The
 //! pipeline's safety gate ([`ensure_no_unresolved_markers`]) catches
