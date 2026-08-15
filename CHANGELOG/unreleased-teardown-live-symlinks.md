@@ -1,1 +1,0 @@
-- fix: `dodot down` and the deploy-then-ignore sweep now remove the live destination symlink a deployment created (e.g. `~/.config/<pack>/<file>`), instead of leaving it dangling after the datastore state is swept; a destination the user repointed elsewhere is never touched, and an orphaned pack (deleted from the repo) still can't have its links recovered (#225)
