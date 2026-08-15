@@ -4,6 +4,14 @@
 
 ## Unreleased
 
+## 5.5.0 - 2026-08-15
+
+- feat: `dodot up` and `dodot status` now report whether shells are actually loading dodot, instead of reporting green on a deployment no shell ever activates — the generated init script leaves evidence it ran (a generation stamp and a heartbeat), and the states are surfaced as healthy, "this shell predates your last `up`", or "no shell has loaded dodot yet" (#262)
+- feat: new `dodot install` command — prints the detected shell, the rc file it would write, and the exact hook line; `--write` splices an idempotent marked block into that rc (resolving `ZDOTDIR`, symlinked rc files, and the macOS `.bash_profile` chain, or `--rc <file>` to override) and then measures the result by spawning your shell, so a first-run setup ends on a verified ✓ rather than a promise; `eval "$(dodot init-sh)"` remains supported for manual wiring (#263)
+- feat: on a fresh install or a broken hookup, `dodot up` verifies shell integration empirically and says which it is — hook missing from the rc file it names, or hook present but never reached; the probe is announced, time-limited, self-limiting once a shell activates, and `dodot status` never spawns a shell (#263)
+- fix: `dodot status` no longer reports `shell hookup: ok` on a hookup that has died since its last activation — when run from a terminal whose shell exported no generation stamp, that session demonstrably did not load dodot, and this now outranks the heartbeat's high-water mark. A new `shell-not-loaded` state says what is literally true ("This shell hasn't loaded dodot.") and a static scan of the rc file supplies the next step: hook missing → name the file and the fix (no more wrong "open a new shell" advice after an `up` has diagnosed a broken hookup), hook present → likely an old shell, open a new one. Detached invocations (cron, editor task runners) keep the old benefit of the doubt, and `status` still never spawns a shell (#279)
+- fix: the tutorial no longer keeps its own shell-hookup writer — the shell-integration step now resolves the rc file through the same ladder as `dodot install` (`ZDOTDIR`, symlinked rc files) and, on consent, runs the real `dodot install --write`, ending on a measured verdict; previously it could append the eval line to a file the shell never reads (e.g. `~/.zshrc` under `ZDOTDIR`) and report success (#281)
+
 ## 5.4.1 - 2026-08-13
 
 - fix: active shared `status` / `up` / `down` rows now render pack, handler icon, filename, and terminal-edge status; the pack name appears only on its first file row, leaving subsequent pack cells blank; existing alignment, middle truncation, right-aligned status, styling, short view, and explicit ignored-row `∅ | pack | .dodotignore | ignored` layout remain intact (#273, #274)
