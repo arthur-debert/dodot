@@ -608,11 +608,22 @@ pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     // about to be sourced by the shell running the `eval`, so "now" is
     // exactly when this activation happens. A later `up` bumps the
     // generation past it and correctly ages this shell into stale.
+    // `eval "$(dodot init-sh)"` regenerates on every shell start, so
+    // this is the one hook shape where "generation time" *is* shell
+    // start: brew is asked once per shell here rather than once per
+    // `up`. That is the cost of the hand-wired hook, not of the
+    // bootstrap; the file-source hook pays it only on `up`.
+    let brew = dodot_lib::shell::homebrew::capture_from_config(
+        ctx.fs.as_ref(),
+        ctx.command_runner.as_ref(),
+        &root_config,
+    )?;
     let script = dodot_lib::shell::generate_init_script(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         root_config.profiling.enabled,
         dodot_lib::shell::activation::current_generation(),
+        brew.as_ref(),
     )?;
     print!("{script}");
     Ok(())
