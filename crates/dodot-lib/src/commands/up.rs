@@ -211,6 +211,14 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         }
     }
 
+    // The generation the user's shells were hooked up to *before* this
+    // run regenerates the init script. Captured here because it is the
+    // only fair yardstick for the activation verdict below: comparing
+    // the invoking shell's stamp against the generation we are about to
+    // write would mark every single `up` as running from a stale shell.
+    let pre_up_generation =
+        shell::activation::read_script_generation(ctx.fs.as_ref(), ctx.paths.as_ref());
+
     if !ctx.dry_run {
         // Tear down any stale state for packs that are now ignored, so
         // the regenerated (global) init script below stops sourcing
@@ -339,7 +347,55 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
         diffs: Vec::new(),
+        shell_hookup: activation_notice(ctx, pre_up_generation),
     })
+}
+
+/// The activation verdict `up` reports (`shell-hookup.lex` §5).
+///
+/// Two things make this different from the `status` evaluation
+/// (`status::shell_hookup_notice`), which the rendering pass would
+/// otherwise have supplied:
+///
+/// - It judges against `pre_up_generation` — the generation the user's
+///   shells could actually have loaded before this run rewrote the
+///   script. Judging against the new one would tell every user to open
+///   a new shell after every deploy.
+/// - A healthy hookup is silent here. `up` output is already long, and
+///   "your shell integration still works" is not news; `status` is
+///   where the quiet ok line belongs.
+///
+/// A fresh install has no heartbeat and no stamp, so this is where the
+/// new-user failure story gets caught: at the end of a green first
+/// `up`. And it is the one place a *measurement* is worth its cost —
+/// when the cheap signals come back inconclusive, `up` spawns the
+/// user's shell and reports what actually happened
+/// (`shell::probe::notice_with_probe`, spec §3.1). A green first `up`
+/// ends on a measured verdict, not a promise; a healthy machine never
+/// spawns anything.
+///
+/// A `--dry-run` regenerated no script, so measuring the current one
+/// would report on a world this run did not create — evidence only
+/// there, which `activation::notice_for` keeps silent anyway when
+/// nothing has ever been deployed.
+fn activation_notice(
+    ctx: &ExecutionContext,
+    pre_up_generation: Option<u64>,
+) -> Option<crate::shell::ActivationNotice> {
+    let policy = if ctx.dry_run {
+        crate::shell::ProbePolicy::Never
+    } else {
+        ctx.shell_probe
+    };
+    crate::shell::probe::notice_with_probe(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+        &policy,
+        &ctx.shell_env,
+        ctx.env_init_gen,
+        pre_up_generation,
+        false,
+    )
 }
 
 /// Run `up`, falling back to a status render when a cross-pack conflict

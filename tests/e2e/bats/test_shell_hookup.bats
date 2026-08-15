@@ -1,0 +1,168 @@
+#!/usr/bin/env bats
+# E2E acceptance for the shell hookup (`dodot install`), spec §7.
+#
+# The story this file exists to prove, end to end in a clean
+# environment: install dodot, `up` (the never-activated warning
+# fires), `install --write` (a measured ✓), and a *real* new shell
+# actually activates. Everything below runs the real binary against a
+# real bash, because the whole point of this feature is that dodot
+# stops taking the rc file's word for it — a mocked shell would test
+# the mock.
+#
+# bash, not zsh: the CI image ships bash and may not ship zsh. `$SHELL`
+# is exported per-test rather than in setup() so the refusal case can
+# override it.
+
+setup() {
+    load helpers/setup
+    sandbox_setup
+    export SHELL=/bin/bash
+    # The probe spawns `$SHELL -ic`, which for bash reads ~/.bashrc —
+    # the same file the rc ladder targets. Nothing is there yet.
+    rm -f "$HOME/.bashrc"
+}
+
+teardown() {
+    sandbox_teardown
+}
+
+# ── The acceptance story (spec §7) ──────────────────────────────
+
+@test "acceptance: up warns, install --write verifies, a new shell activates" {
+    create_pack_file "shell" "aliases.sh" 'alias dodot_hookup_alias="echo activated"'
+    create_pack_bin "tools" "dodot-hookup-tool" '#!/bin/sh
+echo tool output'
+
+    # 1. A green `up` on a machine with no hookup does not stay silent.
+    run dodot up
+    [ "$status" -eq 0 ]
+    assert_output_contains "Deployed, but a new shell did not load dodot."
+    assert_output_contains "dodot install --write"
+
+    # 2. `status` agrees, from evidence alone.
+    run dodot status
+    assert_output_contains "no shell has loaded dodot yet"
+
+    # 3. Bare `install` reports and writes nothing.
+    run dodot install
+    [ "$status" -eq 0 ]
+    assert_output_contains "nothing written yet"
+    assert_not_exists "$HOME/.bashrc"
+
+    # 4. `--write` wires it and ends on a *measured* verdict.
+    run dodot install --write
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell hookup verified: a new shell loads dodot."
+    assert_file_contains "$HOME/.bashrc" "# >>> dodot shell hookup >>>"
+    assert_file_contains "$HOME/.bashrc" "dodot-init.sh"
+
+    # 5. A real new shell activates: the alias and the bin/ entry are
+    #    there because the rc was read, not because we sourced init by
+    #    hand.
+    run bash -ic 'dodot_hookup_alias'
+    assert_output_contains "activated"
+
+    run bash -ic 'command -v dodot-hookup-tool'
+    [ "$status" -eq 0 ]
+
+    # 6. And dodot now says so without spawning anything.
+    run dodot status
+    assert_output_contains "shell hookup: ok"
+    assert_output_not_contains "no shell has loaded dodot yet"
+}
+
+# ── The properties that make the story safe to repeat ───────────
+
+@test "bare install writes nothing at all" {
+    dodot up
+    echo "# my rc" > "$HOME/.bashrc"
+
+    dodot install
+
+    assert_file_contents "$HOME/.bashrc" "# my rc"
+}
+
+@test "install --write is idempotent" {
+    dodot up
+    dodot install --write
+    local first
+    first="$(cat "$HOME/.bashrc")"
+
+    run dodot install --write
+    assert_output_contains "already has dodot's hook block"
+
+    [ "$(cat "$HOME/.bashrc")" = "$first" ]
+    # One block, not two.
+    [ "$(grep -c '>>> dodot shell hookup >>>' "$HOME/.bashrc")" -eq 1 ]
+}
+
+@test "install --write preserves the rest of the rc file" {
+    dodot up
+    printf 'export BEFORE=1\n' > "$HOME/.bashrc"
+
+    dodot install --write
+
+    assert_file_contains "$HOME/.bashrc" "export BEFORE=1"
+    assert_file_contains "$HOME/.bashrc" "# >>> dodot shell hookup >>>"
+}
+
+@test "deleting the marked block is a complete uninstall" {
+    create_pack_file "shell" "aliases.sh" 'alias dodot_hookup_alias="echo activated"'
+    dodot up
+    dodot install --write
+
+    # Strip the block the way a user would.
+    sed -i'' -e '/>>> dodot shell hookup >>>/,/<<< dodot shell hookup <<</d' \
+        "$HOME/.bashrc"
+
+    # `|| true` so the expected "command not found" is the assertion's
+    # job, not a nonzero exit bats would warn about.
+    run bash -ic 'dodot_hookup_alias || true'
+    assert_output_not_contains "activated"
+
+    run dodot install
+    assert_output_contains "not found in that file"
+}
+
+@test "--rc overrides the file dodot would pick" {
+    dodot up
+
+    run dodot install --write --rc "$HOME/custom-rc"
+    [ "$status" -eq 0 ]
+
+    assert_file_contains "$HOME/custom-rc" "# >>> dodot shell hookup >>>"
+    assert_not_exists "$HOME/.bashrc"
+}
+
+@test "a hand-wired eval hookup is reported, not claimed" {
+    dodot up
+    printf 'eval "$(dodot init-sh)"\n' > "$HOME/.bashrc"
+
+    run dodot install
+    assert_output_contains "wired by hand"
+}
+
+@test "an unsupported shell is refused with the line to paste" {
+    dodot up
+
+    SHELL=/bin/sh run dodot install
+    [ "$status" -ne 0 ]
+    assert_output_contains "will not guess an rc file"
+    assert_output_contains "dodot-init.sh"
+}
+
+@test "a broken hookup is measured, not inferred from the rc file" {
+    create_pack_file "shell" "aliases.sh" 'alias dodot_hookup_alias="echo activated"'
+    dodot up
+    dodot install --write
+
+    # The hook is still in the file, but nothing reaches it. A static
+    # scan would call this fine; only running the shell finds it.
+    printf 'return 0\n%s\n' "$(cat "$HOME/.bashrc")" > "$HOME/.bashrc.new"
+    mv "$HOME/.bashrc.new" "$HOME/.bashrc"
+    rm -f "$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+
+    run dodot up
+    assert_output_contains "Deployed, but a new shell did not load dodot."
+    assert_output_contains "never reached"
+}

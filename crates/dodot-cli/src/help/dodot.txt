@@ -30,7 +30,8 @@ always live — the deployed file [item]is[/item] the source file, through a sym
 
 [header]MISC[/header]
   [item]tutorial[/item]      [desc]Interactive walkthrough using your real dotfiles[/desc]
-  [item]init-sh[/item]       [desc]Print the shell init script (eval in your rc file)[/desc]
+  [item]install[/item]       [desc]Wire dodot into your shell startup; --write applies it[/desc]
+  [item]init-sh[/item]       [desc]Print the shell init script (to wire it up by hand)[/desc]
   [item]config[/item]        [desc]Inspect, generate, or edit configuration[/desc]
   [item]reset[/item]         [desc]Resets all dodot setup, useful for troubleshooting[/desc]
   [item]help[/item]          [desc]Print help for a command, e.g. [item]dodot help up[/item][/desc]

@@ -274,6 +274,13 @@ impl TutorialEnv {
             group_mode: GroupMode::Name,
             verbose: false,
             host_facts: std::sync::Arc::new(dodot_lib::gates::HostFacts::detect()),
+            env_init_gen: dodot_lib::shell::activation::read_env_stamp(),
+            // The tutorial narrates its own steps and prompts between
+            // them; spawning a shell mid-walkthrough would print over
+            // that script. Evidence only here — the user's next real
+            // `dodot up` measures.
+            shell_probe: dodot_lib::shell::ProbePolicy::Never,
+            shell_env: dodot_lib::shell::ShellEnv::from_process(),
         }
     }
 }
@@ -582,10 +589,11 @@ fn step_concept_targets(
         return Ok(Next::Quit);
     }
 
-    // The shell-integration step explains the `eval "$(dodot init-sh)"`
-    // line, which is what makes shell snippets get sourced and `bin/`
+    // The shell-integration step covers the shell hookup — it points
+    // at `dodot install --write` and can still write the manual eval
+    // line — which is what makes shell snippets get sourced and `bin/`
     // dirs get added to PATH. Install scripts and Brewfile run once
-    // and don't need init-sh, so they don't trigger this step.
+    // and don't need the hookup, so they don't trigger this step.
     if ctx.has_shell_files {
         Ok(Next::Go("concept_shell"))
     } else {

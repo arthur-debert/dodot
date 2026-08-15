@@ -217,6 +217,7 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
         "git-install-alias.jinja",
         render::TEMPLATE_GIT_INSTALL_ALIAS,
     ),
+    ("install.jinja", render::TEMPLATE_INSTALL),
     ("secret-probe.jinja", render::TEMPLATE_SECRET_PROBE),
     ("secret-list.jinja", render::TEMPLATE_SECRET_LIST),
 ];
@@ -338,6 +339,8 @@ fn build_app() -> App {
             "git-install-alias",
         )
         .expect("register git-install-alias")
+        .command("install", handlers::install_handler, "install")
+        .expect("register install")
         .command(
             "secret.probe",
             handlers::secret_probe_handler,
@@ -388,6 +391,7 @@ fn build_app() -> App {
                 title: "Misc".into(),
                 help: None,
                 commands: vec![
+                    Some("install".into()),
                     Some("transform".into()),
                     Some("refresh".into()),
                     Some("reset".into()),
@@ -603,6 +607,26 @@ fn build_clap_command() -> ClapCommand {
         )
         .subcommand(
             ClapCommand::new("init-sh").about("Print shell init script for eval in .zshrc/.bashrc"),
+        )
+        .subcommand(
+            ClapCommand::new("install")
+                .about("Wires dodot into your shell startup; --write applies it")
+                .arg(
+                    Arg::new("write")
+                        .long("write")
+                        .help(
+                            "Write the hook block to the startup file (idempotent), then verify \
+                             it by starting a shell. Without this flag the command only reports.",
+                        )
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("rc")
+                        .long("rc")
+                        .value_name("FILE")
+                        .help("Use this startup file instead of the one dodot would pick")
+                        .num_args(1),
+                ),
         )
         .subcommand(
             ClapCommand::new("git-show-alias")

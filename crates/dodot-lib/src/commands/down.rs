@@ -211,6 +211,9 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
         diffs: Vec::new(),
+        // `down` deactivates; nagging about shell hookup on the way
+        // out is advice for a deployment the user just removed.
+        shell_hookup: None,
     })
 }
 

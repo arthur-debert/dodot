@@ -396,6 +396,27 @@ pub fn git_install_alias_handler(
     )?))
 }
 
+/// `dodot install [--write] [--rc <file>]` — report (or wire) the
+/// shell hookup.
+///
+/// Dry by default: without `--write` this only reads. `--write` splices
+/// the marked block into the resolved rc file and then spawns a shell
+/// to verify the result, so the command ends on a measurement rather
+/// than a promise (`docs/proposals/shipped/shell-hookup.lex` §4).
+pub fn install_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::install::InstallResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let opts = commands::install::InstallOptions {
+        write: matches.get_flag("write"),
+        rc: matches
+            .get_one::<String>("rc")
+            .map(std::path::PathBuf::from),
+    };
+    Ok(Output::Render(commands::install::install(&ctx, &opts)?))
+}
+
 /// `dodot template clean --path <path>` — git clean filter
 /// passthrough for template sources. Reads stdin (the working-tree
 /// source bytes), looks up the matching baseline in the cache,
@@ -583,10 +604,15 @@ pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
     let ctx = ExecutionContext::production(&dotfiles_root, false)?;
     let root_config = ctx.config_manager.root_config()?;
+    // Stamped now, not read off the written script: this script is
+    // about to be sourced by the shell running the `eval`, so "now" is
+    // exactly when this activation happens. A later `up` bumps the
+    // generation past it and correctly ages this shell into stale.
     let script = dodot_lib::shell::generate_init_script(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         root_config.profiling.enabled,
+        dodot_lib::shell::activation::current_generation(),
     )?;
     print!("{script}");
     Ok(())

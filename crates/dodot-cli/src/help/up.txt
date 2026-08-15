@@ -38,7 +38,11 @@ the script changes. Use [item]--provision-rerun[/item] to force a re-run, or
 
   After [item]up[/item], shell snippets and PATH additions take effect in shells
   that re-source the init script. Open a new shell, or source it
-  manually. See [item]dodot init-sh[/item] for the integration line.[/desc]
+  manually.
+
+  [item]up[/item] also reports whether any shell is actually loading dodot. If
+  it says no shell has, run [item]dodot install --write[/item] — that wires the
+  hook and verifies it by starting a shell.[/desc]
 
 [header]SEE ALSO[/header]
   [item]dodot tutorial[/item]   [desc]Walks you through a real [item]dodot up[/item] step by step[/desc]

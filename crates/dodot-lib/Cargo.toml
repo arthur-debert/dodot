@@ -13,6 +13,10 @@ confique = "0.4"
 diffy = "0.4"
 flate2 = "1"
 glob = "0.3"
+# Two Unix facts std does not expose: killing a process group (the
+# shell-hookup probe's timeout, `shell::probe`) and the login shell in
+# the user database (`shell::rc`).
+libc = "0.2"
 minijinja = "2"
 plist = "1.7"
 serde = { version = "1", features = ["derive"] }

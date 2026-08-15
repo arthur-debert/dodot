@@ -37,14 +37,17 @@ dodot status
 dodot up
 dodot up git nvim
 
-# Shell integration (add to .zshrc / .bashrc)
-eval "$(dodot init-sh)"
+# Wire dodot into your shell startup, then verify it fires.
+# Bare `dodot install` only reports; --write applies it.
+dodot install --write
 
 # Remove deployments cleanly
 dodot down git
 ```
 
 First time on a repo? `dodot tutorial` walks you through deploying one pack interactively, using your real files, in about ten minutes — nothing changes without an explicit yes.
+
+Deploying a pack and your shell loading it are two different things, and only the second one you actually experience. `dodot up` and `dodot status` report on both; `dodot install --write` is what fixes the second, and it confirms its own work by starting a shell rather than taking your rc file's word for it. Prefer to own the rc line yourself? `eval "$(dodot init-sh)"` still works and is still supported.
 
 ## How It Works
 
@@ -144,7 +147,8 @@ Adopt existing settings with `dodot adopt --into <pack> ~/Library/Preferences/co
 | `adopt`               | Move existing files into a pack, symlink back        |
 | `fill`                | Add template files to an existing pack               |
 | `addignore`           | Drop a `.dodotignore` marker (pack-ignore)           |
-| `init-sh`             | Print shell init script for `eval`                   |
+| `install`             | Wire dodot into your shell startup, and verify it    |
+| `init-sh`             | Print shell init script, to wire it up by hand       |
 | `config`              | Inspect and modify configuration                     |
 | `plist`               | clean/smudge filters for macOS plists (stdin→stdout) |
 | `git-install-filters` | Wire plist filters into the repo's `.git/config`     |

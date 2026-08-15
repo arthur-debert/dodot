@@ -70,4 +70,9 @@
 [header]Diffs (run-once files with edits since last run):[/header]
 {% for d in diffs %}
 [pack-name]{{ d.pack }} / {{ d.file }}[/pack-name]
-{{ d.body }}{% endfor %}{% endif %}
+{{ d.body }}{% endfor %}{% endif %}{% if shell_hookup %}
+{% if shell_hookup.severity == "warning" %}[warning]⚠ {{ shell_hookup.message }}[/warning]
+{% elif shell_hookup.severity == "info" %}[message]{{ shell_hookup.message }}[/message]
+{% else %}[dim]{{ shell_hookup.message }}[/dim]
+{% endif %}{% if shell_hookup.hint %}[dim]{{ shell_hookup.hint }}[/dim]
+{% endif %}{% endif %}

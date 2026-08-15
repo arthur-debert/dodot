@@ -141,6 +141,25 @@ pub trait Pather: Send + Sync {
         self.data_dir().join("probes").join("shell-init")
     }
 
+    /// Directory holding shell-hookup activation evidence — sibling of
+    /// the shell-init profiles, so probe data stays under one roof
+    /// without the heartbeat landing in the directory the profile
+    /// reader and rotator scan. See
+    /// `docs/proposals/shipped/shell-hookup.lex` §2.1.
+    fn probes_hookup_dir(&self) -> PathBuf {
+        self.data_dir().join("probes").join("hookup")
+    }
+
+    /// The heartbeat marker the generated init script rewrites on
+    /// every shell activation. Contents: the init-script generation
+    /// that wrote it, as ASCII decimal. Absent until some shell has
+    /// sourced `dodot-init.sh` at least once — that absence is what
+    /// distinguishes "never activated" from "activated, just not
+    /// here". See `docs/proposals/shipped/shell-hookup.lex` §2.1.
+    fn hookup_heartbeat_path(&self) -> PathBuf {
+        self.probes_hookup_dir().join("heartbeat")
+    }
+
     /// On-disk cache for homebrew-cask probe data. One JSON file per
     /// cask token; TTL-based invalidation. See
     /// `docs/proposals/macos-paths.lex` §8.2.

@@ -1,0 +1,45 @@
+[header]dodot install[/header] — Wire dodot into your shell startup.
+
+[desc][item]dodot up[/item] proves your packs are deployed. It proves nothing about
+whether any shell ever [item]loads[/item] them — that takes one line in your
+shell's startup file, and this command owns that line.
+
+Run bare, it only reports: which shell you use, which file dodot
+would write to (resolving symlinks and [item]$ZDOTDIR[/item]), whether the hook
+is already there, and the exact line. Nothing is written.
+
+With [item]--write[/item], dodot adds its own marked block to that file and then
+[item]starts a shell to check that the hook actually fires[/item] — so you end on
+a measured answer, not a promise.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot install [--write] [--rc <file>][/usage]
+
+[header]OPTIONS[/header]
+  [item]--write[/item]         [desc]Write the hook block, then verify it. Safe to re-run:
+                  an existing block is replaced in place, never duplicated.[/desc]
+  [item]--rc <file>[/item]     [desc]Write to this file instead of the one dodot picks.[/desc]
+
+[header]WHAT GETS WRITTEN[/header]
+  [example]# >>> dodot shell hookup >>>
+  [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
+  # <<< dodot shell hookup <<<[/example]
+  [desc]Only that block. Everything else in the file is left untouched,
+  and deleting the block is a complete uninstall.[/desc]
+
+[header]WHICH FILE[/header]
+  [desc][dim]•[/dim] zsh — [item]${ZDOTDIR:-$HOME}/.zshrc[/item] ([item]~/.zshenv[/item] is checked for a [item]ZDOTDIR[/item] setting)
+  [dim]•[/dim] bash — [item]~/.bashrc[/item]; on macOS [item]~/.bash_profile[/item] is chained to it,
+    because Terminal opens login shells that never read [item]~/.bashrc[/item]
+  [dim]•[/dim] a missing file is created; a symlinked one is written [item]through[/item],
+    which lands the hook in your dotfiles repo — dodot says so when it does
+  [dim]•[/dim] any other shell — dodot refuses to guess and prints the line instead[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot install                  [dim]# what would happen, and where[/dim]
+  dodot install --write          [dim]# do it, then verify it[/dim]
+  dodot install --write --rc ~/.config/sh/rc[/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot init-sh[/item]                [desc]The script the hook sources; wire it by hand if you prefer[/desc]
+  [item]dodot status[/item]                 [desc]Reports whether shells are loading dodot[/desc]
