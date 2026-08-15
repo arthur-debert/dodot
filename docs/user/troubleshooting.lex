@@ -117,8 +117,9 @@ Troubleshooting
         - `shell hookup: ok` — the hookup is fine, so the problem is elsewhere. Skip to the checks below.
         - `Deployed, but no shell has loaded dodot yet.` — nothing in your shell startup loads dodot. Run `dodot install --write`; it wires the hook and then verifies it by starting a shell.
         - `This shell started before your last dodot up.` — open a new shell.
+        - `This shell hasn't loaded dodot.` — the terminal you're typing in sourced nothing, even if some earlier shell did. The hint that follows says which case you're in: the hook is missing from your rc file (wire it with `dodot install --write`) or it's present and this is probably a shell opened before it landed (open a new one).
 
-        For a measured answer rather than an inferred one — including the case where the hook is in your rc but something earlier in the file fails before reaching it — run `dodot install --write` (safe to re-run; an existing block is replaced, never duplicated) or a plain `dodot up`. Those are the two commands that start a shell to find out. The four states and every message are in [./shell-integration.lex] §5.
+        For a measured answer rather than an inferred one — including the case where the hook is in your rc but something earlier in the file fails before reaching it — run `dodot install --write` (safe to re-run; an existing block is replaced, never duplicated) or a plain `dodot up`. Those are the two commands that start a shell to find out. The five states and every message are in [./shell-integration.lex] §5.
 
         If the hookup is healthy and a specific pack still isn't landing:
 

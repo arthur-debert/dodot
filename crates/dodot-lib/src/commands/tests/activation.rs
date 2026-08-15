@@ -118,7 +118,9 @@ fn status_reports_a_quiet_ok_for_a_healthy_hookup() {
 
 /// A shell that never sourced init (cron, an editor task runner) is
 /// not evidence of a broken hookup as long as some shell activated at
-/// the current generation.
+/// the current generation — but only while dodot is *not* attached to
+/// a terminal. A detached process cannot tell "I am not a shell
+/// session" apart from a shell session, so it defers to the heartbeat.
 #[test]
 fn status_stays_healthy_when_the_heartbeat_is_current_but_this_process_has_no_stamp() {
     let env = env_with_shell_pack();
@@ -131,6 +133,129 @@ fn status_stays_healthy_when_the_heartbeat_is_current_but_this_process_has_no_st
         .unwrap()
         .shell_hookup
         .unwrap();
+    assert_eq!(notice.state, "healthy");
+}
+
+/// The dead-hookup primary case (#279): the hookup used to work (the
+/// heartbeat holds the current generation), then broke — and the shell
+/// the user is typing in (tty attached, no stamp) demonstrably did not
+/// load dodot. The old high-water-mark heartbeat must not keep
+/// certifying "ok"; the rc scan supplies the diagnosis: the hook is
+/// absent from the rc file, so name the file and the fix.
+#[test]
+fn status_from_a_tty_shell_without_a_stamp_reports_the_dead_hookup() {
+    let env = env_with_shell_pack();
+    up::up(None, &make_ctx(&env)).unwrap();
+    let generation =
+        activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+    // Some shell activated back when the hookup still worked…
+    simulate_activation(&env, generation);
+
+    // …but the terminal in front of the user sourced nothing.
+    let mut ctx = make_ctx(&env);
+    ctx.tty = true;
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/zsh".into()),
+        zdotdir: None,
+    };
+    // No ~/.zshrc with a hook exists in this home: the hookup is dead.
+
+    let notice = status::status(None, &ctx).unwrap().shell_hookup.unwrap();
+    assert_eq!(notice.state, "shell-not-loaded");
+    assert_eq!(notice.severity, "warning");
+    assert!(
+        notice.message.contains("hasn't loaded dodot"),
+        "the message states what is literally true: {}",
+        notice.message
+    );
+    let hint = notice.hint.unwrap();
+    assert!(
+        hint.contains("~/.zshrc") && hint.contains("dodot install --write"),
+        "an absent hook names the rc file and the fix: {hint}"
+    );
+    assert!(
+        !hint.contains("new shell"),
+        "no new shell fixes a missing hook: {hint}"
+    );
+}
+
+/// The second-order case (#279): after `up` has bumped the generation,
+/// the heartbeat ages into Old — but when the hook is absent from the
+/// rc, "open a new shell" is wrong advice. The rc scan decides.
+#[test]
+fn status_after_an_up_does_not_advise_a_new_shell_when_the_hook_is_gone() {
+    let env = env_with_shell_pack();
+    up::up(None, &make_ctx(&env)).unwrap();
+    let generation =
+        activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+    // The heartbeat predates the current generation: the classic
+    // stale-shell evidence shape.
+    simulate_activation(&env, generation - 1);
+
+    let mut ctx = make_ctx(&env);
+    ctx.tty = true;
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/zsh".into()),
+        zdotdir: None,
+    };
+
+    let notice = status::status(None, &ctx).unwrap().shell_hookup.unwrap();
+    assert_eq!(notice.state, "shell-not-loaded");
+    let hint = notice.hint.unwrap();
+    assert!(
+        !hint.contains("new shell"),
+        "a missing hook must not get stale-shell advice: {hint}"
+    );
+    assert!(hint.contains("dodot install --write"), "hint: {hint}");
+}
+
+/// When the hook *is* wired in the rc, a tty shell without a stamp is
+/// most plausibly a shell opened before the hook landed: the advice
+/// stays "open a new one", phrased as what the evidence supports.
+#[test]
+fn status_from_a_tty_shell_with_the_hook_wired_advises_a_new_shell() {
+    let env = env_with_shell_pack();
+    up::up(None, &make_ctx(&env)).unwrap();
+    let generation =
+        activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+    simulate_activation(&env, generation);
+
+    let hook = activation::hook_line(&env.paths.init_script_path(), env.paths.home_dir());
+    env.fs
+        .write_file(&env.paths.home_dir().join(".zshrc"), hook.as_bytes())
+        .unwrap();
+
+    let mut ctx = make_ctx(&env);
+    ctx.tty = true;
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/zsh".into()),
+        zdotdir: None,
+    };
+
+    let notice = status::status(None, &ctx).unwrap().shell_hookup.unwrap();
+    assert_eq!(notice.state, "shell-not-loaded");
+    assert_eq!(notice.severity, "info");
+    assert!(
+        notice.hint.unwrap().contains("new shell"),
+        "hook present: an old shell is the likely story"
+    );
+}
+
+/// A live tty shell keeps its quiet ok: the tty signal only breaks the
+/// tie when the stamp is absent.
+#[test]
+fn status_from_a_live_tty_shell_stays_healthy() {
+    let env = env_with_shell_pack();
+    up::up(None, &make_ctx(&env)).unwrap();
+    let generation =
+        activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+    simulate_activation(&env, generation);
+
+    let mut ctx = make_ctx(&env);
+    ctx.tty = true;
+    ctx.env_init_gen = Some(generation);
+
+    let notice = status::status(None, &ctx).unwrap().shell_hookup.unwrap();
     assert_eq!(notice.state, "healthy");
 }
 

@@ -1048,6 +1048,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 /// this — it judges against the pre-regeneration generation instead
 /// (`up::activation_notice`).
 ///
+/// `status` is the one caller that passes real session evidence
+/// (`ctx.tty`, #279): it answers "is my setup working?" for the
+/// session it runs from, and may not probe (spec §9), so the tty
+/// signal plus the static rc scan are all it has against a heartbeat
+/// certifying a hookup that has since died. This makes `status`
+/// output session-dependent — inherent to the question being asked.
+///
 /// `status` is a report, so it also shows the quiet healthy line; the
 /// states and their copy come from `shell-hookup.lex` §5.
 pub(crate) fn shell_hookup_notice(
@@ -1061,6 +1068,8 @@ pub(crate) fn shell_hookup_notice(
         ctx.env_init_gen,
         reference,
         true,
+        ctx.tty,
+        &ctx.shell_env,
     )
 }
 
@@ -1279,6 +1288,7 @@ mod tests {
             verbose: false,
             host_facts: Arc::new(crate::gates::HostFacts::detect()),
             env_init_gen: None,
+            tty: false,
             shell_probe: crate::shell::ProbePolicy::Never,
             shell_env: crate::shell::ShellEnv::default(),
         }

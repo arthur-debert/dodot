@@ -522,6 +522,33 @@ pub fn scan_hook_file(fs: &dyn Fs, path: &Path) -> HookPresence {
         .unwrap_or(HookPresence::Absent)
 }
 
+/// The rc file the user's shell should be reading and what it says
+/// about the hook — the input to the "hook absent vs hook not
+/// reached" diagnosis split, as `(presence, display path)`.
+///
+/// Pure file reads, so callers barred from spawning shells (`dodot
+/// status`, spec §9) can use it as freely as the probe's diagnosis
+/// does. `rc_override` names the file when the caller already knows it
+/// (`dodot install --rc`) instead of re-walking the ladder. `None`
+/// when there is no override and the shell is one dodot has no
+/// canonical rc for; the caller then says so rather than naming a
+/// file it guessed.
+pub fn scan_expected_rc(
+    fs: &dyn Fs,
+    home: &Path,
+    env: &ShellEnv,
+    rc_override: Option<&Path>,
+) -> Option<(HookPresence, String)> {
+    let path = match rc_override {
+        Some(p) => p.to_path_buf(),
+        None => resolve_rc(fs, home, Some(env.hookup_shell()?), env, None).path,
+    };
+    Some((
+        scan_hook_file(fs, &path),
+        display_home_relative(&path, home),
+    ))
+}
+
 /// A hand-wired hook line: either form, as long as it is not
 /// commented out.
 fn is_manual_hook_line(line: &str) -> bool {

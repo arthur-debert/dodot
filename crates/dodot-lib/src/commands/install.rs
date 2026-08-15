@@ -209,12 +209,17 @@ fn verdict(
     target: &RcTarget,
 ) -> Option<ActivationNotice> {
     let reference = activation::read_script_generation(ctx.fs.as_ref(), ctx.paths.as_ref());
+    // `tty: false` — session evidence is `status`'s tie-breaker
+    // (#279); `install` reports configuration and, with `--write`,
+    // measures, so its evidence fallback stays two-signal.
     let evidence = activation::notice_for(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         ctx.env_init_gen,
         reference,
         true,
+        false,
+        &ctx.shell_env,
     );
     let Some(timeout) = ctx.shell_probe.timeout().filter(|_| opts.write) else {
         return evidence;

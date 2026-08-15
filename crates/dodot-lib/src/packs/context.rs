@@ -79,6 +79,18 @@ pub struct ExecutionContext {
     /// evaluation is a function of its inputs and tests can inject a
     /// stamp instead of mutating process-global environment.
     pub env_init_gen: Option<u64>,
+    /// Whether this invocation is attached to a terminal — the
+    /// *session* evidence that breaks the stampless tie in the
+    /// shell-hookup ladder (#279): a tty-attached process with no
+    /// `DODOT_INIT_GEN` is direct proof the session in front of the
+    /// user did not load dodot, whatever the heartbeat high-water mark
+    /// claims about past sessions. Snapshotted at context construction
+    /// (stderr `isatty`, the fd least likely to be redirected) so
+    /// evaluation stays a function of its inputs; `false` in tests
+    /// unless a test opts in. Consumed only by `status`
+    /// (`status::shell_hookup_notice`) — `up` and `install` measure
+    /// instead of inferring from the session.
+    pub tty: bool,
     /// Whether this invocation may spawn a shell to *measure*
     /// activation — signal 3 of the hookup ladder
     /// (`docs/proposals/shipped/shell-hookup.lex` §3).
@@ -171,6 +183,7 @@ impl ExecutionContext {
             verbose,
             host_facts: Arc::new(HostFacts::detect()),
             env_init_gen: crate::shell::activation::read_env_stamp(),
+            tty: std::io::IsTerminal::is_terminal(&std::io::stderr()),
             shell_probe: crate::shell::ProbePolicy::production(),
             shell_env: crate::shell::ShellEnv::from_process(),
         })
