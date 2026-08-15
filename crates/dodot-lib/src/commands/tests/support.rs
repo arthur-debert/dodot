@@ -87,6 +87,7 @@ pub(super) fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         verbose: false,
         host_facts: Arc::new(crate::gates::HostFacts::detect()),
         env_init_gen: None,
+        tty: false,
         shell_probe: crate::shell::ProbePolicy::Never,
         shell_env: crate::shell::ShellEnv::default(),
     }
@@ -120,6 +121,7 @@ pub(super) fn make_ctx_with_runner(
         verbose: false,
         host_facts: Arc::new(crate::gates::HostFacts::detect()),
         env_init_gen: None,
+        tty: false,
         shell_probe: crate::shell::ProbePolicy::Never,
         shell_env: crate::shell::ShellEnv::default(),
     }

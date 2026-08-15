@@ -92,14 +92,15 @@ Shell integration
 
 5. Activation states
 
-    Because the init script leaves evidence, `dodot up` and `dodot status` can tell you whether shells are actually loading dodot instead of assuming it. Four states, four different things to do:
+    Because the init script leaves evidence, `dodot up` and `dodot status` can tell you whether shells are actually loading dodot instead of assuming it. Five states, five different things to do:
 
     Activation states:
-        | State           | What it means                                                    | What to do                                     |
-        | healthy         | A shell has loaded the current init script.                      | Nothing. `status` shows a quiet `shell hookup: ok`. |
-        | stale shell     | *This* shell loaded dodot, but before your last `dodot up`.      | Open a new shell.                              |
-        | never activated | No shell has ever loaded dodot's init script.                    | `dodot install --write`.                       |
-        | verified broken | dodot started a shell and measured that it did not load dodot.   | Fix what the diagnosis names — see below.      |
+        | State            | What it means                                                    | What to do                                     |
+        | healthy          | A shell has loaded the current init script.                      | Nothing. `status` shows a quiet `shell hookup: ok`. |
+        | stale shell      | *This* shell loaded dodot, but before your last `dodot up`.      | Open a new shell.                              |
+        | shell not loaded | You ran `dodot status` from a terminal, and that shell did not load dodot — whatever some earlier shell once did. | What the hint names: the hook is missing from your rc (wire it), or it's there and this is likely an old shell (open a new one). |
+        | never activated  | No shell has ever loaded dodot's init script.                    | `dodot install --write`.                       |
+        | verified broken  | dodot started a shell and measured that it did not load dodot.   | Fix what the diagnosis names — see below.      |
 
     :: table align=lll ::
 
@@ -116,6 +117,22 @@ Shell integration
         Open a new shell to pick up the current deployment.
 
     :: shell ::
+
+    _Shell not loaded_ comes only from `dodot status`, and only when it runs attached to a terminal: no matter what the heartbeat says some past shell did, the shell you are typing in exported no generation stamp, so it demonstrably did not load dodot. This is how `status` catches a hookup that *used to* work and then broke — an rc rewrite, a commented-out hook, a moved dotfiles repo — without starting a shell. A scan of your rc file picks the message. Hook missing:
+
+        This shell hasn't loaded dodot.
+        ~/.zshrc doesn't have the dodot hook. Run `dodot install --write` to wire it up, or add this line yourself: [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
+
+    :: shell ::
+
+    …or hook present, in which case this is most likely a shell opened before the hook landed:
+
+        This shell hasn't loaded dodot.
+        The hook is in ~/.zshrc, so this shell probably predates it — open a new shell. If that changes nothing, run `dodot up` to diagnose.
+
+    :: shell ::
+
+    The wording stays "this shell", not "your hookup is broken", on purpose: an editor's task shell legitimately reads no rc file, and dodot can't tell that apart from a broken hookup without measuring. When dodot runs with no terminal at all (cron, scripts), this state never fires — a fresh heartbeat still reads as healthy there.
 
     _Verified broken_ comes only from `dodot up` or `dodot install --write`, which are the two commands allowed to start a shell to find out. The diagnosis splits two ways, because they need different fixes — the hook is missing from the file:
 

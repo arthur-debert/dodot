@@ -24,7 +24,8 @@
 //!
 //! [`classify_stamp`] and [`classify_heartbeat`] turn the two raw
 //! signals into a state each, relative to a *reference generation*, and
-//! [`evaluate`] folds the pair into one user-facing
+//! [`evaluate`] folds the pair — plus one bit of *session* evidence,
+//! whether dodot is attached to a terminal — into one user-facing
 //! [`ActivationState`]. All three are pure — the IO lives in
 //! [`collect_signals`].
 //!
@@ -52,6 +53,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::fs::Fs;
 use crate::paths::Pather;
+use crate::shell::rc::{self, HookPresence};
 
 /// Environment variable the generated init script exports, carrying
 /// the generation it was written at.
@@ -149,16 +151,23 @@ pub enum HeartbeatState {
     Absent,
 }
 
-/// The user-facing activation state (spec §5).
+/// The user-facing activation state (spec §5, plus [`ShellNotLoaded`]
+/// from #279).
 ///
-/// The first three are decided on evidence alone. [`VerifiedBroken`]
-/// is the one state only a measurement can reach — see
-/// [`crate::shell::probe`] — and it takes precedence over the others
-/// when the probe has run: with evidence alone, a hookup that used to
-/// work and then broke looks like a stale shell, so the user gets
-/// "open a new shell" for a problem no new shell will fix.
+/// All but [`VerifiedBroken`] are decided on evidence alone — the two
+/// generation signals plus, for a caller that supplies it, the
+/// session's tty-attachment. [`VerifiedBroken`] is the one state only
+/// a measurement can reach — see [`crate::shell::probe`] — and it
+/// takes precedence over the others when the probe has run: with the
+/// generation signals alone, a hookup that used to work and then
+/// broke looks like a stale shell, so the user gets "open a new
+/// shell" for a problem no new shell will fix. [`ShellNotLoaded`] is
+/// the evidence path's answer to that same broken hookup for callers
+/// that may not measure (`status`), built from the tty signal and the
+/// static rc scan.
 ///
 /// [`VerifiedBroken`]: ActivationState::VerifiedBroken
+/// [`ShellNotLoaded`]: ActivationState::ShellNotLoaded
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivationState {
     /// Evidence says shells are loading dodot at the current
@@ -170,6 +179,13 @@ pub enum ActivationState {
     StaleShell,
     /// No evidence of any activation, ever. The new-user failure story.
     NeverActivated,
+    /// dodot is attached to a terminal but inherited no stamp: the
+    /// shell the user is typing in demonstrably did not load dodot,
+    /// whatever the heartbeat claims about some past session (#279).
+    /// The literal truth and nothing more — an IDE task shell with a
+    /// pty legitimately reads no rc file, so the notice never asserts
+    /// "your hookup is broken"; the rc scan supplies the next step.
+    ShellNotLoaded,
     /// The probe spawned a shell and it did not load dodot. Measured,
     /// not inferred.
     VerifiedBroken,
@@ -183,6 +199,7 @@ impl ActivationState {
             ActivationState::Healthy => "healthy",
             ActivationState::StaleShell => "stale-shell",
             ActivationState::NeverActivated => "never-activated",
+            ActivationState::ShellNotLoaded => "shell-not-loaded",
             ActivationState::VerifiedBroken => "verified-broken",
         }
     }
@@ -223,7 +240,8 @@ pub fn classify_heartbeat(heartbeat: Option<u64>, reference: Option<u64>) -> Hea
     }
 }
 
-/// Fold the two signals into one state.
+/// Fold the two signals, plus the session's tty-attachment, into one
+/// state.
 ///
 /// The stamp wins when present: it is direct evidence about the shell
 /// the user is typing in, which is the one they can act on. A current
@@ -232,36 +250,55 @@ pub fn classify_heartbeat(heartbeat: Option<u64>, reference: Option<u64>) -> Hea
 /// even when some *other* shell is current — "open a new shell" is
 /// still the fix.
 ///
-/// With no stamp at all, the heartbeat decides: fresh means shells are
-/// activating and this process just isn't one of them (a cron job, an
-/// editor's task runner); old means nothing has activated since the
-/// last regeneration; absent means nothing ever has.
-pub fn evaluate(stamp: StampState, heartbeat: HeartbeatState) -> ActivationState {
+/// With no stamp, `tty` breaks the tie the heartbeat cannot (#279).
+/// The heartbeat is a high-water mark: it proves some shell activated
+/// once, never that shells still do — a hookup that breaks after a
+/// heartbeat keeps its old certificate indefinitely. But a
+/// tty-attached process with no stamp *is* direct evidence: the
+/// session in front of the user did not load dodot, and that outranks
+/// the heartbeat's claim about a past session — whether the heartbeat
+/// is fresh (the dead-hookup case the epic was built to catch) or old
+/// (where blind "open a new shell" advice may be wrong; the rc scan
+/// decides).
+///
+/// Detached and stampless (a cron job, an editor's task runner — the
+/// callers this arm exists for), the heartbeat still decides: fresh
+/// means shells are activating and this process just isn't one of
+/// them; old means nothing has activated since the last regeneration;
+/// absent means nothing ever has.
+pub fn evaluate(stamp: StampState, heartbeat: HeartbeatState, tty: bool) -> ActivationState {
     match (stamp, heartbeat) {
         (StampState::Current, _) => ActivationState::Healthy,
         (StampState::Stale, _) => ActivationState::StaleShell,
+        (StampState::Absent, HeartbeatState::Absent) => ActivationState::NeverActivated,
+        (StampState::Absent, _) if tty => ActivationState::ShellNotLoaded,
         (StampState::Absent, HeartbeatState::Fresh) => ActivationState::Healthy,
         (StampState::Absent, HeartbeatState::Old) => ActivationState::StaleShell,
-        (StampState::Absent, HeartbeatState::Absent) => ActivationState::NeverActivated,
     }
 }
 
 /// Read both evidence signals and evaluate them against `reference`.
 ///
-/// `env_stamp` is passed in rather than read here so evaluation stays
-/// a function of its inputs: production snapshots it once into
+/// `env_stamp` and `tty` are passed in rather than read here so
+/// evaluation stays a function of its inputs: production snapshots
+/// both once into
 /// [`ExecutionContext`](crate::packs::orchestration::ExecutionContext)
-/// via [`read_env_stamp`], tests hand over a value.
+/// (via [`read_env_stamp`] and an `isatty` check), tests hand over
+/// values. Callers that judge on the classic two-signal ladder alone
+/// (`up`, `install`) pass `tty: false`; only `status` supplies real
+/// session evidence — see [`notice_for`].
 pub fn collect_signals(
     fs: &dyn Fs,
     paths: &dyn Pather,
     env_stamp: Option<u64>,
     reference: Option<u64>,
+    tty: bool,
 ) -> ActivationState {
     let heartbeat = read_heartbeat(fs, paths);
     evaluate(
         classify_stamp(env_stamp, reference),
         classify_heartbeat(heartbeat, reference),
+        tty,
     )
 }
 
@@ -274,6 +311,15 @@ pub fn collect_signals(
 /// non-problem. The signals are read the same way either way — this is
 /// purely about whether the answer is worth showing.
 ///
+/// `tty` is the session evidence (see [`evaluate`]); `shell_env` is
+/// only consulted when it produces [`ActivationState::ShellNotLoaded`],
+/// whose next step comes from the static rc scan
+/// ([`rc::scan_expected_rc`]) — file reads, never a shell spawn, so
+/// `status` stays inside spec §9. Callers that must not let the
+/// invoking session color the verdict (`up`, `install`, whose probe
+/// path measures instead) pass `tty: false` and keep today's
+/// two-signal behavior.
+///
 /// `quiet_ok` asks for the healthy line; see
 /// [`ActivationNotice::for_state`].
 pub fn notice_for(
@@ -282,13 +328,20 @@ pub fn notice_for(
     env_stamp: Option<u64>,
     reference: Option<u64>,
     quiet_ok: bool,
+    tty: bool,
+    shell_env: &rc::ShellEnv,
 ) -> Option<ActivationNotice> {
     let init_script = paths.init_script_path();
     if !fs.exists(&init_script) {
         return None;
     }
-    let state = collect_signals(fs, paths, env_stamp, reference);
-    ActivationNotice::for_state(state, &hook_line(&init_script, paths.home_dir()), quiet_ok)
+    let state = collect_signals(fs, paths, env_stamp, reference, tty);
+    let hook_line = hook_line(&init_script, paths.home_dir());
+    if state == ActivationState::ShellNotLoaded {
+        let scan = rc::scan_expected_rc(fs, paths.home_dir(), shell_env, None);
+        return Some(ActivationNotice::for_shell_not_loaded(scan, &hook_line));
+    }
+    ActivationNotice::for_state(state, &hook_line, quiet_ok)
 }
 
 /// A rendered activation message for `up` / `status` output.
@@ -347,6 +400,13 @@ impl ActivationNotice {
                      file yourself: {hook_line}"
                 )),
             }),
+            // The full notice needs the rc scan for its next step;
+            // `notice_for` routes there ([`Self::for_shell_not_loaded`])
+            // before reaching this fold. This arm answers for a caller
+            // that has no scan to offer: same headline, scanless hint.
+            ActivationState::ShellNotLoaded => {
+                Some(ActivationNotice::for_shell_not_loaded(None, hook_line))
+            }
             // Only the probe reaches this state, and it renders its own
             // diagnosis (`probe::Verdict::notice`). This arm is the
             // answer for a caller that folds the state through the
@@ -360,6 +420,59 @@ impl ActivationNotice {
                      file yourself: {hook_line}"
                 )),
             }),
+        }
+    }
+
+    /// Build the [`ActivationState::ShellNotLoaded`] notice.
+    ///
+    /// The headline states only what the evidence proves — *this*
+    /// shell hasn't loaded dodot — because a tty is not proof of a
+    /// shell session (an IDE task runner allocates one too, and
+    /// legitimately reads no rc). The static scan of the rc the user's
+    /// shell should be reading (`scan`: presence + display path, as
+    /// returned by [`rc::scan_expected_rc`]) supplies the next step:
+    ///
+    /// - hook absent → the rc has no hook, so no new shell will fix
+    ///   it; name the file and the fix (a warning).
+    /// - hook present → this is most plausibly a shell opened before
+    ///   the hook landed; open a new one, escalate to `dodot up` (which
+    ///   may probe) if that changes nothing (info).
+    /// - `None` (unsupported shell, no rc to name) → just the manual
+    ///   line (info — with nothing scanned, the false-positive reading
+    ///   stays plausible).
+    pub fn for_shell_not_loaded(
+        scan: Option<(HookPresence, String)>,
+        hook_line: &str,
+    ) -> ActivationNotice {
+        let state = ActivationState::ShellNotLoaded;
+        let (severity, hint) = match scan {
+            Some((HookPresence::Absent, rc_path)) => (
+                "warning",
+                format!(
+                    "{rc_path} doesn't have the dodot hook. Run `dodot install --write` to \
+                     wire it up, or add this line yourself: {hook_line}"
+                ),
+            ),
+            Some((_, rc_path)) => (
+                "info",
+                format!(
+                    "The hook is in {rc_path}, so this shell probably predates it — open a \
+                     new shell. If that changes nothing, run `dodot up` to diagnose."
+                ),
+            ),
+            None => (
+                "info",
+                format!(
+                    "dodot could not tell which rc file your shell reads. Make sure it has \
+                     this line: {hook_line}"
+                ),
+            ),
+        };
+        ActivationNotice {
+            state: state.as_str().into(),
+            severity: severity.into(),
+            message: "This shell hasn't loaded dodot.".into(),
+            hint: Some(hint),
         }
     }
 }
@@ -438,26 +551,36 @@ mod tests {
     }
 
     #[test]
-    fn evaluation_covers_the_full_stamp_by_heartbeat_matrix() {
+    fn evaluation_covers_the_full_stamp_by_heartbeat_by_tty_matrix() {
         use ActivationState::*;
         use HeartbeatState as H;
         use StampState as S;
+        // (stamp, heartbeat, detached expectation, tty expectation).
+        // A stamp — direct evidence either way — makes tty irrelevant;
+        // it only breaks the stampless tie (#279).
         let matrix = [
-            (S::Current, H::Fresh, Healthy),
-            (S::Current, H::Old, Healthy),
-            (S::Current, H::Absent, Healthy),
-            (S::Stale, H::Fresh, StaleShell),
-            (S::Stale, H::Old, StaleShell),
-            (S::Stale, H::Absent, StaleShell),
-            (S::Absent, H::Fresh, Healthy),
-            (S::Absent, H::Old, StaleShell),
-            (S::Absent, H::Absent, NeverActivated),
+            (S::Current, H::Fresh, Healthy, Healthy),
+            (S::Current, H::Old, Healthy, Healthy),
+            (S::Current, H::Absent, Healthy, Healthy),
+            (S::Stale, H::Fresh, StaleShell, StaleShell),
+            (S::Stale, H::Old, StaleShell, StaleShell),
+            (S::Stale, H::Absent, StaleShell, StaleShell),
+            // The dead-hookup case: the heartbeat's old certificate
+            // loses to the session in front of the user.
+            (S::Absent, H::Fresh, Healthy, ShellNotLoaded),
+            (S::Absent, H::Old, StaleShell, ShellNotLoaded),
+            (S::Absent, H::Absent, NeverActivated, NeverActivated),
         ];
-        for (stamp, heartbeat, expected) in matrix {
+        for (stamp, heartbeat, detached, tty) in matrix {
             assert_eq!(
-                evaluate(stamp, heartbeat),
-                expected,
-                "stamp={stamp:?} heartbeat={heartbeat:?}"
+                evaluate(stamp, heartbeat, false),
+                detached,
+                "detached: stamp={stamp:?} heartbeat={heartbeat:?}"
+            );
+            assert_eq!(
+                evaluate(stamp, heartbeat, true),
+                tty,
+                "tty: stamp={stamp:?} heartbeat={heartbeat:?}"
             );
         }
     }
@@ -467,15 +590,21 @@ mod tests {
         // Same matrix, driven by raw generations through the IO entry
         // point: reference 100, stamps/heartbeats above and below it.
         let cases = [
-            (Some(100), Some(100), ActivationState::Healthy),
-            (Some(99), Some(100), ActivationState::StaleShell),
-            (None, Some(100), ActivationState::Healthy),
-            (None, Some(99), ActivationState::StaleShell),
-            (None, None, ActivationState::NeverActivated),
-            (Some(100), None, ActivationState::Healthy),
-            (Some(99), None, ActivationState::StaleShell),
+            (Some(100), Some(100), false, ActivationState::Healthy),
+            (Some(99), Some(100), false, ActivationState::StaleShell),
+            (None, Some(100), false, ActivationState::Healthy),
+            (None, Some(99), false, ActivationState::StaleShell),
+            (None, None, false, ActivationState::NeverActivated),
+            (Some(100), None, false, ActivationState::Healthy),
+            (Some(99), None, false, ActivationState::StaleShell),
+            // Attached to a terminal, no stamp: the heartbeat cannot
+            // certify this session, fresh or old.
+            (None, Some(100), true, ActivationState::ShellNotLoaded),
+            (None, Some(99), true, ActivationState::ShellNotLoaded),
+            (None, None, true, ActivationState::NeverActivated),
+            (Some(100), None, true, ActivationState::Healthy),
         ];
-        for (stamp, heartbeat, expected) in cases {
+        for (stamp, heartbeat, tty, expected) in cases {
             let env = TempEnvironment::builder().build();
             if let Some(h) = heartbeat {
                 env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
@@ -484,9 +613,9 @@ mod tests {
                     .unwrap();
             }
             assert_eq!(
-                collect_signals(env.fs.as_ref(), env.paths.as_ref(), stamp, Some(100)),
+                collect_signals(env.fs.as_ref(), env.paths.as_ref(), stamp, Some(100), tty),
                 expected,
-                "stamp={stamp:?} heartbeat={heartbeat:?}"
+                "stamp={stamp:?} heartbeat={heartbeat:?} tty={tty}"
             );
         }
     }
@@ -563,6 +692,39 @@ mod tests {
         // command that does this for you — the manual line stays for
         // users who would rather wire it themselves.
         assert!(hint.contains("dodot install --write"), "hint: {hint}");
+    }
+
+    #[test]
+    fn shell_not_loaded_lets_the_rc_scan_pick_the_next_step() {
+        // Hook absent: no new shell fixes it — name the file and the fix.
+        let absent = ActivationNotice::for_shell_not_loaded(
+            Some((HookPresence::Absent, "~/.zshrc".into())),
+            "HOOK",
+        );
+        assert_eq!(absent.state, "shell-not-loaded");
+        assert_eq!(absent.severity, "warning");
+        assert_eq!(absent.message, "This shell hasn't loaded dodot.");
+        let hint = absent.hint.unwrap();
+        assert!(hint.contains("~/.zshrc") && hint.contains("dodot install --write"));
+        assert!(!hint.contains("new shell"), "{hint}");
+
+        // Hook present (managed or manual): an old shell is the likely
+        // story — advise a new one, escalate to `up` after that.
+        for presence in [HookPresence::ManagedBlock, HookPresence::Manual] {
+            let present =
+                ActivationNotice::for_shell_not_loaded(Some((presence, "~/.zshrc".into())), "HOOK");
+            assert_eq!(present.severity, "info");
+            let hint = present.hint.unwrap();
+            assert!(
+                hint.contains("new shell") && hint.contains("dodot up"),
+                "{hint}"
+            );
+        }
+
+        // No rc to name (unsupported shell): just the manual line.
+        let unknown = ActivationNotice::for_shell_not_loaded(None, "HOOK");
+        assert_eq!(unknown.severity, "info");
+        assert!(unknown.hint.unwrap().contains("HOOK"));
     }
 
     #[test]

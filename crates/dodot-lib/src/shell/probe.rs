@@ -433,31 +433,8 @@ pub fn measure(
 
     eprintln!("{}", announcement(shell));
     let outcome = run(shell, timeout);
-    let hook = scan_for_diagnosis(fs, paths, shell_env, rc_override);
+    let hook = rc::scan_expected_rc(fs, paths.home_dir(), shell_env, rc_override);
     Verdict::from_outcome(outcome, reference, hook).notice(evidence, &hook_line)
-}
-
-/// The rc file the shell should be reading and what it says about the
-/// hook — the input to the wrong-file / broken-rc diagnosis split.
-///
-/// `None` when there is no override and the shell is one dodot has no
-/// canonical rc for; the verdict then says so rather than naming a
-/// file it guessed.
-fn scan_for_diagnosis(
-    fs: &dyn Fs,
-    paths: &dyn Pather,
-    shell_env: &ShellEnv,
-    rc_override: Option<&Path>,
-) -> Option<(HookPresence, String)> {
-    let home = paths.home_dir();
-    let path = match rc_override {
-        Some(p) => p.to_path_buf(),
-        None => rc::resolve_rc(fs, home, Some(shell_env.hookup_shell()?), shell_env, None).path,
-    };
-    Some((
-        rc::scan_hook_file(fs, &path),
-        rc::display_home_relative(&path, home),
-    ))
 }
 
 /// Evaluate shell activation for a command that is allowed to measure.
@@ -479,7 +456,18 @@ pub fn notice_with_probe(
     reference_for_gate: Option<u64>,
     quiet_ok: bool,
 ) -> Option<ActivationNotice> {
-    let evidence = activation::notice_for(fs, paths, env_stamp, reference_for_gate, quiet_ok);
+    // `tty: false` — session evidence is `status`'s tie-breaker
+    // (#279); callers here get the real answer by measuring, so the
+    // evidence fallback keeps the plain two-signal reading.
+    let evidence = activation::notice_for(
+        fs,
+        paths,
+        env_stamp,
+        reference_for_gate,
+        quiet_ok,
+        false,
+        shell_env,
+    );
     let Some(timeout) = policy.timeout() else {
         return evidence;
     };

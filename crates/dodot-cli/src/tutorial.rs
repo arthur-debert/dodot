@@ -275,6 +275,11 @@ impl TutorialEnv {
             verbose: false,
             host_facts: std::sync::Arc::new(dodot_lib::gates::HostFacts::detect()),
             env_init_gen: dodot_lib::shell::activation::read_env_stamp(),
+            // Not `isatty` here: the tutorial is always run from a
+            // terminal that hasn't loaded its sandbox deployment, so
+            // the session tie-breaker (#279) would flag every status
+            // step. The walkthrough owns its own hookup teaching.
+            tty: false,
             // The tutorial narrates its own steps and prompts between
             // them; spawning a shell mid-walkthrough would print over
             // that script. Evidence only here — the user's next real
