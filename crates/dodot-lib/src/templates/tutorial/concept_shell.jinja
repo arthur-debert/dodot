@@ -3,14 +3,19 @@
 This pack has shell snippets or a [pack-name]bin/[/pack-name] directory. None of it
 reaches your shell until your shell loads dodot's init script.
 
-{% if shell_integration.line_present %}[deployed]✓ already wired up — nothing to do.[/deployed]
-{% else %}[warning]Not wired up yet.[/warning] One command does it and then starts a shell to
-check that it worked:
+{% if shell_integration.line_present %}[deployed]✓ already wired up in [/deployed][pack-name]{{ shell_integration.rc_path }}[/pack-name][deployed] — nothing to do.[/deployed]
+{% elif shell_integration.supported %}[warning]Not wired up yet.[/warning] One command does it and then checks that it
+worked:
 
   [message]dodot install --write[/message]
 
-Run that once, after the tutorial. Or add the line by hand to
-[pack-name]{{ shell_integration.rc_path }}[/pack-name] — I can write it for you, copy it to
-clipboard, or skip:
+It writes a marked block to [pack-name]{{ shell_integration.rc_path }}[/pack-name] — the file your shell
+actually reads — and ends on a measured verdict. I can run it for
+you now, or you can run it yourself later.
+{% else %}dodot can wire up bash and zsh by itself; for your shell
+({{ shell_integration.shell_kind }}) it won't guess a startup file. If you haven't already, add
+this line to whatever file your shell reads at startup:
 
-  [message]{{ shell_integration.eval_line }}[/message]{% endif %}
+  [message]{{ shell_integration.eval_line }}[/message]
+
+Or name the file yourself: [message]dodot install --write --rc <file>[/message]{% endif %}
