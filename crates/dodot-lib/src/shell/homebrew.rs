@@ -11,8 +11,8 @@
 //! `brew shellenv <shell>` already emits the block, and Homebrew is the
 //! authority on its own bootstrap. We capture that output at
 //! *generation time* — during `dodot up`, baked into `dodot-init.sh` as
-//! static text — so the shell pays nothing to ask and a brew that
-//! changes its block is picked up by the next `up`. A hand-written
+//! static text — so sourcing the script asks brew nothing and a brew
+//! that changes its block is picked up by the next `up`. A hand-written
 //! approximation would silently rot, which is why there is exactly one
 //! mechanism here and no fallback emitter (`pack-ordering.lex` §2.2).
 //!
@@ -56,11 +56,24 @@
 //!
 //! This is the first command execution dodot has ever put on the shell
 //! startup path — brew's choice, not dodot's, but ours to state
-//! plainly. The emitted block spends two process spawns (`env` plus
-//! `path_helper`) per shell start. Measured on an Apple-silicon mac
-//! over 200 iterations: 3.1 ms wall per invocation, ~2.7 ms net of the
-//! 0.46 ms `$( )` subshell baseline. `[shell] homebrew = "off"` turns
-//! it off in one config key.
+//! plainly. Two costs, and which ones a user pays depends on the hook
+//! shape:
+//!
+//! - *The emitted block*, paid by every shell that sources the script
+//!   under either hook: two process spawns (`env` plus `path_helper`).
+//!   Measured on an Apple-silicon mac over 200 iterations: ~3.1 ms wall
+//!   per invocation, ~2.7 ms net of the ~0.5 ms `$( )` subshell
+//!   baseline.
+//! - *The capture itself*, two `brew shellenv` runs (`sh` and `zsh`),
+//!   ~10-20 ms each on the same machine. Under the file-source hook —
+//!   the recommended one, a marked rc block sourcing `dodot-init.sh` by
+//!   path — this is paid once per `dodot up`/`down` and never by a
+//!   shell. Under the hand-wired `eval "$(dodot init-sh)"`, generation
+//!   *is* shell start, so both runs land on every new shell: ~20-40 ms
+//!   on top of the block's ~3 ms. See
+//!   [`capture_from_config`]'s callers.
+//!
+//! `[shell] homebrew = "off"` turns all of it off in one config key.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -79,7 +92,8 @@ pub const DEFAULT_PREFIXES: [&str; 2] = ["/opt/homebrew", "/usr/local"];
 /// The `[shell] homebrew` config key — the gate on the whole mechanism.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BrewBootstrapMode {
-    /// Emit the block when a Homebrew prefix exists on this host.
+    /// Emit the block when this host has an executable `brew` under a
+    /// known prefix.
     #[default]
     Auto,
     /// Emit nothing, ever.
@@ -108,8 +122,8 @@ pub struct BrewHost {
     /// Homebrew's bootstrap is a macOS concern; off the platform we
     /// emit nothing regardless of what is installed.
     pub is_macos: bool,
-    /// Prefix candidates in probe order. The first whose `bin/brew`
-    /// exists wins.
+    /// Prefix candidates in probe order. The first whose `bin/brew` is
+    /// an executable file wins.
     pub prefix_candidates: Vec<PathBuf>,
 }
 
@@ -126,9 +140,9 @@ impl BrewHost {
     /// Build the candidate list from its two inputs.
     ///
     /// `$HOMEBREW_PREFIX` leads when set, but does not short-circuit:
-    /// each candidate still has to hold a `bin/brew`, so a stale or
-    /// mistyped export falls through to the standard prefixes instead
-    /// of suppressing the block.
+    /// each candidate still has to hold an executable `bin/brew`, so a
+    /// stale or mistyped export falls through to the standard prefixes
+    /// instead of suppressing the block.
     pub fn new(is_macos: bool, prefix_env: Option<String>) -> Self {
         let mut prefix_candidates: Vec<PathBuf> = Vec::with_capacity(3);
         if let Some(prefix) = prefix_env.filter(|p| !p.trim().is_empty()) {
@@ -157,6 +171,11 @@ pub struct BrewBlocks {
 /// Capture the bootstrap for the running host from resolved config —
 /// the entry point every command that regenerates the init script uses.
 ///
+/// One call spawns `brew` **twice**, once per shell dialect. `up` and
+/// `down` pay that per run; `dodot init-sh` regenerates on every shell
+/// start, so under the `eval "$(dodot init-sh)"` hook a shell pays it
+/// too. See the module docs on cost.
+///
 /// The only error it can return is a bad `[shell] homebrew` value; a
 /// host without brew is `Ok(None)`.
 pub fn capture_from_config(
@@ -172,10 +191,10 @@ pub fn capture_from_config(
 /// nothing to emit.
 ///
 /// `None` — never an error — for every "no brew here" case: the mode is
-/// `off`, the host is not macOS, no candidate prefix holds a `bin/brew`,
-/// or brew itself fails to answer. A missing brew is not a broken
-/// deployment, and the next `dodot up` heals the script once brew is
-/// installed.
+/// `off`, the host is not macOS, no candidate prefix holds an executable
+/// `bin/brew`, or brew itself fails to answer. A missing brew is not a
+/// broken deployment, and the next `dodot up` heals the script once brew
+/// is installed.
 pub fn capture(
     fs: &dyn Fs,
     runner: &dyn CommandRunner,
@@ -197,12 +216,24 @@ pub fn capture(
     Some(BrewBlocks { prefix, sh, zsh })
 }
 
-/// First candidate prefix holding an executable-looking `bin/brew`.
+/// First candidate prefix holding an executable `bin/brew`.
 fn detect_prefix(fs: &dyn Fs, host: &BrewHost) -> Option<PathBuf> {
     host.prefix_candidates
         .iter()
-        .find(|prefix| fs.exists(&brew_binary(prefix)))
+        .find(|prefix| is_executable_file(fs, &brew_binary(prefix)))
         .cloned()
+}
+
+/// Whether `path` is a regular file carrying an execute bit — the check
+/// behind every "holds a `bin/brew`" claim in this module.
+///
+/// Existence alone is not the question, because the path is about to be
+/// *run*: a non-executable leftover, a directory, or a dangling symlink
+/// at `bin/brew` must not stop the probe, so it is skipped and the next
+/// candidate gets its turn. [`Fs::stat`] follows symlinks, which is what
+/// a `bin/brew` symlinked into a Cellar needs.
+fn is_executable_file(fs: &dyn Fs, path: &Path) -> bool {
+    matches!(fs.stat(path), Ok(meta) if meta.is_file && meta.mode & 0o111 != 0)
 }
 
 fn brew_binary(prefix: &Path) -> PathBuf {
@@ -346,10 +377,17 @@ mod tests {
 
     /// A brew-shaped install under a temp root, so prefix detection has
     /// something to find without touching the real `/opt/homebrew`.
+    /// Executable, because that is what detection requires.
     fn install_brew(env: &TempEnvironment, prefix: &Path) {
+        install_brew_with_mode(env, prefix, 0o755);
+    }
+
+    /// The same install at an arbitrary mode, for proving what a
+    /// non-executable `bin/brew` does.
+    fn install_brew_with_mode(env: &TempEnvironment, prefix: &Path, mode: u32) {
         env.fs.mkdir_all(&prefix.join("bin")).unwrap();
         env.fs
-            .write_file(&brew_binary(prefix), b"#!/bin/sh\n")
+            .write_file_with_mode(&brew_binary(prefix), b"#!/bin/sh\n", mode)
             .unwrap();
     }
 
@@ -413,6 +451,29 @@ mod tests {
         // Once the earlier candidate exists too, it takes precedence.
         install_brew(&env, &first);
         assert_eq!(detect_prefix(env.fs.as_ref(), &host), Some(first));
+    }
+
+    #[test]
+    fn a_non_executable_brew_is_not_a_brew() {
+        let env = TempEnvironment::builder().build();
+        let first = env.dotfiles_root.join("opt/homebrew");
+        let second = env.dotfiles_root.join("usr/local");
+        // A `bin/brew` that exists but cannot be run — a half-finished
+        // install, a leftover. Detection must step over it rather than
+        // hand `capture` a path it will fail to spawn.
+        install_brew_with_mode(&env, &first, 0o644);
+        install_brew(&env, &second);
+
+        let host = host_with(&[&first, &second]);
+        assert_eq!(detect_prefix(env.fs.as_ref(), &host), Some(second));
+
+        // A directory at `bin/brew` is not one either.
+        let only_a_dir = env.dotfiles_root.join("bare");
+        env.fs.mkdir_all(&brew_binary(&only_a_dir)).unwrap();
+        assert_eq!(
+            detect_prefix(env.fs.as_ref(), &host_with(&[&only_a_dir])),
+            None
+        );
     }
 
     #[test]

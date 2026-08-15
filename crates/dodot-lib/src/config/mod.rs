@@ -313,9 +313,10 @@ pub struct ShellSection {
     /// environment, captured from `brew shellenv` when `dodot up`
     /// regenerates the script.
     ///
-    /// - `"auto"` (default) — emit the block whenever a Homebrew prefix
-    ///   exists on this host (macOS only). Nothing is emitted when brew
-    ///   is absent; the next `dodot up` picks it up once installed.
+    /// - `"auto"` (default) — emit the block whenever this host has an
+    ///   executable `brew` under a known prefix (macOS only). Nothing is
+    ///   emitted when brew is absent; the next `dodot up` picks it up
+    ///   once installed.
     /// - `"off"` — never emit it. Reach for this if you bootstrap
     ///   Homebrew yourself, or want nothing but dodot's own PATH lines
     ///   in the init script.
@@ -324,8 +325,11 @@ pub struct ShellSection {
     /// additions, so pack contributions stay the last word. It is also
     /// the one thing dodot puts on the shell startup path that spends
     /// processes: brew's own block re-execs `path_helper`, about 2-3 ms
-    /// per shell start. See `docs/proposals/shell-hookup-ergonomics.lex`
-    /// §4 and [`crate::shell::homebrew`].
+    /// per shell start — and under the hand-wired
+    /// `eval "$(dodot init-sh)"` hook the capture itself runs per shell
+    /// too, two `brew shellenv` calls at ~10-20 ms each. See
+    /// `docs/proposals/shell-hookup-ergonomics.lex` §4 and
+    /// [`crate::shell::homebrew`] for the per-hook breakdown.
     #[config(default = "auto")]
     pub homebrew: String,
 }

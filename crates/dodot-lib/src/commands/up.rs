@@ -227,9 +227,11 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         orchestration::sweep_pack_state(&ignored.sweep_dir_names, ctx)?;
         info!("regenerating shell init script");
         let root_config = ctx.config_manager.root_config()?;
-        // Ask brew for its bootstrap now, at generation time, so the
-        // shell never has to (shell-hookup-ergonomics.lex §4). A host
-        // without brew captures nothing and this `up` heals it.
+        // Ask brew for its bootstrap now, at generation time, so a shell
+        // sourcing the written script never has to
+        // (shell-hookup-ergonomics.lex §4). Two `brew` spawns per `up`,
+        // one per shell dialect. A host without brew captures nothing
+        // and this `up` heals it.
         let brew = shell::homebrew::capture_from_config(
             ctx.fs.as_ref(),
             ctx.command_runner.as_ref(),

@@ -519,11 +519,16 @@ Configuration
 
     :: toml ::
 
-    `homebrew` decides whether the init script opens with Homebrew's environment. With `"auto"` (the default), every `dodot up` asks `brew shellenv` for its bootstrap block and bakes the answer into the script as static text — Homebrew stays the authority on its own setup, and your shell never runs `brew` to find out. On a host without Homebrew, or off macOS, nothing is emitted; install brew and the next `dodot up` picks it up.
+    `homebrew` decides whether the init script opens with Homebrew's environment. With `"auto"` (the default), generating the script asks `brew shellenv` for its bootstrap block and bakes the answer in as static text — Homebrew stays the authority on its own setup, and the baked-in block runs no `brew`. On a host without Homebrew, or off macOS, nothing is emitted; install brew and the next `dodot up` picks it up.
 
     The block lands _first_, above the PATH additions your packs contribute, so your own entries stay ahead of brew's. That is what makes a `001-homebrew` bootstrap pack unnecessary: brew's environment is available to every pack script without any ordering work on your part.
 
-    :: note :: This is the one thing dodot puts on your shell startup path that spends processes: brew's own block re-execs `path_helper`, measured at 2-3 ms per shell start. Set `homebrew = "off"` if you'd rather bootstrap Homebrew yourself, or want the init script to carry nothing but dodot's own lines.
+    What this costs your shell depends on which hookup you use — see [./shell-integration.lex] for the two shapes:
+
+    - The managed block `dodot install --write` writes, which sources the generated file by path: `brew shellenv` runs when `dodot up` or `dodot down` regenerates the script (twice — once for `sh`, once for `zsh`), and your shell never runs `brew` at all. Each shell start pays only brew's own block re-execing `path_helper`, measured at 2-3 ms.
+    - The hand-wired `eval "$(dodot init-sh)"`, which regenerates the script on every shell start: generation _is_ shell start, so both `brew shellenv` calls run on every new shell — measured at 10-20 ms each on an Apple-silicon mac, so 20-40 ms on top of those 2-3 ms.
+
+    :: note :: This is the one thing dodot puts on your shell startup path that spends processes. If the cost matters to you, the managed hookup is the cheap shape; `homebrew = "off"` removes it entirely, and is also the setting to reach for if you'd rather bootstrap Homebrew yourself or want the init script to carry nothing but dodot's own lines.
 
 11. Inheritance Model
 
