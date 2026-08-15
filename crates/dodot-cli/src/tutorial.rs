@@ -30,7 +30,7 @@ use dodot_lib::fs::Fs;
 use dodot_lib::packs::orchestration::ExecutionContext;
 use dodot_lib::paths::{Pather, XdgPather};
 use dodot_lib::render;
-use dodot_lib::shell::SyntaxChecker;
+use dodot_lib::shell::{ProbePolicy, ShellEnv, SyntaxChecker};
 
 // ── Prompt seam ─────────────────────────────────────────────────
 
@@ -216,6 +216,15 @@ pub struct TutorialEnv {
     pub command_runner: Arc<dyn dodot_lib::datastore::CommandRunner>,
     pub config_manager: Arc<ConfigManager>,
     pub syntax_checker: Arc<dyn SyntaxChecker>,
+    /// The `$SHELL`/`$ZDOTDIR` snapshot every step reads — snapshotted
+    /// once from the process in production, constructed directly by
+    /// tests so no test mutates global env under a lock.
+    pub shell_env: ShellEnv,
+    /// Probe policy for the one step that runs `dodot install --write`
+    /// on the user's behalf: `production()` (measure) for real runs,
+    /// `Never` in tests. The narrated status/up steps always use
+    /// `Never` regardless — see `make_ctx`.
+    pub probe_policy: ProbePolicy,
     /// Where the dotfiles root came from (for the check_root step
     /// template) — `"DOTFILES_ROOT env var"` / `"git toplevel"` / etc.
     pub root_origin: String,
@@ -252,6 +261,8 @@ impl TutorialEnv {
             command_runner: runner,
             config_manager,
             syntax_checker: Arc::new(dodot_lib::shell::SystemSyntaxChecker),
+            shell_env: ShellEnv::from_process(),
+            probe_policy: ProbePolicy::production(),
             root_origin: origin,
         })
     }
@@ -284,8 +295,8 @@ impl TutorialEnv {
             // them; spawning a shell mid-walkthrough would print over
             // that script. Evidence only here — the user's next real
             // `dodot up` measures.
-            shell_probe: dodot_lib::shell::ProbePolicy::Never,
-            shell_env: dodot_lib::shell::ShellEnv::from_process(),
+            shell_probe: ProbePolicy::Never,
+            shell_env: self.shell_env.clone(),
         }
     }
 }
@@ -594,11 +605,11 @@ fn step_concept_targets(
         return Ok(Next::Quit);
     }
 
-    // The shell-integration step covers the shell hookup — it points
-    // at `dodot install --write` and can still write the manual eval
-    // line — which is what makes shell snippets get sourced and `bin/`
-    // dirs get added to PATH. Install scripts and Brewfile run once
-    // and don't need the hookup, so they don't trigger this step.
+    // The shell-integration step covers the shell hookup — it offers
+    // to run the real `dodot install --write` — which is what makes
+    // shell snippets get sourced and `bin/` dirs get added to PATH.
+    // Install scripts and Brewfile run once and don't need the
+    // hookup, so they don't trigger this step.
     if ctx.has_shell_files {
         Ok(Next::Go("concept_shell"))
     } else {
@@ -613,46 +624,38 @@ fn step_concept_shell(
     prompts: &dyn Prompts,
     out: &mut impl Write,
 ) -> Result<Next> {
-    let integ = lib_tut::detect_shell_integration(env.paths.home_dir());
-    ctx.eval_line = integ.eval_line.clone();
+    let integ =
+        lib_tut::detect_shell_integration(env.fs.as_ref(), env.paths.home_dir(), &env.shell_env);
     ctx.shell_integration = Some(integ.clone());
 
     print_step("tutorial.concept_shell", ctx, opts, out)?;
 
-    if integ.line_present {
+    // Already wired, or a shell dodot refuses to guess an rc file for
+    // — either way the template said everything and there is nothing
+    // to run.
+    if integ.line_present || !integ.supported {
         return Ok(Next::Go("dry_run"));
     }
 
+    // The tutorial owns no rc writer (issue #281): the only write on
+    // offer is the real `dodot install --write`, run here on explicit
+    // consent — the same consent gate the standalone command's
+    // `--write` flag is.
     let action = prompts.select(
-        "What do you want me to do?",
+        "Wire it up now?",
         vec![
-            "Append it to my rc file".into(),
-            "Copy to clipboard".into(),
-            "Nothing — I'll handle it".into(),
+            "Yes — run `dodot install --write` for me".into(),
+            "Not now — I'll run it myself later".into(),
         ],
     )?;
-    match action.as_str() {
-        "Append it to my rc file" => {
-            lib_tut::append_shell_integration(&integ).map_err(|e| anyhow!("{e}"))?;
-            writeln!(
-                out,
-                "\n  ✓ appended to {} (open a new shell to pick it up)",
-                integ.rc_path
-            )?;
-        }
-        "Copy to clipboard" => match copy_to_clipboard(&integ.eval_line) {
-            Ok(()) => writeln!(out, "\n  ✓ copied to clipboard")?,
-            Err(e) => writeln!(
-                out,
-                "\n  ! couldn't copy to clipboard ({e}); paste manually:\n  {}",
-                integ.eval_line
-            )?,
-        },
-        _ => writeln!(
+    if action.starts_with("Yes") {
+        let report = render_dodot_install_write(env, opts.mode)?;
+        writeln!(out, "\n{report}")?;
+    } else {
+        writeln!(
             out,
-            "\n  Add to {} when you're ready:\n  {}",
-            integ.rc_path, integ.eval_line
-        )?,
+            "\n  Run `dodot install --write` when you're ready — it wires the\n  hookup and then checks that it worked."
+        )?;
     }
     Ok(Next::Go("dry_run"))
 }
@@ -766,6 +769,31 @@ fn render_dodot_status(env: &TutorialEnv, pack: &str, mode: OutputMode) -> Resul
     Ok(indent(&s, "  "))
 }
 
+/// Run the real `dodot install --write` on the user's behalf and
+/// render its report. The tutorial keeps no rc writer of its own:
+/// `shell::rc` resolves the file (`ZDOTDIR`, symlink write-through,
+/// the macOS bash chain), `commands::install` writes the marked
+/// block, and the step ends on the same measured verdict the
+/// standalone command ends on — not a promise (issue #281).
+fn render_dodot_install_write(env: &TutorialEnv, mode: OutputMode) -> Result<String> {
+    let mut exec_ctx = env.make_ctx(false);
+    // `make_ctx` disables the probe so the narrated status/up steps
+    // never spawn a shell over the script. This step is the
+    // exception: the user just consented to the write, and the write
+    // is the one moment a measured verdict is worth a shell spawn.
+    exec_ctx.shell_probe = env.probe_policy;
+    let result = commands::install::install(
+        &exec_ctx,
+        &commands::install::InstallOptions {
+            write: true,
+            rc: None,
+        },
+    )
+    .map_err(|e| anyhow!("install: {e}"))?;
+    let s = render::render("install", &result, mode).map_err(|e| anyhow!("render: {e}"))?;
+    Ok(indent(&s, "  "))
+}
+
 fn render_dodot_up(
     env: &TutorialEnv,
     pack: &str,
@@ -784,49 +812,6 @@ fn indent(s: &str, prefix: &str) -> String {
         .map(|l| format!("{prefix}{l}"))
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn copy_to_clipboard(text: &str) -> Result<()> {
-    use std::io::Write as IoWrite;
-    use std::process::{Command, Stdio};
-
-    let candidates: &[(&str, &[&str])] = &[
-        ("pbcopy", &[]),
-        ("wl-copy", &[]),
-        ("xclip", &["-selection", "clipboard"]),
-        ("xsel", &["--clipboard", "--input"]),
-    ];
-
-    for (cmd, args) in candidates {
-        if which_cmd(cmd).is_some() {
-            let mut child = Command::new(cmd)
-                .args(*args)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()?;
-            if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(text.as_bytes())?;
-            }
-            let status = child.wait()?;
-            if status.success() {
-                return Ok(());
-            }
-        }
-    }
-    Err(anyhow!("no clipboard tool found"))
-}
-
-fn which_cmd(cmd: &str) -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("PATH") {
-        for dir in path.split(':') {
-            let candidate = PathBuf::from(dir).join(cmd);
-            if candidate.exists() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
 }
 
 // ── Tests ──────────────────────────────────────────────────────
@@ -855,6 +840,13 @@ mod tests {
     }
 
     fn env_from(temp: &TempEnvironment) -> TutorialEnv {
+        env_with_shell(temp, ShellEnv::default())
+    }
+
+    /// Env with an explicit `$SHELL`/`$ZDOTDIR` snapshot — the shell
+    /// step is driven entirely by this value, so tests never mutate
+    /// process env. Probe policy is `Never`: no test spawns a shell.
+    fn env_with_shell(temp: &TempEnvironment, shell_env: ShellEnv) -> TutorialEnv {
         let runner: Arc<dyn CommandRunner> = Arc::new(NoopCommandRunner);
         let datastore: Arc<dyn DataStore> = Arc::new(FilesystemDataStore::new(
             temp.fs.clone(),
@@ -869,7 +861,16 @@ mod tests {
             command_runner: runner,
             config_manager,
             syntax_checker: Arc::new(NoopSyntaxChecker),
+            shell_env,
+            probe_policy: ProbePolicy::Never,
             root_origin: "test fixture".into(),
+        }
+    }
+
+    fn zsh_shell_env() -> ShellEnv {
+        ShellEnv {
+            shell: Some("/bin/zsh".into()),
+            zdotdir: None,
         }
     }
 
@@ -986,6 +987,144 @@ mod tests {
             out.contains("dodot init"),
             "should suggest dodot init: {out}"
         );
+    }
+
+    /// The shell step's consent path runs the real `dodot install
+    /// --write`: the marked block lands in the ladder-resolved rc
+    /// file via the `Fs` abstraction, and the step reports what was
+    /// written — not the retired tutorial-private eval-line append.
+    #[test]
+    fn tutorial_shell_step_wires_hookup_via_install() {
+        let temp = TempEnvironment::builder()
+            .pack("zsh")
+            .file("aliases.sh", "alias ll='ls -l'\n")
+            .done()
+            .build();
+        let env = env_with_shell(&temp, zsh_shell_env());
+
+        let prompts = ScriptedPrompts::new([
+            ScriptedAnswer::Confirm(true), // intro
+            ScriptedAnswer::Confirm(true), // check_root
+            ScriptedAnswer::Choice(0),     // pick_pack: zsh
+            ScriptedAnswer::Enter,         // show_status
+            ScriptedAnswer::Enter,         // annotate_status
+            ScriptedAnswer::Confirm(true), // concept_targets
+            ScriptedAnswer::Choice(0),     // concept_shell: wire it up now
+            ScriptedAnswer::Confirm(true), // dry_run: apply for real?
+            ScriptedAnswer::Enter,         // real_up
+        ]);
+
+        let mut buf: Vec<u8> = Vec::new();
+        run_with_prompts(&env, opts_text(), &prompts, &mut buf).unwrap();
+        let out = String::from_utf8(buf).unwrap();
+
+        let rc = temp.home.join(".zshrc");
+        let body = temp
+            .fs
+            .read_to_string(&rc)
+            .unwrap_or_else(|e| panic!("expected install --write to create {}: {e}", rc.display()));
+        assert!(
+            body.contains(">>> dodot shell hookup >>>"),
+            "rc should hold the marked block dodot install owns, got: {body}"
+        );
+        assert!(
+            !body.contains("eval \"$(dodot init-sh)\""),
+            "the tutorial must not write the manual eval line: {body}"
+        );
+        assert!(
+            out.contains("Wired dodot into ~/.zshrc"),
+            "step should report the install result: {out}"
+        );
+        assert_eq!(prompts.remaining(), 0);
+    }
+
+    /// The issue-#281 reproduction: with `ZDOTDIR` set, zsh never
+    /// reads `~/.zshrc`. The step must not report an existing
+    /// `~/.zshrc` hook as wired, and consenting must land the block
+    /// in `$ZDOTDIR/.zshrc` — never in the file zsh ignores.
+    #[test]
+    fn tutorial_shell_step_honours_zdotdir() {
+        let temp = TempEnvironment::builder()
+            .pack("zsh")
+            .file("aliases.sh", "alias ll='ls -l'\n")
+            .done()
+            .build();
+        let zdot = temp.home.join("cfg/zsh");
+        temp.fs.mkdir_all(&zdot).unwrap();
+        // A hook in ~/.zshrc is dead on this setup — it must neither
+        // satisfy detection nor attract the write.
+        temp.fs
+            .write_file(&temp.home.join(".zshrc"), b"eval \"$(dodot init-sh)\"\n")
+            .unwrap();
+        let env = env_with_shell(
+            &temp,
+            ShellEnv {
+                shell: Some("/bin/zsh".into()),
+                zdotdir: Some(zdot.display().to_string()),
+            },
+        );
+
+        let prompts = ScriptedPrompts::new([
+            ScriptedAnswer::Confirm(true), // intro
+            ScriptedAnswer::Confirm(true), // check_root
+            ScriptedAnswer::Choice(0),     // pick_pack
+            ScriptedAnswer::Enter,         // show_status
+            ScriptedAnswer::Enter,         // annotate_status
+            ScriptedAnswer::Confirm(true), // concept_targets
+            ScriptedAnswer::Choice(0),     // concept_shell: wire it up now
+            ScriptedAnswer::Confirm(true), // dry_run
+            ScriptedAnswer::Enter,         // real_up
+        ]);
+
+        let mut buf: Vec<u8> = Vec::new();
+        run_with_prompts(&env, opts_text(), &prompts, &mut buf).unwrap();
+
+        let wired = temp
+            .fs
+            .read_to_string(&zdot.join(".zshrc"))
+            .expect("install --write must create $ZDOTDIR/.zshrc");
+        assert!(
+            wired.contains(">>> dodot shell hookup >>>"),
+            "block must land in the file zsh actually reads: {wired}"
+        );
+        temp.assert_file_contents(&temp.home.join(".zshrc"), "eval \"$(dodot init-sh)\"\n");
+        assert_eq!(prompts.remaining(), 0);
+    }
+
+    /// Declining the shell step writes nothing and points the user at
+    /// the command instead — the tutorial never touches an rc file
+    /// without the install path's consent gate.
+    #[test]
+    fn tutorial_shell_step_decline_leaves_rc_alone() {
+        let temp = TempEnvironment::builder()
+            .pack("zsh")
+            .file("aliases.sh", "alias ll='ls -l'\n")
+            .done()
+            .build();
+        let env = env_with_shell(&temp, zsh_shell_env());
+
+        let prompts = ScriptedPrompts::new([
+            ScriptedAnswer::Confirm(true), // intro
+            ScriptedAnswer::Confirm(true), // check_root
+            ScriptedAnswer::Choice(0),     // pick_pack
+            ScriptedAnswer::Enter,         // show_status
+            ScriptedAnswer::Enter,         // annotate_status
+            ScriptedAnswer::Confirm(true), // concept_targets
+            ScriptedAnswer::Choice(1),     // concept_shell: not now
+            ScriptedAnswer::Confirm(true), // dry_run
+            ScriptedAnswer::Enter,         // real_up
+        ]);
+
+        let mut buf: Vec<u8> = Vec::new();
+        run_with_prompts(&env, opts_text(), &prompts, &mut buf).unwrap();
+        let out = String::from_utf8(buf).unwrap();
+
+        temp.assert_not_exists(&temp.home.join(".zshrc"));
+        assert!(
+            out.contains("dodot install --write"),
+            "declining should still name the command: {out}"
+        );
+        assert_eq!(prompts.remaining(), 0);
     }
 
     /// User picks the recommended starter when there are multiple

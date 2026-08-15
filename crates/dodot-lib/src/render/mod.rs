@@ -308,6 +308,7 @@ pub fn render<T: serde::Serialize>(
         "pack-status" => TEMPLATE_PACK_STATUS,
         "list" => TEMPLATE_LIST,
         "message" => TEMPLATE_MESSAGE,
+        "install" => TEMPLATE_INSTALL,
         "probe" => TEMPLATE_PROBE,
         "git-filters" => TEMPLATE_GIT_FILTERS,
         "prompts-list" => TEMPLATE_PROMPTS_LIST,
@@ -410,12 +411,11 @@ mod tests {
             up_output: Some("(up output)".into()),
             shell_integration: Some(crate::commands::tutorial::ShellIntegration {
                 shell_kind: "zsh".into(),
+                supported: true,
                 rc_path: "~/.zshrc".into(),
-                rc_path_abs: std::path::PathBuf::new(),
                 line_present: false,
                 eval_line: r#"eval "$(dodot init-sh)""#.into(),
             }),
-            eval_line: r#"eval "$(dodot init-sh)""#.into(),
             ..Default::default()
         };
 

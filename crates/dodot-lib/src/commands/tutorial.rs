@@ -2,24 +2,23 @@
 //!
 //! The interactive driver lives in `dodot-cli`; this module provides
 //! the building blocks it composes: pack classification, shell-
-//! hookup detection (read-only inspection plus an explicit append
-//! helper for the manual eval line — `dodot install` is what the
-//! step recommends, and [`crate::shell::rc`] is both the real rc
-//! ladder and the hook classifier this module defers to; only the
-//! rc path picked here is a shallow guess), JSON state persistence
-//! for resume, and the
-//! serializable [`TutorialCtx`] that the CLI passes to step
-//! templates. Reads are pure; writes (`append_shell_integration`,
-//! `save_state`, `clear_state`) only run on explicit user consent
-//! from the driver.
+//! hookup detection (read-only — [`crate::shell::rc`] is both the rc
+//! ladder and the hook classifier it defers to; the tutorial owns no
+//! rc writer, the driver routes any write through the real
+//! `dodot install --write` path), JSON state persistence for resume,
+//! and the serializable [`TutorialCtx`] that the CLI passes to step
+//! templates. Reads are pure; writes (`save_state`, `clear_state`)
+//! only run on explicit user consent from the driver.
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::fs::Fs;
 use crate::packs;
 use crate::packs::orchestration::ExecutionContext;
 use crate::paths::Pather;
+use crate::shell::rc::{self, ShellEnv};
 use crate::Result;
 
 // ── Pack classification ─────────────────────────────────────────
@@ -183,104 +182,98 @@ pub fn discover_and_classify(ctx: &ExecutionContext) -> Result<Vec<TutorialPack>
 
 /// What we found out about the user's shell hookup.
 ///
-/// The tutorial recommends `dodot install --write`, which owns a
-/// marked block; the fields here describe the manual `eval
-/// "$(dodot init-sh)"` line the tutorial can still write on request.
+/// Read-only facts for the shell-integration step. The tutorial owns
+/// no rc writer: when the user consents, the driver runs the real
+/// `dodot install --write` path (issue #281), so these fields only
+/// describe — they never name a file the tutorial itself would touch.
 /// [`Self::line_present`] answers the question the step actually
-/// turns on — "is this user wired up at all?" — and so counts either
-/// form.
+/// turns on — "is this user wired up at all?" — and counts either
+/// hookup form.
 #[derive(Debug, Clone, Serialize)]
 pub struct ShellIntegration {
-    /// Detected user shell (`zsh`, `bash`, `fish`, `unknown`).
+    /// Detected user shell: `zsh` / `bash` when dodot can wire it,
+    /// otherwise the raw `$SHELL` basename (`fish`, …) or `unknown`.
     pub shell_kind: String,
-    /// Path to the rc file we'd suggest editing (display form).
+    /// Whether `dodot install` can wire this shell (bash/zsh). When
+    /// false the step is informational only: dodot refuses to guess
+    /// an rc file for other shells, so there is nothing to offer.
+    pub supported: bool,
+    /// The rc file the hook belongs in, display form
+    /// (`~/`-relative) — resolved by [`crate::shell::rc::resolve_rc`],
+    /// the same ladder `dodot install` writes through (`ZDOTDIR`,
+    /// symlinks, the lot). Not always read directly: macOS bash
+    /// login shells reach `~/.bashrc` only via the profile chain
+    /// `install --write` adds. Empty for unsupported shells.
     pub rc_path: String,
-    /// Absolute path of the rc file, for actual writes.
-    #[serde(skip)]
-    pub rc_path_abs: PathBuf,
-    /// True if *either* hookup form is already in the rc file: the
-    /// hand-written eval line, or the block `dodot install --write`
-    /// writes. Classified by [`crate::shell::rc::scan_hook`], so a
-    /// commented-out line does not count. Drives whether the step
-    /// prompts at all.
+    /// True if *either* hookup form is already in the resolved rc
+    /// file: the hand-written eval line, or the block `dodot install
+    /// --write` writes. Classified by
+    /// [`crate::shell::rc::scan_hook_file`], so a commented-out line
+    /// does not count. Drives whether the step prompts at all.
     pub line_present: bool,
-    /// The full eval line we'd suggest adding.
+    /// The manual hookup line, shown only for shells `dodot install`
+    /// refuses to wire (matching the command's own refusal message).
     pub eval_line: String,
 }
 
-/// Detect the shell init situation for the user.
+/// Detect the shell init situation for the user. Pure read-only.
 ///
-/// Reads `$SHELL`, picks a likely rc file, then hands that file's
-/// text to [`crate::shell::rc::scan_hook`] — the same classifier
-/// `dodot install` uses — so *either* hookup form counts: the
-/// hand-written `dodot init-sh` eval line, or the marked block
-/// `dodot install --write` splices in, which sources `dodot-init.sh`
-/// by path and never names the command. Matching only the eval line
-/// would tell a user who already ran `dodot install --write` to wire
-/// up a hookup they have; a raw substring search over the whole file
-/// would go the other way and read a commented-out line as wired up.
-/// Pure read-only.
+/// `shell::rc` is the single answer to both halves of the question:
+/// [`crate::shell::rc::resolve_rc`] names the rc file the hook
+/// belongs in — honouring `ZDOTDIR` (including the `~/.zshenv`
+/// peek) and following a symlinked rc — and
+/// [`crate::shell::rc::scan_hook_file`] classifies what is in it, so
+/// *either* hookup form counts: the hand-written `dodot init-sh`
+/// eval line, or the marked block `dodot install --write` splices
+/// in. A flat `~/.zshrc` guess here would report an unwired `ZDOTDIR`
+/// user as wired (or vice versa) — the silent dead hookup epic INS01
+/// exists to eliminate (issue #281).
 ///
-/// Only the rc *path* is a deliberately shallow guess — it does not
-/// honour `ZDOTDIR`, follow a symlinked rc, or know about the macOS
-/// `.bash_profile` chain. [`crate::shell::rc`] is the real ladder, and
-/// `dodot install` is what the tutorial points users at; this only has
-/// to be right often enough to skip a step nobody needs.
-pub fn detect_shell_integration(home: &Path) -> ShellIntegration {
-    let shell_env = std::env::var("SHELL").unwrap_or_default();
-    let shell_kind = shell_env.rsplit('/').next().unwrap_or("").to_lowercase();
+/// For shells dodot refuses to guess an rc file for (`fish`, plain
+/// `sh`, unset `$SHELL`) no path is resolved and no scan runs:
+/// `supported` is false and the step only shows the manual line.
+pub fn detect_shell_integration(
+    fs: &dyn Fs,
+    home: &Path,
+    shell_env: &ShellEnv,
+) -> ShellIntegration {
+    let shell = shell_env.hookup_shell();
 
-    let (kind, rc_rel) = match shell_kind.as_str() {
-        "zsh" => ("zsh", ".zshrc"),
-        "bash" => ("bash", ".bashrc"),
-        "fish" => ("fish", ".config/fish/config.fish"),
-        _ => ("unknown", ".profile"),
+    let shell_kind = match shell {
+        Some(s) => s.as_str().to_string(),
+        None => shell_env
+            .shell
+            .as_deref()
+            .and_then(|p| Path::new(p).file_name())
+            .and_then(|n| n.to_str())
+            .map(|s| s.trim_start_matches('-').to_lowercase())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "unknown".to_string()),
     };
-
-    let rc_path_abs = home.join(rc_rel);
-    let display = format!("~/{rc_rel}");
-    let eval_line = if kind == "fish" {
+    let eval_line = if shell_kind == "fish" {
         "dodot init-sh | source".to_string()
     } else {
         r#"eval "$(dodot init-sh)""#.to_string()
     };
 
-    let line_present = std::fs::read_to_string(&rc_path_abs)
-        .map(|c| crate::shell::rc::scan_hook(&c).is_present())
-        .unwrap_or(false);
+    let (rc_path, line_present) = match shell {
+        Some(s) => {
+            let target = rc::resolve_rc(fs, home, Some(s), shell_env, None);
+            (
+                rc::display_home_relative(target.nominal(), home),
+                rc::scan_hook_file(fs, &target.path).is_present(),
+            )
+        }
+        None => (String::new(), false),
+    };
 
     ShellIntegration {
-        shell_kind: kind.to_string(),
-        rc_path: display,
-        rc_path_abs,
+        shell_kind,
+        supported: shell.is_some(),
+        rc_path,
         line_present,
         eval_line,
     }
-}
-
-/// Append the eval line to the user's rc file with a header comment.
-/// Idempotent: returns Ok without writing if the line is already there.
-pub fn append_shell_integration(integ: &ShellIntegration) -> Result<()> {
-    if integ.line_present {
-        return Ok(());
-    }
-    if let Some(parent) = integ.rc_path_abs.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| crate::DodotError::Other(format!("create rc parent: {e}")))?;
-        }
-    }
-    let existing = std::fs::read_to_string(&integ.rc_path_abs).unwrap_or_default();
-    let mut new = existing;
-    if !new.is_empty() && !new.ends_with('\n') {
-        new.push('\n');
-    }
-    new.push_str("\n# dodot — load packs into this shell session\n");
-    new.push_str(&integ.eval_line);
-    new.push('\n');
-    std::fs::write(&integ.rc_path_abs, new)
-        .map_err(|e| crate::DodotError::Other(format!("write rc: {e}")))?;
-    Ok(())
 }
 
 // ── State persistence ───────────────────────────────────────────
@@ -342,7 +335,6 @@ pub struct TutorialCtx {
     pub dry_run_output: Option<String>,
     pub up_output: Option<String>,
     pub shell_integration: Option<ShellIntegration>,
-    pub eval_line: String,
 }
 
 #[cfg(test)]
@@ -433,19 +425,27 @@ mod tests {
         assert_eq!(classify_pack(&pack), PackKind::Empty);
     }
 
+    /// Detection is pure over an explicit [`ShellEnv`] — no process
+    /// env mutation, no `$SHELL` mutex.
+    fn zsh_env() -> ShellEnv {
+        ShellEnv {
+            shell: Some("/bin/zsh".into()),
+            zdotdir: None,
+        }
+    }
+
+    fn os_fs() -> crate::fs::OsFs {
+        crate::fs::OsFs::new()
+    }
+
     #[test]
     fn detect_shell_with_no_rc_file_reports_absent() {
         let dir = tempfile::tempdir().unwrap();
-        // Force a known shell — .zshrc doesn't exist in this temp HOME.
-        // ShellEnvGuard takes the shared $SHELL mutex and restores
-        // the previous value on drop (panic-safe), so this test is
-        // serialised with the env-driven cases in `git_alias::tests`
-        // and any other test in the binary that touches $SHELL.
-        let _g = crate::testing::ShellEnvGuard::set("/bin/zsh");
-        let integ = detect_shell_integration(dir.path());
+        let integ = detect_shell_integration(&os_fs(), dir.path(), &zsh_env());
         assert_eq!(integ.shell_kind, "zsh");
+        assert!(integ.supported);
+        assert_eq!(integ.rc_path, "~/.zshrc");
         assert!(!integ.line_present);
-        assert!(integ.eval_line.contains("dodot init-sh"));
     }
 
     #[test]
@@ -465,9 +465,8 @@ mod tests {
         ] {
             let dir = tempfile::tempdir().unwrap();
             std::fs::write(dir.path().join(".zshrc"), rc).unwrap();
-            let _g = crate::testing::ShellEnvGuard::set("/bin/zsh");
             assert!(
-                detect_shell_integration(dir.path()).line_present,
+                detect_shell_integration(&os_fs(), dir.path(), &zsh_env()).line_present,
                 "should recognise this hookup: {rc}"
             );
         }
@@ -475,10 +474,10 @@ mod tests {
 
     #[test]
     fn detect_shell_ignores_commented_out_hookups() {
-        // Detection routes through `shell::rc::scan_hook`, so a hook
-        // a user commented out — or merely mentioned in prose — is
-        // not a hookup. Counting it would silently skip the step for
-        // the user who most needs it.
+        // Detection routes through `shell::rc::scan_hook_file`, so a
+        // hook a user commented out — or merely mentioned in prose —
+        // is not a hookup. Counting it would silently skip the step
+        // for the user who most needs it.
         for rc in [
             "# eval \"$(dodot init-sh)\"\n",
             "  #  . \"$HOME/.local/share/dodot/shell/dodot-init.sh\"\n",
@@ -486,11 +485,72 @@ mod tests {
         ] {
             let dir = tempfile::tempdir().unwrap();
             std::fs::write(dir.path().join(".zshrc"), rc).unwrap();
-            let _g = crate::testing::ShellEnvGuard::set("/bin/zsh");
             assert!(
-                !detect_shell_integration(dir.path()).line_present,
+                !detect_shell_integration(&os_fs(), dir.path(), &zsh_env()).line_present,
                 "should not count this as a hookup: {rc}"
             );
         }
+    }
+
+    #[test]
+    fn detect_shell_honours_zdotdir() {
+        // The issue-#281 reproduction: with ZDOTDIR set, zsh never
+        // reads ~/.zshrc. Detection must look where the shell looks —
+        // a hook in $ZDOTDIR/.zshrc counts, a hook in ~/.zshrc (the
+        // file the tutorial's retired flat guess pointed at) does not.
+        let dir = tempfile::tempdir().unwrap();
+        let zdot = dir.path().join("cfg/zsh");
+        let env = ShellEnv {
+            shell: Some("/bin/zsh".into()),
+            zdotdir: Some(zdot.display().to_string()),
+        };
+
+        write(&zdot.join(".zshrc"), "eval \"$(dodot init-sh)\"\n");
+        let integ = detect_shell_integration(&os_fs(), dir.path(), &env);
+        assert!(integ.line_present, "hook in $ZDOTDIR/.zshrc must count");
+
+        std::fs::remove_file(zdot.join(".zshrc")).unwrap();
+        write(&dir.path().join(".zshrc"), "eval \"$(dodot init-sh)\"\n");
+        let integ = detect_shell_integration(&os_fs(), dir.path(), &env);
+        assert!(
+            !integ.line_present,
+            "a hook in ~/.zshrc is dead when ZDOTDIR is set — it must not count"
+        );
+    }
+
+    #[test]
+    fn detect_shell_follows_symlinked_rc() {
+        // The normal dodot case: ~/.zshrc is a symlink into the
+        // managed dotfiles repo. Detection reads through it, same as
+        // `dodot install` writes through it.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("dotfiles/zshrc");
+        write(&real, "eval \"$(dodot init-sh)\"\n");
+        std::os::unix::fs::symlink(&real, dir.path().join(".zshrc")).unwrap();
+
+        let integ = detect_shell_integration(&os_fs(), dir.path(), &zsh_env());
+        assert!(integ.line_present, "hook behind a symlinked rc must count");
+        assert_eq!(
+            integ.rc_path, "~/.zshrc",
+            "display names the file zsh opens"
+        );
+    }
+
+    #[test]
+    fn detect_unsupported_shell_is_informational_only() {
+        // dodot refuses to guess an rc file for fish (same refusal as
+        // `dodot install`), so the step has no path to resolve and no
+        // write to offer — just the manual line, in fish syntax.
+        let dir = tempfile::tempdir().unwrap();
+        let env = ShellEnv {
+            shell: Some("/usr/bin/fish".into()),
+            zdotdir: None,
+        };
+        let integ = detect_shell_integration(&os_fs(), dir.path(), &env);
+        assert_eq!(integ.shell_kind, "fish");
+        assert!(!integ.supported);
+        assert!(integ.rc_path.is_empty());
+        assert!(!integ.line_present);
+        assert_eq!(integ.eval_line, "dodot init-sh | source");
     }
 }
