@@ -119,15 +119,15 @@ Design Specification: Shell Hookup Ergonomics
 
         The naive approach — spawn the shell with its rc suppressed and read PATH — reproduces PATH *before* the rc runs, so any PATH work the user does earlier in their own rc is invisible and the verdict is wrong whenever it matters most. Truncating the rc at the hook line is worse: the prefix is frequently not valid shell, because the hook can sit inside a conditional, a loop, or a function.
 
-        The shell will report it itself. `PS4` is re-expanded for every traced line, so it can carry the location and the live `PATH`:
+        The shell will report it itself. `PS4` is re-expanded for every traced line, so it can carry the location and the live `PATH`. dodot sets it in the spawned shell's environment, which both shells import before the rc runs:
 
         Tracing the hook line:
 
             # zsh — PROMPT_SUBST is required for the expansion, and can be set on the command line
-            zsh -o promptsubst -o xtrace -i -c true    PS4='+dodot|%N|%i|$PATH> '
+            PS4='+dodot|%N|%i|$PATH> ' zsh -o promptsubst -o xtrace -i -c true
 
             # bash — PS4 expands by default
-            bash -x -i -c true                         PS4='+dodot|${BASH_SOURCE}|${LINENO}|${PATH}> '
+            PS4='+dodot|${BASH_SOURCE}|${LINENO}|${PATH}> ' bash -x -i -c true
 
         :: sh ::
 
