@@ -1,0 +1,40 @@
+[header]dodot transform[/header] — Reverse-merge deployed edits back to template sources.
+
+[desc]The command family for propagating edits made to [item]deployed[/item]
+(template-rendered) files back into their [item].tmpl[/item] sources.
+
+[item]transform check[/item] is the engine: for every cached preprocessor
+baseline it compares the deployed bytes to the recorded render. When
+they diverge and the reverse-merge is unambiguous, it patches the
+template source in place. When the edit overlaps a template
+expression, it reports a [item]dodot-conflict[/item] block in its output for you
+to resolve by hand — the source file is left untouched — and exits 1.
+
+[item]transform install-hook[/item] wires [item]check --strict[/item] into your dotfiles
+repo's pre-commit hook, so deployed-side edits are merged (or block
+the commit) at commit time.
+
+[item]transform status[/item] is the read-only companion: one row per cached
+file with its divergence state ([item]synced[/item], [item]input_changed[/item],
+[item]output_changed[/item], [item]both_changed[/item], [item]missing_source[/item], [item]missing_deployed[/item]).[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot transform check [--strict] [--dry-run][/usage]
+  [usage]dodot transform install-hook[/usage]
+  [usage]dodot transform status[/usage]
+
+[header]OPTIONS (check)[/header]
+  [item]--strict[/item]    [desc]Also fail if any source carries unresolved [item]dodot-conflict[/item]
+              markers (what the pre-commit hook runs)[/desc]
+  [item]--dry-run[/item]   [desc]Report what would be patched without writing to sources[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot transform status             [dim]# where every cached file sits[/dim]
+  dodot transform check --dry-run    [dim]# preview the reverse-merge[/dim]
+  dodot transform check              [dim]# apply it[/dim]
+  dodot transform install-hook       [dim]# run --strict on every commit[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot refresh[/item]                     [desc]Make git notice deployed-side edits[/desc]
+  [item]dodot template[/item]                    [desc]The clean filter that shows the merged view in git diff[/desc]
+  [item]docs/user/commands/transform.lex[/item]  [desc]Full command reference[/desc]

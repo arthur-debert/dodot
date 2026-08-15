@@ -11,7 +11,7 @@ This is the pre-commit-hook rung of the git-augmentation set. See [./git-augment
 
 1. transform check
 
-    The engine. For every cached preprocessor baseline (one per template-rendered file), compares the deployed bytes to the baseline's recorded render. If they diverge, generates a diff and applies it back to the template source on disk. Conflict markers land inline at any block where the merge can't be resolved automatically.
+    The engine. For every cached preprocessor baseline (one per template-rendered file), compares the deployed bytes to the baseline's recorded render. If they diverge and the reverse-merge is unambiguous, it generates a diff and applies it back to the template source on disk. When the merge can't be resolved automatically (the edit overlaps a template expression), the source file is left untouched: the contested block is reported in the command's output as a `dodot-conflict` block, and the command exits 1 so you resolve it manually.
 
     Flags:
 
@@ -64,10 +64,11 @@ This is the pre-commit-hook rung of the git-augmentation set. See [./git-augment
 
         | State              | What it means                                                                       |
         | `synced`           | Source and deployed are both identical to the recorded baseline. Clean.             |
-        | `output-changed`   | Deployed bytes diverge from the baseline (someone edited the deployed file).        |
-        | `input-changed`    | Source bytes diverge from the baseline (someone edited the template source).       |
-        | `both`             | Both sides diverge. The interesting case for `transform check`.                     |
-        | `missing`          | Either source or deployed isn't on disk anymore.                                    |
+        | `output_changed`   | Deployed bytes diverge from the baseline (someone edited the deployed file).        |
+        | `input_changed`    | Source bytes diverge from the baseline (someone edited the template source).       |
+        | `both_changed`     | Both sides diverge. The interesting case for `transform check`.                     |
+        | `missing_source`   | The cached source path isn't on disk anymore (pack file renamed or removed).        |
+        | `missing_deployed` | The rendered/deployed file is gone (deleted by hand or an external tool).           |
 
     :: table align=ll ::
 
@@ -91,6 +92,6 @@ This is the pre-commit-hook rung of the git-augmentation set. See [./git-augment
 5. Watch out for
 
     - *`transform check` writes to source files.* Without `--dry-run`, it modifies your template `.tmpl` sources on disk. The pre-commit hook is the canonical caller; running `transform check` by hand is fine but knowing it writes is important.
-    - *Conflict markers are real text in your source.* When automatic merge fails, dodot inserts `dodot-conflict` markers around the contested block. The source file remains valid by your template language's rules (the markers are inside comment-like delimiters), but it's *your* job to resolve them. `--strict` fails the commit until you do.
+    - *Conflicts are reported, not written.* When the automatic merge fails, `transform check` prints the contested block framed in `dodot-conflict` markers and leaves the source file untouched — resolving it (edit the source, the deployed file, or both back into agreement) is *your* job, and the command exits 1 until the divergence is gone. `--strict` additionally scans every source for `dodot-conflict` markers (they can land there via the template clean filter's merged view in git, or a hand-paste from the report) and fails the commit until they're removed.
     - *No-op without templates.* If your repo has no preprocessor baselines, `transform check` and `transform status` are zero-row no-ops. Don't bother installing the hook in that case — the install ladder won't offer it either.
     - *`install-hook` requires a git working tree.* Errors out with a clear message if `.git` is missing. Run `git init` in your dotfiles root first.

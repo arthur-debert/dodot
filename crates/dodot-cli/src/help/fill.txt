@@ -1,8 +1,10 @@
 [header]dodot fill[/header] — Add placeholder files to an existing pack.
 
 [desc]For each default handler that the pack does [item]not[/item] yet have a file for
-([item]install.sh[/item], [item]aliases.sh[/item], [item]Brewfile[/item], [item]bin/[/item]), drop in a documented
-template file. Existing files are never overwritten.
+([item]install.sh[/item], [item]aliases.sh[/item], [item]Brewfile[/item]), drop in a documented
+template file. Existing files are never overwritten. No [item]bin/[/item]
+directory is created — if you want a path-handler [item]bin/[/item], make it
+yourself ([item]mkdir <pack>/bin[/item]).
 
 Useful when you started a pack as just a config file and now want to
 attach shell aliases or a Brewfile to it.[/desc]
@@ -17,5 +19,5 @@ attach shell aliases or a Brewfile to it.[/desc]
   [example]dodot fill git                 [dim]# add missing handler placeholders to the git pack[/dim][/example]
 
 [header]SEE ALSO[/header]
-  [item]dodot init[/item]    [desc]Create a [item]new[/item] pack with the same starter set[/desc]
+  [item]dodot init[/item]    [desc]Create a [item]new[/item] pack ([item].dodot.toml[/item] only; [item]fill[/item] adds the rest)[/desc]
   [item]dodot status[/item]  [desc]Confirm the pack picks up the new files[/desc]

@@ -1,0 +1,32 @@
+[header]dodot git-install-alias[/header] — Install the git-wrapping shell alias.
+
+[desc]Writes the Tier 2 shell alias to your shell's rc file ([item]~/.bashrc[/item]
+or [item]~/.zshrc[/item]):
+
+    [example]alias git='dodot refresh --quiet && command git'[/example]
+
+With it installed, every interactive [item]git status[/item] / [item]git diff[/item] first
+runs [item]dodot refresh --quiet[/item], so deployed-side template edits surface
+in git between commits — not just at commit time.
+
+The alias lands inside an idempotent managed block (guard comments),
+so re-running is a no-op and anything else in your rc file is
+preserved. Only interactive shells are affected: scripts, editors,
+and CI that call [item]git[/item] directly bypass the alias by design.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot git-install-alias [--shell <SHELL>][/usage]
+
+[header]OPTIONS[/header]
+  [item]--shell <SHELL>[/item]   [desc]Target shell ([item]bash[/item], [item]zsh[/item]). Auto-detected from
+                    [item]$SHELL[/item] by default[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot git-install-alias            [dim]# write the alias to your rc file[/dim]
+  dodot git-install-alias --shell bash
+  dodot git-show-alias               [dim]# print it instead, to install by hand[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot git-show-alias[/item]      [desc]Print the alias without writing anything[/desc]
+  [item]dodot refresh[/item]             [desc]The engine the alias calls[/desc]
+  [item]docs/user/commands/git-augmentation.lex[/item]  [desc]The full git-integration landscape[/desc]

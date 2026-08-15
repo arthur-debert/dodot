@@ -793,7 +793,8 @@ fn build_clap_command() -> ClapCommand {
                 .subcommand(
                     ClapCommand::new("status").about(
                         "Show the current state of every cached preprocessed file (synced / \
-                         output-changed / input-changed / both / missing). Read-only.",
+                         output_changed / input_changed / both_changed / missing_source / \
+                         missing_deployed). Read-only.",
                     ),
                 ),
         )

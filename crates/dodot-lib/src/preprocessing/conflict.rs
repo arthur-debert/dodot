@@ -1,11 +1,18 @@
 //! Dodot conflict markers — used by reverse-merge to flag ambiguous edits.
 //!
-//! When `dodot transform check` (R3) or the template clean filter (R6)
-//! cannot reliably attribute an edit to a static line in the template,
-//! it splices a conflict block into the source file. The block frames
-//! the original template line(s) and the user's deployed-side edit so
-//! the user can pick the right side, the same way they would resolve a
-//! `git merge` conflict.
+//! When the reverse-merge cannot reliably attribute an edit to a
+//! static line in the template, a conflict block frames the original
+//! template line(s) and the user's deployed-side edit so the user can
+//! pick the right side, the same way they would resolve a `git merge`
+//! conflict. Where the block lands depends on the caller:
+//!
+//! - `dodot transform check` (R3) surfaces the block in its *report*
+//!   and leaves the source file untouched (see
+//!   `commands::transform`'s module docs).
+//! - the template clean filter (R6) splices the block into the
+//!   filter's *output* — the index-side view git stores — so the
+//!   conflict shows up in `git diff`. From there the markers can land
+//!   in the on-disk source when the user hand-merges that view.
 //!
 //! # Marker shape
 //!
@@ -28,8 +35,10 @@
 //!
 //! # Why we refuse to expand a source containing markers
 //!
-//! Once `dodot transform check` writes a conflict block into the
-//! template, the template no longer renders cleanly: MiniJinja sees
+//! Once a conflict block lands in the template source (via a
+//! hand-merge of the clean filter's view, or pasted from
+//! `transform check`'s report), the template no longer renders cleanly:
+//! MiniJinja sees
 //! the marker lines as plain text, the rendered output deploys with
 //! the marker lines verbatim, and the user's app reads garbage. The
 //! pipeline's safety gate ([`ensure_no_unresolved_markers`]) catches

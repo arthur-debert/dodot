@@ -116,7 +116,7 @@ commit by hand. See `SECRETS.md`.
 ### Sync a deployed-side edit back to source
 
 ```bash
-dodot transform status                 # confirm the file shows output-changed / both
+dodot transform status                 # confirm the file shows output_changed / both_changed
 dodot transform check --dry-run        # preview the reverse-merge
 dodot transform check                  # write clean merges back into the .tmpl source
 # for any dodot-conflict block it reports, edit that block in the source by hand, then commit

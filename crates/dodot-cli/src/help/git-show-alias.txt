@@ -1,0 +1,27 @@
+[header]dodot git-show-alias[/header] — Print the git-wrapping shell alias.
+
+[desc]Prints the Tier 2 shell alias that wraps git in
+[item]dodot refresh --quiet[/item], so interactive [item]git status[/item] and [item]git diff[/item]
+see deployed-side template edits between commits:
+
+    [example]alias git='dodot refresh --quiet && command git'[/example]
+
+Read-only — nothing is written. Copy the output into your rc file
+yourself, or run [item]dodot git-install-alias[/item] to have dodot write it
+inside an idempotent managed block.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot git-show-alias [--shell <SHELL>][/usage]
+
+[header]OPTIONS[/header]
+  [item]--shell <SHELL>[/item]   [desc]Target shell ([item]bash[/item], [item]zsh[/item]). Auto-detected from
+                    [item]$SHELL[/item] by default[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot git-show-alias               [dim]# print the alias for your shell[/dim]
+  dodot git-show-alias --shell zsh >> ~/.zshrc[/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot git-install-alias[/item]   [desc]Write the alias to your rc file for you[/desc]
+  [item]dodot refresh[/item]             [desc]The engine the alias calls[/desc]
+  [item]docs/user/commands/git-augmentation.lex[/item]  [desc]The full git-integration landscape[/desc]
