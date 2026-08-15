@@ -8,7 +8,7 @@ Your dotfiles repo is not touched. `down` only retracts the bookkeeping; the sou
 1. When you reach for it
 
     - You're temporarily moving away from a pack you don't want active right now.
-    - You've added a `.dodotignore` marker to a deployed pack. The pack drops out of discovery, but both `dodot up` and `dodot down` sweep the leftover state of now-ignored packs — datastore entries and the live symlinks alike — so either command finishes the cleanup.
+    - You've added a `.dodotignore` marker to a deployed pack. The pack drops out of discovery, but both `dodot up` and `dodot down` sweep the leftover state of now-ignored packs — datastore entries always, live symlinks as long as the pack's sources can still be read (see "What `down` does *not* do" below) — so either command finishes the cleanup.
     - You're cleaning up after experimenting — running `dodot down` with no arguments tears every pack down at once.
     - You want a fresh re-execute of an install script: `down` followed by `up` clears the sentinel and re-runs.
 
@@ -26,7 +26,7 @@ Your dotfiles repo is not touched. `down` only retracts the bookkeeping; the sou
     - It does not modify or delete anything in your dotfiles repo. Source files survive.
     - It does not roll back code-execution side-effects. Packages installed by `brew bundle`, files created by `install.sh`, system defaults written via `defaults write` — those are system state, not dodot state. Cleanup is the script author's job.
     - It does not show `.dodotignore`'d packs in its output — discovery skips them — but any state left from a deploy-before-ignore is still swept, live symlinks included.
-    - It can't recover the live symlinks of a pack you've *deleted* from your dotfiles repo. The orphaned datastore state is swept, but with the pack's sources gone the deploy destinations can't be recomputed, so those links are left dangling.
+    - It can't recover the live symlinks of a pack whose deploy destinations can't be recomputed: one you've *deleted* from your dotfiles repo, or one whose config no longer loads. The datastore state is still swept — link removal is the best-effort half of teardown, never a blocker for the rest — but those links are left dangling.
 
 3. Flags
 

@@ -1562,6 +1562,53 @@ fn down_removes_live_user_symlink() {
 }
 
 #[test]
+fn down_removes_live_external_user_link() {
+    // The externals handler's `Fetch` intents also create user links,
+    // but theirs point *deeper* into the handler data dir
+    // (`external/<name>/<file>`, not the dir itself) — which is why the
+    // teardown scoping is a prefix check rather than exact-path
+    // equality. This pins the `Fetch` branch of
+    // `remove_live_user_links` end to end (#225).
+    use sha2::{Digest, Sha256};
+
+    let env = TempEnvironment::builder().pack("shared").done().build();
+    let mut ctx = make_ctx(&env);
+    // The externals handler is CodeExecution-category, which the test
+    // ctx's default `no_provision: true` skips at planning time — for
+    // deploy *and* for the teardown replan alike.
+    ctx.no_provision = false;
+
+    let body: &[u8] = b"#!/bin/sh\nexport SHARED=1\n";
+    let src = env.home.join("aliases-src.sh");
+    env.fs.write_file(&src, body).unwrap();
+    let externals = format!(
+        "[aliases]\ntype = \"file\"\nurl = \"file://{}\"\ntarget = \"~/.config/shared/aliases.sh\"\nsha256 = \"{:x}\"\n",
+        src.display(),
+        Sha256::digest(body),
+    );
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join("shared/externals.toml"),
+            externals.as_bytes(),
+        )
+        .unwrap();
+
+    commands::up::up(None, &ctx).unwrap();
+    let user_path = env.config_home.join("shared/aliases.sh");
+    assert!(
+        env.fs.is_symlink(&user_path),
+        "up should deploy the external as a live user link"
+    );
+
+    commands::down::down(None, &ctx).unwrap();
+
+    assert!(
+        !env.fs.is_symlink(&user_path) && !env.fs.exists(&user_path),
+        "down must remove live links of Fetch intents too, not just the symlink handler's (#225)"
+    );
+}
+
+#[test]
 fn down_ignore_sweep_removes_live_user_symlink() {
     // Deploy-then-ignore: the pack drops out of discovery, so only the
     // ignored-pack sweep can tear it down — including the live symlink

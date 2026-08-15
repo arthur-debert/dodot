@@ -57,7 +57,7 @@ Filters & ignores — keeping files out of dodot's way
 
     To reverse: `rm <dir>/.dodotignore`. dodot doesn't ship an `addignore --remove`; deletion is by hand on purpose, matching the "git is your history" posture.
 
-    If the pack was previously deployed, the next `dodot up` or `dodot down` sweeps its leftover state — datastore entries, shell-init sourcing, and the live symlinks it deployed. No particular ordering of marker-vs-`down` is required; just run one of the two afterwards to finish the cleanup.
+    If the pack was previously deployed, the next `dodot up` or `dodot down` sweeps its leftover state — datastore entries, shell-init sourcing, and the live symlinks it deployed. No particular ordering of marker-vs-`down` is required; just run one of the two afterwards to finish the cleanup. The symlink half is best-effort: a pack dodot can no longer read (deleted sources, broken config) keeps its links — see [./commands/down.lex].
 
 4. Whole pattern invisible at scan time — `[pack] ignore`
 
