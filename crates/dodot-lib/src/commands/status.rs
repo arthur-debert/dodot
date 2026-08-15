@@ -339,9 +339,11 @@ fn verify_symlink(
         //
         // Symlinks at the target are NOT conflicts: the executor's
         // create_user_link gracefully replaces them (correct ones are
-        // left alone, wrong/dangling ones are removed and recreated). A
-        // dangling symlink left over from `dodot down` is the canonical
-        // case — flagging it as a conflict would be a false positive.
+        // left alone, wrong/dangling ones are removed and recreated).
+        // `down` removes its live links itself (#225), but dangling
+        // symlinks still occur — an orphaned pack's sweep, an older
+        // dodot, an interrupted teardown — and flagging them as
+        // conflicts would be a false positive.
         //
         // #44: a non-symlink file whose content is byte-identical to the
         // source is also NOT a conflict — the executor will auto-replace

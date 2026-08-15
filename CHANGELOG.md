@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- fix: `dodot down` and the deploy-then-ignore sweep now remove the live destination symlink a deployment created (e.g. `~/.config/<pack>/<file>`), instead of leaving it dangling after the datastore state is swept; a destination the user repointed elsewhere is never touched, and an orphaned pack (deleted from the repo) still can't have its links recovered (#225)
+
 ## 5.5.0 - 2026-08-15
 
 - feat: `dodot up` and `dodot status` now report whether shells are actually loading dodot, instead of reporting green on a deployment no shell ever activates — the generated init script leaves evidence it ran (a generation stamp and a heartbeat), and the states are surfaced as healthy, "this shell predates your last `up`", or "no shell has loaded dodot yet" (#262)

@@ -28,7 +28,7 @@ Idempotent: safe to run again on an already-ignored directory. To reverse, remov
 
 4. Watch out for
 
-    - *Add the marker AFTER `dodot down`, not before.* If the directory was previously deployed, adding `.dodotignore` makes it invisible to discovery — but `dodot up` and `dodot down` only reconcile *discovered* packs, so the previously-deployed symlinks are *not* cleaned up automatically. Run `dodot down <pack>` *first*, then `dodot addignore <pack>`. See [./../handlers/controlling-activation.lex] §4.
+    - *Previously-deployed state is swept on the next run.* If the directory was already deployed, adding `.dodotignore` makes it invisible to discovery, but both `dodot up` and `dodot down` sweep the leftover state of now-ignored packs — datastore entries, shell-init sourcing, and the live symlinks alike. Run either command after adding the marker to finish the cleanup. See [./../handlers/controlling-activation.lex] §4.
     - *Different from `[pack] ignore`.* `addignore` skips the *whole directory* as a pack. To skip individual files *inside* a pack that's otherwise active, use `[pack] ignore` patterns in `.dodot.toml` instead.
     - *Different from `[mappings] ignore` / `[mappings] skip`.* Those drop matched source files from handler dispatch, but the file is still discovered. `.dodotignore` stops discovery one layer earlier.
     - *No `dodot addignore --remove`.* The reverse is `rm <pack>/.dodotignore` by hand. (Idempotent on add, manual on undo — fits the "git is your history" posture.)
