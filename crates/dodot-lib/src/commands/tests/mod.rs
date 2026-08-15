@@ -1521,11 +1521,12 @@ fn down_removes_deployed_state() {
     let down_result = commands::down::down(None, &ctx).unwrap();
     assert!(down_result.message.is_some());
 
-    // After down, all files should be plain pending. The user-side
-    // symlinks left dangling by `down` are NOT conflicts — the executor's
-    // create_user_link gracefully replaces them on the next `up`.
-    // `PendingConflict` only fires when the executor would
-    // actually refuse: non-symlink + exists.
+    // After down, all files should be plain pending. `down` removes the
+    // live destination symlinks it created (#225); even a dangling
+    // symlink left at a target (older dodot, orphan sweep) is NOT a
+    // conflict — the executor's create_user_link gracefully replaces
+    // symlinks on the next `up`. `PendingConflict` only fires when the
+    // executor would actually refuse: non-symlink + exists.
     let status = commands::status::status(None, &ctx).unwrap();
     for file in &status.packs[0].files {
         assert_eq!(
@@ -1534,6 +1535,184 @@ fn down_removes_deployed_state() {
             file.name, file.status
         );
     }
+}
+
+#[test]
+fn down_removes_live_user_symlink() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    commands::up::up(None, &ctx).unwrap();
+    let user_path = env.config_home.join("vim/vimrc");
+    assert!(
+        env.fs.is_symlink(&user_path),
+        "up should create the live symlink"
+    );
+
+    commands::down::down(None, &ctx).unwrap();
+
+    assert!(
+        !env.fs.is_symlink(&user_path) && !env.fs.exists(&user_path),
+        "down must remove the live destination symlink, not leave it dangling (#225)"
+    );
+}
+
+#[test]
+fn down_removes_live_external_user_link() {
+    // The externals handler's `Fetch` intents also create user links,
+    // but theirs point *deeper* into the handler data dir
+    // (`external/<name>/<file>`, not the dir itself) — which is why the
+    // teardown scoping is a prefix check rather than exact-path
+    // equality. This pins the `Fetch` branch of
+    // `remove_live_user_links` end to end (#225).
+    use sha2::{Digest, Sha256};
+
+    let env = TempEnvironment::builder().pack("shared").done().build();
+    let mut ctx = make_ctx(&env);
+    // The externals handler is CodeExecution-category, which the test
+    // ctx's default `no_provision: true` skips at planning time — for
+    // deploy *and* for the teardown replan alike.
+    ctx.no_provision = false;
+
+    let body: &[u8] = b"#!/bin/sh\nexport SHARED=1\n";
+    let src = env.home.join("aliases-src.sh");
+    env.fs.write_file(&src, body).unwrap();
+    let externals = format!(
+        "[aliases]\ntype = \"file\"\nurl = \"file://{}\"\ntarget = \"~/.config/shared/aliases.sh\"\nsha256 = \"{:x}\"\n",
+        src.display(),
+        Sha256::digest(body),
+    );
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join("shared/externals.toml"),
+            externals.as_bytes(),
+        )
+        .unwrap();
+
+    commands::up::up(None, &ctx).unwrap();
+    let user_path = env.config_home.join("shared/aliases.sh");
+    assert!(
+        env.fs.is_symlink(&user_path),
+        "up should deploy the external as a live user link"
+    );
+
+    commands::down::down(None, &ctx).unwrap();
+
+    assert!(
+        !env.fs.is_symlink(&user_path) && !env.fs.exists(&user_path),
+        "down must remove live links of Fetch intents too, not just the symlink handler's (#225)"
+    );
+}
+
+#[test]
+fn down_ignore_sweep_removes_live_user_symlink() {
+    // Deploy-then-ignore: the pack drops out of discovery, so only the
+    // ignored-pack sweep can tear it down — including the live symlink
+    // at the deploy destination (#225).
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    commands::up::up(None, &ctx).unwrap();
+    let user_path = env.config_home.join("vim/vimrc");
+    assert!(env.fs.is_symlink(&user_path));
+
+    env.fs
+        .write_file(&env.dotfiles_root.join("vim/.dodotignore"), b"")
+        .unwrap();
+    commands::down::down(None, &ctx).unwrap();
+
+    assert!(
+        !env.fs.is_symlink(&user_path) && !env.fs.exists(&user_path),
+        "ignore sweep via down must remove the live destination symlink (#225)"
+    );
+}
+
+#[test]
+fn up_ignore_sweep_removes_live_user_symlink() {
+    // Same as above but through `up` — marking a deployed pack ignored
+    // and re-running `up` is the issue's original repro (#225).
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    commands::up::up(None, &ctx).unwrap();
+    let user_path = env.config_home.join("vim/vimrc");
+    assert!(env.fs.is_symlink(&user_path));
+
+    env.fs
+        .write_file(&env.dotfiles_root.join("vim/.dodotignore"), b"")
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    assert!(
+        !env.fs.is_symlink(&user_path) && !env.fs.exists(&user_path),
+        "ignore sweep via up must remove the live destination symlink (#225)"
+    );
+}
+
+#[test]
+fn down_preserves_user_symlink_pointing_elsewhere() {
+    // A symlink at the deploy destination that the user repointed at
+    // something outside the pack's datastore subtree is not ours to
+    // remove — teardown only deletes links it created.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    commands::up::up(None, &ctx).unwrap();
+
+    let user_path = env.config_home.join("vim/vimrc");
+    let other = env.home.join("other-vimrc");
+    env.fs.write_file(&other, b"mine").unwrap();
+    env.fs.remove_file(&user_path).unwrap();
+    env.fs.symlink(&other, &user_path).unwrap();
+
+    commands::down::down(None, &ctx).unwrap();
+
+    env.assert_symlink(&user_path, &other);
+}
+
+#[test]
+fn down_leaves_live_links_of_orphaned_packs() {
+    // Documented limitation: a pack deleted from the dotfiles repo
+    // can't be replanned, so its deploy destinations are unrecoverable —
+    // the orphan sweep (#255) removes the datastore state but must
+    // leave the (now dangling) live symlink behind rather than guess.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    commands::up::up(None, &ctx).unwrap();
+    let user_path = env.config_home.join("vim/vimrc");
+    assert!(env.fs.is_symlink(&user_path));
+
+    env.fs
+        .remove_dir_all(&env.dotfiles_root.join("vim"))
+        .unwrap();
+    commands::down::down(None, &ctx).unwrap();
+
+    env.assert_no_handler_state("vim", "symlink");
+    assert!(
+        env.fs.is_symlink(&user_path),
+        "orphaned pack's live link is unrecoverable and stays (dangling) by design"
+    );
 }
 
 // ── list ────────────────────────────────────────────────────

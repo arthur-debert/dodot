@@ -57,7 +57,7 @@ Filters & ignores — keeping files out of dodot's way
 
     To reverse: `rm <dir>/.dodotignore`. dodot doesn't ship an `addignore --remove`; deletion is by hand on purpose, matching the "git is your history" posture.
 
-    Critical sequencing: if the pack was previously deployed, run `dodot down <pack>` *first*, then add the marker. `up` and `down` only walk *discovered* packs — adding the marker first hides the pack from discovery and leaves the deployed symlinks behind.
+    If the pack was previously deployed, the next `dodot up` or `dodot down` sweeps its leftover state — datastore entries, shell-init sourcing, and the live symlinks it deployed. No particular ordering of marker-vs-`down` is required; just run one of the two afterwards to finish the cleanup. The symlink half is best-effort: a pack dodot can no longer read (deleted sources, broken config) keeps its links — see [./commands/down.lex].
 
 4. Whole pattern invisible at scan time — `[pack] ignore`
 
@@ -152,7 +152,7 @@ Filters & ignores — keeping files out of dodot's way
 9. Watch out for
 
     - *Override replaces, doesn't merge.* Setting `[mappings] skip = ["TODO.md"]` drops the README/LICENSE defaults from that scope. Re-list the defaults if you want to keep them.
-    - *`.dodotignore` after `down`, not before.* Adding the marker to a previously-deployed pack hides it from discovery; `up` and `down` only reconcile discovered packs. Run `dodot down <pack>` first, then add the marker — otherwise the deployed symlinks stay live.
+    - *`.dodotignore` needs one more run to clean up.* Adding the marker to a previously-deployed pack hides it from discovery, but its leftover state is swept by the next `dodot up` or `dodot down` — live symlinks included. The marker alone doesn't undeploy anything until one of those runs.
     - *`[mappings] ignore` is per-pack-or-root.* Like every `[mappings]` key, it's set in `.dodot.toml` and replaces (not merges) at the pack level. Pack-level setting wins for that pack; root-level applies to every pack that doesn't override.
     - *`protected_paths` is separate.* dodot also refuses to symlink a curated list of security-sensitive paths (SSH private keys, `.gnupg`, AWS credentials, …). That's enforced by the symlink handler, not the filter layer — see [./paths.lex] §6.
 
@@ -162,7 +162,7 @@ Filters & ignores — keeping files out of dodot's way
 
     For `[mappings]` filters, `dodot up` reconciles per-pack state on every run, so adding `*.bak` to `[mappings] ignore` cleans up any previously-deployed `*.bak` symlinks for that pack on the next `up`.
 
-    `.dodotignore` is the exception (see §9). The marker hides discovery; reconciliation walks discovery; so `down` *before* adding the marker is the safe sequence.
+    `.dodotignore` takes one more run (see §9). The marker hides discovery, and the next `up` or `down` sweeps the pack's leftover deployed state.
 
 11. See also
 

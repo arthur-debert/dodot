@@ -261,10 +261,13 @@ pub fn scan_ignored(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> R
 ///
 /// Either way the regenerated init script is driven entirely off the
 /// datastore `packs/` tree, so leftover state keeps getting sourced on
-/// every shell startup until it is removed. Datastore is keyed by
-/// on-disk directory name, not display name. Returns the dir names that
-/// actually had state removed, so the caller can reflect "something was
-/// deactivated" in its message.
+/// every shell startup until it is removed. Before a pack's datastore
+/// state goes, its live destination symlinks are removed too (via
+/// [`remove_live_user_links`], issue #225) — except for orphans, whose
+/// deploy destinations can no longer be replanned. Datastore is keyed
+/// by on-disk directory name, not display name. Returns the dir names
+/// that actually had state removed, so the caller can reflect
+/// "something was deactivated" in its message.
 pub fn sweep_pack_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<Vec<String>> {
     let mut swept = Vec::new();
     for dir in dir_names {
@@ -273,12 +276,102 @@ pub fn sweep_pack_state(dir_names: &[String], ctx: &ExecutionContext) -> Result<
             continue;
         }
         swept.push(dir.clone());
+        remove_live_user_links_for_dir(dir, ctx)?;
         for handler in handlers {
             debug!(pack = %dir, %handler, "sweeping stale pack state");
             ctx.datastore.remove_state(dir, &handler)?;
         }
     }
     Ok(swept)
+}
+
+/// Remove the live destination symlinks a pack's deployment created —
+/// the teardown counterpart of the executor's user-link creation
+/// (issue #225).
+///
+/// Removing datastore state alone leaves the user-facing symlink (e.g.
+/// `~/.config/vim/vimrc` → `<datastore>/packs/vim/symlink/vimrc`)
+/// dangling in the user's config tree. This replans the pack passively
+/// — the same single source of target truth `status` uses; teardown
+/// must not re-derive deploy paths either — and removes each planned
+/// destination (`Link` and `Fetch` intents, the two that create user
+/// links) only when it is a symlink pointing into that intent's handler
+/// data dir. A destination the user repointed elsewhere, or another
+/// pack's link at the same path, is never touched.
+///
+/// Best-effort on the planning side: a pack whose plan cannot be
+/// computed (e.g. a config error in a now-ignored pack) is skipped with
+/// a debug log — datastore teardown must proceed regardless. Removal
+/// failures do propagate. Returns the number of links removed.
+pub fn remove_live_user_links(pack: &Pack, ctx: &ExecutionContext) -> Result<usize> {
+    let plan = match planning::plan_pack(pack, ctx, crate::preprocessing::PreprocessMode::Passive) {
+        Ok(plan) => plan,
+        Err(e) => {
+            debug!(
+                pack = %pack.name,
+                error = %e,
+                "cannot plan pack for live-link teardown; skipping"
+            );
+            return Ok(0);
+        }
+    };
+    let mut removed = 0;
+    for intent in &plan.intents {
+        let (pack_name, handler, user_path) = match intent {
+            crate::operations::HandlerIntent::Link {
+                pack,
+                handler,
+                user_path,
+                ..
+            }
+            | crate::operations::HandlerIntent::Fetch {
+                pack,
+                handler,
+                user_path,
+                ..
+            } => (pack, handler, user_path),
+            _ => continue,
+        };
+        if !ctx.fs.is_symlink(user_path) {
+            continue;
+        }
+        let handler_dir = ctx.paths.handler_data_dir(pack_name, handler);
+        match ctx.fs.readlink(user_path) {
+            Ok(target) if target.starts_with(&handler_dir) => {
+                debug!(pack = %pack.name, path = %user_path.display(), "removing live user link");
+                ctx.fs.remove_file(user_path)?;
+                removed += 1;
+            }
+            _ => {}
+        }
+    }
+    Ok(removed)
+}
+
+/// [`remove_live_user_links`] keyed by on-disk directory name, for the
+/// sweep paths that only know datastore keys. A dir that no longer
+/// exists under the dotfiles root (an orphan, issue #255) is skipped:
+/// with the pack sources gone there is nothing to replan, so its live
+/// links cannot be recovered — the one teardown case that still leaves
+/// a dangling link behind.
+fn remove_live_user_links_for_dir(dir: &str, ctx: &ExecutionContext) -> Result<usize> {
+    let path = ctx.paths.dotfiles_root().join(dir);
+    if !ctx.fs.is_dir(&path) {
+        return Ok(0);
+    }
+    let pack_config = match ctx.config_manager.config_for_pack(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            debug!(
+                pack = %dir,
+                error = %e,
+                "cannot load pack config for live-link teardown; skipping"
+            );
+            return Ok(0);
+        }
+    };
+    let pack = Pack::new(dir.to_string(), path, pack_config.to_handler_config());
+    remove_live_user_links(&pack, ctx)
 }
 
 /// Count of the given pack dirs that currently hold datastore state,

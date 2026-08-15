@@ -9,6 +9,11 @@
 //!
 //! Dry-run keeps the per-handler "would remove" rendering.
 //!
+//! Teardown removes the *live* destination symlinks a deployment
+//! created (issue #225), not just the datastore state — otherwise every
+//! `down` leaves dangling links in the user's config tree. See
+//! [`orchestration::remove_live_user_links`] for the scoping rules.
+//!
 //! Besides packs discovered in the repo, `down` also removes *orphaned*
 //! datastore state — state for packs deleted from the dotfiles root
 //! since they were deployed (issue #255). A no-args `down` sweeps every
@@ -16,7 +21,8 @@
 //! form) even though the repo scan no longer knows it. Orphans can't
 //! render through `status` (there is no pack to show), so a real run
 //! reports what it swept via the warnings channel; dry-run lists them
-//! with the same "would remove" rows as normal packs.
+//! with the same "would remove" rows as normal packs. An orphan's live
+//! links are unrecoverable (nothing left to replan) and stay behind.
 
 use tracing::{debug, info};
 
@@ -98,6 +104,9 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
                 ctx,
             )?);
         } else {
+            // Live destination symlinks first, while the datastore
+            // paths they point at still identify them as ours (#225).
+            orchestration::remove_live_user_links(pack, ctx)?;
             for handler in &handlers {
                 ctx.datastore.remove_state(&pack.name, handler)?;
             }
