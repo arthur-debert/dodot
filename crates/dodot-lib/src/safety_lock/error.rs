@@ -43,10 +43,26 @@ pub enum SafetyLockError {
         reason: String,
     },
 
-    /// Implicit selection found neither a Git top-level nor a usable current
-    /// directory.
-    #[error("could not determine a dotfiles root from `{}`", current_dir.display())]
-    NoImplicitRoot { current_dir: PathBuf },
+    /// Implicit selection chose a candidate — the Git top-level, or the
+    /// current directory — that is not a usable root.
+    ///
+    /// Naming the mechanism matters as much as naming the path: the Git
+    /// top-level is frequently not the directory the user's shell prompt shows
+    /// (Spec, story 2), so "the git top-level `/srv/dots` …" tells them where
+    /// to look while a bare path does not. The selected mechanism is never
+    /// retried against the other one: a Git top-level that cannot be used is
+    /// not evidence that the current directory was meant instead.
+    #[error("the {selected_by} `{spelling}` cannot be used as a dotfiles root: {reason}")]
+    ImplicitRootUnusable {
+        /// The candidate in the reversible spelling of
+        /// [`super::util::encode_native_path`].
+        spelling: String,
+        /// Which implicit mechanism chose it.
+        selected_by: super::roots::RootSource,
+        /// What made it unusable, phrased to complete the sentence "the … `…`
+        /// cannot be used as a dotfiles root: …".
+        reason: String,
+    },
 
     /// A path that must be canonical and absolute was not absolute.
     ///

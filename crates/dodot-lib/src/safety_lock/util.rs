@@ -20,6 +20,15 @@
 //! `os-bytes:`. [`encode_native_path`] resolves that by hex-encoding such a
 //! path too, so decoding a spelling always reproduces the exact input bytes —
 //! no escape grammar, no unrepresentable path.
+//!
+//! ## Candidate validation
+//!
+//! [`canonical_root_identity`] is the one place a candidate path becomes a
+//! root identity, shared by both selection paths so an environment root and an
+//! implicit one are held to the same standard. It reports *which* requirement
+//! failed rather than a bare boolean, because each caller phrases the refusal
+//! in its own vocabulary — `DOTFILES_ROOT` names the variable, implicit
+//! selection names the mechanism that chose the path.
 
 use std::ffi::OsString;
 use std::fmt::Write as _;
@@ -27,6 +36,7 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 
 use super::error::{Result, SafetyLockError};
+use super::roots::RootIdentity;
 
 /// Prefix marking a spelling that carries hex-encoded native path bytes
 /// rather than the path's plain text.
@@ -124,6 +134,67 @@ pub trait PathProbe: Send + Sync {
     /// usable root, and answering "readable" for it would let the pipeline
     /// fail partway through discovery instead of at selection time.
     fn is_readable_dir(&self, path: &Path) -> bool;
+}
+
+/// Why a candidate path cannot become a root identity.
+///
+/// One variant per requirement [`canonical_root_identity`] checks, so a caller
+/// can say what the user has to fix: a typo, a file where a directory was
+/// meant, and a permission problem have three different next actions.
+#[derive(Debug)]
+pub(super) enum UnusableRoot {
+    /// Nothing exists at the candidate path.
+    Missing,
+    /// Something is there, but it could not be resolved.
+    Unresolvable(std::io::Error),
+    /// The canonical path is not a directory.
+    NotADirectory,
+    /// The canonical path is a directory whose contents cannot be read.
+    Unreadable,
+    /// The canonical path is not a usable identity — only reachable through a
+    /// [`PathProbe`] that returns something non-canonical.
+    NotAnIdentity(SafetyLockError),
+}
+
+/// Canonicalize `candidate` once and check it is a directory Dodot can walk,
+/// yielding the root identity built from that canonical path.
+///
+/// This is the whole of what "usable root" means, and both selection paths ask
+/// it here rather than each spelling out the sequence: canonicalize (which is
+/// also what resolves aliases and symlinks into one identity, ADR-0001), then
+/// require a directory, then require one whose entries discovery could
+/// actually walk.
+///
+/// `candidate` must already be absolute. A relative path would be resolved by
+/// the operating system against the process working directory — the state
+/// Safety Lock resolves once per invocation and never re-reads — so callers
+/// anchor it to their injected invocation directory, or refuse it, first.
+pub(super) fn canonical_root_identity(
+    candidate: &Path,
+    probe: &dyn PathProbe,
+) -> std::result::Result<RootIdentity, UnusableRoot> {
+    debug_assert!(
+        candidate.is_absolute(),
+        "a relative candidate would be resolved against the process working directory"
+    );
+
+    let canonical = probe.canonicalize(candidate).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            UnusableRoot::Missing
+        } else {
+            UnusableRoot::Unresolvable(err)
+        }
+    })?;
+
+    if !probe.is_directory(&canonical) {
+        return Err(UnusableRoot::NotADirectory);
+    }
+
+    if !probe.is_readable_dir(&canonical) {
+        return Err(UnusableRoot::Unreadable);
+    }
+
+    RootIdentity::new(canonical).map_err(UnusableRoot::NotAnIdentity)
 }
 
 /// [`PathProbe`] backed by the real filesystem.

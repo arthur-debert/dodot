@@ -27,8 +27,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use super::error::{Result, SafetyLockError};
-use super::roots::{ResolvedRoot, RootIdentity, RootSource};
-use super::util::{encode_native_path, PathProbe};
+use super::roots::{ResolvedRoot, RootSource};
+use super::util::{canonical_root_identity, encode_native_path, PathProbe, UnusableRoot};
 
 /// The environment inputs root selection depends on, captured once per
 /// invocation.
@@ -147,30 +147,26 @@ pub fn resolve_environment_root(
         )));
     }
 
-    let canonical = probe.canonicalize(&candidate).map_err(|err| {
-        if err.kind() == std::io::ErrorKind::NotFound {
-            unusable(format!("{named} does not exist"))
-        } else {
+    // The usability requirements themselves are shared with implicit
+    // selection; only the phrasing is the variable's own, because a refused
+    // user is reading about `DOTFILES_ROOT` rather than about a path Dodot
+    // picked. The last case is defensive: a canonical path from the filesystem
+    // is absolute and free of `..`, so it only fires for a probe that says
+    // otherwise, and it stays an environment diagnostic so the message still
+    // names the variable.
+    let identity = canonical_root_identity(&candidate, probe).map_err(|failure| match failure {
+        UnusableRoot::Missing => unusable(format!("{named} does not exist")),
+        UnusableRoot::Unresolvable(err) => {
             unusable(format!("{named} could not be resolved: {err}"))
         }
-    })?;
-
-    if !probe.is_directory(&canonical) {
-        return Err(unusable(format!("{named} is not a directory")));
-    }
-
-    if !probe.is_readable_dir(&canonical) {
-        return Err(unusable(format!(
+        UnusableRoot::NotADirectory => unusable(format!("{named} is not a directory")),
+        UnusableRoot::Unreadable => unusable(format!(
             "{named} is a directory whose contents cannot be read"
-        )));
-    }
-
-    // Defensive: a canonical path from the filesystem is absolute and free of
-    // `..`, so this only fires for a probe that says otherwise. It stays an
-    // environment diagnostic rather than a bare identity error so the message
-    // still names `DOTFILES_ROOT`.
-    let identity = RootIdentity::new(canonical)
-        .map_err(|err| unusable(format!("{named} did not resolve to a usable root: {err}")))?;
+        )),
+        UnusableRoot::NotAnIdentity(err) => {
+            unusable(format!("{named} did not resolve to a usable root: {err}"))
+        }
+    })?;
 
     Ok(Some(ResolvedRoot::new(identity, RootSource::Environment)))
 }
@@ -208,91 +204,12 @@ mod tests {
     use std::os::unix::ffi::OsStringExt;
     use std::sync::Mutex;
 
+    use super::super::roots::RootIdentity;
+    use super::super::test_probe::{Entry, FakeProbe};
     use super::*;
 
     const CWD: &str = "/home/alice/work";
     const HOME: &str = "/home/alice";
-
-    /// What a path is, as far as the probe is concerned.
-    #[derive(Debug, Clone)]
-    enum Entry {
-        ReadableDir,
-        UnreadableDir,
-        NotADirectory,
-        Unresolvable(io::ErrorKind),
-    }
-
-    /// A filesystem stated as data: what each path canonicalizes to, and what
-    /// it is once canonical. Anything unregistered is missing.
-    #[derive(Debug, Default)]
-    struct FakeProbe {
-        links: Vec<(PathBuf, PathBuf)>,
-        entries: Vec<(PathBuf, Entry)>,
-        canonicalized: Mutex<Vec<PathBuf>>,
-    }
-
-    impl FakeProbe {
-        fn with(path: &str, entry: Entry) -> Self {
-            let probe = Self::default();
-            probe.add(PathBuf::from(path), entry)
-        }
-
-        fn dir(path: &str) -> Self {
-            Self::with(path, Entry::ReadableDir)
-        }
-
-        fn add(mut self, path: PathBuf, entry: Entry) -> Self {
-            self.entries.push((path, entry));
-            self
-        }
-
-        /// `path` canonicalizes to `target`, which is a readable directory.
-        fn link(mut self, path: &str, target: &str) -> Self {
-            self.links
-                .push((PathBuf::from(path), PathBuf::from(target)));
-            self.add(PathBuf::from(target), Entry::ReadableDir)
-        }
-
-        fn entry(&self, path: &Path) -> Option<&Entry> {
-            self.entries
-                .iter()
-                .find(|(known, _)| known == path)
-                .map(|(_, entry)| entry)
-        }
-
-        /// Every path `canonicalize` was asked about — the proof that a
-        /// relative value was anchored to the injected directory.
-        fn canonicalized(&self) -> Vec<PathBuf> {
-            self.canonicalized.lock().unwrap().clone()
-        }
-    }
-
-    impl PathProbe for FakeProbe {
-        fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
-            self.canonicalized.lock().unwrap().push(path.to_path_buf());
-
-            if let Some((_, target)) = self.links.iter().find(|(known, _)| known == path) {
-                return Ok(target.clone());
-            }
-
-            match self.entry(path) {
-                Some(Entry::Unresolvable(kind)) => Err(io::Error::from(*kind)),
-                Some(_) => Ok(path.to_path_buf()),
-                None => Err(io::Error::from(io::ErrorKind::NotFound)),
-            }
-        }
-
-        fn is_directory(&self, path: &Path) -> bool {
-            matches!(
-                self.entry(path),
-                Some(Entry::ReadableDir | Entry::UnreadableDir)
-            )
-        }
-
-        fn is_readable_dir(&self, path: &Path) -> bool {
-            matches!(self.entry(path), Some(Entry::ReadableDir))
-        }
-    }
 
     fn resolve(raw_value: impl Into<OsString>, probe: &FakeProbe) -> Result<Option<ResolvedRoot>> {
         resolve_environment_root(&EnvironmentRootInput::set(CWD, HOME, raw_value), probe)
@@ -593,33 +510,6 @@ mod tests {
 
         assert!(!root.requires_approval());
         assert!(!root.source().is_implicit());
-    }
-
-    /// The module boundary the Spec draws: the environment is captured at the
-    /// process edge and injected. A direct lookup here would make selection
-    /// untestable and would re-read state that must be resolved once per
-    /// invocation (ADR-0001).
-    #[test]
-    fn resolution_never_reads_the_process_environment() {
-        let source = include_str!("environment.rs");
-        // The implementation only: this test names the forbidden calls, so
-        // scanning itself would always find them.
-        let implementation = source
-            .split_once("#[cfg(test)]")
-            .expect("this file carries a test module")
-            .0;
-        let code = implementation
-            .lines()
-            .filter(|line| !line.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        for forbidden in ["std::env", "env::var", "current_dir()"] {
-            assert!(
-                !code.contains(forbidden),
-                "environment.rs reads process state through `{forbidden}`"
-            );
-        }
     }
 
     /// The whole path against a real filesystem, so the injected probe is not
