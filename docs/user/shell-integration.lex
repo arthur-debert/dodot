@@ -95,7 +95,7 @@ Shell integration
 
 5. Activation states
 
-    Because the init script leaves evidence, every `dodot up`, `dodot down`, and `dodot status` ends with a *footer* about activation instead of assuming shells load dodot. Line one says whether dodot is sourced in new shell sessions, colour-coded by severity; when something needs doing, a hint follows. The last line, dimmed, is the evidence:
+    Because the init script leaves evidence, `dodot up`, `dodot down`, and `dodot status` end with a *footer* about activation instead of assuming shells load dodot. Line one says whether dodot is sourced in new shell sessions, colour-coded by severity; when something needs doing, a hint follows. The last line, dimmed, is the evidence:
 
         Last loaded 4 minutes ago by dodot 5.6.0.
 
@@ -103,17 +103,19 @@ Shell integration
 
     "Last loaded" is the heartbeat file's modification time — when a shell last actually sourced the init script, which is not the same as when `dodot up` generated it. The version is the dodot that generated the script that shell loaded. Evidence left by a dodot old enough to carry no version renders as `≤5.5.1` — the last release before the evidence learned to identify itself. When no shell has ever loaded dodot, the line reads `Never loaded.`; when the heartbeat's timestamp is unreadable, `Last loaded at an unknown time by dodot <version>.`
 
-    This section is where every state and its exact message live; other pages link here rather than repeating them. Seven states, seven different things to do:
+    One case has no footer at all: before a first deploy there is no init script on disk, so there is no hookup to have. `dodot status` on a machine where `dodot up` has never run says nothing about activation — and neither does a `dodot up --dry-run` there, which regenerates nothing. A real `up` writes the script before it reports, so it always ends on a footer.
 
-    Activation states:
-        | State            | Line one                                                          | What to do                                     |
-        | healthy          | `Shell hookup: dodot is sourced in new shells.`                   | Nothing.                                       |
-        | version skew     | `Shell hookup: your shells load a different dodot.`               | Find which install your PATH resolves first — see below. |
-        | empty script     | `Shell hookup: wired, but the init script is empty — nothing is deployed.` | `dodot up` — expected right after `dodot down`. |
-        | stale shell      | `Shell hookup: this shell predates your last \`dodot up\`.`       | Open a new shell.                              |
-        | this shell only  | `Shell hookup: this shell did not load dodot.`                    | What the hint names: the hook is missing from your rc (wire it), or it's there and this is likely an old shell (open a new one). |
-        | never activated  | `Shell hookup: no shell has loaded dodot yet.`                    | `dodot install --write`.                       |
-        | verified broken  | `Shell hookup: a new shell did not load dodot.`                   | Fix what the diagnosis names — see below.      |
+    This section is where every state and its exact message live; other pages link here rather than repeating them. There are seven states, and seven different things to do.
+
+    Activation states — line one, quoted verbatim:
+        | State            | Line one                                                                | What to do                                     |
+        | healthy          | Shell hookup: dodot is sourced in new shells.                           | Nothing.                                       |
+        | version skew     | Shell hookup: your shells load a different dodot.                       | Find which install your PATH resolves first — see below. |
+        | empty script     | Shell hookup: wired, but the init script is empty — nothing is deployed. | `dodot up` — expected right after `dodot down`. |
+        | stale shell      | Shell hookup: this shell predates your last \`dodot up\`.               | Open a new shell.                              |
+        | this shell only  | Shell hookup: this shell did not load dodot.                            | What the hint names: the hook is missing from your rc (wire it), or it's there and this is likely an old shell (open a new one). |
+        | never activated  | Shell hookup: no shell has loaded dodot yet.                            | `dodot install --write`.                       |
+        | verified broken  | Shell hookup: a new shell did not load dodot.                           | Fix what the diagnosis names — see below.      |
 
     :: table align=lll ::
 

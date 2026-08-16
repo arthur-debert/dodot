@@ -156,7 +156,7 @@ Getting started
 
 8. Watch out for
 
-    - *Open shells lag.* `dodot up` regenerates the shell init script, but already-running shells hold their old environment. Open a new shell or re-source your rc. dodot says so when it notices: `Shell hookup: this shell predates your last dodot up.`
+    - *Open shells lag.* `dodot up` regenerates the shell init script, but already-running shells hold their old environment. Open a new shell or re-source your rc. dodot says so when it notices: Shell hookup: this shell predates your last \`dodot up\`.
     - *Deployed is not activated.* A green `dodot up` proves your packs are in the datastore. Whether a shell loads them is a separate question, and it is the one [#6] answers. `dodot status` tells you which side of that line you're on.
     - *`dodot down` only sees discovered packs.* If you've added a `.dodotignore` marker to a pack, `down` won't reconcile it. See [./filters.lex] §3 for the safe sequence.
     - *Pack-root files only get the convention treatment.* Nested files (e.g. `pack/scripts/foo.sh`) fall through to the symlink handler — they aren't auto-sourced. That keeps window-manager helpers and similar scripts from being pulled into shell init.

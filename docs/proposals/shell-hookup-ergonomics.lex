@@ -88,14 +88,14 @@ Design Specification: Shell Hookup Ergonomics
 
         Line one states whether dodot is sourced in new shell sessions, colour-coded, and when it is not, the hint carries the fix. Line two is the evidence, dimmed. Proposed strings, to be pinned by the implementation and then documented once:
 
-        Footer states:
+        Footer states, quoted verbatim:
             | State | Line one | Line two |
-            | healthy | `Shell hookup: dodot is sourced in new shells.` | `Last loaded 4 minutes ago by dodot 5.6.0.` |
-            | version skew | `Shell hookup: your shells load a different dodot.` | `Last loaded 4 minutes ago by dodot 5.0.0 — you are running 5.6.0.` |
-            | stale shell | `Shell hookup: this shell predates your last \`dodot up\`.` | `Last loaded 4 minutes ago by dodot 5.6.0.` |
-            | this shell only | `Shell hookup: this shell did not load dodot.` | `Last loaded 2 days ago by dodot 5.6.0.` |
-            | never | `Shell hookup: no shell has loaded dodot yet.` | `Never loaded.` |
-            | verified broken | `Shell hookup: a new shell did not load dodot.` | `Last loaded 9 days ago by dodot ≤5.5.1.` |
+            | healthy | Shell hookup: dodot is sourced in new shells. | Last loaded 4 minutes ago by dodot 5.6.0. |
+            | version skew | Shell hookup: your shells load a different dodot. | Last loaded 4 minutes ago by dodot 5.0.0 — you are running 5.6.0. |
+            | stale shell | Shell hookup: this shell predates your last \`dodot up\`. | Last loaded 4 minutes ago by dodot 5.6.0. |
+            | this shell only | Shell hookup: this shell did not load dodot. | Last loaded 2 days ago by dodot 5.6.0. |
+            | never | Shell hookup: no shell has loaded dodot yet. | Never loaded. |
+            | verified broken | Shell hookup: a new shell did not load dodot. | Last loaded 9 days ago by dodot ≤5.5.1. |
 
             :: table align=lll header=1 ::
 

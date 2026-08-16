@@ -113,7 +113,7 @@ Run it with `--write` and it splices its own marked block into that file, then s
 
     :: shell ::
 
-    Three outcomes, kept apart because they call for different actions:
+    There are three outcomes, kept apart because they call for different actions.
 
     Verdicts:
         | Outcome         | What it means                                              |

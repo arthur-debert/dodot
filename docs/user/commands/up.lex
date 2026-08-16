@@ -81,7 +81,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     :: shell ::
 
-    The check is self-limiting. It fires when the cheap evidence is inconclusive — the fresh-install case and the broken-hookup case — and the first real shell activation retires it. A healthy machine never pays for a shell spawn. `--dry-run` never spawns one either.
+    The check is self-limiting. It fires when the cheap evidence is inconclusive — the fresh-install case and the broken-hookup case — and the first real shell activation retires it. A healthy machine never pays for a shell spawn. `--dry-run` never spawns one either — and on a machine where nothing has ever been deployed it has no init script to report on, so a dry run there ends with no footer at all.
 
     See [./install.lex] for the fix, and [./../shell-integration.lex] §5 for the activation states and the full set of messages — including version skew, the state where your shells load a *different* dodot than the one you run.
 

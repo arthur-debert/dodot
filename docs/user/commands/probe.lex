@@ -68,20 +68,29 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
         :: text ::
 
-        The spawn is guarded the same way as every dodot shell probe: stdin from `/dev/null`, output captured, a hard timeout with a process-group kill, dodot's own evidence variables scrubbed. It never writes your rc. If your rc defeats the tracing (a `PS4` override, say), dodot retries against a temporary *copy* with a report line inserted — and says so: `(traced via a temporary copy of your rc — your real files were not touched)`. If your rc has no dodot hook at all, nothing is spawned and the report says `no dodot hook in ~/.zshrc — run `dodot install --write` to add one`.
+        The spawn is guarded the same way as every dodot shell probe: stdin from `/dev/null`, output captured, a hard timeout with a process-group kill, dodot's own evidence variables scrubbed. It never writes your rc. If your rc defeats the tracing (a `PS4` override, say), dodot retries against a temporary *copy* with a report line inserted — and says so: `(traced via a temporary copy of your rc — your real files were not touched)`. If your rc has no dodot hook at all, nothing is spawned and the report says so:
 
-        The result is the `Hook resolution` section: the rc file, the hook's line number, and a verdict. For the hand-wired `eval "$(dodot init-sh)"` hook, dodot reads `$PATH` *at the hook line* out of the trace and resolves `dodot` against it itself — naming every candidate it passed over (`passed over /usr/local/bin/dodot — dangling symlink`, `— not executable`, `— its directory does not exist`), which is exactly what `command -v` silently skips. Four verdicts:
+            no dodot hook in ~/.zshrc — run `dodot install --write` to add one
 
-        Hook-line verdicts (eval hook):
-            | Verdict                                                                          | What to do                                                                          |
-            | `the hook at <rc>:<line> never ran in a fresh shell`                             | The hook sits inside a branch that did not run, or the rc exits or execs away before reaching it. Move it somewhere unconditional. |
-            | `\`dodot\` is not resolvable at <rc>:<line>`                                     | At that point of your rc, nothing on `$PATH` provides dodot. The report prints the PATH it searched and the entries it skipped. |
-            | `your shells load a different dodot than the one running now`                    | The wired-but-dead case: both paths and both versions are printed. Remove or update the stale install your PATH finds first. |
-            | `\`dodot\` at <rc>:<line> resolves to the running binary — the hookup is sound`  | The hookup is fine; whatever you are chasing lives elsewhere.                       |
+        :: text ::
+
+        The result is the `Hook resolution` section: the rc file, the hook's line number, and a verdict. For the hand-wired `eval "$(dodot init-sh)"` hook, dodot reads `$PATH` *at the hook line* out of the trace and resolves `dodot` against it itself — naming every candidate it passed over (`passed over /usr/local/bin/dodot — dangling symlink`, `— not executable`, `— its directory does not exist`), which is exactly what `command -v` silently skips. There are four verdicts.
+
+        Hook-line verdicts (eval hook), quoted verbatim:
+            | Verdict                                                                        | What to do                                                                          |
+            | the hook at <rc>:<line> never ran in a fresh shell                             | The hook sits inside a branch that did not run, or the rc exits or execs away before reaching it. Move it somewhere unconditional. |
+            | \`dodot\` is not resolvable at <rc>:<line>                                     | At that point of your rc, nothing on `$PATH` provides dodot. The report prints the PATH it searched and the entries it skipped. |
+            | your shells load a different dodot than the one running now                    | The wired-but-dead case: both paths and both versions are printed. Remove or update the stale install your PATH finds first. |
+            | \`dodot\` at <rc>:<line> resolves to the running binary — the hookup is sound  | The hookup is fine; whatever you are chasing lives elsewhere.                       |
 
         :: table align=ll ::
 
-        For the managed file-source hook there is no PATH involved — the check is whether the sourced script exists at that point, and the verdicts are the matching pair: `the init script sourced at <rc>:<line> is present — the hookup is sound`, or the same location with `does not exist — run `dodot up` to regenerate it`.
+        For the managed file-source hook there is no PATH involved — the check is whether the sourced script exists at that point, and the verdicts are the matching pair:
+
+            the init script sourced at <rc>:<line> is present — the hookup is sound
+            the init script sourced at <rc>:<line> does not exist — run `dodot up` to regenerate it
+
+        :: text ::
 
         Opting out: `--no-trace` skips the spawn and reports recorded timings only. Every other view — a `<PACK>`/`<PACK/FILE>` filter, `--runs`, `--history`, `--errors-only` — is passive and never traces.
 

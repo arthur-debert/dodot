@@ -12,13 +12,13 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
 2. What it shows
 
-    For each active pack:
+    For each active pack, `status` shows these rows.
 
     - Every source file dodot saw, as separate icon, pack, filename, and status columns. The icon and filename are muted, the pack is regular, and only the status carries its severity colour.
     - Files filtered out (`ignore` / `skip` / `gate`) and why they were filtered.
     - Files affected by preprocessing — under their *post-preprocessing* filename, not the source filename. (A source `config.toml.tmpl` shows as `config.toml`.)
 
-    Across packs:
+    Across packs, three more things surface.
 
     - Cross-pack conflicts surface as warnings on the affected rows, with both packs named so the conflict is visible without having to run `up`.
     - Packs whose `[pack] os` doesn't match the current host show in a separate "inactive on this OS" section.
