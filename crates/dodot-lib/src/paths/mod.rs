@@ -192,6 +192,21 @@ pub trait Pather: Send + Sync {
         self.data_dir().join("prompts.json")
     }
 
+    /// The Safety Lock trust file: the single clapfig-managed document
+    /// holding every dotfiles root the user has approved for root-sensitive
+    /// mutation (`crate::safety_lock::schema`).
+    ///
+    /// Lives under `data_dir`, deliberately outside the dotfiles root: a
+    /// repository-local marker would dirty the user's source tree, could
+    /// travel in Git, and would break the storage contract. Under `data_dir`
+    /// rather than `cache_dir` because losing it silently un-approves every
+    /// root — preference state, not cache — and because `dodot reset` wiping
+    /// the data dir is the documented recovery route for unusable trust
+    /// state. See `docs/spec/safety-lock.md`.
+    fn safety_lock_path(&self) -> PathBuf {
+        crate::safety_lock::schema::SafetyLockConfig::path_in(self.data_dir())
+    }
+
     /// Per-file baseline cache used by the preprocessing pipeline to
     /// detect divergence and drive cache-backed reverse-merge.
     ///
@@ -581,6 +596,27 @@ mod tests {
             pather.homebrew_cache_path(),
             PathBuf::from("/h/data/dodot/shell/brew-shellenv.json")
         );
+    }
+
+    /// Trust state belongs to dodot, not to the dotfiles repository: an
+    /// approval marker inside the root would travel in the user's Git
+    /// history and could approve a root by being cloned.
+    #[test]
+    fn safety_lock_state_lives_under_the_data_dir_not_the_dotfiles_root() {
+        let pather = XdgPather::builder()
+            .home("/h")
+            .dotfiles_root("/h/dotfiles")
+            .data_dir("/h/data/dodot")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            pather.safety_lock_path(),
+            PathBuf::from("/h/data/dodot/safety-lock.toml")
+        );
+        assert!(!pather
+            .safety_lock_path()
+            .starts_with(pather.dotfiles_root()));
     }
 
     #[test]
