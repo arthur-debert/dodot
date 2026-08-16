@@ -78,6 +78,54 @@ pub trait Fs: Send + Sync {
         self.set_permissions(path, mode)
     }
 
+    /// Writes `contents` to `path` through a temp sibling renamed into
+    /// place, so a concurrent reader never sees a partial file.
+    ///
+    /// `write_file` truncates in place: a reader that opens the file
+    /// mid-write gets a prefix of it, cut at an arbitrary byte. That
+    /// is fine for files nothing reads concurrently, but wrong for
+    /// any artifact with a live reader — the shell init script and
+    /// the Homebrew cache are both sourced/read by *every shell the
+    /// user opens* while `dodot up` may be rewriting them. Use this
+    /// method for any such file.
+    ///
+    /// The temp is a sibling (same directory ⇒ same filesystem ⇒ the
+    /// rename is atomic on POSIX) with a pid+nonce suffix (two racing
+    /// writers cannot write one another's temp half-finished). A
+    /// failed rename removes the temp rather than abandoning it; an
+    /// interrupted write leaves only the temp behind, never a torn
+    /// target.
+    ///
+    /// Note the trade-off: the rename replaces the *directory entry*,
+    /// so `path` gets a fresh inode. Do not use this on files the
+    /// user may hold as a hard link or that must stay a symlink —
+    /// e.g. rc files, which are commonly symlinks into a dotfiles
+    /// repo that a rename would silently replace with a regular file.
+    fn write_atomic(&self, path: &Path, contents: &[u8]) -> Result<()> {
+        let tmp = temp_sibling(path);
+        self.write_file(&tmp, contents)?;
+        if let Err(e) = self.rename(&tmp, path) {
+            let _ = self.remove_file(&tmp);
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// [`Fs::write_atomic`], with `mode` applied to the temp file
+    /// **before** the rename — the visible file carries the intended
+    /// mode from its first instant, never a umask-default one. Used
+    /// for the init script, which is documented (and tested) as
+    /// executable.
+    fn write_atomic_with_mode(&self, path: &Path, contents: &[u8], mode: u32) -> Result<()> {
+        let tmp = temp_sibling(path);
+        self.write_file_with_mode(&tmp, contents, mode)?;
+        if let Err(e) = self.rename(&tmp, path) {
+            let _ = self.remove_file(&tmp);
+            return Err(e);
+        }
+        Ok(())
+    }
+
     /// Creates `path` and all parent directories.
     fn mkdir_all(&self, path: &Path) -> Result<()>;
 
@@ -135,4 +183,22 @@ pub trait Fs: Send + Sync {
     fn set_modified(&self, _path: &Path, _time: std::time::SystemTime) -> Result<()> {
         unimplemented!("Fs::set_modified is only implemented by OsFs")
     }
+}
+
+/// A dotted temp path in `path`'s own directory, for the write-then-
+/// rename in [`Fs::write_atomic`]. Same directory means same
+/// filesystem, which is what makes the rename atomic; the pid+nonce
+/// means two writers racing each other cannot write one another's
+/// temp half-finished.
+fn temp_sibling(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    parent.join(format!(
+        ".dodot-{name}.{}-{nonce:x}.tmp",
+        std::process::id()
+    ))
 }
