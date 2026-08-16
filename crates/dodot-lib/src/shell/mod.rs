@@ -87,7 +87,9 @@ pub mod rc;
 pub mod trace;
 pub mod validate;
 pub use activation::{ActivationNotice, ActivationState, INIT_GEN_ENV, INIT_VERSION_ENV};
-pub use homebrew::{BrewBlocks, BrewBootstrapMode, BrewHost};
+pub use homebrew::{
+    BrewBlocks, BrewBootstrapMode, BrewCapture, BrewHost, CaptureFailure, PersistedCapture,
+};
 pub use probe::ProbePolicy;
 pub use rc::ShellEnv;
 pub use validate::{

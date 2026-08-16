@@ -34,6 +34,16 @@
 //! matches the host's detected prefix (an Intel → arm move, a
 //! relocated install) is a miss, never served.
 //!
+//! A brew that is *present but fails to answer* `shellenv` (a
+//! mid-upgrade brew, a non-zero exit, empty output) is not "no brew
+//! here": `up`/`down` warn the user — carrying brew's exit code or
+//! spawn error — and **keep** the previous capture, serving it in the
+//! script and leaving the cache untouched, so one flaky spawn cannot
+//! strip Homebrew's environment from every shell (#301). The
+//! prefix-match guard above already covers the one case where a kept
+//! block would be dangerous (a moved install). Only a truly absent
+//! brew removes the cache.
+//!
 //! # Two blocks, one guard
 //!
 //! The shell argument is what selects the shell-specific lines —
@@ -189,6 +199,47 @@ pub struct BrewBlocks {
     pub zsh: String,
 }
 
+/// The three things a capture can find on a host — the distinction
+/// `capture` measures and its callers must not collapse (#301).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrewCapture {
+    /// Nothing to emit and nothing to say: the mode is `off`, the host
+    /// is not macOS, or no candidate prefix holds an executable
+    /// `bin/brew`. A missing brew is not a broken deployment; the next
+    /// `dodot up` heals the script once brew is installed.
+    Absent,
+    /// Brew answered; both dialect blocks are in hand.
+    Captured(BrewBlocks),
+    /// An executable `bin/brew` was detected but `brew shellenv` did
+    /// not answer — a spawn error, a non-zero exit, or empty output.
+    /// That is a finding, not an absence: prefix detection succeeded,
+    /// so "no brew here" would be a lie.
+    Failed(CaptureFailure),
+}
+
+/// A detected brew that failed to answer `brew shellenv`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureFailure {
+    /// The prefix whose `bin/brew` was detected and asked.
+    pub prefix: PathBuf,
+    /// What went wrong, carrying brew's exit code, stderr, or the
+    /// spawn error — the answer the user's warning is built from.
+    pub reason: String,
+}
+
+/// What [`capture_and_persist`] hands back to `up`/`down`: the blocks
+/// the init script should carry, and the warning the user should see.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersistedCapture {
+    /// The blocks to bake into the script — freshly captured, or the
+    /// kept previous capture when a detected brew failed to answer
+    /// (warn-and-keep, #301). `None` when there is nothing to emit.
+    pub blocks: Option<BrewBlocks>,
+    /// User-visible warning when a detected brew failed to answer
+    /// `shellenv`; `None` on success and for a truly absent brew.
+    pub warning: Option<String>,
+}
+
 /// Capture the bootstrap live and persist it to the datastore cache —
 /// the entry point for `up` and `down`, the commands that regenerate
 /// the init script. The capture belongs to them, not to every
@@ -197,23 +248,85 @@ pub struct BrewBlocks {
 /// One call spawns `brew` **twice**, once per shell dialect. The
 /// result lands at [`Pather::homebrew_cache_path`] so passive
 /// generation paths ([`cached_or_capture`]) emit without spawning
-/// brew. A capture with nothing to emit — mode `off`, not macOS, no
-/// brew — *removes* the cache, keeping it in lockstep with what the
-/// written script carries: a host that lost its brew can never serve
-/// a stale block.
+/// brew. A capture with nothing to emit because brew is truly absent —
+/// mode `off`, not macOS, no executable `bin/brew` — *removes* the
+/// cache, keeping it in lockstep with what the written script carries:
+/// a host that lost its brew can never serve a stale block.
+///
+/// A brew that was *detected but failed to answer* is the explicitly
+/// decided exception (#301): the cache is **kept**, untouched, and its
+/// blocks are returned (when its prefix matches the detected one) so
+/// the script keeps working through a transient brew failure, along
+/// with a warning for the user carrying brew's exit code or spawn
+/// error. A mismatched-prefix cache is never served, matching the
+/// invalidation rule every read path applies.
 ///
 /// The only capture error is a bad `[shell] homebrew` value; a host
-/// without brew is `Ok(None)`. Cache IO surfaces its own errors.
+/// without brew is `Ok` with no blocks. Cache IO surfaces its own
+/// errors.
 pub fn capture_and_persist(
     fs: &dyn Fs,
     runner: &dyn CommandRunner,
     config: &DodotConfig,
     paths: &dyn Pather,
-) -> Result<Option<BrewBlocks>> {
+) -> Result<PersistedCapture> {
     let mode = BrewBootstrapMode::parse(&config.shell.homebrew)?;
-    let blocks = capture(fs, runner, mode, &BrewHost::detect());
-    persist_cache(fs, &paths.homebrew_cache_path(), blocks.as_ref())?;
-    Ok(blocks)
+    capture_and_persist_at(
+        fs,
+        runner,
+        mode,
+        &BrewHost::detect(),
+        &paths.homebrew_cache_path(),
+    )
+}
+
+/// [`capture_and_persist`] with the host and cache path injected, so
+/// tests drive it without a mac, a brew, or a real datastore.
+fn capture_and_persist_at(
+    fs: &dyn Fs,
+    runner: &dyn CommandRunner,
+    mode: BrewBootstrapMode,
+    host: &BrewHost,
+    cache_path: &Path,
+) -> Result<PersistedCapture> {
+    match capture(fs, runner, mode, host) {
+        BrewCapture::Captured(blocks) => {
+            persist_cache(fs, cache_path, Some(&blocks))?;
+            Ok(PersistedCapture {
+                blocks: Some(blocks),
+                warning: None,
+            })
+        }
+        BrewCapture::Absent => {
+            persist_cache(fs, cache_path, None)?;
+            Ok(PersistedCapture {
+                blocks: None,
+                warning: None,
+            })
+        }
+        BrewCapture::Failed(failure) => {
+            // Warn and keep: the cache file is left untouched, and its
+            // blocks are served only when their prefix still matches
+            // the brew that failed to answer — the same guard every
+            // other read applies.
+            let kept = load_cache(fs, cache_path).filter(|c| c.prefix == failure.prefix);
+            let fate = if kept.is_some() {
+                "Keeping the Homebrew block from the last successful capture."
+            } else {
+                "The init script carries no Homebrew block until brew answers on a later `dodot up`."
+            };
+            let warning = format!(
+                "Homebrew at {} did not answer for its environment: {}. {}",
+                failure.prefix.display(),
+                failure.reason,
+                fate
+            );
+            Ok(PersistedCapture {
+                blocks: kept,
+                warning: Some(warning),
+            })
+        }
+    }
 }
 
 /// Emit-side entry point for passive commands (`dodot init-sh`): serve
@@ -268,7 +381,21 @@ fn cached_or_capture_at(
             "homebrew cache is for another prefix; capturing live"
         );
     }
-    capture_at(runner, &prefix)
+    // Passive path: a brew that fails to answer degrades to "no block"
+    // quietly here — `init-sh` output *is* the script, so it has no
+    // warnings channel. The loud handling of that failure belongs to
+    // `up`/`down` ([`capture_and_persist`], #301).
+    match capture_at(runner, &prefix) {
+        Ok(blocks) => Some(blocks),
+        Err(failure) => {
+            debug!(
+                prefix = %failure.prefix.display(),
+                reason = %failure.reason,
+                "brew failed to answer on the passive path; emitting no block"
+            );
+            None
+        }
+    }
 }
 
 /// Read the cached capture back, or `None` when it is absent or
@@ -310,38 +437,58 @@ fn persist_cache(fs: &dyn Fs, path: &Path, blocks: Option<&BrewBlocks>) -> Resul
     }
 }
 
-/// Capture Homebrew's bootstrap for this host, or `None` when there is
-/// nothing to emit.
+/// Capture Homebrew's bootstrap for this host, keeping "no brew here"
+/// and "brew is here but did not answer" distinct (#301).
 ///
-/// `None` — never an error — for every "no brew here" case: the mode is
-/// `off`, the host is not macOS, no candidate prefix holds an executable
-/// `bin/brew`, or brew itself fails to answer. A missing brew is not a
-/// broken deployment, and the next `dodot up` heals the script once brew
-/// is installed.
+/// [`BrewCapture::Absent`] — never an error — for every genuinely-no-
+/// brew case: the mode is `off`, the host is not macOS, or no candidate
+/// prefix holds an executable `bin/brew`. A missing brew is not a
+/// broken deployment, and the next `dodot up` heals the script once
+/// brew is installed. A *detected* brew whose `shellenv` fails is
+/// [`BrewCapture::Failed`] instead — that distinction is already
+/// computed here (prefix detection succeeded before the spawn failed)
+/// and must not be thrown away.
 pub fn capture(
     fs: &dyn Fs,
     runner: &dyn CommandRunner,
     mode: BrewBootstrapMode,
     host: &BrewHost,
-) -> Option<BrewBlocks> {
+) -> BrewCapture {
     if mode == BrewBootstrapMode::Off {
-        return None;
+        return BrewCapture::Absent;
     }
     if !host.is_macos {
-        return None;
+        return BrewCapture::Absent;
     }
 
-    let prefix = detect_prefix(fs, host)?;
-    capture_at(runner, &prefix)
+    let Some(prefix) = detect_prefix(fs, host) else {
+        return BrewCapture::Absent;
+    };
+    match capture_at(runner, &prefix) {
+        Ok(blocks) => BrewCapture::Captured(blocks),
+        Err(failure) => BrewCapture::Failed(failure),
+    }
 }
 
 /// Ask the brew at `prefix` for both dialect blocks — the two spawns
 /// every "capture" in this module ultimately means.
-fn capture_at(runner: &dyn CommandRunner, prefix: &Path) -> Option<BrewBlocks> {
+///
+/// The blocks stand or fall together: one dialect failing while the
+/// other succeeds is a failed capture (a half-answered brew is not an
+/// authority worth quoting), reported with the dialect that failed —
+/// not silently collapsed into "no brew here".
+fn capture_at(
+    runner: &dyn CommandRunner,
+    prefix: &Path,
+) -> std::result::Result<BrewBlocks, CaptureFailure> {
     let brew = brew_binary(prefix);
-    let sh = shellenv(runner, &brew, "sh")?;
-    let zsh = shellenv(runner, &brew, "zsh")?;
-    Some(BrewBlocks {
+    let fail = |reason| CaptureFailure {
+        prefix: prefix.to_path_buf(),
+        reason,
+    };
+    let sh = shellenv(runner, &brew, "sh").map_err(fail)?;
+    let zsh = shellenv(runner, &brew, "zsh").map_err(fail)?;
+    Ok(BrewBlocks {
         prefix: prefix.to_path_buf(),
         sh,
         zsh,
@@ -372,32 +519,50 @@ fn brew_binary(prefix: &Path) -> PathBuf {
     prefix.join("bin").join("brew")
 }
 
-/// Run `brew shellenv <shell>` and return its stdout verbatim.
+/// Run `brew shellenv <shell>` and return its stdout verbatim, or a
+/// human-readable reason it did not answer.
 ///
-/// Any failure — spawn error, non-zero exit, empty output — degrades to
-/// `None` so a half-broken brew cannot break `dodot up`.
-fn shellenv(runner: &dyn CommandRunner, brew: &Path, shell: &str) -> Option<String> {
+/// Any failure — spawn error, non-zero exit, empty output — is an
+/// `Err` carrying what brew actually said (exit code, first stderr
+/// line, or the spawn error), never a process error: a half-broken
+/// brew must not break `dodot up`, but what it did must not be dropped
+/// on the floor either (#301).
+fn shellenv(
+    runner: &dyn CommandRunner,
+    brew: &Path,
+    shell: &str,
+) -> std::result::Result<String, String> {
     let executable = brew.to_string_lossy().to_string();
     let args = vec!["shellenv".to_string(), shell.to_string()];
     match runner.run(&executable, &args) {
-        Ok(out) if out.exit_code == 0 && !out.stdout.trim().is_empty() => Some(out.stdout),
+        Ok(out) if out.exit_code == 0 && !out.stdout.trim().is_empty() => Ok(out.stdout),
         Ok(out) => {
             debug!(
                 brew = %executable,
                 shell,
                 exit_code = out.exit_code,
-                "brew shellenv produced nothing usable; skipping the Homebrew block"
+                "brew shellenv produced nothing usable"
             );
-            None
+            // The first stderr line rides along whenever brew wrote
+            // one — a wrapper can exit 0 with its diagnostic on
+            // stderr, and that line must not be dropped either.
+            let stderr_line = out.stderr.trim().lines().next();
+            let detail = match (out.exit_code, stderr_line) {
+                (0, Some(line)) => format!("exited 0 but printed nothing ({line})"),
+                (0, None) => "exited 0 but printed nothing".to_string(),
+                (code, Some(line)) => format!("exited with status {code} ({line})"),
+                (code, None) => format!("exited with status {code}"),
+            };
+            Err(format!("`brew shellenv {shell}` {detail}"))
         }
         Err(e) => {
             debug!(
                 brew = %executable,
                 shell,
                 error = %e,
-                "brew shellenv failed; skipping the Homebrew block"
+                "brew shellenv failed to run"
             );
-            None
+            Err(format!("`brew shellenv {shell}` failed to run: {e}"))
         }
     }
 }
@@ -457,11 +622,17 @@ mod tests {
 
     /// Stands in for a real `brew`: answers `shellenv <shell>` with a
     /// canned block and records every invocation. No test in this file
-    /// needs Homebrew installed.
+    /// needs Homebrew installed. `failing`/`failing_dialect` turn it
+    /// into a brew that is present but does not answer — the event
+    /// #301 is about.
     struct FakeBrew {
         calls: Mutex<Vec<String>>,
         exit_code: i32,
         stdout: Option<String>,
+        stderr: String,
+        /// When set, only this dialect fails (exit 1, empty stdout);
+        /// the other still answers with its canned block.
+        fail_shell: Option<&'static str>,
     }
 
     impl FakeBrew {
@@ -470,14 +641,30 @@ mod tests {
                 calls: Mutex::new(Vec::new()),
                 exit_code: 0,
                 stdout: None,
+                stderr: String::new(),
+                fail_shell: None,
             }
         }
 
         fn failing(exit_code: i32) -> Self {
             Self {
-                calls: Mutex::new(Vec::new()),
                 exit_code,
                 stdout: Some(String::new()),
+                ..Self::new()
+            }
+        }
+
+        fn failing_with_stderr(exit_code: i32, stderr: &str) -> Self {
+            Self {
+                stderr: stderr.to_string(),
+                ..Self::failing(exit_code)
+            }
+        }
+
+        fn failing_dialect(shell: &'static str) -> Self {
+            Self {
+                fail_shell: Some(shell),
+                ..Self::new()
             }
         }
 
@@ -492,18 +679,41 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(format!("{executable} {}", arguments.join(" ")));
-            let stdout = self.stdout.clone().unwrap_or_else(|| {
-                match arguments.get(1).map(String::as_str) {
+            let shell = arguments.get(1).map(String::as_str);
+            if let Some(fail) = self.fail_shell {
+                if shell == Some(fail) {
+                    return Ok(CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: self.stderr.clone(),
+                    });
+                }
+            } else if self.stdout.is_some() || self.exit_code != 0 {
+                return Ok(CommandOutput {
+                    exit_code: self.exit_code,
+                    stdout: self.stdout.clone().unwrap_or_default(),
+                    stderr: self.stderr.clone(),
+                });
+            }
+            Ok(CommandOutput {
+                exit_code: 0,
+                stdout: match shell {
                     Some("zsh") => ZSH_BLOCK,
                     _ => SH_BLOCK,
                 }
-                .to_string()
-            });
-            Ok(CommandOutput {
-                exit_code: self.exit_code,
-                stdout,
+                .to_string(),
                 stderr: String::new(),
             })
+        }
+    }
+
+    /// A brew whose spawn itself fails — the binary exists (detection
+    /// passed) but running it errors out.
+    struct UnspawnableBrew;
+
+    impl CommandRunner for UnspawnableBrew {
+        fn run(&self, _executable: &str, _arguments: &[String]) -> Result<CommandOutput> {
+            Err(DodotError::Other("text file busy".to_string()))
         }
     }
 
@@ -615,13 +825,14 @@ mod tests {
         install_brew(&env, &prefix);
         let runner = FakeBrew::new();
 
-        let blocks = capture(
+        let BrewCapture::Captured(blocks) = capture(
             env.fs.as_ref(),
             &runner,
             BrewBootstrapMode::Auto,
             &host_with(&[&prefix]),
-        )
-        .expect("brew is installed under the temp prefix");
+        ) else {
+            panic!("brew is installed under the temp prefix and answers");
+        };
 
         let brew = brew_binary(&prefix).display().to_string();
         assert_eq!(
@@ -644,13 +855,15 @@ mod tests {
         install_brew(&env, &prefix);
         let runner = FakeBrew::new();
 
-        assert!(capture(
-            env.fs.as_ref(),
-            &runner,
-            BrewBootstrapMode::Off,
-            &host_with(&[&prefix]),
-        )
-        .is_none());
+        assert_eq!(
+            capture(
+                env.fs.as_ref(),
+                &runner,
+                BrewBootstrapMode::Off,
+                &host_with(&[&prefix]),
+            ),
+            BrewCapture::Absent
+        );
         assert!(runner.calls().is_empty(), "`off` must not run brew at all");
     }
 
@@ -665,40 +878,138 @@ mod tests {
             prefix_candidates: vec![prefix],
         };
 
-        assert!(capture(env.fs.as_ref(), &runner, BrewBootstrapMode::Auto, &host).is_none());
+        assert_eq!(
+            capture(env.fs.as_ref(), &runner, BrewBootstrapMode::Auto, &host),
+            BrewCapture::Absent
+        );
         assert!(runner.calls().is_empty());
     }
 
+    /// A truly absent brew — no executable `bin/brew` at any candidate
+    /// prefix — is [`BrewCapture::Absent`]: silent, exactly as #291
+    /// specifies, and distinct from a present brew that fails (#301).
     #[test]
-    fn brew_absent_emits_nothing() {
+    fn brew_absent_is_silent_absence() {
         let env = TempEnvironment::builder().build();
         let missing = env.dotfiles_root.join("opt/homebrew");
         let runner = FakeBrew::new();
 
-        assert!(capture(
-            env.fs.as_ref(),
-            &runner,
-            BrewBootstrapMode::Auto,
-            &host_with(&[&missing]),
-        )
-        .is_none());
+        assert_eq!(
+            capture(
+                env.fs.as_ref(),
+                &runner,
+                BrewBootstrapMode::Auto,
+                &host_with(&[&missing]),
+            ),
+            BrewCapture::Absent
+        );
         assert!(runner.calls().is_empty());
     }
 
+    /// A brew that *was detected* but failed `shellenv` is a
+    /// [`BrewCapture::Failed`] finding — never collapsed into "no brew
+    /// here" — and the reason carries brew's exit code and stderr.
     #[test]
-    fn brew_that_fails_to_answer_emits_nothing() {
+    fn brew_that_fails_to_answer_is_a_finding_not_an_absence() {
         let env = TempEnvironment::builder().build();
         let prefix = env.dotfiles_root.join("opt/homebrew");
         install_brew(&env, &prefix);
-        let runner = FakeBrew::failing(1);
+        let runner = FakeBrew::failing_with_stderr(2, "Error: git is wedged\nmore detail");
 
-        assert!(capture(
+        let BrewCapture::Failed(failure) = capture(
             env.fs.as_ref(),
             &runner,
             BrewBootstrapMode::Auto,
             &host_with(&[&prefix]),
-        )
-        .is_none());
+        ) else {
+            panic!("a detected brew that fails must be Failed, not Absent");
+        };
+        assert_eq!(failure.prefix, prefix);
+        assert!(
+            failure.reason.contains("`brew shellenv sh`")
+                && failure.reason.contains("exited with status 2")
+                && failure.reason.contains("Error: git is wedged"),
+            "reason was: {}",
+            failure.reason
+        );
+    }
+
+    /// Exit 0 with empty stdout is still a failure, and any stderr
+    /// brew wrote rides along in the reason — a wrapper can return 0
+    /// with its diagnostic on stderr, and "printed nothing" alone
+    /// would drop it (the reason is quoted verbatim in the user's
+    /// warning, so this covers the warning too).
+    #[test]
+    fn silent_exit_zero_still_carries_brews_stderr() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let runner = FakeBrew::failing_with_stderr(0, "Warning: brew is mid-upgrade\nmore detail");
+
+        let BrewCapture::Failed(failure) = capture(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+        ) else {
+            panic!("exit 0 with no stdout must be Failed, not Captured");
+        };
+        assert!(
+            failure.reason.contains("exited 0 but printed nothing")
+                && failure.reason.contains("Warning: brew is mid-upgrade")
+                && !failure.reason.contains("more detail"),
+            "reason was: {}",
+            failure.reason
+        );
+    }
+
+    /// A spawn error (the binary exists but cannot be run) is the same
+    /// finding, with the OS error in the reason instead of an exit code.
+    #[test]
+    fn brew_that_fails_to_spawn_is_a_finding_carrying_the_error() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+
+        let BrewCapture::Failed(failure) = capture(
+            env.fs.as_ref(),
+            &UnspawnableBrew,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+        ) else {
+            panic!("a brew that cannot be spawned must be Failed");
+        };
+        assert!(
+            failure.reason.contains("failed to run") && failure.reason.contains("text file busy"),
+            "reason was: {}",
+            failure.reason
+        );
+    }
+
+    /// One dialect failing while the other succeeds fails the whole
+    /// capture — the blocks stand or fall together — and the reason
+    /// names the dialect that failed instead of discarding both
+    /// silently (#301).
+    #[test]
+    fn one_failing_dialect_fails_the_capture_and_names_itself() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let runner = FakeBrew::failing_dialect("zsh");
+
+        let BrewCapture::Failed(failure) = capture(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+        ) else {
+            panic!("a half-answering brew must be Failed, not partially captured");
+        };
+        assert!(
+            failure.reason.contains("`brew shellenv zsh`"),
+            "reason must name the dialect that failed: {}",
+            failure.reason
+        );
     }
 
     // ── Datastore cache (shell-hookup-ergonomics.lex §4, #294) ──────
@@ -978,6 +1289,225 @@ mod tests {
         assert!(!env.fs.exists(&cache));
         // And clearing an already-absent cache is a no-op, not an error.
         persist_cache(env.fs.as_ref(), &cache, None).unwrap();
+    }
+
+    // ── Warn-and-keep on a failed answer (#301) ─────────────────────
+
+    /// The happy path through the `up`/`down` entry point: a brew that
+    /// answers persists its capture and raises no warning.
+    #[test]
+    fn successful_capture_persists_and_carries_no_warning() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        let runner = FakeBrew::new();
+
+        let result = capture_and_persist_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+            &cache,
+        )
+        .unwrap();
+
+        assert!(result.warning.is_none());
+        assert_eq!(
+            result.blocks.as_ref().map(|b| b.sh.as_str()),
+            Some(SH_BLOCK)
+        );
+        assert_eq!(load_cache(env.fs.as_ref(), &cache), result.blocks);
+    }
+
+    /// A truly absent brew stays silent and clears the cache — #291's
+    /// rule, untouched by the failed-answer handling.
+    #[test]
+    fn absent_brew_stays_silent_and_clears_the_cache() {
+        let env = TempEnvironment::builder().build();
+        let missing = env.dotfiles_root.join("opt/homebrew");
+        let cache = env.paths.homebrew_cache_path();
+        persist_cache(
+            env.fs.as_ref(),
+            &cache,
+            Some(&BrewBlocks {
+                prefix: missing.clone(),
+                sh: SH_BLOCK.to_string(),
+                zsh: ZSH_BLOCK.to_string(),
+            }),
+        )
+        .unwrap();
+        let runner = FakeBrew::new();
+
+        let result = capture_and_persist_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&missing]),
+            &cache,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result,
+            PersistedCapture {
+                blocks: None,
+                warning: None
+            }
+        );
+        assert!(!env.fs.exists(&cache), "a lost brew must clear the cache");
+    }
+
+    /// THE decided cache fate on a failed answer: warn and keep. The
+    /// cache file survives byte-for-byte, its blocks are served to the
+    /// script, and the warning carries brew's exit code — one flaky
+    /// `up` cannot strip Homebrew's environment from every shell.
+    #[test]
+    fn failed_answer_warns_and_keeps_the_previous_capture() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        let previous = BrewBlocks {
+            prefix: prefix.clone(),
+            sh: SH_BLOCK.to_string(),
+            zsh: ZSH_BLOCK.to_string(),
+        };
+        persist_cache(env.fs.as_ref(), &cache, Some(&previous)).unwrap();
+        let runner = FakeBrew::failing_with_stderr(1, "Error: brew is mid-upgrade");
+
+        let result = capture_and_persist_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+            &cache,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.blocks,
+            Some(previous.clone()),
+            "the previous capture must be served, not stripped"
+        );
+        let warning = result.warning.expect("a failed answer must warn");
+        assert!(
+            warning.contains("exited with status 1")
+                && warning.contains("Error: brew is mid-upgrade")
+                && warning.contains("Keeping"),
+            "warning was: {warning}"
+        );
+        assert_eq!(
+            load_cache(env.fs.as_ref(), &cache),
+            Some(previous),
+            "the cache must survive a failed answer untouched"
+        );
+    }
+
+    /// One dialect failing while the other succeeds goes down the same
+    /// warn-and-keep path — pinning the aggravation #301 calls out,
+    /// where one flaky spawn used to discard both dialects silently.
+    #[test]
+    fn one_failing_dialect_warns_and_keeps_instead_of_stripping_both() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        let previous = BrewBlocks {
+            prefix: prefix.clone(),
+            sh: SH_BLOCK.to_string(),
+            zsh: ZSH_BLOCK.to_string(),
+        };
+        persist_cache(env.fs.as_ref(), &cache, Some(&previous)).unwrap();
+        let runner = FakeBrew::failing_dialect("zsh");
+
+        let result = capture_and_persist_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+            &cache,
+        )
+        .unwrap();
+
+        assert_eq!(result.blocks, Some(previous.clone()));
+        assert!(
+            result
+                .warning
+                .as_deref()
+                .is_some_and(|w| w.contains("`brew shellenv zsh`")),
+            "warning must name the failed dialect: {:?}",
+            result.warning
+        );
+        assert_eq!(load_cache(env.fs.as_ref(), &cache), Some(previous));
+    }
+
+    /// A failed answer with nothing usable to keep still warns — the
+    /// user hears about it at the `up` that has the information — but
+    /// the script carries no block, and says so.
+    #[test]
+    fn failed_answer_with_no_cache_warns_and_emits_nothing() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        let runner = FakeBrew::failing(1);
+
+        let result = capture_and_persist_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+            &cache,
+        )
+        .unwrap();
+
+        assert!(result.blocks.is_none());
+        assert!(
+            result
+                .warning
+                .as_deref()
+                .is_some_and(|w| w.contains("no Homebrew block")),
+            "warning was: {:?}",
+            result.warning
+        );
+        assert!(!env.fs.exists(&cache));
+    }
+
+    /// A kept cache is still subject to the prefix-match guard: a
+    /// capture from another prefix is never served on a failed answer,
+    /// exactly as it is never served on a read. The file itself is
+    /// left alone (it is inert — no read path serves it).
+    #[test]
+    fn failed_answer_never_serves_a_mismatched_prefix_cache() {
+        let env = TempEnvironment::builder().build();
+        let old_prefix = env.dotfiles_root.join("usr/local");
+        let new_prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &new_prefix);
+        let cache = env.paths.homebrew_cache_path();
+        let stale = BrewBlocks {
+            prefix: old_prefix.clone(),
+            sh: "export STALE=1;\n".to_string(),
+            zsh: "export STALE=1;\n".to_string(),
+        };
+        persist_cache(env.fs.as_ref(), &cache, Some(&stale)).unwrap();
+        let runner = FakeBrew::failing(1);
+
+        let result = capture_and_persist_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&old_prefix, &new_prefix]),
+            &cache,
+        )
+        .unwrap();
+
+        assert!(
+            result.blocks.is_none(),
+            "a mismatched-prefix cache must never be served"
+        );
+        assert!(result.warning.is_some());
+        assert_eq!(load_cache(env.fs.as_ref(), &cache), Some(stale));
     }
 
     #[test]
