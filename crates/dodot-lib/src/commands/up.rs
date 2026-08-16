@@ -55,7 +55,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // Validate names up front so an explicitly-requested ignored pack
     // surfaces the same "pack '…' is ignored, skipping" warning that
     // `status`/`down` emit — prepare_packs discards these. (issue #222)
-    let mut planning_warnings: Vec<String> = match pack_filter {
+    let mut warnings: Vec<String> = match pack_filter {
         Some(names) => orchestration::validate_pack_names(names, ctx)?,
         None => Vec::new(),
     };
@@ -75,7 +75,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // deploy. `dodot down` is the removal path. (issue #255)
     let orphaned = orchestration::scan_orphaned(ctx)?;
     if !orphaned.is_empty() {
-        planning_warnings.push(orchestration::orphan_warning(&orphaned, ctx));
+        warnings.push(orchestration::orphan_warning(&orphaned, ctx));
     }
 
     // Phase 1: Discover packs and collect intents
@@ -116,7 +116,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         };
         match orchestration::plan_pack(pack, ctx, mode) {
             Ok(plan) => {
-                planning_warnings.extend(plan.warnings);
+                warnings.extend(plan.warnings);
                 pack_intents.push((pack.display_name.clone(), plan.intents));
             }
             Err(e) => {
@@ -244,7 +244,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
             ctx.paths.as_ref(),
         )?;
         if let Some(warning) = brew.warning {
-            planning_warnings.push(warning);
+            warnings.push(warning);
         }
         shell::write_init_script(
             ctx.fs.as_ref(),
@@ -359,7 +359,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         message: Some(message),
         dry_run: ctx.dry_run,
         packs: display_packs,
-        warnings: planning_warnings,
+        warnings,
         notes,
         conflicts: Vec::new(),
         ignored_packs: ignored.display_packs,

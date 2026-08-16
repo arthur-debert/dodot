@@ -569,13 +569,15 @@ fn shellenv(
                 exit_code = out.exit_code,
                 "brew shellenv produced nothing usable"
             );
-            let detail = if out.exit_code == 0 {
-                "exited 0 but printed nothing".to_string()
-            } else {
-                match out.stderr.trim().lines().next() {
-                    Some(line) => format!("exited with status {} ({line})", out.exit_code),
-                    None => format!("exited with status {}", out.exit_code),
-                }
+            // The first stderr line rides along whenever brew wrote
+            // one — a wrapper can exit 0 with its diagnostic on
+            // stderr, and that line must not be dropped either.
+            let stderr_line = out.stderr.trim().lines().next();
+            let detail = match (out.exit_code, stderr_line) {
+                (0, Some(line)) => format!("exited 0 but printed nothing ({line})"),
+                (0, None) => "exited 0 but printed nothing".to_string(),
+                (code, Some(line)) => format!("exited with status {code} ({line})"),
+                (code, None) => format!("exited with status {code}"),
             };
             Err(format!("`brew shellenv {shell}` {detail}"))
         }
@@ -953,6 +955,35 @@ mod tests {
             failure.reason.contains("`brew shellenv sh`")
                 && failure.reason.contains("exited with status 2")
                 && failure.reason.contains("Error: git is wedged"),
+            "reason was: {}",
+            failure.reason
+        );
+    }
+
+    /// Exit 0 with empty stdout is still a failure, and any stderr
+    /// brew wrote rides along in the reason — a wrapper can return 0
+    /// with its diagnostic on stderr, and "printed nothing" alone
+    /// would drop it (the reason is quoted verbatim in the user's
+    /// warning, so this covers the warning too).
+    #[test]
+    fn silent_exit_zero_still_carries_brews_stderr() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let runner = FakeBrew::failing_with_stderr(0, "Warning: brew is mid-upgrade\nmore detail");
+
+        let BrewCapture::Failed(failure) = capture(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+        ) else {
+            panic!("exit 0 with no stdout must be Failed, not Captured");
+        };
+        assert!(
+            failure.reason.contains("exited 0 but printed nothing")
+                && failure.reason.contains("Warning: brew is mid-upgrade")
+                && !failure.reason.contains("more detail"),
             "reason was: {}",
             failure.reason
         );
