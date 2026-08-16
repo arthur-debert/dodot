@@ -93,18 +93,36 @@ pub fn decode_native_path(spelling: &str) -> Result<PathBuf> {
 /// The filesystem questions root selection asks, injected so the selection
 /// and trust logic stay testable without a real repository.
 ///
-/// Only two questions matter, and both come from the Spec's explicit-value
-/// rules: a candidate must resolve to a readable directory, and it is then
-/// canonicalized once per invocation.
+/// The questions come from the Spec's explicit-value rules: a candidate is
+/// canonicalized once per invocation and must then be a readable directory.
+/// Being a directory and being readable are asked separately because a
+/// refused user is told *which* one failed — "is not a directory" and
+/// "cannot be read" are different mistakes with different fixes, and one
+/// boolean could not tell them apart.
 pub trait PathProbe: Send + Sync {
     /// Resolve `path` to its canonical absolute form, following symlinks.
+    ///
+    /// This is also what separates "nothing is there" from "something is
+    /// there that cannot be resolved": the two arrive as
+    /// [`ErrorKind::NotFound`](std::io::ErrorKind::NotFound) and any other
+    /// error respectively.
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf>;
 
-    /// Whether `path` is a directory whose entries can be listed.
+    /// Whether `path` is a directory at all.
     ///
-    /// A directory that exists but cannot be read is not a usable root: the
-    /// pipeline would fail partway through pack discovery instead of at
-    /// selection time.
+    /// Asked of an already-canonical path, so the answer is about the
+    /// symlink's target rather than the link.
+    fn is_directory(&self, path: &Path) -> bool;
+
+    /// Whether `path` is a directory pack discovery could actually walk:
+    /// its entries list, every entry in that listing is readable, and its
+    /// children are reachable.
+    ///
+    /// All three are one question because discovery asks all three. A
+    /// directory that opens for listing but hands back unreachable children
+    /// — read permission without search permission, mode `0400` — is not a
+    /// usable root, and answering "readable" for it would let the pipeline
+    /// fail partway through discovery instead of at selection time.
     fn is_readable_dir(&self, path: &Path) -> bool;
 }
 
@@ -117,8 +135,32 @@ impl PathProbe for OsPathProbe {
         std::fs::canonicalize(path)
     }
 
+    fn is_directory(&self, path: &Path) -> bool {
+        path.is_dir()
+    }
+
     fn is_readable_dir(&self, path: &Path) -> bool {
-        path.is_dir() && std::fs::read_dir(path).is_ok()
+        if !path.is_dir() {
+            return false;
+        }
+
+        // A successful `read_dir` only proves the iterator opened. Search
+        // ("execute") permission is a separate bit, and without it a
+        // directory still hands back its names while every child is
+        // unreachable — so ask the lookup discovery will ask: resolving `.`
+        // *inside* the directory needs exactly the permission that walking
+        // into its entries needs.
+        if std::fs::metadata(path.join(".")).is_err() {
+            return false;
+        }
+
+        // The listing must also survive being consumed: entries can error
+        // one by one while the iterator itself opened cleanly, and a root
+        // whose listing is incomplete is one discovery cannot walk either.
+        match std::fs::read_dir(path) {
+            Ok(mut entries) => entries.all(|entry| entry.is_ok()),
+            Err(_) => false,
+        }
     }
 }
 
@@ -220,11 +262,90 @@ mod tests {
         let probe = OsPathProbe;
 
         let canonical = probe.canonicalize(dir.path()).unwrap();
+        assert!(probe.is_directory(&canonical));
         assert!(probe.is_readable_dir(&canonical));
 
         let file = canonical.join("not-a-dir");
         std::fs::write(&file, b"").unwrap();
+        assert!(!probe.is_directory(&file));
         assert!(!probe.is_readable_dir(&file));
+        assert!(!probe.is_directory(&canonical.join("missing")));
         assert!(!probe.is_readable_dir(&canonical.join("missing")));
+    }
+
+    /// Build `name` under `parent` holding one entry, at `mode`, and ask the
+    /// probe both directory questions about it — restoring the permissions
+    /// before returning so a failed assertion in the caller cannot leave the
+    /// directory unremovable for `TempDir`'s cleanup.
+    fn probe_dir_at_mode(parent: &Path, name: &str, mode: u32) -> (bool, bool) {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = parent.join(name);
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("pack"), b"").unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).unwrap();
+
+        let probe = OsPathProbe;
+        let answers = (probe.is_directory(&dir), probe.is_readable_dir(&dir));
+
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+        answers
+    }
+
+    /// Whether `chmod` actually blocks this process. Running as root — or
+    /// with `CAP_DAC_OVERRIDE` in a container — bypasses the permission bits
+    /// entirely, which would make the cases below vacuous rather than wrong,
+    /// so those runs skip.
+    fn chmod_blocks_this_process(parent: &Path) -> bool {
+        let (_, readable) = probe_dir_at_mode(parent, "dac-probe", 0o000);
+        !readable
+    }
+
+    /// The two directory questions are asked separately so a diagnostic can
+    /// say which one failed: a mode-000 directory *is* a directory, and only
+    /// the reading fails.
+    #[test]
+    fn os_probe_separates_being_a_directory_from_being_readable() {
+        let parent = tempfile::tempdir().unwrap();
+        if !chmod_blocks_this_process(parent.path()) {
+            eprintln!(
+                "skipping os_probe_separates_being_a_directory_from_being_readable: \
+                 process bypasses DAC permissions (running as root?)"
+            );
+            return;
+        }
+
+        let (is_dir, readable) = probe_dir_at_mode(parent.path(), "locked", 0o000);
+        assert!(is_dir);
+        assert!(!readable);
+    }
+
+    /// Read permission without search permission is the case a plain
+    /// `read_dir(..).is_ok()` gets wrong: the listing opens and the names
+    /// come back, but every child is unreachable, so discovery would fail
+    /// entry by entry on a root selection had already blessed.
+    #[test]
+    fn os_probe_rejects_a_directory_it_can_list_but_not_walk() {
+        let parent = tempfile::tempdir().unwrap();
+        if !chmod_blocks_this_process(parent.path()) {
+            eprintln!(
+                "skipping os_probe_rejects_a_directory_it_can_list_but_not_walk: \
+                 process bypasses DAC permissions (running as root?)"
+            );
+            return;
+        }
+
+        let (is_dir, readable) = probe_dir_at_mode(parent.path(), "no-search", 0o400);
+        assert!(is_dir, "a mode-0400 directory is still a directory");
+        assert!(
+            !readable,
+            "a directory whose children cannot be reached is not a usable root"
+        );
+
+        // The ordinary case still passes: the stricter probe rejects the
+        // unwalkable directory, not every directory.
+        let (is_dir, readable) = probe_dir_at_mode(parent.path(), "ordinary", 0o700);
+        assert!(is_dir);
+        assert!(readable);
     }
 }
