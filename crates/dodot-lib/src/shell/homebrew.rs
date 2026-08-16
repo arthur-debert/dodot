@@ -283,6 +283,17 @@ fn load_cache(fs: &dyn Fs, path: &Path) -> Option<BrewBlocks> {
 /// Write the captured blocks to the cache, or remove the cache when
 /// there is nothing to emit. Only `up`/`down` reach this, via
 /// [`capture_and_persist`] — the emit side never writes (#121).
+///
+/// The write lands on a temp sibling and is renamed into place, never
+/// straight onto the cache path. A truncating write is visible to a
+/// concurrent reader, and the reader here is *every shell the user
+/// opens*: a torn read parses as a miss ([`load_cache`]), and a miss
+/// costs a live `brew shellenv` on every `init-sh` until the next `up`
+/// rewrites the file — the exact cost this cache exists to remove,
+/// lost quietly, because the fallback is correct-but-slow rather than
+/// broken. An interrupted write leaves only the temp behind for the
+/// same reason. `rename` is atomic on POSIX and the temp is a sibling,
+/// so the two paths are always on one filesystem.
 fn persist_cache(fs: &dyn Fs, path: &Path, blocks: Option<&BrewBlocks>) -> Result<()> {
     match blocks {
         Some(blocks) => {
@@ -291,7 +302,13 @@ fn persist_cache(fs: &dyn Fs, path: &Path, blocks: Option<&BrewBlocks>) -> Resul
             }
             let json = serde_json::to_string_pretty(blocks)
                 .map_err(|e| DodotError::Other(format!("serialize homebrew cache: {e}")))?;
-            fs.write_file(path, json.as_bytes())
+            let tmp = temp_sibling(path);
+            fs.write_file(&tmp, json.as_bytes())?;
+            if let Err(e) = fs.rename(&tmp, path) {
+                let _ = fs.remove_file(&tmp);
+                return Err(e);
+            }
+            Ok(())
         }
         None => {
             if fs.exists(path) {
@@ -300,6 +317,23 @@ fn persist_cache(fs: &dyn Fs, path: &Path, blocks: Option<&BrewBlocks>) -> Resul
             Ok(())
         }
     }
+}
+
+/// A dotted temp path in `path`'s own directory, for the write-then-
+/// rename in [`persist_cache`]. Same directory means same filesystem,
+/// which is what makes the rename atomic; the nonce means two `up`s
+/// racing each other cannot write one another's temp half-finished.
+fn temp_sibling(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    parent.join(format!(
+        ".dodot-{name}.{}-{nonce:x}.tmp",
+        std::process::id()
+    ))
 }
 
 /// Capture Homebrew's bootstrap for this host, or `None` when there is
@@ -711,6 +745,68 @@ mod tests {
 
         persist_cache(env.fs.as_ref(), &path, Some(&blocks)).unwrap();
         assert_eq!(load_cache(env.fs.as_ref(), &path), Some(blocks));
+    }
+
+    /// The cache is *replaced* by rename, never truncated in place, so
+    /// a concurrent reader — every shell the user opens — can never
+    /// catch it half-written and fall back to spawning brew.
+    ///
+    /// A hard link is the proof: it shares the file's inode, so a
+    /// truncating write rewrites what the link sees, while a rename
+    /// swaps the directory entry and leaves the link on the old inode.
+    #[test]
+    fn persist_replaces_the_cache_by_rename_not_by_truncating_it() {
+        let env = TempEnvironment::builder().build();
+        let cache = env.paths.homebrew_cache_path();
+        let first = BrewBlocks {
+            prefix: PathBuf::from("/usr/local"),
+            sh: "export FIRST=1;\n".to_string(),
+            zsh: "export FIRST=1;\n".to_string(),
+        };
+        let second = BrewBlocks {
+            prefix: PathBuf::from("/opt/homebrew"),
+            sh: SH_BLOCK.to_string(),
+            zsh: ZSH_BLOCK.to_string(),
+        };
+        persist_cache(env.fs.as_ref(), &cache, Some(&first)).unwrap();
+
+        let witness = cache.parent().unwrap().join("witness.json");
+        std::fs::hard_link(&cache, &witness).unwrap();
+
+        persist_cache(env.fs.as_ref(), &cache, Some(&second)).unwrap();
+
+        assert_eq!(load_cache(env.fs.as_ref(), &cache), Some(second));
+        assert_eq!(
+            load_cache(env.fs.as_ref(), &witness),
+            Some(first),
+            "the old inode was rewritten: the cache is being truncated \
+             in place, so a reader can see a half-written file"
+        );
+    }
+
+    /// A successful persist leaves nothing but the cache: the temp it
+    /// wrote through is renamed away, not abandoned.
+    #[test]
+    fn persist_leaves_no_temp_file_behind() {
+        let env = TempEnvironment::builder().build();
+        let cache = env.paths.homebrew_cache_path();
+        let blocks = BrewBlocks {
+            prefix: PathBuf::from("/opt/homebrew"),
+            sh: SH_BLOCK.to_string(),
+            zsh: ZSH_BLOCK.to_string(),
+        };
+
+        persist_cache(env.fs.as_ref(), &cache, Some(&blocks)).unwrap();
+        persist_cache(env.fs.as_ref(), &cache, Some(&blocks)).unwrap();
+
+        let names: Vec<String> = env
+            .fs
+            .read_dir(cache.parent().unwrap())
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect();
+        assert_eq!(names, vec!["brew-shellenv.json".to_string()]);
     }
 
     /// The steady state: a warm cache whose prefix still matches the
