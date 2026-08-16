@@ -8,6 +8,13 @@ canonical path requires approval again, while replacing its contents at the
 same path deliberately retains trust because Safety Lock is not a security
 boundary.
 
+Because the path is the identity, it is stored losslessly in its native
+operating-system form — valid UTF-8 as a plain string, anything else in a
+tagged reversible encoding — and displayed in that same reversible spelling.
+A lossy rendering is never the identity or the match key, so distinct roots
+cannot collapse into one record and every listed approval can be passed back
+to revoke it.
+
 Root selection is also stable within one invocation. Dodot resolves and
 canonicalizes the root once, records its provenance, and passes that same value
 through trust lookup, confirmation, and execution instead of consulting the

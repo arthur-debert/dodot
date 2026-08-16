@@ -17,6 +17,13 @@ and the tutorial's real deployment step. Read-only and dry-run variants do not
 require trust. Post-`up` repository installers reuse the root authorization of
 the protected `up` that reached them.
 
+Commands that take their write targets from the shared preprocessor baseline
+cache rather than from the root — `refresh` and `transform check` — scope the
+mutation set instead of the cache: they write only baselines whose canonical
+source path lies inside the authorized root and report the rest as out-of-root.
+Per-root cache and datastore namespaces stay out of scope, so this scoping is
+what keeps the authorized root and the mutated root the same one.
+
 Commands whose mutations are selected independently of the dotfiles root stay
 outside Safety Lock: `install --write`, `git-install-alias`, dismissed-prompt
 management, factory `reset`, and stdin/stdout filter passthroughs keep their

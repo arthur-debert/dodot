@@ -147,6 +147,18 @@ no separate trust verb. Forgetting an existing path canonicalizes it before
 matching, while an absent path can match its exact stored absolute spelling so
 approvals remain removable after a root is moved or deleted.
 
+A trust record identifies its root by the canonical path's native
+operating-system form, stored losslessly. A path that is valid UTF-8 is stored
+as a plain string; one that is not is stored in a tagged, reversible encoding
+of its native units, so trust state and JSON or YAML output remain valid
+documents without discarding bytes. A lossy rendering is never the stored
+identity nor the match key: two roots whose lossy renderings collide stay two
+records, `roots list` prints the exact reversible spelling of each, and `roots
+forget` accepts either an existing path, which it canonicalizes, or that exact
+spelling for a root that no longer exists. Prompts and diagnostics name the
+root in the same reversible spelling, so the identity the user approves is the
+one they can later inspect and revoke.
+
 Corrupt, unreadable, or incompatible trust state never counts as approval and
 never silently becomes an empty registry. Root-sensitive mutation fails with a
 diagnostic naming the affected state and recovery choices. `roots list`
@@ -180,10 +192,30 @@ factory `reset` are not root-sensitive merely because they mutate some other
 user or Dodot-owned location. Post-`up` repository installers inherit the
 already-authorized root from the protected `up` flow.
 
+Two entries in that taxonomy do not derive their write targets from the
+resolved root today. `refresh` and `transform check` walk the shared
+preprocessor baseline cache and write each baseline's stored absolute
+`source_path`, which can name a source file under a different root. Because
+per-root cache and datastore namespaces are out of scope, the gate's
+target-is-the-selected-root invariant is met by scoping the mutation set rather
+than the cache: these commands write only baselines whose canonical
+`source_path` lies inside the authorized canonical root, and report every other
+baseline as out-of-root instead of writing it. Baselines whose source path is
+stale, absent, or uncanonicalizable are reported, never written. Trusting one
+root therefore cannot authorize writes into another root's source tree, and the
+root the user approved is the root actually mutated. This is distinct from
+shared datastore state, where cross-root pack-identity collisions remain an
+acknowledged out-of-scope condition; the concern here is writes into a second
+repository's user-authored source.
+
 Only `y` or `yes` approves the root. `n`, an empty answer, unrecognized input,
 EOF, and a non-TTY implicit-root attempt all refuse the command, emit a clear
 diagnostic on stderr, leave stdout empty, make no trust or requested-command
-writes, and exit with status 1. Ctrl-C retains the conventional status 130 and
+writes, and exit with status 1. Interactivity requires a terminal on both sides
+of the exchange: the answer is read from a terminal-backed stdin and the
+warning is written to a terminal-backed stderr. A terminal stdin whose stderr
+is redirected is non-interactive and refuses, because approval must never be
+accepted for a root and inventory the user was never shown. Ctrl-C retains the conventional status 130 and
 also leaves the root unapproved and the command unexecuted.
 
 The prompt is conservative: it identifies the canonical root, explains whether
@@ -207,6 +239,8 @@ command from running. A present `DOTFILES_ROOT` is authoritative: empty,
 nonexistent, non-directory, unreadable, or uncanonicalizable values hard-fail
 without Git/cwd fallback. Relative and non-Unicode operating-system paths are
 accepted when they resolve to a readable directory and are then canonicalized.
+A non-Unicode explicit value keeps its native form through resolution, and
+diagnostics that name it use the same reversible spelling as trust state.
 
 ## User / Agent Stories
 
@@ -350,7 +384,11 @@ can be forgotten without existing on disk, and failure to record approval
 occurs before the protected mutation. Corrupt, unreadable, and incompatible
 state fails closed without appearing empty; inspection reports it, narrow
 revocation recovers an identifiable record, and reset recovers the remaining
-cases.
+cases. Path-identity tests cover non-Unicode roots end to end: two roots whose
+lossy UTF-8 renderings collide persist, list, and revoke as two distinct
+records; a stored record survives a persistence and reload cycle byte for byte;
+and a deleted non-Unicode root remains revocable by passing back exactly what
+`roots list` printed.
 
 Prompt-inventory tests exercise default and custom handler mappings, handler
 precedence, pack and entry ignores, host gates, template source names, nested
@@ -367,7 +405,11 @@ affirmative answers, default and explicit refusal, invalid input, EOF,
 noninteractive execution, exit status 1 for every refusal form, exit status 130
 for Ctrl-C, empty stdout on refusal, stderr diagnostics, command classification,
 prior trust, explicit-root bypass, dry-run bypass, invalid configuration before
-prompt, trust persistence, or requested mutation.
+prompt, trust persistence, or requested mutation. Cache-derived mutation is
+covered by two roots sharing one data and cache directory with only one root
+trusted: `refresh` and `transform check` write only the trusted root's sources
+and report the other root's baselines as out-of-root, so trust in one root
+never permits a write under the other.
 The management surface is covered through `dodot roots list` and `dodot roots
 forget <path>`; tests assert that no separate trust verb exists.
 
@@ -377,6 +419,8 @@ Real-process verification includes:
 - non-TTY refusal with no deployment, repository, user-configuration, or trust
   changes; ordinary diagnostic logging remains permitted;
 - proof that piped affirmative input cannot bypass TTY requirements;
+- refusal when stdin is a terminal but stderr is redirected, proving approval
+  is impossible on a channel that never displayed the root;
 - invalid explicit-root failure without Git/cwd fallback;
 - a real pseudo-terminal acceptance path for approve, refuse, Enter, interrupt,
   and second-run behavior;
