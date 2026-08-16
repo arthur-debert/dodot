@@ -287,6 +287,15 @@ pub fn generate_init_script(
 /// Generate and write the init script to `data_dir/shell/dodot-init.sh`,
 /// stamping it with a fresh generation.
 ///
+/// The write is atomic ([`Fs::write_atomic_with_mode`]): the reader
+/// is every shell the user opens, and a truncating in-place write
+/// would let a shell starting mid-`up` source a prefix of the script
+/// — usually still valid shell, so the loss is silent, and since the
+/// activation evidence sits at the top of the script the truncated
+/// load still stamps itself healthy (#297). The executable mode goes
+/// on the temp before the rename, so the visible file is never a
+/// non-executable script.
+///
 /// Also creates the heartbeat's parent directory. The emitted redirect
 /// can't `mkdir -p` its own way out of a missing directory without
 /// spending a process on every shell start, so the write side owns
@@ -308,8 +317,7 @@ pub fn write_init_script(
 
     fs.mkdir_all(&paths.probes_hookup_dir())?;
     fs.mkdir_all(paths.shell_dir())?;
-    fs.write_file(&script_path, script_content.as_bytes())?;
-    fs.set_permissions(&script_path, 0o755)?;
+    fs.write_atomic_with_mode(&script_path, script_content.as_bytes(), 0o755)?;
 
     Ok(script_path)
 }
@@ -741,6 +749,60 @@ mod tests {
         let meta = std::fs::metadata(&script_path).unwrap();
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(meta.permissions().mode() & 0o111, 0o111);
+    }
+
+    /// The init script is *replaced* by rename, never truncated in
+    /// place, so a shell that starts mid-`dodot up` can never source
+    /// a prefix of the script (#297).
+    ///
+    /// A hard link is the proof: it shares the file's inode, so an
+    /// in-place truncating write rewrites what the link sees, while a
+    /// rename swaps the directory entry and leaves the link on the
+    /// old inode. Same technique as homebrew's
+    /// `persist_replaces_the_cache_by_rename_not_by_truncating_it`.
+    #[test]
+    fn init_script_is_replaced_by_rename_not_truncated_in_place() {
+        let env = TempEnvironment::builder().build();
+
+        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+        let first = env.fs.read_to_string(&path).unwrap();
+
+        let witness = path.parent().unwrap().join("witness.sh");
+        std::fs::hard_link(&path, &witness).unwrap();
+
+        // Different homebrew blocks force different content: the
+        // generation stamp is seconds-resolution, so two back-to-back
+        // writes could otherwise be byte-identical and prove nothing.
+        let blocks = BrewBlocks {
+            prefix: PathBuf::from("/opt/homebrew"),
+            sh: "export HOMEBREW_PREFIX=/opt/homebrew;\n".to_string(),
+            zsh: "export HOMEBREW_PREFIX=/opt/homebrew;\n".to_string(),
+        };
+        write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, Some(&blocks)).unwrap();
+
+        let second = env.fs.read_to_string(&path).unwrap();
+        assert_ne!(
+            first, second,
+            "the two writes must differ for the witness to prove anything"
+        );
+        assert_eq!(
+            env.fs.read_to_string(&witness).unwrap(),
+            first,
+            "the old inode was rewritten: the init script is being \
+             truncated in place, so a shell starting mid-write can \
+             source a prefix of it"
+        );
+
+        // A successful write also leaves no temp sibling behind.
+        let leftovers: Vec<String> = env
+            .fs
+            .read_dir(path.parent().unwrap())
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .filter(|name| name.ends_with(".tmp"))
+            .collect();
+        assert_eq!(leftovers, Vec::<String>::new());
     }
 
     #[test]
