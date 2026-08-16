@@ -22,6 +22,8 @@ Both forms are fully supported and both leave the same activation evidence, so `
 
     The init script is intentionally flat — `source` and `export PATH=` lines, one per staged entry, with a `# [<pack>]` comment above each so you can tell what came from where. No logic at runtime, no datastore re-discovery. All the work happens at `dodot up` time, when the script is regenerated.
 
+    Two blocks precede the pack lines. The script exports its activation *evidence* (a generation stamp and the generating dodot's version) and touches a heartbeat file — what lets `dodot status` report whether shells actually load dodot ([./../shell-integration.lex] §5). And on a macOS host with Homebrew, the script opens with brew's environment, captured verbatim from `brew shellenv` at the last `dodot up` — so brew's `$PATH` exists before any pack script runs, with dodot's own additions below it winning. The `[shell] homebrew` key controls that block; [./../configuration.lex] §10 has the details and the cost.
+
     A pack with no shell or path handlers contributes nothing. A pack you took down with `dodot down` disappears entirely from the next regenerated script.
 
     On a fresh install with no packs deployed yet, `init-sh` emits the script header plus a "no shell scripts or PATH additions to load" comment. Sourcing that is harmless; it just doesn't do anything.
@@ -34,7 +36,7 @@ Both forms are fully supported and both leave the same activation evidence, so `
 
     What belongs *above* this line in the rc:
 
-    - `eval "$(/opt/homebrew/bin/brew shellenv)"` (or `/usr/local/bin/brew` on Intel) — Homebrew puts dodot itself on `$PATH`, so it has to run before dodot can be invoked.
+    - `eval "$(/opt/homebrew/bin/brew shellenv)"` (or `/usr/local/bin/brew` on Intel) — but only because this hookup form must *find* `dodot` on `$PATH` before the init script can run, and Homebrew may be what installed it. The init script itself already opens with brew's environment for everything after it ([#2]); dodot's managed block sources the script by absolute path and needs no brew line at all.
     - OS-level prereqs that block any pack from succeeding (xcode-select install prompt, license acceptance).
 
     Everything else — aliases, exports, functions, completions, prompt setup — belongs in a pack, not raw in your rc.

@@ -23,7 +23,9 @@ The order in which handlers run within a pack, and the order in which packs run 
 
     Across packs, dodot processes packs in lexicographic order of their on-disk directory names. For most pack arrangements that's `aws`, `git`, `nvim`, `zsh` — alphabetical, no surprises.
 
-    For the small handful of cases where pack-to-pack ordering matters — Homebrew's `shellenv` before anything that calls `brew`, `compinit` after completion plugins are on `$PATH`, … — name your pack directories with a numeric prefix so lexicographic order matches the order you want.
+    For the small handful of cases where pack-to-pack ordering matters — `compinit` after completion plugins are on `$PATH`, a helper function defined before the alias file that uses it, … — name your pack directories with a numeric prefix so lexicographic order matches the order you want.
+
+    The historically most common occasion for reaching for a prefix — a `001-homebrew` bootstrap pack, so brew's `shellenv` runs before anything that calls `brew` — is retired: the init script now opens with Homebrew's environment by itself, before any pack contribution ([./../configuration.lex] §10). The prefix grammar below is unchanged; it just has one less job.
 
 3. The ordering-prefix grammar
 

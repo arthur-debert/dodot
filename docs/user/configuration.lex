@@ -50,8 +50,8 @@ Configuration
     - Maps: deep-merge (nested keys combine across layers, but any scalar or array within still overrides).
 
     Some sections are _root-only_ — they're read from the root
-    `.dodot.toml` and per-pack overrides are ignored. `[secret]` and
-    `[profiling]` fall in this bucket; `[pack] os` is the mirror image
+    `.dodot.toml` and per-pack overrides are ignored. `[secret]`,
+    `[profiling]` and `[shell]` fall in this bucket; `[pack] os` is the mirror image
     (pack-only — root-level entries are rejected).
 
 2. The `[pack]` Section
@@ -508,9 +508,28 @@ Configuration
 
         For details on schemes, providers, and the `secret(...)` template function, see [./secrets.lex].
 
-10. Inheritance Model
+10. The `[shell]` Section
 
-    Most sections follow the same three-layer model: compiled defaults, then root `.dodot.toml`, then pack `.dodot.toml`. The outermost layer that sets a key wins for scalars and arrays; for maps, the layers deep-merge. The exceptions: `[secret]` and `[profiling]` are root-only (per-pack entries are ignored), and `[pack] os` is pack-only (root-level entries are rejected).
+    _Root-only_. Settings for the generated `dodot-init.sh`. Per-pack overrides are ignored — the init script is one global file, so there is nothing for a pack-level value to scope to.
+
+    Shell configuration:
+
+        [shell]
+        homebrew = "auto"
+
+    :: toml ::
+
+    `homebrew` decides whether the init script opens with Homebrew's environment. With `"auto"` (the default), `dodot up` and `dodot down` ask `brew shellenv` for its bootstrap block and keep the answer — baked into the generated script as static text, and cached in dodot's datastore so `dodot init-sh` emits the same block without running `brew` either (only a cold or prefix-mismatched cache makes `init-sh` capture live, once, in memory). Homebrew stays the authority on its own setup; a brew upgrade that changes the block is picked up by the next `dodot up`, the same refresh rule as everything else dodot generates. On a host without Homebrew, or off macOS, nothing is emitted; install brew and the next `dodot up` picks it up.
+
+    The block lands _first_, above the PATH additions your packs contribute, so your own entries stay ahead of brew's. That is what makes a `001-homebrew` bootstrap pack unnecessary: brew's environment is available to every pack script without any ordering work on your part.
+
+    What this costs your shell is the same under either hookup shape (see [./shell-integration.lex] for the two): each shell start pays only the two process spawns of brew's own `path_helper` line, measured at 2-3 ms. The `brew shellenv` capture itself (twice — once for `sh`, once for `zsh`, 10-20 ms each on an Apple-silicon mac) is paid by `dodot up` and `dodot down`, never by a shell.
+
+    :: note :: This is the one thing dodot puts on your shell startup path that spends processes. `homebrew = "off"` removes it entirely, and is also the setting to reach for if you'd rather bootstrap Homebrew yourself or want the init script to carry nothing but dodot's own lines.
+
+11. Inheritance Model
+
+    Most sections follow the same three-layer model: compiled defaults, then root `.dodot.toml`, then pack `.dodot.toml`. The outermost layer that sets a key wins for scalars and arrays; for maps, the layers deep-merge. The exceptions: `[secret]`, `[profiling]` and `[shell]` are root-only (per-pack entries are ignored), and `[pack] os` is pack-only (root-level entries are rejected).
 
     Example: you set `[preprocessor.template.vars] editor = "nvim"` at the root. In a pack for work configs, you set `[preprocessor.template.vars] editor = "vscode"`. That pack renders templates with `editor = "vscode"`; all others render with `editor = "nvim"`. All other keys under `[preprocessor.template]` (enabled, extensions) remain as defined at the root.
 

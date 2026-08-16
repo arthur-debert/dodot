@@ -1,0 +1,92 @@
++dodot-trace|/etc/zshrc|8|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ ! -x /usr/bin/locale ]]
++dodot-trace|/etc/zshrc|8|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[+dodot-trace|/etc/zshrc|8|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> locale LC_CTYPE
++dodot-trace|/etc/zshrc|8|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ UTF-8 == UTF-8 ]]
++dodot-trace|/etc/zshrc|9|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> setopt COMBINING_CHARS
++dodot-trace|/etc/zshrc|13|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> disable log
++dodot-trace|/etc/zshrc|16|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> HISTFILE=/tmp/dodot-trace-exp/zdot/.zsh_history 
++dodot-trace|/etc/zshrc|17|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> HISTSIZE=2000 
++dodot-trace|/etc/zshrc|18|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> SAVEHIST=1000 
++dodot-trace|/etc/zshrc|21|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> setopt BEEP
++dodot-trace|/etc/zshrc|25|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -r /tmp/dodot-trace-exp/zdot/.zkbd/xterm-ghostty-apple ]]
++dodot-trace|/etc/zshrc|28|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> typeset -g -A key
++dodot-trace|/etc/zshrc|30|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OP' ]]
++dodot-trace|/etc/zshrc|30|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F1]=$'\C-[OP' 
++dodot-trace|/etc/zshrc|31|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OQ' ]]
++dodot-trace|/etc/zshrc|31|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F2]=$'\C-[OQ' 
++dodot-trace|/etc/zshrc|32|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OR' ]]
++dodot-trace|/etc/zshrc|32|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F3]=$'\C-[OR' 
++dodot-trace|/etc/zshrc|33|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OS' ]]
++dodot-trace|/etc/zshrc|33|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F4]=$'\C-[OS' 
++dodot-trace|/etc/zshrc|34|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[15~' ]]
++dodot-trace|/etc/zshrc|34|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F5]=$'\C-[[15~' 
++dodot-trace|/etc/zshrc|35|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[17~' ]]
++dodot-trace|/etc/zshrc|35|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F6]=$'\C-[[17~' 
++dodot-trace|/etc/zshrc|36|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[18~' ]]
++dodot-trace|/etc/zshrc|36|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F7]=$'\C-[[18~' 
++dodot-trace|/etc/zshrc|37|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[19~' ]]
++dodot-trace|/etc/zshrc|37|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F8]=$'\C-[[19~' 
++dodot-trace|/etc/zshrc|38|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[20~' ]]
++dodot-trace|/etc/zshrc|38|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F9]=$'\C-[[20~' 
++dodot-trace|/etc/zshrc|39|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[21~' ]]
++dodot-trace|/etc/zshrc|39|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F10]=$'\C-[[21~' 
++dodot-trace|/etc/zshrc|40|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[23~' ]]
++dodot-trace|/etc/zshrc|40|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F11]=$'\C-[[23~' 
++dodot-trace|/etc/zshrc|41|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[24~' ]]
++dodot-trace|/etc/zshrc|41|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F12]=$'\C-[[24~' 
++dodot-trace|/etc/zshrc|42|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[1;2P' ]]
++dodot-trace|/etc/zshrc|42|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F13]=$'\C-[[1;2P' 
++dodot-trace|/etc/zshrc|43|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[1;2Q' ]]
++dodot-trace|/etc/zshrc|43|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F14]=$'\C-[[1;2Q' 
++dodot-trace|/etc/zshrc|44|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[1;2R' ]]
++dodot-trace|/etc/zshrc|44|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F15]=$'\C-[[1;2R' 
++dodot-trace|/etc/zshrc|45|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[1;2S' ]]
++dodot-trace|/etc/zshrc|45|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F16]=$'\C-[[1;2S' 
++dodot-trace|/etc/zshrc|46|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[15;2~' ]]
++dodot-trace|/etc/zshrc|46|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F17]=$'\C-[[15;2~' 
++dodot-trace|/etc/zshrc|47|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[17;2~' ]]
++dodot-trace|/etc/zshrc|47|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F18]=$'\C-[[17;2~' 
++dodot-trace|/etc/zshrc|48|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[18;2~' ]]
++dodot-trace|/etc/zshrc|48|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F19]=$'\C-[[18;2~' 
++dodot-trace|/etc/zshrc|49|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[19;2~' ]]
++dodot-trace|/etc/zshrc|49|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[F20]=$'\C-[[19;2~' 
++dodot-trace|/etc/zshrc|50|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-?' ]]
++dodot-trace|/etc/zshrc|50|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[Backspace]=$'\C-?' 
++dodot-trace|/etc/zshrc|51|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[2~' ]]
++dodot-trace|/etc/zshrc|51|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[Insert]=$'\C-[[2~' 
++dodot-trace|/etc/zshrc|52|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[3~' ]]
++dodot-trace|/etc/zshrc|52|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[Delete]=$'\C-[[3~' 
++dodot-trace|/etc/zshrc|53|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OH' ]]
++dodot-trace|/etc/zshrc|53|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[Home]=$'\C-[OH' 
++dodot-trace|/etc/zshrc|54|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OF' ]]
++dodot-trace|/etc/zshrc|54|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[End]=$'\C-[OF' 
++dodot-trace|/etc/zshrc|55|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[5~' ]]
++dodot-trace|/etc/zshrc|55|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[PageUp]=$'\C-[[5~' 
++dodot-trace|/etc/zshrc|56|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[6~' ]]
++dodot-trace|/etc/zshrc|56|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[PageDown]=$'\C-[[6~' 
++dodot-trace|/etc/zshrc|57|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OA' ]]
++dodot-trace|/etc/zshrc|57|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[Up]=$'\C-[OA' 
++dodot-trace|/etc/zshrc|58|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OD' ]]
++dodot-trace|/etc/zshrc|58|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[Left]=$'\C-[OD' 
++dodot-trace|/etc/zshrc|59|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OB' ]]
++dodot-trace|/etc/zshrc|59|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[Down]=$'\C-[OB' 
++dodot-trace|/etc/zshrc|60|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OC' ]]
++dodot-trace|/etc/zshrc|60|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> key[Right]=$'\C-[OC' 
++dodot-trace|/etc/zshrc|64|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[[3~' ]]
++dodot-trace|/etc/zshrc|64|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> bindkey $'\C-[[3~' delete-char
++dodot-trace|/etc/zshrc|65|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OH' ]]
++dodot-trace|/etc/zshrc|65|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> bindkey $'\C-[OH' beginning-of-line
++dodot-trace|/etc/zshrc|66|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OF' ]]
++dodot-trace|/etc/zshrc|66|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> bindkey $'\C-[OF' end-of-line
++dodot-trace|/etc/zshrc|67|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OA' ]]
++dodot-trace|/etc/zshrc|67|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> bindkey $'\C-[OA' up-line-or-search
++dodot-trace|/etc/zshrc|68|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n $'\C-[OB' ]]
++dodot-trace|/etc/zshrc|68|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> bindkey $'\C-[OB' down-line-or-search
++dodot-trace|/etc/zshrc|71|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> PS1='%n@%m %1~ %# ' 
++dodot-trace|/etc/zshrc|74|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [ -r /etc/zshrc_ghostty ']'
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|2|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> export FOO=bar
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|3|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> [ -n bar ']'
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|4|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> dodot init-sh
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|4|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> true
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|4|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> eval ''
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|6|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> alias 'll=ls -l'
++dodot-trace|zsh|1|/tmp/dodot-trace-exp|/opt/homebrew/bin:/usr/bin:/bin|> true

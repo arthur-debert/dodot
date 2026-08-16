@@ -78,8 +78,9 @@ Getting started
                              ⚙ aliases.sh                              not sourced
                              ⚙ Brewfile                                  installed
 
-        Deployed, but a new shell did not load dodot.
+        ✗ Shell hookup: a new shell did not load dodot.
         The dodot hook is missing from ~/.zshrc — run `dodot install --write` to add it.
+        Never loaded.
 
     :: shell ::
 
@@ -125,11 +126,12 @@ Getting started
         Notes
           created ~/.zshrc
 
-        ✓ Shell hookup verified: a new shell loads dodot.
+        ✓ Shell hookup: dodot is sourced in new shells.
+        Last loaded just now by dodot 5.6.0.
 
     :: shell ::
 
-    That last line is measured, not assumed: dodot started a shell and confirmed the hook fired. Open a new terminal and your pack's aliases and `bin/` directory are there.
+    That footer is measured, not assumed: dodot started a shell and confirmed the hook fired — down to which dodot version the shell loaded, and when. Open a new terminal and your pack's aliases and `bin/` directory are there.
 
     Run it bare first — `dodot install` — if you'd rather see which file it picked before letting it write. Without `--write` nothing changes on disk. It writes one marked block and nothing else, so deleting that block is a complete uninstall.
 
@@ -154,7 +156,7 @@ Getting started
 
 8. Watch out for
 
-    - *Open shells lag.* `dodot up` regenerates the shell init script, but already-running shells hold their old environment. Open a new shell or re-source your rc. dodot says so when it notices: `This shell started before your last dodot up.`
+    - *Open shells lag.* `dodot up` regenerates the shell init script, but already-running shells hold their old environment. Open a new shell or re-source your rc. dodot says so when it notices: Shell hookup: this shell predates your last \`dodot up\`.
     - *Deployed is not activated.* A green `dodot up` proves your packs are in the datastore. Whether a shell loads them is a separate question, and it is the one [#6] answers. `dodot status` tells you which side of that line you're on.
     - *`dodot down` only sees discovered packs.* If you've added a `.dodotignore` marker to a pack, `down` won't reconcile it. See [./filters.lex] §3 for the safe sequence.
     - *Pack-root files only get the convention treatment.* Nested files (e.g. `pack/scripts/foo.sh`) fall through to the symlink handler — they aren't auto-sourced. That keeps window-manager helpers and similar scripts from being pulled into shell init.

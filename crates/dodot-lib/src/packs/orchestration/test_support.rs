@@ -65,7 +65,7 @@ pub(super) fn make_context(env: &TempEnvironment) -> ExecutionContext {
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,
         host_facts: Arc::new(crate::gates::HostFacts::detect()),
-        env_init_gen: None,
+        env_stamp: Default::default(),
         tty: false,
         shell_probe: crate::shell::ProbePolicy::Never,
         shell_env: crate::shell::ShellEnv::default(),

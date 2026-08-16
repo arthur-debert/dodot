@@ -19,4 +19,5 @@
 {% elif shell_hookup.severity == "ok" %}[deployed]✓ {{ shell_hookup.message }}[/deployed]
 {% else %}[message]{{ shell_hookup.message }}[/message]
 {% endif %}{% if shell_hookup.hint %}  [dim]{{ shell_hookup.hint }}[/dim]
-{% endif %}{% endif %}
+{% endif %}  [dim]{{ shell_hookup.evidence }}[/dim]
+{% endif %}

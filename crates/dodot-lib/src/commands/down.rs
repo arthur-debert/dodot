@@ -38,6 +38,14 @@ use crate::Result;
 pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     info!(dry_run = ctx.dry_run, "starting down command");
 
+    // The generation the user's shells were hooked up to *before* this
+    // run regenerates the init script — the only fair yardstick for the
+    // footer below, exactly as in `up`: judging the invoking shell
+    // against the generation we are about to write would call it stale
+    // on every `down`.
+    let pre_down_generation =
+        shell::activation::read_script_generation(ctx.fs.as_ref(), ctx.paths.as_ref());
+
     // Orphaned state: datastore subtrees whose pack no longer exists in
     // the dotfiles root. Scanned before validation so `dodot down
     // <orphan>` is accepted instead of rejected as PackNotFound — the
@@ -185,10 +193,23 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
 
     if !ctx.dry_run {
         info!("regenerating shell init script");
+        // The Homebrew bootstrap is a function of config and the host,
+        // not of what any pack deployed, so `down` keeps emitting it:
+        // tearing packs down should not take the user's `brew` off PATH.
+        // `[shell] homebrew = "off"` is the way to be rid of it. Like
+        // `up`, the capture is persisted to the datastore cache that
+        // `dodot init-sh` emits from.
+        let brew = shell::homebrew::capture_and_persist(
+            ctx.fs.as_ref(),
+            ctx.command_runner.as_ref(),
+            &root_config,
+            ctx.paths.as_ref(),
+        )?;
         shell::write_init_script(
             ctx.fs.as_ref(),
             ctx.paths.as_ref(),
             root_config.profiling.enabled,
+            brew.as_ref(),
         )?;
         info!("writing deployment map");
         probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;
@@ -220,9 +241,18 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
         diffs: Vec::new(),
-        // `down` deactivates; nagging about shell hookup on the way
-        // out is advice for a deployment the user just removed.
-        shell_hookup: None,
+        // `down` carries the footer like every other pack-status
+        // render. It reads as "wired, but no packs are deployed"
+        // rather than as a healthy deployment, because the footer
+        // reports the *script's* content — no `down` special case
+        // (`shell-hookup-ergonomics.lex` §2.3). `down` never spawns a
+        // shell: it removed a deployment, which is not the moment to
+        // spend a shell start measuring one.
+        shell_hookup: crate::commands::shell_hookup_footer(
+            ctx,
+            pre_down_generation,
+            &crate::shell::ProbePolicy::Never,
+        ),
     })
 }
 

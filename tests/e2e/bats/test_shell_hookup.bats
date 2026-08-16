@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
-# E2E acceptance for the shell hookup (`dodot install`), spec §7.
+# E2E acceptance for the shell hookup: INS01 (`dodot install`, spec §7)
+# and RCS01 (the version-stamped footer and the hook-line trace).
 #
 # The story this file exists to prove, end to end in a clean
 # environment: install dodot, `up` (the never-activated warning
@@ -36,7 +37,7 @@ echo tool output'
     # 1. A green `up` on a machine with no hookup does not stay silent.
     run dodot up
     [ "$status" -eq 0 ]
-    assert_output_contains "Deployed, but a new shell did not load dodot."
+    assert_output_contains "Shell hookup: a new shell did not load dodot."
     assert_output_contains "dodot install --write"
 
     # 2. `status` agrees, from evidence alone.
@@ -52,7 +53,7 @@ echo tool output'
     # 4. `--write` wires it and ends on a *measured* verdict.
     run dodot install --write
     [ "$status" -eq 0 ]
-    assert_output_contains "Shell hookup verified: a new shell loads dodot."
+    assert_output_contains "Shell hookup: dodot is sourced in new shells."
     assert_file_contains "$HOME/.bashrc" "# >>> dodot shell hookup >>>"
     assert_file_contains "$HOME/.bashrc" "dodot-init.sh"
 
@@ -67,7 +68,8 @@ echo tool output'
 
     # 6. And dodot now says so without spawning anything.
     run dodot status
-    assert_output_contains "shell hookup: ok"
+    assert_output_contains "Shell hookup: dodot is sourced in new shells."
+    assert_output_contains "Last loaded"
     assert_output_not_contains "no shell has loaded dodot yet"
 }
 
@@ -163,6 +165,174 @@ echo tool output'
     rm -f "$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
 
     run dodot up
-    assert_output_contains "Deployed, but a new shell did not load dodot."
+    assert_output_contains "Shell hookup: a new shell did not load dodot."
     assert_output_contains "never reached"
+}
+
+# ── The version-stamped footer (RCS01 WS01) ─────────────────────
+
+@test "the footer catches a heartbeat left by a different dodot version" {
+    dodot up
+    dodot install --write
+    bash -ic true   # a real shell activates, writing the heartbeat
+
+    # A shell whose rc resolves an older dodot would leave this exact
+    # heartbeat: same generation (the script is current), another
+    # version. Keep the real generation so only the version disagrees —
+    # the epic's motivating failure, invisible before RCS01.
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    read -r gen _ < "$hb"
+    echo "$gen 5.0.0" > "$hb"
+
+    run dodot status
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell hookup: your shells load a different dodot."
+    assert_output_contains "by dodot 5.0.0 — you are running"
+}
+
+@test "a version-less heartbeat renders as at most the pre-RCS01 release" {
+    dodot up
+    dodot install --write
+    bash -ic true   # a real shell activates, writing the heartbeat
+
+    # A pre-RCS01 init script wrote only the generation. One rule
+    # covers it: the version renders as a bound, never as a guess.
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    read -r gen _ < "$hb"
+    echo "$gen" > "$hb"
+
+    run dodot status
+    [ "$status" -eq 0 ]
+    assert_output_contains "by dodot ≤5.5.1"
+}
+
+@test "after down, a shell that loads the empty script reads as wired-but-empty" {
+    create_pack_file "shell" "aliases.sh" 'alias dodot_hookup_alias="echo activated"'
+    dodot up
+    dodot install --write
+    dodot down
+
+    # The hookup is still wired and firing — a real shell sources the
+    # regenerated, contribution-less script — so a healthy line would
+    # be technically true and practically misleading.
+    bash -ic true
+
+    run dodot status
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell hookup: wired, but no packs are deployed."
+    assert_output_contains "Run \`dodot up\` to deploy your packs."
+}
+
+# ── The hook-line trace (`probe shell-init`, RCS01 WS02) ────────
+
+@test "probe shell-init names the hook line and the stale binary a mangled PATH resolves to" {
+    dodot up
+
+    # A stale dodot the mangled PATH will resolve to instead of the
+    # binary under test.
+    mkdir -p "$HOME/stale-bin"
+    printf '#!/bin/sh\necho "dodot 5.0.0"\n' > "$HOME/stale-bin/dodot"
+    chmod +x "$HOME/stale-bin/dodot"
+
+    # An rc that rebuilds PATH *before* the hand-wired hook — the
+    # epic's motivating failure. The hook sits on line 2.
+    printf 'export PATH=%s\neval "$(dodot init-sh)"\n' "$HOME/stale-bin" \
+        > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains "Hook resolution"
+    # The right line…
+    assert_output_contains ".bashrc:2"
+    # …and the right binary, version included.
+    assert_output_contains "different dodot"
+    assert_output_contains "stale-bin/dodot"
+    assert_output_contains "5.0.0"
+}
+
+@test "probe shell-init --no-trace keeps the report passive" {
+    dodot up
+    printf 'eval "$(dodot init-sh)"\n' > "$HOME/.bashrc"
+
+    run dodot probe shell-init --no-trace
+    [ "$status" -eq 0 ]
+    assert_output_not_contains "Hook resolution"
+    assert_output_not_contains "tracing shell startup"
+}
+
+@test "a file argument keeps probe shell-init passive too" {
+    # The shipped status warning points users at exactly this
+    # invocation; it must stay cheap and spawn nothing.
+    dodot up
+    printf 'eval "$(dodot init-sh)"\n' > "$HOME/.bashrc"
+
+    run dodot probe shell-init gpg/env.sh
+    [ "$status" -eq 0 ]
+    assert_output_not_contains "Hook resolution"
+    assert_output_not_contains "tracing shell startup"
+}
+
+# The file-source half of the same rule: the verdict is about the
+# script the hook line names, not the one `dodot up` writes. Both
+# exist here — the datastore's script is perfectly intact — and the
+# hook sources a copy that is not there. Judging the expected path
+# would report this dead hookup as sound.
+@test "probe shell-init judges the script the hook line sources, not the one up wrote" {
+    dodot up
+    # `up` wrote this one, and it is fine.
+    [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ]
+
+    # The hook sources a copy that does not exist.
+    printf '[ -f "$HOME/old/dodot-init.sh" ] && . "$HOME/old/dodot-init.sh"\n' \
+        > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains ".bashrc:1"
+    assert_output_contains "does not exist"
+    assert_output_contains "old/dodot-init.sh"
+    assert_output_not_contains "the hookup is sound"
+}
+
+# The same rule one level deeper: the script is *there*, and it is a
+# real dodot init script — written by an older dodot. Every filesystem
+# fact says "present"; the hookup is the epic's motivating failure.
+@test "probe shell-init reports a foreign init script as skew, not as sound" {
+    dodot up
+
+    # A 5.0.0 init script, stamped the way that dodot stamped them.
+    mkdir -p "$HOME/old"
+    printf '# dodot init\nexport DODOT_INIT_GEN=1\nexport DODOT_INIT_VERSION=5.0.0\n' \
+        > "$HOME/old/dodot-init.sh"
+    printf '[ -f "$HOME/old/dodot-init.sh" ] && . "$HOME/old/dodot-init.sh"\n' \
+        > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains "written by a different dodot"
+    assert_output_contains "5.0.0"
+    assert_output_not_contains "the hookup is sound"
+}
+
+# A hook line dodot cannot resolve without running a shell gets an
+# honest non-answer. The alternative is a verdict about whichever file
+# dodot guessed at, which is the failure mode this epic is about.
+@test "probe shell-init declines to guess at a hook line it cannot resolve" {
+    dodot up
+    printf '. "$XDG_DATA_HOME/dodot/shell/dodot-init.sh"\n' > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains "could not tell which file the hook"
+    assert_output_not_contains "the hookup is sound"
+}
+
+@test "probe shell-init reports an absent hook plainly and spawns nothing" {
+    dodot up
+    printf 'alias ll="ls -l"\n' > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains "no dodot hook"
+    assert_output_not_contains "tracing shell startup"
 }

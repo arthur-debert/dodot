@@ -65,9 +65,9 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
 6. The shell hookup check
 
-    A successful `up` proves your packs are deployed. It proves nothing about whether any shell will ever *load* them — those are two layers that fail independently, and the second is the one you actually experience. So `up` ends by reporting on it.
+    A successful `up` proves your packs are deployed. It proves nothing about whether any shell will ever *load* them — those are two layers that fail independently, and the second is the one you actually experience. So `up` ends with the activation footer: whether dodot is sourced in new shells, and when it last was, by which dodot version.
 
-    When it has evidence — a shell has loaded the current init script — `up` says nothing; there is nothing to say. When it has no evidence either way, it stops guessing and measures, announcing itself first:
+    When it has no evidence either way, it stops guessing and measures, announcing itself first:
 
         verifying shell integration (zsh)…
 
@@ -75,14 +75,15 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     That starts your shell (interactive, non-login, five-second timeout) and checks whether the init script ran in it. On a machine that was never wired up, the answer is no:
 
-        Deployed, but a new shell did not load dodot.
+        ✗ Shell hookup: a new shell did not load dodot.
         The dodot hook is missing from ~/.zshrc — run `dodot install --write` to add it.
+        Never loaded.
 
     :: shell ::
 
-    The check is self-limiting. It fires when the cheap evidence is inconclusive — the fresh-install case and the broken-hookup case — and the first real shell activation retires it. A healthy machine never pays for a shell spawn. `--dry-run` never spawns one either.
+    The check is self-limiting. It fires when the cheap evidence is inconclusive — the fresh-install case and the broken-hookup case — and the first real shell activation retires it. A healthy machine never pays for a shell spawn. `--dry-run` never spawns one either — and on a machine where nothing has ever been deployed it has no init script to report on, so a dry run there ends with no footer at all.
 
-    See [./install.lex] for the fix, and [./../shell-integration.lex] §5 for the four activation states and the full set of messages.
+    See [./install.lex] for the fix, and [./../shell-integration.lex] §5 for the activation states and the full set of messages — including version skew, the state where your shells load a *different* dodot than the one you run.
 
 7. First-time-on-this-repo prompt
 

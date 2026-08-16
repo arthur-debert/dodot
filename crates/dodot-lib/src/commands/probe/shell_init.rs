@@ -3,16 +3,23 @@
 //! Five public entry points produce the five `ShellInit*` `ProbeResult`
 //! variants:
 //!
-//! - [`shell_init`] — most recent profile, grouped by (pack, handler)
+//! - [`shell_init`] — most recent profile, grouped by (pack, handler),
+//!   plus (by default) the live hook-line trace: one report, two
+//!   halves, because the user running it is asking "why isn't my
+//!   shell init working" and the halves answer that together
 //! - [`shell_init_aggregate`] — percentile stats across last N runs
 //! - [`shell_init_history`] — one summary row per recent profile
 //! - [`shell_init_filter`] — drill-down by `<pack>[/<file>]`
 //! - [`shell_init_errors`] — non-zero-exit entries across the window
+//!
+//! Only [`shell_init`] may carry the trace, and only it may spawn a
+//! shell; every other view — and every other command — stays passive
+//! (INS01 §9 still binds).
 
 use crate::commands::probe::types::{
     ProbeResult, ShellInitAggregateRow, ShellInitAggregateView, ShellInitErrorsView,
     ShellInitFilterRun, ShellInitFilterTarget, ShellInitFilterView, ShellInitGroup,
-    ShellInitHistoryRow, ShellInitHistoryView, ShellInitRow, ShellInitView,
+    ShellInitHistoryRow, ShellInitHistoryView, ShellInitRow, ShellInitTraceView, ShellInitView,
 };
 use crate::packs::orchestration::ExecutionContext;
 use crate::probe::{
@@ -22,13 +29,21 @@ use crate::probe::{
 };
 use crate::Result;
 
-/// Render the most recent shell-init profile.
+/// Render the most recent shell-init profile, with the live hook-line
+/// trace when `trace` is true.
 ///
 /// When no profile has been written yet (fresh install, or profiling
 /// disabled, or the user hasn't started a shell since the last `up`),
 /// returns a "no data" view with `has_profile = false`. The template
 /// uses that flag to print a hint instead of an empty table.
-pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
+///
+/// `trace` is the caller's suppression switch (`--no-trace`, or a
+/// `<file>` argument having routed to the filter view instead): when
+/// false the report is the recorded timings alone and nothing is
+/// spawned. When true, [`trace_view`] appends the live half — which
+/// still spawns only under [`crate::shell::ProbePolicy::Gated`], so
+/// no non-production context can reach a real shell.
+pub fn shell_init(ctx: &ExecutionContext, trace: bool) -> Result<ProbeResult> {
     let root_config = ctx.config_manager.root_config()?;
     let profiling_enabled = root_config.profiling.enabled;
 
@@ -37,7 +52,7 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
     let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
     let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
 
-    let view = match profile_opt {
+    let mut view = match profile_opt {
         Some(profile) => {
             let grouped = group_profile(&profile);
             let profile_ts = parse_unix_ts_from_filename(&profile.filename);
@@ -55,6 +70,7 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
                 stale,
                 profile_when: format_unix_ts(profile_ts),
                 last_up_when,
+                trace: None,
             }
         }
         None => ShellInitView {
@@ -70,8 +86,12 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
             stale: false,
             profile_when: String::new(),
             last_up_when,
+            trace: None,
         },
     };
+    if trace {
+        view.trace = Some(trace_view(ctx));
+    }
 
     Ok(ProbeResult::ShellInit(view))
 }
@@ -81,6 +101,426 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
 /// guesswork, only when we have both reference points.
 fn is_stale(profile_ts: u64, last_up_ts: Option<u64>) -> bool {
     matches!(last_up_ts, Some(last) if profile_ts > 0 && profile_ts < last)
+}
+
+// ── The live half: PATH at the hook line ──────────────────────────
+
+/// How long a `<found dodot> --version` gets before its group is
+/// killed — the winner at the hook line may be arbitrary and must not
+/// be able to hang the report.
+const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Build the live half of the report: resolve the shell, the rc, and
+/// the hook; spawn the trace; judge what the hook line actually
+/// reaches — what `dodot` resolves to on the traced `PATH` for the
+/// `eval` form, whether the script *that line names* is there for the
+/// file-source form.
+///
+/// Nothing to trace is not an error (an unsupported shell, no rc, no
+/// hook — each reports plainly and spawns nothing), and a trace that
+/// could not run degrades to a "could not trace" line rather than
+/// failing the command: the recorded half must survive a hostile rc.
+/// A hook line dodot cannot read gets the same treatment one level
+/// down — an unanswered question, never an answered one about the
+/// wrong file.
+///
+/// The spawn is announced before it runs and rides the INS01 envelope
+/// via [`crate::shell::trace::run_trace`].
+fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
+    use crate::shell::activation;
+    use crate::shell::rc;
+    use crate::shell::trace::{self, HookForm, SourcedScript, TraceError};
+
+    let fs = ctx.fs.as_ref();
+    let home = ctx.paths.home_dir();
+
+    // Which shell — dodot only guesses rc files for bash and zsh.
+    let Some(shell) = ctx.shell_env.hookup_shell() else {
+        let reason = match ctx.shell_env.shell.as_deref() {
+            Some(other) => format!("{other} is not a shell dodot can trace (bash and zsh only)"),
+            None => "$SHELL is not set".to_string(),
+        };
+        return skipped_trace(reason, String::new(), String::new());
+    };
+    let shell_name = shell.as_str().to_string();
+    // `hookup_shell()` returned Some, so the shell path is set.
+    let shell_path = ctx.shell_env.shell.clone().unwrap_or_default();
+
+    // Which rc — same ladder as `install` and the INS01 probe, so the
+    // trace never measures one shell while naming another's rc file.
+    let target = rc::resolve_rc(fs, home, Some(shell), &ctx.shell_env, None);
+    let rc_display = rc::display_home_relative(target.nominal(), home);
+    if !target.exists {
+        return skipped_trace(
+            format!("no rc file at {rc_display} — nothing to trace"),
+            shell_name,
+            rc_display.clone(),
+        );
+    }
+
+    // Which line — the record to read is addressable, never searched.
+    let Ok(rc_text) = fs.read_to_string(&target.path) else {
+        return skipped_trace(
+            format!("could not read {rc_display} — nothing to trace"),
+            shell_name,
+            rc_display.clone(),
+        );
+    };
+    let Some(hook) = trace::find_hook(&rc_text, home) else {
+        return skipped_trace(
+            format!("no dodot hook in {rc_display} — run `dodot install --write` to add one"),
+            shell_name,
+            rc_display.clone(),
+        );
+    };
+    let hook_line = hook.line;
+
+    // Only a context that may measure gets to spawn; every
+    // non-production context leaves the policy at `Never`.
+    let Some(timeout) = ctx.shell_probe.timeout() else {
+        return untraced(
+            "shell tracing is unavailable in this context".to_string(),
+            shell_name,
+            rc_display,
+            hook_line,
+        );
+    };
+
+    eprintln!("{}", trace::announcement(shell));
+    let request = trace::TraceRequest {
+        shell_path: std::path::Path::new(&shell_path),
+        shell,
+        home,
+        // The same `$ZDOTDIR` the rc ladder resolved this target with,
+        // so the traced startup and the named rc file can never come
+        // from two different readings of the environment.
+        zdotdir: ctx.shell_env.zdotdir.as_deref(),
+        rc_nominal: target.nominal(),
+        rc_resolved: &target.path,
+        hook_line,
+        timeout,
+    };
+    let run = match trace::run_trace(fs, &request) {
+        Ok(run) => run,
+        Err(TraceError::TimedOut) => {
+            return untraced(
+                "your shell did not finish starting up in time".to_string(),
+                shell_name,
+                rc_display,
+                hook_line,
+            )
+        }
+        Err(TraceError::SpawnFailed(e)) => {
+            return untraced(
+                format!("could not run your shell ({e})"),
+                shell_name,
+                rc_display,
+                hook_line,
+            )
+        }
+        Err(TraceError::RcUnreadable(e)) => {
+            return untraced(
+                format!("could not read {rc_display} ({e})"),
+                shell_name,
+                rc_display,
+                hook_line,
+            )
+        }
+        Err(TraceError::FallbackUnfaithful(e)) => {
+            return untraced(
+                format!("could not reproduce your shell's startup files ({e})"),
+                shell_name,
+                rc_display,
+                hook_line,
+            )
+        }
+    };
+
+    let record = trace::record_at(&run.records, &[target.nominal(), &target.path], hook_line);
+    let verdict = match record {
+        None => trace::TraceVerdict::HookNeverRan,
+        Some(record) => match hook.form {
+            HookForm::Eval => {
+                // The verdict is an identity comparison against the
+                // running binary. Without it there is no comparison to
+                // make — only a false "different dodot" report, since
+                // no resolved path equals a path we do not know.
+                let Ok(running_exe) = std::env::current_exe() else {
+                    return untraced(
+                        "could not identify the running dodot binary".to_string(),
+                        shell_name,
+                        rc_display,
+                        hook_line,
+                    );
+                };
+                trace::judge_eval_hook(fs, record, &running_exe, &version_by_running)
+            }
+            // The file-source hook involves no PATH: the equivalent
+            // check is which dodot wrote the script *that line*
+            // sources — the path from the hook, never from
+            // `paths.init_script_path()`, and the identity read out of
+            // the script rather than assumed from its existence.
+            HookForm::FileSource(SourcedScript::Path(script)) => trace::judge_file_source_hook(
+                fs,
+                script,
+                // The generation `dodot up` last wrote: what a sound
+                // hook's script should be carrying.
+                activation::read_script_generation(fs, ctx.paths.as_ref()),
+                activation::running_version(),
+            ),
+            HookForm::FileSource(SourcedScript::Unresolved { raw }) => {
+                trace::TraceVerdict::ScriptUnresolved { raw }
+            }
+        },
+    };
+    verdict_trace_view(
+        ctx,
+        verdict,
+        shell_name,
+        rc_display,
+        hook_line,
+        run.used_fallback,
+    )
+}
+
+/// A trace view for "nothing to trace": stated plainly, nothing
+/// spawned.
+fn skipped_trace(reason: String, shell: String, rc: String) -> ShellInitTraceView {
+    ShellInitTraceView {
+        status: "skipped".into(),
+        status_class: "dim",
+        shell,
+        rc,
+        hook_line: 0,
+        verdict: String::new(),
+        headline: reason,
+        detail_lines: Vec::new(),
+        used_fallback: false,
+    }
+}
+
+/// A trace view for "wanted to trace but could not": the recorded
+/// half stands alone, labeled honestly.
+fn untraced(reason: String, shell: String, rc: String, hook_line: usize) -> ShellInitTraceView {
+    ShellInitTraceView {
+        status: "untraced".into(),
+        status_class: "warning",
+        shell,
+        rc,
+        hook_line,
+        verdict: String::new(),
+        headline: format!("could not trace — {reason}"),
+        detail_lines: Vec::new(),
+        used_fallback: false,
+    }
+}
+
+/// Learn a binary's version by running `<binary> --version` under the
+/// same envelope (timeout, process-group kill) as every other spawn —
+/// the winner at the hook line is arbitrary and gets no more trust
+/// than the user's rc does.
+fn version_by_running(binary: &std::path::Path) -> Option<String> {
+    use crate::shell::probe::{spawn_captured, SpawnOutcome};
+    let mut command = std::process::Command::new(binary);
+    command.arg("--version");
+    match spawn_captured(command, VERSION_TIMEOUT) {
+        SpawnOutcome::Finished(capture) => {
+            crate::shell::trace::parse_version_output(&capture.stdout)
+        }
+        _ => None,
+    }
+}
+
+/// Flatten a verdict into the display strings the template and the
+/// JSON view share.
+fn verdict_trace_view(
+    ctx: &ExecutionContext,
+    verdict: crate::shell::trace::TraceVerdict,
+    shell: String,
+    rc: String,
+    hook_line: usize,
+    used_fallback: bool,
+) -> ShellInitTraceView {
+    use crate::shell::activation::running_version;
+    use crate::shell::rc::display_home_relative;
+    use crate::shell::trace::{Resolution, SkipReason, TraceVerdict};
+
+    let home = ctx.paths.home_dir();
+    let show = |p: &std::path::Path| display_home_relative(p, home);
+    let skips = |resolution: &Resolution| -> Vec<String> {
+        resolution
+            .notable_skips()
+            .map(|c| match &c.skipped {
+                Some(SkipReason::DanglingSymlink { target: Some(t) }) => {
+                    format!(
+                        "passed over {} — dangling symlink → {}",
+                        show(&c.path),
+                        show(t)
+                    )
+                }
+                Some(SkipReason::DanglingSymlink { target: None }) => {
+                    format!("passed over {} — dangling symlink", show(&c.path))
+                }
+                Some(SkipReason::NotExecutable) => {
+                    format!("passed over {} — not executable", show(&c.path))
+                }
+                Some(SkipReason::MissingDir) => {
+                    format!(
+                        "passed over {} — its directory does not exist",
+                        show(&c.path)
+                    )
+                }
+                _ => String::new(),
+            })
+            .filter(|l| !l.is_empty())
+            .collect()
+    };
+
+    let (tag, status_class, headline, detail_lines) = match verdict {
+        TraceVerdict::HookNeverRan => (
+            "hook-never-ran",
+            "error",
+            format!("the hook at {rc}:{hook_line} never ran in a fresh shell"),
+            vec![
+                "it may sit inside a branch that did not run, or the rc exits or execs away \
+                 before reaching it"
+                    .to_string(),
+            ],
+        ),
+        TraceVerdict::Unresolvable { path, resolution } => {
+            let mut details = skips(&resolution);
+            // An empty PATH is still a search — of the working
+            // directory, which is what an empty entry means to the
+            // shell — so it is reported as empty, not as unsearched.
+            details.push(if path.is_empty() {
+                "PATH is empty at that line".to_string()
+            } else {
+                format!("PATH there: {path}")
+            });
+            (
+                "unresolvable",
+                "error",
+                format!("`dodot` is not resolvable at {rc}:{hook_line}"),
+                details,
+            )
+        }
+        TraceVerdict::DifferentBinary {
+            found,
+            found_version,
+            running,
+            resolution,
+        } => {
+            let found_version = found_version.unwrap_or_else(|| "version unknown".into());
+            let mut details = vec![
+                format!(
+                    "at {rc}:{hook_line}, `dodot` resolves to {} ({found_version})",
+                    show(&found)
+                ),
+                format!("you are running {} ({})", show(&running), running_version()),
+            ];
+            details.extend(skips(&resolution));
+            (
+                "different-binary",
+                "error",
+                "your shells load a different dodot than the one running now".to_string(),
+                details,
+            )
+        }
+        TraceVerdict::RunningBinary { path } => (
+            "running-binary",
+            "deployed",
+            format!(
+                "`dodot` at {rc}:{hook_line} resolves to the running binary — the hookup is sound"
+            ),
+            vec![show(&path)],
+        ),
+        TraceVerdict::ScriptMissing { script } => (
+            "script-missing",
+            "error",
+            format!(
+                "the init script sourced at {rc}:{hook_line} does not exist — run `dodot up` to \
+                 regenerate it"
+            ),
+            vec![show(&script)],
+        ),
+        TraceVerdict::ScriptPresent { script } => (
+            "script-ok",
+            "deployed",
+            format!(
+                "the init script sourced at {rc}:{hook_line} was written by the running dodot — \
+                 the hookup is sound"
+            ),
+            vec![show(&script)],
+        ),
+        // The file-source twin of `different-binary`: the hook sources
+        // a real dodot init script, written by a dodot that is not
+        // this one.
+        TraceVerdict::ScriptSkewed { script, version } => (
+            "script-skewed",
+            "error",
+            format!("the init script sourced at {rc}:{hook_line} was written by a different dodot"),
+            vec![
+                format!("{} says dodot {version}", show(&script)),
+                format!("you are running {}", running_version()),
+                "your shells load that script, not the one `dodot up` maintains — re-point the \
+                 hook, or run `dodot install --write` to rewrite it"
+                    .to_string(),
+            ],
+        ),
+        TraceVerdict::ScriptStale {
+            script,
+            found,
+            expected,
+        } => (
+            "script-stale",
+            "error",
+            format!(
+                "the init script sourced at {rc}:{hook_line} is older than the one `dodot up` \
+                 maintains"
+            ),
+            vec![
+                format!(
+                    "{} is generation {found}; the current one is {expected}",
+                    show(&script)
+                ),
+                "it is a copy left behind — re-point the hook, or run `dodot install --write`"
+                    .to_string(),
+            ],
+        ),
+        TraceVerdict::ScriptUnverified { script, reason } => (
+            "script-unverified",
+            "warning",
+            format!(
+                "dodot could not tell which dodot wrote the script sourced at {rc}:{hook_line}"
+            ),
+            vec![format!("{} — {reason}", show(&script))],
+        ),
+        // Not a verdict: the line names its script in a form dodot
+        // will not resolve without interpreting shell, and a guess
+        // here would be a claim about a file the hook may not source.
+        TraceVerdict::ScriptUnresolved { raw } => (
+            "script-unresolved",
+            "warning",
+            format!("dodot could not tell which file the hook at {rc}:{hook_line} sources"),
+            vec![
+                format!("the line sources {raw}"),
+                "dodot expands only an absolute path or one under `$HOME` — check that file \
+                 yourself, or run `dodot install --write` to wire the hook it can read"
+                    .to_string(),
+            ],
+        ),
+    };
+    ShellInitTraceView {
+        status: "verdict".into(),
+        status_class,
+        shell,
+        rc,
+        hook_line,
+        verdict: tag.into(),
+        headline,
+        detail_lines,
+        used_fallback,
+    }
 }
 
 fn shell_init_groups(grouped: &GroupedProfile) -> Vec<ShellInitGroup> {

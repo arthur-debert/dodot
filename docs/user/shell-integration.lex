@@ -44,7 +44,8 @@ Shell integration
         Notes
           created ~/.zshrc
 
-        ✓ Shell hookup verified: a new shell loads dodot.
+        ✓ Shell hookup: dodot is sourced in new shells.
+        Last loaded just now by dodot 5.6.0.
 
     :: shell ::
 
@@ -63,6 +64,8 @@ Shell integration
 3. What the init script contains
 
     A flat shell script: one `source <path>` line per shell-handler source, one `export PATH="<dir>:$PATH"` line per path-handler source, with a `# [<pack>]` comment above each so you can tell what came from where.
+
+    On a macOS host with Homebrew installed, the script *opens* with Homebrew's environment — `brew shellenv` output captured verbatim at the last `dodot up` and cached in the datastore — so brew's `$PATH` entries exist before any pack script runs and your rc needs no bootstrap line of its own. It is emitted first so that dodot's own PATH additions below it win. This block is the one command dodot puts on the shell startup path; [./configuration.lex] §10 documents what it costs, how the capture is cached, and the `[shell] homebrew = "auto" | "off"` key that controls it.
 
     No logic at runtime, no datastore re-discovery. Every line is computed at `dodot up` time, when the script is regenerated. Sourcing the script is just running those plain shell commands — same as if you'd written them by hand.
 
@@ -92,63 +95,114 @@ Shell integration
 
 5. Activation states
 
-    Because the init script leaves evidence, `dodot up` and `dodot status` can tell you whether shells are actually loading dodot instead of assuming it. Five states, five different things to do:
+    Because the init script leaves evidence, `dodot up`, `dodot down`, and `dodot status` end with a *footer* about activation instead of assuming shells load dodot. Line one says whether dodot is sourced in new shell sessions, colour-coded by severity; when something needs doing, a hint follows. The last line, dimmed, is the evidence:
 
-    Activation states:
-        | State            | What it means                                                    | What to do                                     |
-        | healthy          | A shell has loaded the current init script.                      | Nothing. `status` shows a quiet `shell hookup: ok`. |
-        | stale shell      | *This* shell loaded dodot, but before your last `dodot up`.      | Open a new shell.                              |
-        | shell not loaded | You ran `dodot status` from a terminal, and that shell did not load dodot — whatever some earlier shell once did. | What the hint names: the hook is missing from your rc (wire it), or it's there and this is likely an old shell (open a new one). |
-        | never activated  | No shell has ever loaded dodot's init script.                    | `dodot install --write`.                       |
-        | verified broken  | dodot started a shell and measured that it did not load dodot.   | Fix what the diagnosis names — see below.      |
+        Last loaded 4 minutes ago by dodot 5.6.0.
+
+    :: text ::
+
+    "Last loaded" is the heartbeat file's modification time — when a shell last actually sourced the init script, which is not the same as when `dodot up` generated it. The version is the dodot that generated the script that shell loaded. Evidence left by a dodot old enough to carry no version renders as `≤5.5.1` — the last release before the evidence learned to identify itself. When no shell has ever loaded dodot, the line reads `Never loaded.`; when the heartbeat's timestamp is unreadable, `Last loaded at an unknown time by dodot <version>.`
+
+    Two things can be true at once here, and the line says so rather than blending them. dodot has two signals: the shell you are typing in reports which dodot *it* loaded, and the heartbeat reports when *some* shell last loaded one. Usually they name the same dodot and there is one sentence. When they disagree — mid-upgrade, most often — the time belongs to the heartbeat's activation and not to your shell's, so the line reports both events instead of pairing one's timestamp with the other's version:
+
+        This shell loaded dodot 5.6.0; the last shell to load ran dodot 5.0.0, 4 minutes ago.
+
+    :: shell ::
+
+    One case has no footer at all: before a first deploy there is no init script on disk, so there is no hookup to have. `dodot status` on a machine where `dodot up` has never run says nothing about activation — and neither does a `dodot up --dry-run` there, which regenerates nothing. A real `up` writes the script before it reports, so it always ends on a footer.
+
+    This section is where every state and its exact message live; other pages link here rather than repeating them. There are seven states, and seven different things to do.
+
+    Activation states — line one, quoted verbatim:
+        | State            | Line one                                                                | What to do                                     |
+        | healthy          | Shell hookup: dodot is sourced in new shells.                           | Nothing.                                       |
+        | version skew     | Shell hookup: your shells load a different dodot.                       | Find which install your PATH resolves first — see below. |
+        | empty script     | Shell hookup: wired, but no packs are deployed. | `dodot up` — expected right after `dodot down`. |
+        | stale shell      | Shell hookup: this shell predates your last \`dodot up\`.               | Open a new shell.                              |
+        | shell not loaded | Shell hookup: this shell did not load dodot.                            | What the hint names: the hook is missing from your rc (wire it), or it's there and this is likely an old shell (open a new one). |
+        | never activated  | Shell hookup: no shell has loaded dodot yet.                            | `dodot install --write`.                       |
+        | verified broken  | Shell hookup: a new shell did not load dodot.                           | Fix what the diagnosis names — see below.      |
 
     :: table align=lll ::
 
-    _Never activated_, from `dodot status` — evidence only, no shell is started:
+    _Healthy_ — a shell has loaded the current init script, generated by the dodot you are running:
 
-        ⚠ Deployed, but no shell has loaded dodot yet.
-        Run `dodot install --write` to wire it up, or add this to your shell rc file yourself: [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
+        ✓ Shell hookup: dodot is sourced in new shells.
+        Last loaded 4 minutes ago by dodot 5.6.0.
 
     :: shell ::
 
-    _Stale shell_:
+    _Version skew_ — the evidence was left by a *different* dodot than the one you are running. This is the wired-but-dead hookup's most likely cause: an old install earlier on `$PATH` is what your shells actually execute, and no amount of opening new shells will change it. It is a warning, not an error — mid-upgrade it appears transiently and the next shell clears it:
 
-        This shell started before your last `dodot up`.
+        ⚠ Shell hookup: your shells load a different dodot.
+        Open a new shell. If that changes nothing, the `dodot` your shells run is a different install than the one you just ran — check which one your PATH finds first.
+        Last loaded 4 minutes ago by dodot 5.0.0 — you are running 5.6.0.
+
+    :: shell ::
+
+    This state is not only inferred. When `dodot up` or `dodot install --write` starts a shell to check the hookup (see _Verified broken_ below), that shell reports both halves of what it loaded — the generation *and* the dodot that wrote it — so a hookup that mints a perfectly current generation from the wrong binary is measured as skew rather than certified as healthy. That is the failure this whole page exists for, and it is exactly the case a generation alone reads as fine.
+
+    For the measured answer — which binary `dodot` resolves to at the hook line, and why — run `dodot probe shell-init` ([./commands/probe.lex] §4).
+
+    _Empty script_ — the hookup is wired and firing, but the generated script carries no pack contributions, so a healthy-sounding line would be misleading. This is what `dodot down` leaves behind, and also a first `up` that deployed nothing. The line says "no packs", not "the script is empty": on a Homebrew host the script still carries the `brew shellenv` block ([#3]) and is doing real work — just none of yours. It reads the same whether dodot inferred the hookup was firing or measured it:
+
+        Shell hookup: wired, but no packs are deployed.
+        Run `dodot up` to deploy your packs.
+        Last loaded just now by dodot 5.6.0.
+
+    :: shell ::
+
+    _Stale shell_ — *this* shell loaded dodot, but before your last `dodot up`:
+
+        Shell hookup: this shell predates your last `dodot up`.
         Open a new shell to pick up the current deployment.
+        Last loaded 4 minutes ago by dodot 5.6.0.
 
     :: shell ::
 
-    _Shell not loaded_ comes only from `dodot status`, and only when it runs attached to a terminal: no matter what the heartbeat says some past shell did, the shell you are typing in exported no generation stamp, so it demonstrably did not load dodot. This is how `status` catches a hookup that *used to* work and then broke — an rc rewrite, a commented-out hook, a moved dotfiles repo — without starting a shell. A scan of your rc file picks the message. Hook missing:
+    _Shell not loaded_ comes from any command running attached to a terminal that did not start a shell to check: no matter what the heartbeat says some past shell did, the shell you are typing in exported no generation stamp, so it demonstrably did not load dodot. That is `dodot status` always, and `dodot up` whenever the cheap evidence was conclusive enough that it never spawned anything — most often *because* the heartbeat is fresh, which is the exact reading this state exists to overrule. The two agree, deliberately: a hookup that has quietly died gets the same answer whichever command you happen to run. This is how dodot catches a hookup that *used to* work and then broke — an rc rewrite, a commented-out hook, a moved dotfiles repo — without starting a shell. A scan of your rc file picks the hint. Hook missing:
 
-        This shell hasn't loaded dodot.
+        ⚠ Shell hookup: this shell did not load dodot.
         ~/.zshrc doesn't have the dodot hook. Run `dodot install --write` to wire it up, or add this line yourself: [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
+        Last loaded 2 days ago by dodot 5.6.0.
 
     :: shell ::
 
     …or hook present, in which case this is most likely a shell opened before the hook landed:
 
-        This shell hasn't loaded dodot.
+        Shell hookup: this shell did not load dodot.
         The hook is in ~/.zshrc, so this shell probably predates it — open a new shell. If that changes nothing, run `dodot up` to diagnose.
+        Last loaded 2 days ago by dodot 5.6.0.
 
     :: shell ::
 
     The wording stays "this shell", not "your hookup is broken", on purpose: an editor's task shell legitimately reads no rc file, and dodot can't tell that apart from a broken hookup without measuring. When dodot runs with no terminal at all (cron, scripts), this state never fires — a fresh heartbeat still reads as healthy there.
 
-    _Verified broken_ comes only from `dodot up` or `dodot install --write`, which are the two commands allowed to start a shell to find out. The diagnosis splits two ways, because they need different fixes — the hook is missing from the file:
+    _Never activated_ — no shell has ever loaded dodot's init script; there is no heartbeat at all:
 
-        Deployed, but a new shell did not load dodot.
+        ⚠ Shell hookup: no shell has loaded dodot yet.
+        Run `dodot install --write` to wire it up, or add this to your shell rc file yourself: [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
+        Never loaded.
+
+    :: shell ::
+
+    _Verified broken_ comes only from `dodot up` or `dodot install --write`, which are the two commands allowed to start a shell to find out. The diagnosis splits, because the cases need different fixes — the hook is missing from the file:
+
+        ✗ Shell hookup: a new shell did not load dodot.
         The dodot hook is missing from ~/.zshrc — run `dodot install --write` to add it.
+        Never loaded.
 
     :: shell ::
 
     …or the hook is there but nothing reaches it:
 
-        Deployed, but a new shell did not load dodot.
+        ✗ Shell hookup: a new shell did not load dodot.
         The dodot hook is in ~/.zshrc but was never reached — something earlier in that file is failing before it.
+        Last loaded 9 days ago by dodot ≤5.5.1.
 
     :: shell ::
 
-    That second one is the case a static scan of your rc would report as fine. It is why dodot measures.
+    That second one is the case a static scan of your rc would report as fine. It is why dodot measures. (Two rarer diagnoses exist: the shell sourced an *older* init script — check for a second dodot hook or a stale copy — and the shell whose rc file dodot cannot name, where the hint carries the line to paste.)
 
     Who starts a shell, and when:
 
@@ -160,18 +214,11 @@ Shell integration
 
 6. What goes above and below the dodot line
 
-    Two narrow categories belong *above* the dodot block (or your manual eval):
-
-    - *Homebrew shellenv.* Homebrew is what puts `dodot` itself on `$PATH`:
-
-            eval "$(/opt/homebrew/bin/brew shellenv)"   # Apple Silicon
-            eval "$(/usr/local/bin/brew shellenv)"      # Intel macOS
-
-        :: shell ::
-
-        The marked block needs this less than the manual eval does — it sources a file by absolute path rather than invoking dodot — but anything else in your rc that calls `dodot` still needs Homebrew first.
+    One narrow category belongs *above* the dodot block (or your manual eval):
 
     - *OS-level prereqs that block any pack from succeeding.* xcode-select install prompts, license acceptance — anything that has to be in place before any handler can run.
+
+    Homebrew used to be the other one, and no longer is: the init script itself now opens with brew's environment ([#3]), so nothing brew-related needs to sit in your rc. One exception survives, and only for the hand-wired form: `eval "$(dodot init-sh)"` has to *find* `dodot` before the init script can run, so if Homebrew is what installed dodot, `eval "$(/opt/homebrew/bin/brew shellenv)"` still has to come before your eval line. The managed block sources a file by absolute path and has no such need — that bootstrap cycle is one of the reasons it is the recommended form ([#7]).
 
     *Below*, ideally nothing. If you have shell logic that depends on something dodot stages (an alias, a helper function, an environment variable), put it in the same pack so the ordering is internal to the generated script rather than scattered across your rc.
 
@@ -220,11 +267,13 @@ Shell integration
 
     :: shell ::
 
-    Per-source timings and errors from your last shell start:
+    What does `dodot` resolve to at the hook line — plus per-source timings and errors from your last shell start:
 
         dodot probe shell-init
 
     :: shell ::
+
+    That is the deep diagnosis for a hookup the footer flags as skewed or dead: it runs your rc under tracing and names the rc file, the hook's line, and which binary `dodot` resolves to *at that line* — including stale installs it passed over on the way. See [./commands/probe.lex] §4.
 
     The probe surfaces stale data with a flag if the report predates the most recent `dodot up` — staleness is detected via `$XDG_DATA_HOME/dodot/last-up-at` (typically `~/.local/share/dodot/last-up-at`), written on every successful `up`.
 

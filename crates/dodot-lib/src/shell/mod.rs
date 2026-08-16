@@ -10,33 +10,50 @@
 //!
 //! The generated script is written to `data_dir/shell/dodot-init.sh`.
 //! `dodot install --write` wires the line below into the user's rc
-//! file ([`rc`]), and [`probe`] measures whether a new shell actually
-//! runs it. Users can also add it by hand:
+//! file ([`rc`]), [`probe`] measures whether a new shell actually
+//! runs it, and [`trace`] reports what `dodot` resolves to at that
+//! rc line (`dodot probe shell-init`). Users can also add it by hand:
 //!
 //! ```sh
 //! [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
 //! ```
 //!
-//! # Activation evidence (shell-hookup.lex §2.1)
+//! # Activation evidence (shell-hookup-ergonomics.lex §2.1)
 //!
 //! Every generated script — profiled or not, empty datastore or not —
-//! opens with two lines that prove it ran: an `export DODOT_INIT_GEN=`
-//! carrying the *generation* the script was written at, and a single
-//! truncating redirect of that same generation into the heartbeat
-//! marker. `dodot up` and `dodot status` read them back through
-//! [`activation`] to tell "no shell has ever loaded dodot" from "this
-//! terminal predates your last `up`" from "healthy".
+//! opens with three lines that prove it ran and say who wrote it: an
+//! `export DODOT_INIT_GEN=` carrying the *generation* the script was
+//! written at, an `export DODOT_INIT_VERSION=` carrying the dodot that
+//! wrote it, and a single truncating redirect of both fields into the
+//! heartbeat marker. `dodot up`, `dodot down` and `dodot status` read
+//! them back through [`activation`] to tell "no shell has ever loaded
+//! dodot" from "this terminal predates your last `up`" from "your
+//! shells load a different dodot" from "healthy".
 //!
 //! The generation is an argument, not something the generator invents:
 //! callers that write the script stamp [`activation::current_generation`],
-//! and tests pin a value so the emitted script is deterministic.
+//! and tests pin a value so the emitted script is deterministic. The
+//! version is not — it is this binary's, by definition.
 //!
-//! Both lines are on a strict budget — one export, one redirect, no
-//! command execution — because they run on every shell start forever.
+//! The block is on a strict budget — exports and one redirect, no
+//! command execution — because it runs on every shell start forever.
 //! That is also why the heartbeat is a whole-file rewrite of static
 //! content: concurrent shell startups race, and last-writer-wins on a
 //! truncating redirect is a correct answer to that race, where an
-//! append or a read-modify-write would not be.
+//! append or a read-modify-write would not be. It is also why "when did
+//! a shell last load dodot" is read from that file's *mtime* rather
+//! than from anything written inside it: the redirect already updates
+//! mtime on every activation, so the answer costs no extra write.
+//!
+//! # Homebrew bootstrap (shell-hookup-ergonomics.lex §4)
+//!
+//! Right after the evidence, and before anything a pack contributed,
+//! the script can carry Homebrew's environment as captured from
+//! `brew shellenv` by `dodot up`/`down` and cached in the datastore.
+//! [`homebrew`] owns the capture, the cache, the `$ZSH_VERSION` guard,
+//! and the reasons for all three; the generator only decides *where*
+//! the block goes, which is: first, so dodot's own PATH additions are
+//! always the last word.
 //!
 //! # Profiling wrapper (Phase 2 of profiling.lex)
 //!
@@ -64,10 +81,13 @@ use crate::paths::Pather;
 use crate::Result;
 
 pub mod activation;
+pub mod homebrew;
 pub mod probe;
 pub mod rc;
+pub mod trace;
 pub mod validate;
-pub use activation::{ActivationNotice, ActivationState, INIT_GEN_ENV};
+pub use activation::{ActivationNotice, ActivationState, INIT_GEN_ENV, INIT_VERSION_ENV};
+pub use homebrew::{BrewBlocks, BrewBootstrapMode, BrewHost};
 pub use probe::ProbePolicy;
 pub use rc::ShellEnv;
 pub use validate::{
@@ -75,9 +95,30 @@ pub use validate::{
     ShellValidationReport, SyntaxCheckResult, SyntaxChecker, SystemSyntaxChecker, ERRORS_SUBDIR,
 };
 
+/// The line an init script with no pack contributions carries, and the
+/// marker [`script_has_contributions`] reads back.
+///
+/// One string, written by the generator and parsed by the footer, so
+/// "the script is empty" can never mean two different things in the
+/// two halves of the round trip.
+pub const EMPTY_SCRIPT_MARKER: &str = "# No shell scripts or PATH additions to load.";
+
+/// Whether generated init-script text sources or PATHs anything.
+///
+/// `false` for the three ways a script ends up with nothing to do —
+/// after `dodot down`, in a repository where every pack is ignored, and
+/// after a first `up` that deployed nothing — which is the one rule the
+/// footer needs to say "wired, but nothing is deployed" instead of
+/// claiming a healthy deployment (`shell-hookup-ergonomics.lex` §2.3).
+pub fn script_has_contributions(script: &str) -> bool {
+    !script
+        .lines()
+        .any(|line| line.trim() == EMPTY_SCRIPT_MARKER)
+}
+
 /// Append the "nothing to do" notice for an empty init script.
 fn append_empty_notice(script: &mut String) {
-    writeln!(script, "# No shell scripts or PATH additions to load.").unwrap();
+    writeln!(script, "{EMPTY_SCRIPT_MARKER}").unwrap();
     writeln!(
         script,
         "# Run `dodot up` to deploy packs, or `dodot status` to see available packs."
@@ -96,6 +137,17 @@ fn append_empty_notice(script: &mut String) {
 /// early-return for an empty datastore, because "a shell sourced this"
 /// is worth knowing even when the script has nothing else to do.
 ///
+/// `homebrew` is the bootstrap block captured from `brew shellenv` —
+/// by [`homebrew::capture_and_persist`] in `up`/`down`, or served from
+/// the datastore cache by [`homebrew::cached_or_capture`] in passive
+/// generation paths — or `None` when there is nothing to emit (not
+/// macOS, no brew, or `[shell] homebrew = "off"`). Like
+/// the evidence it lands ahead of the empty-datastore early return: it
+/// is a function of config and the host, not of what any pack deployed,
+/// and a user whose rc file is empty still needs brew's environment.
+/// Emitting it *first* is what lets dodot's own PATH additions be the
+/// last word without any pack-ordering choreography.
+///
 /// When `profiling_enabled` is true and there is at least one entry to
 /// emit, the script also carries the per-line timing wrapper described
 /// in the module docs.
@@ -104,6 +156,7 @@ pub fn generate_init_script(
     paths: &dyn Pather,
     profiling_enabled: bool,
     generation: u64,
+    homebrew: Option<&BrewBlocks>,
 ) -> Result<String> {
     let mut script = String::new();
 
@@ -113,6 +166,10 @@ pub fn generate_init_script(
     writeln!(script).unwrap();
 
     emit_activation_evidence(&mut script, generation, &paths.hookup_heartbeat_path());
+
+    if let Some(blocks) = homebrew {
+        homebrew::emit_homebrew_block(&mut script, blocks);
+    }
 
     let packs_dir = paths.data_dir().join("packs");
     if !fs.exists(&packs_dir) {
@@ -235,14 +292,18 @@ pub fn generate_init_script(
 /// spending a process on every shell start, so the write side owns
 /// that once per regeneration instead.
 ///
+/// `homebrew` carries the captured Homebrew bootstrap, as for
+/// [`generate_init_script`].
+///
 /// Returns the path where the script was written.
 pub fn write_init_script(
     fs: &dyn Fs,
     paths: &dyn Pather,
     profiling_enabled: bool,
+    homebrew: Option<&BrewBlocks>,
 ) -> Result<PathBuf> {
     let generation = activation::current_generation();
-    let script_content = generate_init_script(fs, paths, profiling_enabled, generation)?;
+    let script_content = generate_init_script(fs, paths, profiling_enabled, generation, homebrew)?;
     let script_path = paths.init_script_path();
 
     fs.mkdir_all(&paths.probes_hookup_dir())?;
@@ -255,20 +316,46 @@ pub fn write_init_script(
 
 // ── Activation evidence emitter ──────────────────────────────────────
 
-/// Emit the two evidence lines (shell-hookup.lex §2.1).
+/// Emit the evidence block (shell-hookup-ergonomics.lex §2.1).
 ///
 /// - `export DODOT_INIT_GEN=<generation>` — free to read back from any
 ///   dodot process that the shell later spawns.
-/// - `echo <generation> > <heartbeat> 2>/dev/null || :` — one builtin
-///   and one truncating redirect. `2>/dev/null` keeps an unwritable
-///   data dir from spraying errors across every shell start, and the
-///   `|| :` keeps the failed redirect's non-zero status from aborting
-///   an rc file that runs under `set -e`.
+/// - `export DODOT_INIT_VERSION=<version>` — which dodot generated the
+///   script *this* shell loaded. Without it a hookup can be wired,
+///   sourced on every start, and still dead, because the binary that
+///   wrote the script is not the binary the user runs.
+/// - `echo <generation> <version> >| <heartbeat> 2>/dev/null || :` — one
+///   builtin and one truncating redirect, now carrying both fields so a
+///   detached caller can answer the same question about the last shell
+///   anywhere. `2>/dev/null` keeps an unwritable data dir from spraying
+///   errors across every shell start, and the `|| :` keeps the failed
+///   redirect's non-zero status from aborting an rc file that runs
+///   under `set -e`.
+///
+/// `>|`, not `>`: `setopt noclobber` / `set -C` is an ordinary rc line,
+/// and under it a plain `>` *refuses* to write a file that already
+/// exists. The heartbeat exists after the first activation, so every
+/// activation from then on would fail silently — the two guards above
+/// see to the silence — and freeze "last loaded" at the first shell
+/// that ever ran. Three claims now rest on that file (the footer's
+/// timestamp, the skew comparison, and the probe gate), so the failure
+/// reads as a confident wrong answer rather than a missing one.
+/// `>|` overrides `noclobber` and is POSIX; verified against zsh, bash
+/// and dash, where plain `>` leaves the file untouched.
+///
+/// Still two exports and one redirect: no command execution, no `dodot`
+/// invocation on the shell startup path.
 fn emit_activation_evidence(script: &mut String, generation: u64, heartbeat_path: &Path) {
     let heartbeat = sh_quote(&heartbeat_path.display().to_string());
+    let version = activation::running_version();
     writeln!(script, "# ── dodot activation evidence ──").unwrap();
     writeln!(script, "export {}={generation}", activation::INIT_GEN_ENV).unwrap();
-    writeln!(script, "echo {generation} > {heartbeat} 2>/dev/null || :").unwrap();
+    writeln!(script, "export {}={version}", activation::INIT_VERSION_ENV).unwrap();
+    writeln!(
+        script,
+        "echo {generation} {version} >| {heartbeat} 2>/dev/null || :"
+    )
+    .unwrap();
     writeln!(script).unwrap();
 }
 
@@ -528,7 +615,8 @@ mod tests {
     fn empty_datastore_produces_helpful_script() {
         let env = TempEnvironment::builder().build();
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
 
         assert!(script.starts_with("#!/bin/sh"));
         assert!(script.contains("Generated by dodot"));
@@ -552,7 +640,8 @@ mod tests {
         ds.create_data_link("vim", "shell", &source).unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
 
         assert!(script.contains("# Shell scripts"), "script:\n{script}");
         assert!(script.contains("# [vim]"), "script:\n{script}");
@@ -580,7 +669,8 @@ mod tests {
         ds.create_data_link("vim", "path", &source).unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
 
         assert!(script.contains("# PATH additions"), "script:\n{script}");
         assert!(script.contains("# [vim]"), "script:\n{script}");
@@ -613,7 +703,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
 
         assert!(script.contains("# [git]"), "script:\n{script}");
         assert!(script.contains("# [vim]"), "script:\n{script}");
@@ -637,7 +728,8 @@ mod tests {
         ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
             .unwrap();
 
-        let script_path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
+        let script_path =
+            write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
 
         assert_eq!(script_path, env.paths.init_script_path());
         env.assert_exists(&script_path);
@@ -662,20 +754,23 @@ mod tests {
         let ds = make_datastore(&env);
 
         let script1 =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
         assert!(!script1.contains("aliases.sh"));
 
         ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
             .unwrap();
 
         let script2 =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
         assert!(script2.contains("aliases.sh"));
 
         ds.remove_state("vim", "shell").unwrap();
 
         let script3 =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
         assert!(!script3.contains("aliases.sh"));
     }
 
@@ -690,7 +785,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
         assert!(!script.contains("not-a-symlink"));
     }
 
@@ -710,7 +806,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
 
         let path_pos = script.find("# PATH additions").unwrap();
         let shell_pos = script.find("# Shell scripts").unwrap();
@@ -718,6 +815,162 @@ mod tests {
             path_pos < shell_pos,
             "PATH additions should come before shell sources"
         );
+    }
+
+    // ── Homebrew bootstrap (shell-hookup-ergonomics.lex §4) ─────────
+
+    /// Stand-in for a captured `brew shellenv`, shaped like the real
+    /// thing (zsh block carries the zsh-only `fpath` lines).
+    fn sample_brew_blocks() -> BrewBlocks {
+        BrewBlocks {
+            prefix: PathBuf::from("/opt/homebrew"),
+            sh: "export HOMEBREW_PREFIX=\"/opt/homebrew\";\n\
+                 eval \"$(/usr/bin/env PATH_HELPER_ROOT=\"/opt/homebrew\" /usr/libexec/path_helper -s)\"\n"
+                .to_string(),
+            zsh: "export HOMEBREW_PREFIX=\"/opt/homebrew\";\n\
+                  fpath[1,0]=\"/opt/homebrew/share/zsh/site-functions\";\n\
+                  export FPATH;\n"
+                .to_string(),
+        }
+    }
+
+    /// The ordering claim the whole feature rests on, asserted against
+    /// the generated script rather than assumed: brew's block lands
+    /// above the first pack PATH addition, so dodot's own entries are
+    /// prepended *after* brew's and therefore win.
+    #[test]
+    fn homebrew_block_precedes_the_first_pack_path_addition() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .file("bin/myscript", "#!/bin/sh")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+        ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
+            .unwrap();
+
+        let script = generate_init_script(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            TEST_GEN,
+            Some(&sample_brew_blocks()),
+        )
+        .unwrap();
+
+        let brew_pos = script.find("# ── Homebrew environment ──").unwrap();
+        let path_pos = script.find("# PATH additions").unwrap();
+        let export_pos = script.find("export PATH=\"").unwrap();
+        let source_pos = script.find("# Shell scripts").unwrap();
+        assert!(
+            brew_pos < path_pos && brew_pos < export_pos && brew_pos < source_pos,
+            "Homebrew block must come first, script:\n{script}"
+        );
+    }
+
+    /// The whole emission order in one script, read back as text.
+    ///
+    /// The version stamp (`shell-hookup-ergonomics.lex` §2.1) and the
+    /// Homebrew bootstrap (§4) were written against the same generator
+    /// and only meet here, so the order they compose into is asserted
+    /// rather than inferred from the fact that both compile: activation
+    /// evidence first — all three lines, the version among them —
+    /// then brew, then anything a pack contributed.
+    #[test]
+    fn the_evidence_block_precedes_the_homebrew_block_precedes_the_packs() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .file("bin/myscript", "#!/bin/sh")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+        ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
+            .unwrap();
+
+        let script = generate_init_script(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            TEST_GEN,
+            Some(&sample_brew_blocks()),
+        )
+        .unwrap();
+
+        let positions = [
+            ("evidence header", "# ── dodot activation evidence ──"),
+            ("generation export", "export DODOT_INIT_GEN="),
+            ("version export", "export DODOT_INIT_VERSION="),
+            ("heartbeat redirect", "echo "),
+            ("Homebrew block", "# ── Homebrew environment ──"),
+            ("PATH additions", "# PATH additions"),
+            ("shell sources", "# Shell scripts"),
+        ]
+        .map(|(label, needle)| {
+            (
+                label,
+                script
+                    .find(needle)
+                    .unwrap_or_else(|| panic!("missing {label} ({needle}), script:\n{script}")),
+            )
+        });
+
+        for pair in positions.windows(2) {
+            let [(before, at), (after, then)] = pair else {
+                unreachable!()
+            };
+            assert!(
+                at < then,
+                "{before} must precede {after}, script:\n{script}"
+            );
+        }
+    }
+
+    /// The bootstrap does not depend on any pack having deployed, so a
+    /// datastore with nothing in it still carries it — that is the case
+    /// where the user's rc file is empty and brew is all they need.
+    #[test]
+    fn homebrew_block_survives_an_empty_datastore() {
+        let env = TempEnvironment::builder().build();
+
+        let script = generate_init_script(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            TEST_GEN,
+            Some(&sample_brew_blocks()),
+        )
+        .unwrap();
+
+        assert!(
+            script.contains("# ── Homebrew environment ──"),
+            "script:\n{script}"
+        );
+        assert!(script.contains("HOMEBREW_PREFIX"), "script:\n{script}");
+        // The empty notice is about pack contributions and still holds.
+        assert!(script.contains("No shell scripts or PATH additions"));
+    }
+
+    /// `off`, a non-macOS host and a brew-less mac all arrive here as
+    /// `None`, and none of them may leave a trace in the script.
+    #[test]
+    fn no_capture_means_no_homebrew_lines_at_all() {
+        let env = TempEnvironment::builder().build();
+
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
+
+        assert!(!script.contains("Homebrew"), "script:\n{script}");
+        assert!(!script.contains("HOMEBREW"), "script:\n{script}");
+        assert!(!script.contains("brew"), "script:\n{script}");
     }
 
     // ── Phase 2: profiling wrapper ──────────────────────────────────
@@ -738,7 +991,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
         assert!(!script.contains("_dodot_prof"));
         assert!(!script.contains("EPOCHREALTIME"));
         assert!(!script.contains("dodot shell-init profile"));
@@ -757,7 +1011,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
 
         assert!(script.contains("BASH_VERSION"));
         assert!(script.contains("ZSH_VERSION"));
@@ -785,7 +1040,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
 
         // Each entry has an if/else so unprofiled shells still source / set PATH.
         // (One else per entry; the epilogue uses an if-only form, so counting
@@ -817,7 +1073,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
 
         assert!(
             script.contains("_dodot_err_file=\"${_dodot_prof_file%.tsv}.errors.log\""),
@@ -859,7 +1116,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
         assert!(script.contains("# end_t"));
         assert!(script.contains("unset _dodot_prof"));
         assert!(script.contains("_dodot_prof_file"));
@@ -869,7 +1127,8 @@ mod tests {
     fn profiling_enabled_with_empty_datastore_skips_preamble() {
         let env = TempEnvironment::builder().build();
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
         assert!(script.contains("No shell scripts or PATH additions"));
         assert!(!script.contains("_dodot_prof"));
     }
@@ -888,7 +1147,8 @@ mod tests {
             .unwrap();
 
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
         assert!(
             script.contains("_dodot_rc=0;"),
             "profiled branch must seed _dodot_rc=0 before the source attempt:\n{script}"
@@ -918,7 +1178,8 @@ mod tests {
 
         // Profiling off: inline OR-echo form.
         let plain =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
         assert!(
             plain.contains("dodot: shell source exited $?:"),
             "plain script missing loud-failure echo:\n{plain}"
@@ -928,8 +1189,8 @@ mod tests {
         // arm (silent failure case); the with-stderr arm relies on
         // re-emitting the captured stderr to the user's TTY. Unprofiled
         // fallback uses the OR-echo form like the plain path.
-        let timed =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN).unwrap();
+        let timed = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+            .unwrap();
         assert!(
             timed.contains("echo \"dodot: shell source exited $_dodot_rc:"),
             "timed script missing silent-failure echo:\n{timed}"
@@ -974,16 +1235,33 @@ mod tests {
             ("populated, profiled", &populated, true),
         ];
         for (label, env, profiling) in shapes {
-            let script =
-                generate_init_script(env.fs.as_ref(), env.paths.as_ref(), profiling, TEST_GEN)
-                    .unwrap();
+            let script = generate_init_script(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                profiling,
+                TEST_GEN,
+                None,
+            )
+            .unwrap();
             assert!(
                 script.contains(&format!("export DODOT_INIT_GEN={TEST_GEN}")),
                 "{label}: missing generation stamp:\n{script}"
             );
             assert!(
                 script.contains(&format!(
-                    "echo {TEST_GEN} > '{}' 2>/dev/null || :",
+                    "export DODOT_INIT_VERSION={}",
+                    activation::running_version()
+                )),
+                "{label}: missing version stamp:\n{script}"
+            );
+            // `>|`, not `>`: under `noclobber` a plain `>` refuses to
+            // overwrite the heartbeat once it exists, and the `2>/dev/null
+            // || :` guards swallow the refusal — freezing "last loaded"
+            // at the first shell that ever ran.
+            assert!(
+                script.contains(&format!(
+                    "echo {TEST_GEN} {} >| '{}' 2>/dev/null || :",
+                    activation::running_version(),
                     env.paths.hookup_heartbeat_path().display()
                 )),
                 "{label}: missing heartbeat write:\n{script}"
@@ -996,22 +1274,69 @@ mod tests {
         }
     }
 
-    /// The hot-path budget: one export plus one redirect, and nothing
-    /// that costs a process. A `mkdir -p` or a `dodot` call here would
-    /// be paid on every shell start, forever.
+    /// `noclobber` is an ordinary rc line, and under it a plain `>`
+    /// refuses to write a file that already exists. The heartbeat
+    /// exists from the second activation onward, so with `>` every
+    /// activation after the first fails — silently, because the
+    /// redirect carries `2>/dev/null || :` — and "last loaded" freezes
+    /// at the first shell the user ever opened. Three of this epic's
+    /// claims read that file, so the freeze surfaces as a confident
+    /// wrong answer rather than a missing one.
+    ///
+    /// Run against every shell that can source the generated script,
+    /// because the fix is a redirect operator and its support is the
+    /// whole question.
     #[test]
-    fn evidence_costs_one_export_and_one_redirect() {
+    fn the_heartbeat_write_survives_noclobber_in_every_shell() {
+        let env = TempEnvironment::builder().build();
+        let heartbeat = env.paths.hookup_heartbeat_path();
+        env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
+        let script_path = env.home.join("dodot-init.sh");
+        env.fs.write_file(&script_path, script.as_bytes()).unwrap();
+
+        for shell in ["/bin/sh", "/bin/bash", "/bin/zsh"] {
+            if !Path::new(shell).exists() {
+                continue;
+            }
+            // A heartbeat from an earlier activation is what a plain
+            // `>` would refuse to overwrite.
+            env.fs.write_file(&heartbeat, b"1 0.0.0\n").unwrap();
+            let status = std::process::Command::new(shell)
+                .arg("-c")
+                .arg(format!("set -C; . '{}'", script_path.display()))
+                .status()
+                .expect("the shell runs");
+            assert!(status.success(), "{shell}: sourcing the script failed");
+            assert_eq!(
+                env.fs.read_to_string(&heartbeat).unwrap().trim(),
+                format!("{TEST_GEN} {}", activation::running_version()),
+                "{shell}: noclobber must not freeze the heartbeat"
+            );
+        }
+    }
+
+    /// The hot-path budget: the version rides along inside the shape
+    /// INS01 set — exports and one redirect — and nothing that costs a
+    /// process. A `mkdir -p` or a `dodot` call here would be paid on
+    /// every shell start, forever.
+    #[test]
+    fn evidence_costs_two_exports_and_one_redirect() {
         let env = TempEnvironment::builder().build();
         let script =
-            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN).unwrap();
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
 
         let evidence: Vec<&str> = script
             .lines()
-            .filter(|l| l.contains("DODOT_INIT_GEN") || l.contains("heartbeat"))
+            .filter(|l| l.contains("DODOT_INIT") || l.contains("heartbeat"))
             .collect();
-        assert_eq!(evidence.len(), 2, "evidence block: {evidence:?}");
+        assert_eq!(evidence.len(), 3, "evidence block: {evidence:?}");
         assert!(evidence[0].starts_with("export DODOT_INIT_GEN="));
-        assert!(evidence[1].starts_with("echo "));
+        assert!(evidence[1].starts_with("export DODOT_INIT_VERSION="));
+        assert!(evidence[2].starts_with("echo "));
         for forbidden in ["mkdir", "dodot ", "date", "$(", "`"] {
             assert!(
                 !evidence.iter().any(|l| l.contains(forbidden)),
@@ -1027,7 +1352,7 @@ mod tests {
     fn write_init_script_stamps_generation_and_creates_heartbeat_dir() {
         let env = TempEnvironment::builder().build();
 
-        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
+        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
 
         assert!(
             env.fs.is_dir(&env.paths.probes_hookup_dir()),
@@ -1059,49 +1384,126 @@ mod tests {
         ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
             .unwrap();
 
+        // The Homebrew arm matters most here: its block is the one
+        // place the script carries zsh-only syntax (`fpath[1,0]=`), and
+        // `sh -n` is what proves the guard keeps that syntax out of the
+        // branch a POSIX shell parses.
+        let brew = sample_brew_blocks();
         for profiling in [false, true] {
-            let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), profiling).unwrap();
-            for shell in ["sh", "bash", "zsh"] {
-                let out = std::process::Command::new(shell)
-                    .arg("-n")
-                    .arg(&path)
-                    .output();
-                let Ok(out) = out else {
-                    continue; // interpreter not installed on this host
-                };
-                assert!(
-                    out.status.success(),
-                    "{shell} -n rejected the generated script (profiling={profiling}): {}",
-                    String::from_utf8_lossy(&out.stderr)
-                );
+            for homebrew in [None, Some(&brew)] {
+                let path =
+                    write_init_script(env.fs.as_ref(), env.paths.as_ref(), profiling, homebrew)
+                        .unwrap();
+                for shell in ["sh", "bash", "zsh"] {
+                    let out = std::process::Command::new(shell)
+                        .arg("-n")
+                        .arg(&path)
+                        .output();
+                    let Ok(out) = out else {
+                        continue; // interpreter not installed on this host
+                    };
+                    assert!(
+                        out.status.success(),
+                        "{shell} -n rejected the generated script (profiling={profiling}, homebrew={}): {}",
+                        homebrew.is_some(),
+                        String::from_utf8_lossy(&out.stderr)
+                    );
+                }
             }
         }
     }
 
     /// The evidence is only worth anything if sourcing the script
-    /// actually leaves it: run the real thing under `sh` and read both
-    /// signals back.
+    /// actually leaves it: run the real thing under `sh` and read
+    /// every signal back — both exports and both heartbeat fields.
     #[test]
     fn sourcing_the_script_exports_the_stamp_and_writes_the_heartbeat() {
         let env = TempEnvironment::builder().build();
-        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
+        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
         let gen = activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let version = activation::running_version();
 
         let out = std::process::Command::new("sh")
             .arg("-c")
             .arg(format!(
-                ". '{}'; printf '%s' \"$DODOT_INIT_GEN\"",
+                ". '{}'; printf '%s %s' \"$DODOT_INIT_GEN\" \"$DODOT_INIT_VERSION\"",
                 path.display()
             ))
             .env_remove(activation::INIT_GEN_ENV)
+            .env_remove(activation::INIT_VERSION_ENV)
             .output()
             .expect("sh is required to run dodot's own init script");
         assert!(out.status.success(), "sourcing failed: {out:?}");
-        assert_eq!(String::from_utf8_lossy(&out.stdout), gen.to_string());
         assert_eq!(
-            activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref()),
-            Some(gen),
-            "sourcing must leave a heartbeat at the script's generation"
+            String::from_utf8_lossy(&out.stdout),
+            format!("{gen} {version}"),
+            "sourcing must export both the generation and the version"
+        );
+
+        let heartbeat = activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref())
+            .expect("sourcing must leave a heartbeat");
+        assert_eq!(heartbeat.generation, gen);
+        assert_eq!(heartbeat.version.as_deref(), Some(version));
+    }
+
+    /// The one rule that tells "wired and deploying nothing" from
+    /// "wired and working" — the footer's, and `down`'s, whole basis.
+    #[test]
+    fn an_empty_script_is_readable_as_having_no_contributions() {
+        let env = TempEnvironment::builder().build();
+        let empty =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, 100, None).unwrap();
+        assert!(!script_has_contributions(&empty), "{empty}");
+
+        let env = TempEnvironment::builder().build();
+        let shell_dir = env.paths.handler_data_dir("vim", "shell");
+        env.fs.mkdir_all(&shell_dir).unwrap();
+        let target = env.home.join("aliases.sh");
+        env.fs.write_file(&target, b"alias v=vim").unwrap();
+        env.fs
+            .symlink(&target, &shell_dir.join("aliases.sh"))
+            .unwrap();
+        let deployed =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, 100, None).unwrap();
+        assert!(script_has_contributions(&deployed), "{deployed}");
+    }
+
+    /// Parsing the guard is not the same as honouring it: source the
+    /// script for real under `sh` and confirm the shell took the `sh`
+    /// branch — brew's environment set, the zsh-only `fpath` line never
+    /// executed (it would print a `command not found` to stderr) and no
+    /// `FPATH` left behind.
+    #[test]
+    fn sourcing_under_sh_takes_the_sh_branch_of_the_homebrew_block() {
+        let env = TempEnvironment::builder().build();
+        let blocks = BrewBlocks {
+            prefix: PathBuf::from("/fake/brew"),
+            sh: "export HOMEBREW_PREFIX=\"/fake/brew\";\n".to_string(),
+            zsh: "export HOMEBREW_PREFIX=\"/fake/brew\";\n\
+                  fpath[1,0]=\"/fake/brew/share/zsh/site-functions\";\n\
+                  export FPATH;\n"
+                .to_string(),
+        };
+        let path =
+            write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, Some(&blocks)).unwrap();
+
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                ". '{}'; printf '%s|%s' \"$HOMEBREW_PREFIX\" \"${{FPATH:-}}\"",
+                path.display()
+            ))
+            .env_remove("HOMEBREW_PREFIX")
+            .env_remove("FPATH")
+            .output()
+            .expect("sh is required to run dodot's own init script");
+
+        assert!(out.status.success(), "sourcing failed: {out:?}");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "/fake/brew|");
+        assert!(
+            out.stderr.is_empty(),
+            "the sh branch must not touch zsh-only lines: {}",
+            String::from_utf8_lossy(&out.stderr)
         );
     }
 
@@ -1111,7 +1513,7 @@ mod tests {
     #[test]
     fn concurrent_sources_leave_an_intact_heartbeat() {
         let env = TempEnvironment::builder().build();
-        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
+        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
         let gen = activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
 
         let children: Vec<_> = (0..8)
@@ -1128,7 +1530,7 @@ mod tests {
         }
 
         assert_eq!(
-            activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref()),
+            activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref()).map(|h| h.generation),
             Some(gen)
         );
     }

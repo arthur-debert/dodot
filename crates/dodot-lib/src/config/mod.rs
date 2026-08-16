@@ -42,6 +42,9 @@ pub struct DodotConfig {
     pub preprocessor: PreprocessorSection,
 
     #[config(nested)]
+    pub shell: ShellSection,
+
+    #[config(nested)]
     pub profiling: ProfilingSection,
 
     #[config(nested)]
@@ -300,6 +303,35 @@ pub struct PreprocessorGpgSection {
     /// `extensions = ["gpg", "asc"]` explicitly.
     #[config(default = ["gpg"])]
     pub extensions: Vec<String>,
+}
+
+/// Generated-init-script settings. Root-only — the init script is one
+/// global file, so a per-pack override would have nothing to scope to.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct ShellSection {
+    /// Whether the generated `dodot-init.sh` opens with Homebrew's
+    /// environment, captured from `brew shellenv` when `dodot up`
+    /// regenerates the script.
+    ///
+    /// - `"auto"` (default) — emit the block whenever this host has an
+    ///   executable `brew` under a known prefix (macOS only). Nothing is
+    ///   emitted when brew is absent; the next `dodot up` picks it up
+    ///   once installed.
+    /// - `"off"` — never emit it. Reach for this if you bootstrap
+    ///   Homebrew yourself, or want nothing but dodot's own PATH lines
+    ///   in the init script.
+    ///
+    /// The block is emitted verbatim and *first*, above dodot's PATH
+    /// additions, so pack contributions stay the last word. It is also
+    /// the one thing dodot puts on the shell startup path that spends
+    /// processes: brew's own block re-execs `path_helper`, about 2-3 ms
+    /// per shell start. The capture itself (`brew shellenv`, twice)
+    /// runs only at `dodot up`/`down` and is cached in the datastore,
+    /// so both hook shapes pay a shell the same. See
+    /// `docs/proposals/shell-hookup-ergonomics.lex` §4 and
+    /// [`crate::shell::homebrew`] for the cost breakdown.
+    #[config(default = "auto")]
+    pub homebrew: String,
 }
 
 /// Shell-init profiling settings. Root-only — per-pack overrides are
@@ -911,9 +943,31 @@ mod tests {
             cfg.mappings.skip
         );
 
+        // ── shell defaults ──────────────────────────────────────
+        assert_eq!(cfg.shell.homebrew, "auto");
+
         // ── profiling defaults ──────────────────────────────────
         assert!(cfg.profiling.enabled);
         assert_eq!(cfg.profiling.keep_last_runs, 100);
+    }
+
+    #[test]
+    fn shell_homebrew_overridable_and_validated() {
+        let env = TempEnvironment::builder().build();
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                b"[shell]\nhomebrew = \"off\"\n",
+            )
+            .unwrap();
+
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        assert_eq!(cfg.shell.homebrew, "off");
+        assert_eq!(
+            crate::shell::BrewBootstrapMode::parse(&cfg.shell.homebrew).unwrap(),
+            crate::shell::BrewBootstrapMode::Off
+        );
     }
 
     #[test]

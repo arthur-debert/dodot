@@ -3,6 +3,8 @@ Design Specification: Shell Hookup Ergonomics
     :: note ::
         *Status: proposed.* Epic RCS01. Successor to [./shipped/shell-hookup.lex] (INS01), which shipped the activation evidence this document extends. Read that first: the generation stamp, the heartbeat, the signal ladder, the probe, and `dodot install` are all defined there and assumed here.
 
+        Two shipped deviations, where the code is the authority. The diagnosis probe landed *inside* `dodot probe shell-init`, running by default — `--no-trace` opts out, a `<PACK[/FILE]>` argument suppresses it — not as the separate `dodot probe shell-hookup` command [#3.1] proposes (epic `#288`, decision 6). And the version-skew hint points at `$PATH` resolution generically ("check which one your PATH finds first") rather than naming both binary paths as [#2.3] promises; the probe is where both paths get named.
+
     INS01 taught dodot to ask whether any shell loads its init script. It answers that question with one bit — a generation number — and that bit turns out to be too narrow. A hookup can be wired, sourced on every shell start, and still broken, because the *binary* that generated the init script is not the binary the user runs. dodot cannot see that today, and the message it prints instead sends the user to the one fix that cannot work.
 
     This proposal widens the evidence to carry a version, replaces the single activation line with a two-line footer that says what happened and when, adds an on-demand probe that reports what `dodot` resolves to *at the hook line* rather than guessing, and moves the Homebrew bootstrap inside dodot so the shell rc no longer has to contain anything at all.
@@ -66,11 +68,13 @@ Design Specification: Shell Hookup Ergonomics
 
             export DODOT_INIT_GEN=1786830419
             export DODOT_INIT_VERSION=5.6.0
-            echo '1786830419 5.6.0' > '…/probes/hookup/heartbeat' 2>/dev/null || :
+            echo '1786830419 5.6.0' >| '…/probes/hookup/heartbeat' 2>/dev/null || :
 
         :: sh ::
 
         The export answers "which dodot did *this* shell load"; the heartbeat field answers "which dodot did the last shell anywhere load". Both are needed: the first is what a user's own session can act on, the second is what a detached caller sees.
+
+        *Amended during review.* The redirect is `>|`, not `>`. Under `setopt noclobber` / `set -C` — an ordinary rc line — a plain `>` refuses to write a file that already exists, and the `2>/dev/null || :` guards hide the refusal. The heartbeat exists after the first activation, so every activation after that would fail silently and freeze "last loaded" at the first shell ever run. This epic newly rests three claims on that file — the footer's timestamp, the skew comparison, and the probe gate — so the frozen file reads as a confident wrong answer. `>|` is POSIX; verified against zsh, bash and dash.
 
         A heartbeat or stamp carrying no version renders as `≤5.5.1` — one rule covering both a pre-RCS01 binary and a stale heartbeat left on disk by one. The boundary version is a single constant, set to the release preceding this work.
 
@@ -80,26 +84,30 @@ Design Specification: Shell Hookup Ergonomics
 
         No new write is required: the redirect already updates mtime on every activation. When the heartbeat is missing or unreadable, "last run" is simply unknown, and the second line says so rather than guessing.
 
+        *Amended during review.* The run time and the version have to come from the same activation. The stamp decides the *state* — it speaks for the session the user can act on — but the mtime belongs to whichever shell wrote the heartbeat, so a stamp that outranks the heartbeat may not take the heartbeat's timestamp with it: a shell stamped 5.6.0 beside a more recently written 5.0.0 heartbeat would otherwise render "Last loaded 4 minutes ago by dodot 5.6.0", a moment at which no 5.6.0 shell loaded anything. When the two signals name different dodots, line two reports both activations ("This shell loaded dodot 5.6.0; the last shell to load ran dodot 5.0.0, 4 minutes ago."); a stamp with no heartbeat at all carries no time and says so.
+
     2.3. The Two-Line Footer
 
         The single activation notice becomes a footer of two lines, emitted by the *shared* status renderer — so `up`, `down`, and `status` all carry it. This deliberately supersedes [./shipped/shell-hookup.lex] §5's "a healthy hookup after `up` is silence": the footer is short, and a deploy that says nothing about activation is the gap INS01 set out to close.
 
         Line one states whether dodot is sourced in new shell sessions, colour-coded, and when it is not, the hint carries the fix. Line two is the evidence, dimmed. Proposed strings, to be pinned by the implementation and then documented once:
 
-        Footer states:
+        Footer states, quoted verbatim:
             | State | Line one | Line two |
-            | healthy | `Shell hookup: dodot is sourced in new shells.` | `Last loaded 4 minutes ago by dodot 5.6.0.` |
-            | version skew | `Shell hookup: your shells load a different dodot.` | `Last loaded 4 minutes ago by dodot 5.0.0 — you are running 5.6.0.` |
-            | stale shell | `Shell hookup: this shell predates your last \`dodot up\`.` | `Last loaded 4 minutes ago by dodot 5.6.0.` |
-            | this shell only | `Shell hookup: this shell did not load dodot.` | `Last loaded 2 days ago by dodot 5.6.0.` |
-            | never | `Shell hookup: no shell has loaded dodot yet.` | `Never loaded.` |
-            | verified broken | `Shell hookup: a new shell did not load dodot.` | `Last loaded 9 days ago by dodot ≤5.5.1.` |
+            | healthy | Shell hookup: dodot is sourced in new shells. | Last loaded 4 minutes ago by dodot 5.6.0. |
+            | version skew | Shell hookup: your shells load a different dodot. | Last loaded 4 minutes ago by dodot 5.0.0 — you are running 5.6.0. |
+            | stale shell | Shell hookup: this shell predates your last \`dodot up\`. | Last loaded 4 minutes ago by dodot 5.6.0. |
+            | shell not loaded | Shell hookup: this shell did not load dodot. | Last loaded 2 days ago by dodot 5.6.0. |
+            | never | Shell hookup: no shell has loaded dodot yet. | Never loaded. |
+            | verified broken | Shell hookup: a new shell did not load dodot. | Last loaded 9 days ago by dodot ≤5.5.1. |
 
             :: table align=lll header=1 ::
 
         Version skew is a new state, and the one the evidence change exists to catch: a stamp or heartbeat whose version differs from the running binary's. It is a warning, not an error — a user mid-upgrade will see it transiently — and its hint names both paths, which is the whole diagnosis in the common case.
 
-        *After `down`*, a footer claiming a healthy hookup is technically true and practically misleading: the hook is wired, but the script it sources now deploys nothing. Rather than special-casing the command, the footer reports the script's *content*: when the generated script carries no pack contributions, line one says so (`Shell hookup: wired, but the init script is empty — nothing is deployed.`). That covers `down`, a repository with every pack ignored, and a first `up` that deployed nothing, under one rule.
+        *After `down`*, a footer claiming a healthy hookup is technically true and practically misleading: the hook is wired, but the script it sources now deploys nothing. Rather than special-casing the command, the footer reports the script's *content*: when the generated script carries no pack contributions, line one says so (`Shell hookup: wired, but no packs are deployed.`). That covers `down`, a repository with every pack ignored, and a first `up` that deployed nothing, under one rule.
+
+        *Amended during review.* The line says "no packs", not "the init script is empty", because packs are what the measurement counts. On a Homebrew host the script still carries the `brew shellenv` block from [#4] after a `down` — twenty-odd lines that rewrite `PATH` — so a claim about the file being empty would be false exactly where this epic added the content.
 
     2.4. Relative Time
 
@@ -112,8 +120,8 @@ Design Specification: Shell Hookup Ergonomics
 
         Answering "what does `dodot` resolve to at the hook line" requires spawning the user's shell and running their whole rc under tracing. That is heavy, and `status` may not spawn anything at all. It therefore lands as `dodot probe shell-hookup`, on demand, in the existing `probe` family ([../user/commands/probe.lex]) where the slower, heavier-handed introspection already lives.
 
-        :: warning ::
-            `dodot probe shell-init` (profiling timings) and `dodot probe shell-hookup` (activation diagnosis) are one word apart and answer different questions. Either name the new command distinctly or accept the pairing knowingly; do not let it be decided by accident.
+        :: note ::
+            *Superseded by epic `#288`, decision 6.* No `dodot probe shell-hookup` command exists. The diagnosis shipped folded into `dodot probe shell-init`, which now traces the rc **by default**: startup timings and the hook-line verdict answer the same "what did my shell just do" question, so the one-word-apart naming hazard this section weighed was resolved by not minting a second name at all. `--no-trace` opts out; the passive views (a `<PACK[/FILE]>` filter, `--runs`, `--history`, `--errors-only`) never trace. See [../user/commands/probe.lex] §4.
 
     3.2. PATH at the Hook Line
 

@@ -240,6 +240,42 @@ pub struct ShellInitHistoryRow {
     pub entry_count: usize,
 }
 
+/// The live half of `probe shell-init`: what `dodot` resolves to at
+/// the rc hook line, measured by spawning the user's shell under
+/// tracing (`docs/proposals/shell-hookup-ergonomics.lex` §3). All
+/// strings are precomputed here so the template stays dumb and the
+/// JSON view carries the same words the terminal shows.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitTraceView {
+    /// `"skipped"` (nothing to trace — unsupported shell, no rc, no
+    /// hook), `"untraced"` (wanted to trace but could not — timeout,
+    /// spawn failure), or `"verdict"` (the trace ran and judged).
+    pub status: String,
+    /// Theme style for the headline: `"deployed"` (sound),
+    /// `"warning"`, `"error"`, or `"dim"` (skipped). Same convention
+    /// as [`ShellInitRow::status_class`].
+    pub status_class: &'static str,
+    /// `"bash"` / `"zsh"`; empty when no supported shell was named.
+    pub shell: String,
+    /// Display path (`~/…`) of the rc examined; empty when none.
+    pub rc: String,
+    /// 1-indexed hook line within `rc`; 0 when unknown.
+    pub hook_line: usize,
+    /// Verdict tag when `status == "verdict"`: `"hook-never-ran"`,
+    /// `"unresolvable"`, `"different-binary"`, `"running-binary"`,
+    /// `"script-missing"`, or `"script-ok"`. Empty otherwise.
+    pub verdict: String,
+    /// One-line statement: the verdict, or why there is nothing to
+    /// say.
+    pub headline: String,
+    /// Supporting lines: candidate binaries passed over and why, the
+    /// paths and versions compared, the next command to run.
+    pub detail_lines: Vec<String>,
+    /// True when the answer came from the fallback copy (temporary
+    /// `ZDOTDIR` / `--rcfile`) rather than the primary xtrace run.
+    pub used_fallback: bool,
+}
+
 /// Display payload for `probe shell-init`. Pulled into its own struct
 /// so the JSON view stays clean and the variant constructor in
 /// `shell_init()` reads naturally.
@@ -272,6 +308,10 @@ pub struct ShellInitView {
     /// `YYYY-MM-DD HH:MM` of the most recent `dodot up`; empty when
     /// `up` has never run on this machine.
     pub last_up_when: String,
+    /// The live hook-line resolution — the report's second half.
+    /// `None` when suppressed (`--no-trace`; the filter/runs/history
+    /// views never carry it).
+    pub trace: Option<ShellInitTraceView>,
 }
 
 /// Display row for one entry in a shell-init group.
@@ -399,7 +439,7 @@ pub const PROBE_SUBCOMMANDS: &[ProbeSubcommandInfo] = &[
     },
     ProbeSubcommandInfo {
         name: "shell-init",
-        description: "Per-source timings for the most recent shell startup.",
+        description: "Startup timings + what `dodot` resolves to at your rc hook line.",
     },
     ProbeSubcommandInfo {
         name: "show-data-dir",

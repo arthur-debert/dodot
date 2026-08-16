@@ -516,16 +516,21 @@ pub fn transform_install_hook_handler(
     Ok(Output::Render(commands::transform::install_hook(&ctx)?))
 }
 
-/// `dodot probe shell-init` — most recent shell-startup profile.
+/// `dodot probe shell-init` — most recent shell-startup profile plus,
+/// by default, the live hook-line diagnosis.
 ///
 /// Five views, picked by argument shape:
 /// - `<pack>[/<file>]` positional: drill-down across recent runs with
 ///   captured stderr (wins over flags — the user is asking a specific
-///   question)
+///   question about one source's timings, so it also suppresses the
+///   trace: the shipped status warning points here and must stay
+///   cheap and passive)
 /// - `--errors-only`: cross-history list of failing targets
 /// - `--runs N`: per-target percentile aggregate over the last N runs
 /// - `--history`: one-row-per-run trend, newest first
-/// - default: single-run detail (most recent profile)
+/// - default: single-run detail (most recent profile) + the live
+///   trace — one report, two halves. `--no-trace` keeps only the
+///   recorded half; only this default view ever spawns a shell.
 pub fn probe_shell_init_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
@@ -535,6 +540,7 @@ pub fn probe_shell_init_handler(
     let runs = matches.get_one::<usize>("runs").copied();
     let history = flag_or_false(matches, "history");
     let errors_only = flag_or_false(matches, "errors-only");
+    let no_trace = flag_or_false(matches, "no-trace");
 
     let result = if errors_only {
         commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS)?
@@ -545,7 +551,7 @@ pub fn probe_shell_init_handler(
     } else if history {
         commands::probe::shell_init_history(&ctx, commands::probe::DEFAULT_HISTORY_LIMIT)?
     } else {
-        commands::probe::shell_init(&ctx)?
+        commands::probe::shell_init(&ctx, !no_trace)?
     };
     Ok(Output::Render(result))
 }
@@ -608,11 +614,26 @@ pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     // about to be sourced by the shell running the `eval`, so "now" is
     // exactly when this activation happens. A later `up` bumps the
     // generation past it and correctly ages this shell into stale.
+    // `eval "$(dodot init-sh)"` regenerates on every shell start, so
+    // the Homebrew block comes from the datastore cache `up`/`down`
+    // persisted, not from a live `brew shellenv` capture — with a warm
+    // cache this spawns brew zero times and both hook shapes cost a
+    // shell the same. A cache miss (no `up` since the cache was
+    // cleared, or a moved prefix) captures in memory and does NOT
+    // persist: `init-sh` is passive, and passive commands never write
+    // the datastore (#121). The next `up` warms the cache.
+    let brew = dodot_lib::shell::homebrew::cached_or_capture(
+        ctx.fs.as_ref(),
+        ctx.command_runner.as_ref(),
+        &root_config,
+        ctx.paths.as_ref(),
+    )?;
     let script = dodot_lib::shell::generate_init_script(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         root_config.profiling.enabled,
         dodot_lib::shell::activation::current_generation(),
+        brew.as_ref(),
     )?;
     print!("{script}");
     Ok(())

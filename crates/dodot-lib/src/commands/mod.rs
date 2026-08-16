@@ -365,14 +365,57 @@ pub struct PackStatusResult {
     /// against packs with no `ran older version` entries).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub diffs: Vec<DisplayDiff>,
-    /// Shell-hookup activation state, when there is something to say
-    /// about it: the prominent "no shell has loaded dodot yet" banner,
-    /// the "open a new shell" hint, or (in `status` only) the quiet
-    /// "hookup: ok" line. `None` means silence — deployment output is
-    /// not the place to celebrate a working hookup. See
-    /// `docs/proposals/shipped/shell-hookup.lex` §5.
+    /// The two-line shell-hookup footer: whether dodot is sourced in
+    /// new shells, and when it last was, by which dodot. Carried by
+    /// every `pack-status` render — `up`, `down` and `status` alike,
+    /// built by [`shell_hookup_footer`] — because a deploy that says
+    /// nothing about activation is the gap the evidence exists to
+    /// close (`docs/proposals/shell-hookup-ergonomics.lex` §2.3).
+    /// `None` only before a first deploy, when there is no hookup to
+    /// have yet.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell_hookup: Option<crate::shell::ActivationNotice>,
+}
+
+/// Build the shell-hookup footer for a `pack-status` render.
+///
+/// The one place `up`, `down` and `status` get their footer from, so
+/// the states, the strings and the probe gate cannot drift between
+/// three commands.
+///
+/// `reference` is the generation a healthy shell would be running, and
+/// is the one thing callers genuinely disagree about: `status`
+/// regenerates nothing, so it reads the script on disk, while `up` and
+/// `down` pass the generation captured *before* they rewrote it —
+/// judging against the fresh one would call the invoking shell stale
+/// after every single run.
+///
+/// `probe` is the caller's licence to measure (spec §3.1, §9). When no
+/// shell is spawned, the session's tty-attachment stands in as the
+/// tie-breaker the measurement would have settled (#279); when one is,
+/// the answer comes from the spawn and the session is not consulted.
+///
+/// Which of those happened is
+/// [`notice_with_probe`](crate::shell::probe::notice_with_probe)'s to
+/// decide, so `ctx.tty` is handed over unmodified. Deciding it here
+/// meant reading it off the *policy*, which only says a spawn is
+/// permitted — the gate that says whether one occurs runs later, and
+/// declines on a fresh heartbeat, which is the exact case the session
+/// signal exists for.
+pub(crate) fn shell_hookup_footer(
+    ctx: &crate::packs::orchestration::ExecutionContext,
+    reference: Option<u64>,
+    probe: &crate::shell::ProbePolicy,
+) -> Option<crate::shell::ActivationNotice> {
+    crate::shell::probe::notice_with_probe(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+        probe,
+        &ctx.shell_env,
+        &ctx.env_stamp,
+        reference,
+        ctx.tty,
+    )
 }
 
 /// View style for pack-status output.

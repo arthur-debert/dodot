@@ -1,42 +1,55 @@
-//! Activation evidence — is a shell actually loading dodot?
+//! Activation evidence — is a shell actually loading dodot, and which
+//! dodot?
 //!
 //! `dodot up` proves the datastore is correct. It proves nothing about
 //! whether any shell ever *sources* the generated init script, which is
 //! the only layer users experience. This module carries the evidence
-//! half of that gap (`docs/proposals/shipped/shell-hookup.lex` §2):
+//! half of that gap (`docs/proposals/shipped/shell-hookup.lex` §2,
+//! widened by `docs/proposals/shell-hookup-ergonomics.lex` §2):
 //!
 //! - The **generation stamp** — the init script exports
-//!   [`INIT_GEN_ENV`] with the generation it was written at. Any dodot
+//!   [`INIT_GEN_ENV`] with the generation it was written at, and
+//!   [`INIT_VERSION_ENV`] with the dodot that wrote it. Any dodot
 //!   command inherits the calling shell's environment, so it knows with
-//!   certainty whether the invoking shell sourced init, and whether
-//!   that init predates the last regeneration.
+//!   certainty whether the invoking shell sourced init, whether that
+//!   init predates the last regeneration, and whether it came from the
+//!   binary now running ([`EnvStamp`]).
 //! - The **heartbeat** — the init script truncates
-//!   [`Pather::hookup_heartbeat_path`] to the same generation on every
+//!   [`Pather::hookup_heartbeat_path`] to the same two fields on every
 //!   source. One redirect of static content, so parallel shell startups
-//!   can't corrupt it: last writer wins.
+//!   can't corrupt it: last writer wins. Its *mtime*, not its contents,
+//!   answers "when did a shell last load dodot" ([`Heartbeat`]).
 //!
-//! Both are emitted unconditionally by
+//! All of it is emitted unconditionally by
 //! [`crate::shell::generate_init_script`] — unlike the opt-in
-//! profiling TSVs — and both stay on the "one export, one redirect"
-//! hot-path budget: no command execution, no `dodot` invocation.
+//! profiling TSVs — and stays on the hot-path budget: exports and one
+//! redirect, no command execution, no `dodot` invocation.
 //!
 //! # Evaluation
 //!
-//! [`classify_stamp`] and [`classify_heartbeat`] turn the two raw
-//! signals into a state each, relative to a *reference generation*, and
-//! [`evaluate`] folds the pair — plus one bit of *session* evidence,
-//! whether dodot is attached to a terminal — into one user-facing
-//! [`ActivationState`]. All three are pure — the IO lives in
-//! [`collect_signals`].
+//! [`Evidence`] is the whole input to the answer: both signals, the
+//! reference generation, the running version, and the clock. Reading
+//! it is the only IO ([`Evidence::collect`]); everything downstream —
+//! [`classify_stamp`], [`classify_heartbeat`], [`evaluate`],
+//! [`Evidence::state`], [`Evidence::footer`] — is pure, so every state
+//! and every rendered string is unit-testable without a filesystem.
 //!
 //! The reference generation is "the generation a healthy shell would
 //! be running", and who supplies it differs by caller:
 //!
 //! - `dodot status` reads it off the init script on disk.
-//! - `dodot up` captures it *before* regenerating the script.
-//!   Comparing against the freshly written generation instead would
-//!   mark the invoking shell stale on every single `up`, which is noise,
-//!   not news.
+//! - `dodot up` and `dodot down` capture it *before* regenerating the
+//!   script. Comparing against the freshly written generation instead
+//!   would mark the invoking shell stale on every single run, which is
+//!   noise, not news.
+//!
+//! # The footer
+//!
+//! The answer renders as two lines ([`ActivationNotice`]) that every
+//! `pack-status` render carries — `up`, `down` and `status` alike.
+//! Line one names the state, line two the evidence behind it. The
+//! strings are pinned here and asserted verbatim in the tests, because
+//! the user documentation quotes them.
 //!
 //! The empirical probe (spec §3) lives in [`crate::shell::probe`] and
 //! the rc-file machinery behind `dodot install` (spec §4) in
@@ -46,7 +59,9 @@
 //! instead, which starts here and only measures when these signals
 //! come back inconclusive.
 
+use std::fmt;
 use std::path::Path;
+use std::time::Duration;
 
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -58,6 +73,25 @@ use crate::shell::rc::{self, HookPresence};
 /// Environment variable the generated init script exports, carrying
 /// the generation it was written at.
 pub const INIT_GEN_ENV: &str = "DODOT_INIT_GEN";
+
+/// Environment variable the generated init script exports, carrying
+/// the dodot version that generated it.
+pub const INIT_VERSION_ENV: &str = "DODOT_INIT_VERSION";
+
+/// The last release whose evidence carried no version.
+///
+/// One constant, one rule: any stamp or heartbeat without a version
+/// field was written by a dodot at or below this release, and renders
+/// as `≤5.5.1` rather than as "unknown". It covers both halves of the
+/// same situation — a pre-RCS01 binary generating a script right now,
+/// and a stale heartbeat one left on disk months ago.
+pub const PRE_VERSION_RELEASE: &str = "5.5.1";
+
+/// The version of the running binary — what every piece of evidence is
+/// compared against.
+pub fn running_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
 
 /// The generation to stamp into a script written now.
 ///
@@ -81,27 +115,194 @@ pub fn parse_generation(raw: &str) -> Option<u64> {
     raw.trim().parse::<u64>().ok()
 }
 
-/// Read the calling shell's generation stamp from the process
-/// environment. `None` when unset or unparseable.
-pub fn read_env_stamp() -> Option<u64> {
-    std::env::var(INIT_GEN_ENV)
-        .ok()
-        .as_deref()
-        .and_then(parse_generation)
+/// The version a stamp or heartbeat reports.
+///
+/// Absent is not unknown: evidence without a version field can only
+/// have been written by a dodot that predates the field, which is a
+/// bound, not a mystery — see [`PRE_VERSION_RELEASE`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvidenceVersion {
+    /// The version the evidence names.
+    Known(String),
+    /// No version field: written at or before [`PRE_VERSION_RELEASE`].
+    PreVersion,
 }
 
-/// Read the generation recorded by the last shell activation. `None`
-/// when no shell has ever sourced the init script on this machine (or
-/// the marker is unreadable).
-pub fn read_heartbeat(fs: &dyn Fs, paths: &dyn Pather) -> Option<u64> {
+impl EvidenceVersion {
+    /// Read a version field, treating an absent or blank one as
+    /// [`EvidenceVersion::PreVersion`].
+    pub fn from_field(field: Option<&str>) -> EvidenceVersion {
+        match field.map(str::trim).filter(|v| !v.is_empty()) {
+            Some(v) => EvidenceVersion::Known(v.to_string()),
+            None => EvidenceVersion::PreVersion,
+        }
+    }
+
+    /// Whether this evidence is consistent with having been written by
+    /// `running`.
+    ///
+    /// [`EvidenceVersion::PreVersion`] is a bound rather than a value,
+    /// so it matches exactly one running version: the bound itself.
+    /// Every later release is unambiguously *not* what wrote it, which
+    /// is the version skew this whole state exists to name; a binary
+    /// that still *is* [`PRE_VERSION_RELEASE`] cannot tell its own
+    /// version-less evidence from someone else's, and must not claim
+    /// skew on evidence that ambiguous.
+    pub fn is(&self, running: &str) -> bool {
+        match self {
+            EvidenceVersion::Known(v) => v == running,
+            EvidenceVersion::PreVersion => running == PRE_VERSION_RELEASE,
+        }
+    }
+}
+
+/// Whether `loaded` names a dodot other than `running`.
+///
+/// The one place the skew rule lives. [`Evidence`] applies it to the
+/// two cheap signals and [`crate::shell::probe`] applies it to what a
+/// spawned shell reported, so an inferred skew and a measured one can
+/// never disagree about what counts as skew. `None` — nothing loaded
+/// — is never skew: there is no version to differ from.
+pub fn is_skewed(loaded: Option<&EvidenceVersion>, running: &str) -> bool {
+    loaded.is_some_and(|v| !v.is(running))
+}
+
+impl fmt::Display for EvidenceVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EvidenceVersion::Known(v) => f.write_str(v),
+            EvidenceVersion::PreVersion => write!(f, "≤{PRE_VERSION_RELEASE}"),
+        }
+    }
+}
+
+/// Signal 1's raw form: what the calling shell's environment reports.
+///
+/// A generation without a version is the pre-RCS01 shape and stays
+/// meaningful; a version without a generation is not evidence of
+/// anything, so [`EnvStamp::version`] is only ever consulted when
+/// [`EnvStamp::generation`] is set.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EnvStamp {
+    /// `DODOT_INIT_GEN` — the generation of the script this shell
+    /// sourced.
+    pub generation: Option<u64>,
+    /// `DODOT_INIT_VERSION` — the dodot that generated it.
+    pub version: Option<String>,
+}
+
+impl EnvStamp {
+    /// Read both fields from the process environment. Unset or
+    /// unparseable reads as no signal.
+    pub fn read() -> EnvStamp {
+        EnvStamp {
+            generation: std::env::var(INIT_GEN_ENV)
+                .ok()
+                .as_deref()
+                .and_then(parse_generation),
+            version: std::env::var(INIT_VERSION_ENV)
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
+        }
+    }
+
+    /// A stamp for `generation` with no version — the pre-RCS01 shape,
+    /// and the shorthand tests use when the version is not the subject.
+    pub fn at(generation: u64) -> EnvStamp {
+        EnvStamp {
+            generation: Some(generation),
+            version: None,
+        }
+    }
+
+    /// The version this shell loaded, or `None` when it loaded nothing.
+    pub fn evidence_version(&self) -> Option<EvidenceVersion> {
+        self.generation
+            .map(|_| EvidenceVersion::from_field(self.version.as_deref()))
+    }
+}
+
+/// Signal 2's raw form: the heartbeat file, contents and mtime.
+///
+/// A `Heartbeat` only exists for a file whose contents parsed: a
+/// corrupt one reads as no activation at all ([`read_heartbeat`]), so
+/// no field of this struct can be mistaken for evidence that a shell
+/// loaded dodot. That is why [`Heartbeat::generation`] is not an
+/// `Option` — an unparseable generation is the absence of a heartbeat,
+/// not a heartbeat with an absent generation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Heartbeat {
+    /// The generation the last shell to source init was running.
+    pub generation: u64,
+    /// The dodot that generated that script.
+    pub version: Option<String>,
+    /// When the file was last written — i.e. when a shell last
+    /// *sourced* the script, which is not when the script was
+    /// generated. Under the file-source hook the two diverge
+    /// permanently, and the mtime is the one that answers "last run".
+    /// `None` when the filesystem would not say.
+    pub last_run: Option<SystemTime>,
+}
+
+impl Heartbeat {
+    /// The version the last shell loaded.
+    ///
+    /// Unconditional, unlike [`EnvStamp::evidence_version`], because a
+    /// `Heartbeat` that exists already carries a parsed generation — a
+    /// shell demonstrably loaded dodot — so the only question left is
+    /// *which* dodot, and a missing field answers that as
+    /// [`EvidenceVersion::PreVersion`].
+    pub fn evidence_version(&self) -> EvidenceVersion {
+        EvidenceVersion::from_field(self.version.as_deref())
+    }
+}
+
+/// Split heartbeat text into its generation and version fields.
+///
+/// The file holds `<generation> <version>`; a pre-RCS01 one holds just
+/// `<generation>`. Anything else yields no generation, which
+/// [`read_heartbeat`] turns into no activation at all rather than into
+/// the oldest possible one.
+pub fn parse_heartbeat(raw: &str) -> (Option<u64>, Option<String>) {
+    let mut fields = raw.split_whitespace();
+    let generation = fields.next().and_then(parse_generation);
+    let version = fields.next().map(str::to_string);
+    (generation, version)
+}
+
+/// Read the heartbeat left by the last shell activation. `None` when no
+/// shell has ever sourced the init script on this machine, the marker
+/// is unreadable, or its contents do not parse.
+///
+/// The last of those is the whole point of reading the file rather than
+/// stat-ing it: *existence is not activation*. A corrupt marker has a
+/// perfectly readable mtime and a perfectly present version field, and
+/// treating either as a signal would report "Last loaded 4 minutes ago
+/// by dodot ≤5.5.1" for a file full of garbage. One gate here keeps
+/// every downstream reader — the generation ladder, the version, the
+/// "last loaded" time — honest without each having to remember.
+pub fn read_heartbeat(fs: &dyn Fs, paths: &dyn Pather) -> Option<Heartbeat> {
     let path = paths.hookup_heartbeat_path();
     if !fs.exists(&path) {
         return None;
     }
-    fs.read_to_string(&path)
-        .ok()
-        .as_deref()
-        .and_then(parse_generation)
+    let raw = fs.read_to_string(&path).ok()?;
+    let (generation, version) = parse_heartbeat(&raw);
+    Some(Heartbeat {
+        generation: generation?,
+        version,
+        last_run: fs.modified(&path).ok(),
+    })
+}
+
+/// Read the init script currently on disk. `None` when nothing has ever
+/// been deployed, or the script is unreadable.
+pub fn read_script(fs: &dyn Fs, paths: &dyn Pather) -> Option<String> {
+    let path = paths.init_script_path();
+    if !fs.exists(&path) {
+        return None;
+    }
+    fs.read_to_string(&path).ok()
 }
 
 /// Read the generation stamped into the init script currently on disk
@@ -109,22 +310,39 @@ pub fn read_heartbeat(fs: &dyn Fs, paths: &dyn Pather) -> Option<u64> {
 /// when the script is missing (nothing has ever been deployed) or
 /// carries no stamp.
 pub fn read_script_generation(fs: &dyn Fs, paths: &dyn Pather) -> Option<u64> {
-    let path = paths.init_script_path();
-    if !fs.exists(&path) {
-        return None;
-    }
-    let content = fs.read_to_string(&path).ok()?;
-    parse_script_generation(&content)
+    read_script(fs, paths)
+        .as_deref()
+        .and_then(parse_script_generation)
 }
 
 /// Extract the generation from init-script text — the value of the
 /// single `export DODOT_INIT_GEN=<n>` line the generator emits.
+///
+/// Doubles as the test of whether a file *is* a dodot init script: no
+/// other file carries that export, and no dodot writes one without it.
 pub fn parse_script_generation(script: &str) -> Option<u64> {
     let prefix = format!("export {INIT_GEN_ENV}=");
     script
         .lines()
         .find_map(|line| line.trim().strip_prefix(&prefix))
         .and_then(parse_generation)
+}
+
+/// Extract the version from init-script text — the value of the single
+/// `export DODOT_INIT_VERSION=<v>` line the generator emits, absent in
+/// a script written before the field existed.
+///
+/// The pair with [`parse_script_generation`], so a script on disk can
+/// be identified by the same two fields the environment stamp and the
+/// heartbeat carry — and judged by the same rules.
+pub fn parse_script_version(script: &str) -> Option<String> {
+    let prefix = format!("export {INIT_VERSION_ENV}=");
+    script
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(&prefix))
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
 }
 
 /// Signal 1: what the calling shell's environment says.
@@ -171,8 +389,27 @@ pub enum HeartbeatState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivationState {
     /// Evidence says shells are loading dodot at the current
-    /// generation. Nothing to say.
+    /// generation, from the binary now running.
     Healthy,
+    /// Shells are loading dodot, but a *different* dodot than the one
+    /// running (`shell-hookup-ergonomics.lex` §2.3). The state the
+    /// version field exists to make visible: a hookup can be wired,
+    /// sourced on every shell start, and still dead, and every other
+    /// state would call this one healthy or stale and send the user to
+    /// a fix that cannot work.
+    VersionSkew,
+    /// Shells are loading dodot and the script they load deploys no
+    /// packs — after `down`, in a repository where every pack is
+    /// ignored, or after a first `up` that deployed nothing. A healthy
+    /// hookup line here is technically true and practically
+    /// misleading.
+    ///
+    /// The claim is about *packs*, not about the file: the measurement
+    /// behind it ([`crate::shell::script_has_contributions`]) counts
+    /// pack contributions, and on a Homebrew host the script still
+    /// carries the bootstrap block that rewrites `PATH`, so "the init
+    /// script is empty" would be flatly false there.
+    EmptyScript,
     /// Something activated, but not at the current generation — most
     /// often the terminal the user is typing in, which predates their
     /// last `up`.
@@ -197,6 +434,8 @@ impl ActivationState {
     pub fn as_str(self) -> &'static str {
         match self {
             ActivationState::Healthy => "healthy",
+            ActivationState::VersionSkew => "version-skew",
+            ActivationState::EmptyScript => "empty-script",
             ActivationState::StaleShell => "stale-shell",
             ActivationState::NeverActivated => "never-activated",
             ActivationState::ShellNotLoaded => "shell-not-loaded",
@@ -266,6 +505,47 @@ pub fn classify_heartbeat(heartbeat: Option<u64>, reference: Option<u64>) -> Hea
 /// means shells are activating and this process just isn't one of
 /// them; old means nothing has activated since the last regeneration;
 /// absent means nothing ever has.
+/// Apply the two rules that override the generation ladder.
+///
+/// The ladder ([`evaluate`]) only ever answers "did a shell load, and
+/// how recently". Two facts outrank that answer, and they outrank it
+/// the same way no matter who established the ladder's verdict — the
+/// two cheap signals, or a shell dodot actually spawned:
+///
+/// - **Version skew** replaces `Healthy` and `StaleShell`. Both say
+///   the hookup is working; a version mismatch says the working
+///   hookup is running the wrong dodot, which is strictly more
+///   specific and is the one thing "open a new shell" may not fix.
+///   It never fires on staleness alone — a mismatch is required —
+///   and it never overrides a state that already says a shell
+///   loaded nothing, where the missing hookup is the news and the
+///   version still shows on line two.
+/// - **An empty script** replaces `Healthy` only: the hookup is
+///   sound and the script it sources deploys no packs, which is the
+///   one claim a healthy line would get wrong. A hookup that is
+///   *also* broken has a bigger problem to report first.
+///
+/// This is a free function rather than a method on [`Evidence`]
+/// because [`crate::shell::probe`] has to reach it too. A measurement
+/// establishes the *ladder's* rung with certainty and learns nothing
+/// about these two rules, so a measured verdict that skipped them
+/// would report `Healthy` for a deployment of nothing — the shared
+/// classifier is shared precisely so the two paths cannot answer
+/// differently.
+pub fn refine(
+    ladder: ActivationState,
+    skewed: bool,
+    script_has_contributions: bool,
+) -> ActivationState {
+    match ladder {
+        ActivationState::Healthy | ActivationState::StaleShell if skewed => {
+            ActivationState::VersionSkew
+        }
+        ActivationState::Healthy if !script_has_contributions => ActivationState::EmptyScript,
+        other => other,
+    }
+}
+
 pub fn evaluate(stamp: StampState, heartbeat: HeartbeatState, tty: bool) -> ActivationState {
     match (stamp, heartbeat) {
         (StampState::Current, _) => ActivationState::Healthy,
@@ -277,210 +557,409 @@ pub fn evaluate(stamp: StampState, heartbeat: HeartbeatState, tty: bool) -> Acti
     }
 }
 
-/// Read both evidence signals and evaluate them against `reference`.
+// ── The evidence, gathered ───────────────────────────────────────────
+
+/// Everything the footer is computed from: both raw signals, the
+/// generation they are judged against, and the facts about this
+/// process they are compared to — its version, its session, its clock.
 ///
-/// `env_stamp` and `tty` are passed in rather than read here so
-/// evaluation stays a function of its inputs: production snapshots
-/// both once into
-/// [`ExecutionContext`](crate::packs::orchestration::ExecutionContext)
-/// (via [`read_env_stamp`] and an `isatty` check), tests hand over
-/// values. Callers that judge on the classic two-signal ladder alone
-/// (`up`, `install`) pass `tty: false`; only `status` supplies real
-/// session evidence — see [`notice_for`].
-pub fn collect_signals(
-    fs: &dyn Fs,
-    paths: &dyn Pather,
-    env_stamp: Option<u64>,
-    reference: Option<u64>,
-    tty: bool,
-) -> ActivationState {
-    let heartbeat = read_heartbeat(fs, paths);
-    evaluate(
-        classify_stamp(env_stamp, reference),
-        classify_heartbeat(heartbeat, reference),
-        tty,
-    )
+/// Reading this is the only IO on the path ([`Evidence::collect`]);
+/// [`Evidence::state`] and [`Evidence::footer`] are pure functions of
+/// it, so every state and every rendered string can be tested by
+/// building one of these by hand.
+#[derive(Debug, Clone)]
+pub struct Evidence {
+    /// What the calling shell's environment reports.
+    pub stamp: EnvStamp,
+    /// What the last shell to source init left behind, if any.
+    pub heartbeat: Option<Heartbeat>,
+    /// The generation a healthy shell would be running — see the
+    /// module docs on who supplies it.
+    pub reference: Option<u64>,
+    /// Whether the generated init script contributes anything at all
+    /// (`crate::shell::script_has_contributions`).
+    pub script_has_contributions: bool,
+    /// Whether this process is attached to a terminal — the session
+    /// evidence that breaks the stampless tie (#279).
+    pub tty: bool,
+    /// The version of the binary rendering this footer.
+    pub running_version: String,
+    /// "Now", for the relative time on line two. An input so the
+    /// rendered strings are assertable.
+    pub now: SystemTime,
 }
 
-/// Evaluate the evidence and render the message for it, or `None` when
-/// there is nothing to say.
+impl Evidence {
+    /// Read both signals and the init script off disk.
+    ///
+    /// `stamp` and `tty` are passed in rather than read here so
+    /// evaluation stays a function of its inputs: production snapshots
+    /// both once into
+    /// [`ExecutionContext`](crate::packs::orchestration::ExecutionContext)
+    /// (via [`EnvStamp::read`] and an `isatty` check), tests hand over
+    /// values. Callers that judge on the classic two-signal ladder
+    /// alone (`up`, `install`) pass `tty: false`; only the callers that
+    /// cannot measure supply real session evidence — see
+    /// [`notice_for`].
+    ///
+    /// `None` when nothing has ever been deployed: with no init script
+    /// on disk there is no hookup to have.
+    pub fn collect(
+        fs: &dyn Fs,
+        paths: &dyn Pather,
+        stamp: EnvStamp,
+        reference: Option<u64>,
+        tty: bool,
+    ) -> Option<Evidence> {
+        let script = read_script(fs, paths)?;
+        Some(Evidence {
+            stamp,
+            heartbeat: read_heartbeat(fs, paths),
+            reference,
+            script_has_contributions: crate::shell::script_has_contributions(&script),
+            tty,
+            running_version: running_version().to_string(),
+            now: SystemTime::now(),
+        })
+    }
+
+    /// The version the *state* is decided on, or `None` when the
+    /// evidence says nothing loaded.
+    ///
+    /// The stamp wins over the heartbeat for the same reason it wins in
+    /// [`evaluate`]: it is direct evidence about the shell the user is
+    /// typing in, where the heartbeat speaks for some past session. That
+    /// makes this the right input to [`Evidence::skewed`] and the wrong
+    /// input to line two — picking a winner between two signals is
+    /// exactly what [`Evidence::evidence_line`] must not do, because the
+    /// losing signal is where the timestamp comes from.
+    ///
+    /// Both arms answer `None` for evidence that did not parse — a
+    /// version field is only ever read alongside a generation that read
+    /// back ([`EnvStamp::evidence_version`], [`read_heartbeat`]), so
+    /// garbage never renders as a loaded version.
+    pub fn loaded_version(&self) -> Option<EvidenceVersion> {
+        self.stamp
+            .evidence_version()
+            .or_else(|| self.heartbeat.as_ref().map(Heartbeat::evidence_version))
+    }
+
+    /// Whether the loaded version differs from the running one.
+    ///
+    /// Never true on an absent signal: with nothing loaded there is
+    /// nothing to differ. Version-less evidence counts as a difference
+    /// for every release after [`PRE_VERSION_RELEASE`] — see
+    /// [`EvidenceVersion::is`] for why the bound release itself is the
+    /// one exception.
+    fn skewed(&self) -> bool {
+        is_skewed(self.loaded_version().as_ref(), &self.running_version)
+    }
+
+    /// Fold everything into one state: the generation ladder
+    /// ([`evaluate`]), then the two overrides ([`refine`]).
+    pub fn state(&self) -> ActivationState {
+        let ladder = evaluate(
+            classify_stamp(self.stamp.generation, self.reference),
+            classify_heartbeat(
+                self.heartbeat.as_ref().map(|h| h.generation),
+                self.reference,
+            ),
+            self.tty,
+        );
+        refine(ladder, self.skewed(), self.script_has_contributions)
+    }
+
+    /// Line two: when a shell last loaded dodot, and which dodot.
+    ///
+    /// Both halves of that sentence must describe the *same*
+    /// activation. The two signals can describe two different ones —
+    /// the stamp says which dodot the invoking shell loaded, the
+    /// heartbeat's mtime says when *some* shell last loaded one — so
+    /// pairing one's time with the other's version states a fact that
+    /// never happened. The time therefore only ever appears beside the
+    /// version of the event it belongs to:
+    ///
+    /// - one signal, or two naming the same dodot → one sentence,
+    ///   carrying the mtime and that version;
+    /// - a stamp with no heartbeat → the unknown-time sentence: a stamp
+    ///   records which dodot this shell loaded, never when;
+    /// - two signals naming different dodots → both, as two events,
+    ///   with the time attached to the heartbeat's.
+    ///
+    /// The time itself is always the heartbeat file's mtime — a
+    /// property of the last shell that *sourced* the script — never the
+    /// generation written inside it, which is a property of the `up`
+    /// that *wrote* it. Under the file-source hook those diverge
+    /// permanently (spec §2.2).
+    pub fn evidence_line(&self) -> String {
+        let tail = if self.state() == ActivationState::VersionSkew {
+            format!(" — you are running {}.", self.running_version)
+        } else {
+            ".".to_string()
+        };
+        let when = self.elapsed_since_last_run().map(relative);
+        let beat = self.heartbeat.as_ref().map(Heartbeat::evidence_version);
+        match (self.stamp.evidence_version(), beat) {
+            (None, None) => "Never loaded.".to_string(),
+            // A stamp with no heartbeat carries no time of its own, so
+            // `when` is `None` here by construction.
+            (Some(v), None) | (None, Some(v)) => one_event(when, &v, &tail),
+            (Some(stamp), Some(beat)) if stamp == beat => one_event(when, &beat, &tail),
+            (Some(stamp), Some(beat)) => two_events(when, &stamp, &beat, &tail),
+        }
+    }
+
+    /// How long ago a shell last sourced the init script, from the
+    /// heartbeat's mtime. `None` when there is no heartbeat, the
+    /// filesystem would not say, or the mtime is in the future (a
+    /// clock change, which is not a duration worth rendering).
+    ///
+    /// "No heartbeat" includes a corrupt one: an mtime is readable from
+    /// a file whose contents are garbage, and reporting one would put a
+    /// confident "last loaded 4 minutes ago" on evidence that says
+    /// nothing loaded. [`read_heartbeat`] is where that is ruled out.
+    fn elapsed_since_last_run(&self) -> Option<Duration> {
+        let last_run = self.heartbeat.as_ref()?.last_run?;
+        self.now.duration_since(last_run).ok()
+    }
+
+    /// Render the two-line footer.
+    ///
+    /// `scan` is the static rc scan ([`rc::scan_expected_rc`]), which
+    /// only [`ActivationState::ShellNotLoaded`] consults for its next
+    /// step; `hook_line` the manual line every "wire it up" hint
+    /// carries.
+    pub fn footer(
+        &self,
+        hook_line: &str,
+        scan: Option<(HookPresence, String)>,
+    ) -> ActivationNotice {
+        ActivationNotice::for_state(self.state(), hook_line, scan, self.evidence_line())
+    }
+}
+
+/// Line two when a single activation accounts for both fields.
+fn one_event(when: Option<String>, version: &EvidenceVersion, tail: &str) -> String {
+    match when {
+        Some(ago) => format!("Last loaded {ago} by dodot {version}{tail}"),
+        None => format!("Last loaded at an unknown time by dodot {version}{tail}"),
+    }
+}
+
+/// Line two when the two signals describe two different activations.
 ///
-/// Silent before anything is deployed: with no init script on disk
-/// there is no hookup to have, and "no shell has loaded dodot yet" on a
-/// machine where `dodot up` has never run is a warning about a
-/// non-problem. The signals are read the same way either way — this is
-/// purely about whether the answer is worth showing.
+/// Each clause keeps its own event's fields: the stamp names the dodot
+/// the invoking shell loaded and nothing about when, the heartbeat's
+/// version and mtime both belong to whichever shell wrote it last.
+fn two_events(
+    when: Option<String>,
+    stamp: &EvidenceVersion,
+    beat: &EvidenceVersion,
+    tail: &str,
+) -> String {
+    match when {
+        Some(ago) => format!(
+            "This shell loaded dodot {stamp}; the last shell to load ran dodot {beat}, {ago}{tail}"
+        ),
+        None => {
+            format!(
+                "This shell loaded dodot {stamp}; the last shell to load ran dodot {beat}{tail}"
+            )
+        }
+    }
+}
+
+/// Render a duration the way the footer says it: "4 minutes ago".
+///
+/// `timeago` with default features off, so no date-time crate enters
+/// the tree and the edge cases of hand-rolled arithmetic stay someone
+/// else's maintained problem. The one override is the below-a-minute
+/// case, which reads better as "just now" than as the crate's "now" in
+/// the sentence this lands in.
+fn relative(elapsed: Duration) -> String {
+    let mut formatter = timeago::Formatter::new();
+    formatter.too_low("just now");
+    formatter.convert(elapsed)
+}
+
+/// Evaluate the evidence and render the two-line footer, or `None` when
+/// nothing has ever been deployed.
+///
+/// Silent before a first deploy: with no init script on disk there is
+/// no hookup to have, and "no shell has loaded dodot yet" on a machine
+/// where `dodot up` has never run is a warning about a non-problem.
 ///
 /// `tty` is the session evidence (see [`evaluate`]); `shell_env` is
-/// only consulted when it produces [`ActivationState::ShellNotLoaded`],
-/// whose next step comes from the static rc scan
-/// ([`rc::scan_expected_rc`]) — file reads, never a shell spawn, so
-/// `status` stays inside spec §9. Callers that must not let the
-/// invoking session color the verdict (`up`, `install`, whose probe
-/// path measures instead) pass `tty: false` and keep today's
-/// two-signal behavior.
-///
-/// `quiet_ok` asks for the healthy line; see
-/// [`ActivationNotice::for_state`].
+/// only consulted when the state is
+/// [`ActivationState::ShellNotLoaded`], whose next step comes from the
+/// static rc scan ([`rc::scan_expected_rc`]) — file reads, never a
+/// shell spawn, so `status` stays inside spec §9.
 pub fn notice_for(
     fs: &dyn Fs,
     paths: &dyn Pather,
-    env_stamp: Option<u64>,
+    stamp: EnvStamp,
     reference: Option<u64>,
-    quiet_ok: bool,
     tty: bool,
     shell_env: &rc::ShellEnv,
 ) -> Option<ActivationNotice> {
-    let init_script = paths.init_script_path();
-    if !fs.exists(&init_script) {
-        return None;
-    }
-    let state = collect_signals(fs, paths, env_stamp, reference, tty);
-    let hook_line = hook_line(&init_script, paths.home_dir());
-    if state == ActivationState::ShellNotLoaded {
-        let scan = rc::scan_expected_rc(fs, paths.home_dir(), shell_env, None);
-        return Some(ActivationNotice::for_shell_not_loaded(scan, &hook_line));
-    }
-    ActivationNotice::for_state(state, &hook_line, quiet_ok)
+    let evidence = Evidence::collect(fs, paths, stamp, reference, tty)?;
+    let hook_line = hook_line(&paths.init_script_path(), paths.home_dir());
+    let scan = (evidence.state() == ActivationState::ShellNotLoaded)
+        .then(|| rc::scan_expected_rc(fs, paths.home_dir(), shell_env, None))
+        .flatten();
+    Some(evidence.footer(&hook_line, scan))
 }
 
-/// A rendered activation message for `up` / `status` output.
+/// The rendered two-line footer every `pack-status` render ends with.
 ///
-/// `severity` names the presentation, not a failure level: `warning`
-/// is the prominent never-activated banner, `info` the one-line stale
-/// hint, `ok` the quiet "hookup: ok" line that only `status` shows.
+/// `severity` names the presentation, not a failure level: `ok` for a
+/// working hookup, `info` for one the next shell fixes, `warning` for
+/// one no new shell will fix, `error` for one a measurement found
+/// broken.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ActivationNotice {
     /// [`ActivationState::as_str`] — lets JSON consumers switch on the
     /// state without parsing the prose.
     pub state: String,
-    /// `"ok"` | `"info"` | `"warning"`.
+    /// `"ok"` | `"info"` | `"warning"` | `"error"`.
     pub severity: String,
-    /// The one-line message.
+    /// Line one: whether dodot is sourced in new shells.
     pub message: String,
-    /// Optional second line: what to do about it.
+    /// The fix, when line one reports a hookup that needs one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+    /// Line two: when a shell last loaded dodot, and which dodot —
+    /// or, when the two signals disagree about which dodot, both
+    /// activations rather than one blended from the pair
+    /// ([`Evidence::evidence_line`]).
+    pub evidence: String,
 }
 
 impl ActivationNotice {
-    /// Build the notice for a state, or `None` when the state should
-    /// stay silent.
+    /// Build the footer for a state.
     ///
-    /// `hook_line` is the rc-file line the user needs when nothing has
-    /// ever activated — see [`hook_line`]. `quiet_ok` asks for the
-    /// healthy "shell hookup: ok" line: `status` passes true (it is a
-    /// report), `up` passes false (a healthy hookup after a deploy is
-    /// silence, spec §5).
+    /// The line-one strings are pinned here — the user documentation
+    /// quotes them verbatim, and the tests assert them as exact
+    /// strings for the same reason. `hook_line` is the rc-file line
+    /// every "wire it up" hint offers (see [`hook_line`]); `scan` is
+    /// the rc scan only [`ActivationState::ShellNotLoaded`] consults;
+    /// `evidence` is line two, from [`Evidence::evidence_line`].
     pub fn for_state(
         state: ActivationState,
         hook_line: &str,
-        quiet_ok: bool,
-    ) -> Option<ActivationNotice> {
-        match state {
-            ActivationState::Healthy if !quiet_ok => None,
-            ActivationState::Healthy => Some(ActivationNotice {
-                state: state.as_str().into(),
-                severity: "ok".into(),
-                message: "shell hookup: ok".into(),
-                hint: None,
-            }),
-            ActivationState::StaleShell => Some(ActivationNotice {
-                state: state.as_str().into(),
-                severity: "info".into(),
-                message: "This shell started before your last `dodot up`.".into(),
-                hint: Some("Open a new shell to pick up the current deployment.".into()),
-            }),
-            ActivationState::NeverActivated => Some(ActivationNotice {
-                state: state.as_str().into(),
-                severity: "warning".into(),
-                message: "Deployed, but no shell has loaded dodot yet.".into(),
-                hint: Some(format!(
+        scan: Option<(HookPresence, String)>,
+        evidence: String,
+    ) -> ActivationNotice {
+        let (severity, message, hint): (&str, &str, Option<String>) = match state {
+            ActivationState::Healthy => ("ok", HEALTHY_MESSAGE, None),
+            ActivationState::VersionSkew => (
+                "warning",
+                "Shell hookup: your shells load a different dodot.",
+                Some(
+                    "Open a new shell. If that changes nothing, the `dodot` your shells run is \
+                     a different install than the one you just ran — check which one your PATH \
+                     finds first."
+                        .into(),
+                ),
+            ),
+            ActivationState::EmptyScript => (
+                "info",
+                "Shell hookup: wired, but no packs are deployed.",
+                Some("Run `dodot up` to deploy your packs.".into()),
+            ),
+            ActivationState::StaleShell => (
+                "info",
+                "Shell hookup: this shell predates your last `dodot up`.",
+                Some("Open a new shell to pick up the current deployment.".into()),
+            ),
+            ActivationState::NeverActivated => (
+                "warning",
+                "Shell hookup: no shell has loaded dodot yet.",
+                Some(format!(
                     "Run `dodot install --write` to wire it up, or add this to your shell rc \
                      file yourself: {hook_line}"
                 )),
-            }),
-            // The full notice needs the rc scan for its next step;
-            // `notice_for` routes there ([`Self::for_shell_not_loaded`])
-            // before reaching this fold. This arm answers for a caller
-            // that has no scan to offer: same headline, scanless hint.
-            ActivationState::ShellNotLoaded => {
-                Some(ActivationNotice::for_shell_not_loaded(None, hook_line))
-            }
+            ),
+            // The next step is whatever the rc scan found; the
+            // headline states only what the evidence proves.
+            ActivationState::ShellNotLoaded => (
+                shell_not_loaded_severity(&scan),
+                "Shell hookup: this shell did not load dodot.",
+                Some(shell_not_loaded_hint(scan, hook_line)),
+            ),
             // Only the probe reaches this state, and it renders its own
             // diagnosis (`probe::Verdict::notice`). This arm is the
             // answer for a caller that folds the state through the
             // evidence path anyway: same headline, generic next step.
-            ActivationState::VerifiedBroken => Some(ActivationNotice {
-                state: state.as_str().into(),
-                severity: "error".into(),
-                message: VERIFIED_BROKEN_MESSAGE.into(),
-                hint: Some(format!(
+            ActivationState::VerifiedBroken => (
+                "error",
+                VERIFIED_BROKEN_MESSAGE,
+                Some(format!(
                     "Run `dodot install --write` to wire the hook, or add this to your shell rc \
                      file yourself: {hook_line}"
                 )),
-            }),
-        }
-    }
-
-    /// Build the [`ActivationState::ShellNotLoaded`] notice.
-    ///
-    /// The headline states only what the evidence proves — *this*
-    /// shell hasn't loaded dodot — because a tty is not proof of a
-    /// shell session (an IDE task runner allocates one too, and
-    /// legitimately reads no rc). The static scan of the rc the user's
-    /// shell should be reading (`scan`: presence + display path, as
-    /// returned by [`rc::scan_expected_rc`]) supplies the next step:
-    ///
-    /// - hook absent → the rc has no hook, so no new shell will fix
-    ///   it; name the file and the fix (a warning).
-    /// - hook present → this is most plausibly a shell opened before
-    ///   the hook landed; open a new one, escalate to `dodot up` (which
-    ///   may probe) if that changes nothing (info).
-    /// - `None` (unsupported shell, no rc to name) → just the manual
-    ///   line (info — with nothing scanned, the false-positive reading
-    ///   stays plausible).
-    pub fn for_shell_not_loaded(
-        scan: Option<(HookPresence, String)>,
-        hook_line: &str,
-    ) -> ActivationNotice {
-        let state = ActivationState::ShellNotLoaded;
-        let (severity, hint) = match scan {
-            Some((HookPresence::Absent, rc_path)) => (
-                "warning",
-                format!(
-                    "{rc_path} doesn't have the dodot hook. Run `dodot install --write` to \
-                     wire it up, or add this line yourself: {hook_line}"
-                ),
-            ),
-            Some((_, rc_path)) => (
-                "info",
-                format!(
-                    "The hook is in {rc_path}, so this shell probably predates it — open a \
-                     new shell. If that changes nothing, run `dodot up` to diagnose."
-                ),
-            ),
-            None => (
-                "info",
-                format!(
-                    "dodot could not tell which rc file your shell reads. Make sure it has \
-                     this line: {hook_line}"
-                ),
             ),
         };
         ActivationNotice {
             state: state.as_str().into(),
             severity: severity.into(),
-            message: "This shell hasn't loaded dodot.".into(),
-            hint: Some(hint),
+            message: message.into(),
+            hint,
+            evidence,
         }
+    }
+}
+
+/// How loudly to report [`ActivationState::ShellNotLoaded`].
+///
+/// A tty is not proof of a shell session — an IDE task runner
+/// allocates one too, and legitimately reads no rc — so this is a
+/// warning only when the rc scan found no hook, which is the one shape
+/// no new shell will fix.
+fn shell_not_loaded_severity(scan: &Option<(HookPresence, String)>) -> &'static str {
+    match scan {
+        Some((HookPresence::Absent, _)) => "warning",
+        _ => "info",
+    }
+}
+
+/// The next step for [`ActivationState::ShellNotLoaded`], from the
+/// static scan of the rc the user's shell should be reading (`scan`:
+/// presence + display path, as returned by [`rc::scan_expected_rc`]):
+///
+/// - hook absent → the rc has no hook, so no new shell will fix it;
+///   name the file and the fix.
+/// - hook present → this is most plausibly a shell opened before the
+///   hook landed; open a new one, escalate to `dodot up` (which may
+///   probe) if that changes nothing.
+/// - `None` (unsupported shell, no rc to name) → just the manual line.
+fn shell_not_loaded_hint(scan: Option<(HookPresence, String)>, hook_line: &str) -> String {
+    match scan {
+        Some((HookPresence::Absent, rc_path)) => format!(
+            "{rc_path} doesn't have the dodot hook. Run `dodot install --write` to \
+             wire it up, or add this line yourself: {hook_line}"
+        ),
+        Some((_, rc_path)) => format!(
+            "The hook is in {rc_path}, so this shell probably predates it — open a \
+             new shell. If that changes nothing, run `dodot up` to diagnose."
+        ),
+        None => format!(
+            "dodot could not tell which rc file your shell reads. Make sure it has \
+             this line: {hook_line}"
+        ),
     }
 }
 
 /// Headline for a hookup the probe measured as broken. Shared so the
 /// evidence path and [`crate::shell::probe`] can never drift into two
 /// different phrasings of the same finding.
-pub const VERIFIED_BROKEN_MESSAGE: &str = "Deployed, but a new shell did not load dodot.";
+pub const VERIFIED_BROKEN_MESSAGE: &str = "Shell hookup: a new shell did not load dodot.";
+
+/// Headline for a hookup the probe measured as working. The same
+/// string [`ActivationState::Healthy`] renders: the probe's
+/// contribution is that the claim is measured rather than inferred,
+/// not a different claim.
+pub const HEALTHY_MESSAGE: &str = "Shell hookup: dodot is sourced in new shells.";
 
 /// The rc-file line that wires a shell up to the generated init
 /// script, with the home prefix written back as `$HOME`.
@@ -506,6 +985,67 @@ pub fn hook_line(init_script_path: &Path, home: &Path) -> String {
 mod tests {
     use super::*;
     use crate::testing::TempEnvironment;
+
+    /// A fixed "now" for the pure footer tests, so every relative time
+    /// they assert is a constant rather than a race with the clock.
+    const NOW: SystemTime = SystemTime::UNIX_EPOCH;
+
+    /// A `SystemTime` `seconds` before [`NOW`].
+    fn ago(seconds: u64) -> Option<SystemTime> {
+        Some(NOW - Duration::from_secs(seconds))
+    }
+
+    /// A heartbeat from its raw file contents and mtime. `raw` must
+    /// parse: a corrupt file is not a `Heartbeat` at all, and the tests
+    /// that cover that case say so with `heartbeat: None` or by
+    /// planting the file and going through [`read_heartbeat`].
+    fn heartbeat(raw: &str, last_run: Option<SystemTime>) -> Heartbeat {
+        let (generation, version) = parse_heartbeat(raw);
+        Heartbeat {
+            generation: generation.expect("heartbeat fixture must carry a parseable generation"),
+            version,
+            last_run,
+        }
+    }
+
+    /// The baseline the footer tests vary one field of: a shell running
+    /// the current generation and the current version, four minutes
+    /// ago, against a script that deploys something. Every state below
+    /// is one deliberate deviation from this.
+    fn skewless() -> Evidence {
+        Evidence {
+            stamp: EnvStamp::default(),
+            heartbeat: Some(heartbeat("100 5.6.0", ago(4 * 60))),
+            reference: Some(100),
+            script_has_contributions: true,
+            tty: false,
+            running_version: "5.6.0".into(),
+            now: NOW,
+        }
+    }
+
+    /// Deploy one shell source so the generated init script carries a
+    /// pack contribution — otherwise every script is the empty one and
+    /// every healthy reading comes back as
+    /// [`ActivationState::EmptyScript`].
+    fn deploy_a_shell_source(env: &TempEnvironment) {
+        let shell_dir = env.paths.handler_data_dir("vim", "shell");
+        env.fs.mkdir_all(&shell_dir).unwrap();
+        let target = env.home.join("aliases.sh");
+        env.fs.write_file(&target, b"alias v=vim").unwrap();
+        env.fs
+            .symlink(&target, &shell_dir.join("aliases.sh"))
+            .unwrap();
+    }
+
+    /// Write heartbeat contents, creating the directory the generated
+    /// script's redirect would have relied on.
+    fn plant_heartbeat(env: &TempEnvironment, contents: &str) {
+        env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
+        env.fs
+            .write_file(&env.paths.hookup_heartbeat_path(), contents.as_bytes())
+            .unwrap();
+    }
 
     // ── The signal ladder, exhaustively ──────────────────────────────
 
@@ -586,9 +1126,11 @@ mod tests {
     }
 
     #[test]
-    fn end_to_end_generation_matrix_through_collect_signals() {
+    fn end_to_end_generation_matrix_through_collected_evidence() {
         // Same matrix, driven by raw generations through the IO entry
         // point: reference 100, stamps/heartbeats above and below it.
+        // Every signal here carries the running version, so the
+        // version-skew rule stays out of the way of the ladder.
         let cases = [
             (Some(100), Some(100), false, ActivationState::Healthy),
             (Some(99), Some(100), false, ActivationState::StaleShell),
@@ -606,16 +1148,24 @@ mod tests {
         ];
         for (stamp, heartbeat, tty, expected) in cases {
             let env = TempEnvironment::builder().build();
+            deploy_a_shell_source(&env);
+            crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None)
+                .unwrap();
             if let Some(h) = heartbeat {
-                env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
-                env.fs
-                    .write_file(&env.paths.hookup_heartbeat_path(), h.to_string().as_bytes())
-                    .unwrap();
+                plant_heartbeat(&env, &format!("{h} {}", running_version()));
             }
+            let stamp = EnvStamp {
+                generation: stamp,
+                version: Some(running_version().into()),
+            };
+            let evidence =
+                Evidence::collect(env.fs.as_ref(), env.paths.as_ref(), stamp, Some(100), tty)
+                    .expect("a script is on disk");
             assert_eq!(
-                collect_signals(env.fs.as_ref(), env.paths.as_ref(), stamp, Some(100), tty),
+                evidence.state(),
                 expected,
-                "stamp={stamp:?} heartbeat={heartbeat:?} tty={tty}"
+                "stamp={:?} heartbeat={heartbeat:?} tty={tty}",
+                evidence.stamp.generation
             );
         }
     }
@@ -630,11 +1180,32 @@ mod tests {
         assert_eq!(parse_generation("-1"), None);
 
         let env = TempEnvironment::builder().build();
-        env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
-        env.fs
-            .write_file(&env.paths.hookup_heartbeat_path(), b"garbage")
-            .unwrap();
+        plant_heartbeat(&env, "garbage");
         assert_eq!(read_heartbeat(env.fs.as_ref(), env.paths.as_ref()), None);
+
+        // The same rule on the version axis, both signals: a version
+        // is only ever evidence alongside a generation that read back,
+        // so an unparseable generation takes the version down with it
+        // rather than leaving a version nobody can attribute to a run.
+        assert_eq!(
+            EnvStamp {
+                generation: None,
+                version: Some("9.9.9".into()),
+            }
+            .evidence_version(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_heartbeat_splits_into_generation_and_version() {
+        assert_eq!(
+            parse_heartbeat("1786830419 5.6.0\n"),
+            (Some(1_786_830_419), Some("5.6.0".into()))
+        );
+        // The pre-RCS01 shape: generation only.
+        assert_eq!(parse_heartbeat("1786830419"), (Some(1_786_830_419), None));
+        assert_eq!(parse_heartbeat(""), (None, None));
     }
 
     #[test]
@@ -653,18 +1224,397 @@ mod tests {
         );
     }
 
-    // ── Notices ──────────────────────────────────────────────────────
+    // ── Version skew ─────────────────────────────────────────────────
 
     #[test]
-    fn healthy_is_silent_for_up_and_quiet_for_status() {
+    fn a_version_less_signal_renders_as_the_bound_not_as_unknown() {
+        assert_eq!(EvidenceVersion::from_field(None).to_string(), "≤5.5.1");
         assert_eq!(
-            ActivationNotice::for_state(ActivationState::Healthy, "hook", false),
-            None
+            EvidenceVersion::from_field(Some("  ")).to_string(),
+            "≤5.5.1"
         );
-        let quiet = ActivationNotice::for_state(ActivationState::Healthy, "hook", true).unwrap();
-        assert_eq!(quiet.severity, "ok");
-        assert_eq!(quiet.state, "healthy");
+        assert_eq!(
+            EvidenceVersion::from_field(Some("5.6.0")).to_string(),
+            "5.6.0"
+        );
+        assert!(!EvidenceVersion::PreVersion.is("5.6.0"));
+        assert!(EvidenceVersion::Known("5.6.0".into()).is("5.6.0"));
+        // The bound matches only the release it bounds: a binary that
+        // is itself 5.5.1 cannot tell its own version-less evidence
+        // apart from an older dodot's, so it claims no skew.
+        assert!(EvidenceVersion::PreVersion.is(PRE_VERSION_RELEASE));
     }
+
+    /// A pre-RCS01 heartbeat — generation, no version — is the shape
+    /// every upgrading user has on disk. It must read as a bounded
+    /// version, name both sides, and never panic.
+    #[test]
+    fn a_version_less_heartbeat_reports_skew_against_the_bound() {
+        let evidence = Evidence {
+            stamp: EnvStamp::default(),
+            heartbeat: Some(heartbeat("1786830419", ago(4 * 60))),
+            reference: Some(1_786_830_419),
+            script_has_contributions: true,
+            tty: false,
+            running_version: "5.6.0".into(),
+            now: NOW,
+        };
+        assert_eq!(evidence.state(), ActivationState::VersionSkew);
+        assert_eq!(
+            evidence.evidence_line(),
+            "Last loaded 4 minutes ago by dodot ≤5.5.1 — you are running 5.6.0."
+        );
+    }
+
+    #[test]
+    fn skew_is_a_version_mismatch_never_staleness_alone() {
+        // Stale generation, matching version: the existing stale-shell
+        // state, whose fix (a new shell) is the right one.
+        let stale = Evidence {
+            stamp: EnvStamp {
+                generation: Some(99),
+                version: Some("5.6.0".into()),
+            },
+            ..skewless()
+        };
+        assert_eq!(stale.state(), ActivationState::StaleShell);
+
+        // Current generation, different version: the failure the epic
+        // exists to catch — wired, sourced, and running the wrong dodot.
+        // Both signals name that same wrong dodot, so line two is the
+        // one-event sentence the docs tabulate.
+        let skewed = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.0.0".into()),
+            },
+            heartbeat: Some(heartbeat("100 5.0.0", ago(4 * 60))),
+            ..skewless()
+        };
+        assert_eq!(skewed.state(), ActivationState::VersionSkew);
+        assert_eq!(
+            skewed.evidence_line(),
+            "Last loaded 4 minutes ago by dodot 5.0.0 — you are running 5.6.0."
+        );
+
+        // Nothing loaded at all: no version to differ from.
+        let never = Evidence {
+            stamp: EnvStamp::default(),
+            heartbeat: None,
+            ..skewless()
+        };
+        assert_eq!(never.state(), ActivationState::NeverActivated);
+        assert_eq!(never.evidence_line(), "Never loaded.");
+    }
+
+    /// The stamp speaks for the shell the user is typing in, so it
+    /// decides the *state* the same way it decides the generation —
+    /// but deciding the state is the whole of its authority. The
+    /// timestamp belongs to the heartbeat's activation, so a stamp that
+    /// outranks the heartbeat cannot take the heartbeat's time with it:
+    /// "Last loaded 4 minutes ago by dodot 5.6.0" would report a moment
+    /// at which no 5.6.0 shell loaded anything.
+    #[test]
+    fn a_disagreement_reports_two_events_never_one_blended_from_both() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            heartbeat: Some(heartbeat("100 5.0.0", ago(4 * 60))),
+            ..skewless()
+        };
+        // The stamp still decides: this shell runs the current dodot.
+        assert_eq!(evidence.state(), ActivationState::Healthy);
+        let line = evidence.evidence_line();
+        assert_eq!(
+            line,
+            "This shell loaded dodot 5.6.0; the last shell to load ran dodot 5.0.0, 4 minutes ago."
+        );
+        // The failure this replaces: one signal's time beside the
+        // other's version.
+        assert!(!line.contains("4 minutes ago by dodot 5.6.0"), "{line}");
+    }
+
+    /// The mirror case — the stamp is the *older* dodot, which is the
+    /// skew story — and the same rule: the time stays with the
+    /// heartbeat's version, and the "you are running" tail names the
+    /// binary rendering the footer.
+    #[test]
+    fn a_skewed_stamp_beside_a_newer_heartbeat_keeps_both_events_intact() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.0.0".into()),
+            },
+            heartbeat: Some(heartbeat("100 5.6.0", ago(4 * 60))),
+            ..skewless()
+        };
+        assert_eq!(evidence.state(), ActivationState::VersionSkew);
+        assert_eq!(
+            evidence.evidence_line(),
+            "This shell loaded dodot 5.0.0; the last shell to load ran dodot 5.6.0, 4 minutes ago \
+             — you are running 5.6.0."
+        );
+    }
+
+    /// Two signals that name the same dodot describe one activation as
+    /// far as the sentence is concerned, so it stays one sentence.
+    #[test]
+    fn agreeing_signals_render_a_single_event() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            heartbeat: Some(heartbeat("100 5.6.0", ago(4 * 60))),
+            ..skewless()
+        };
+        assert_eq!(
+            evidence.evidence_line(),
+            "Last loaded 4 minutes ago by dodot 5.6.0."
+        );
+    }
+
+    /// A stamp with no heartbeat has no time in it at all: the shell
+    /// loaded *some* time before now, and the footer says exactly that
+    /// rather than borrowing a timestamp from nowhere.
+    #[test]
+    fn a_stamp_without_a_heartbeat_reports_an_unknown_time() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            heartbeat: None,
+            ..skewless()
+        };
+        assert_eq!(
+            evidence.evidence_line(),
+            "Last loaded at an unknown time by dodot 5.6.0."
+        );
+    }
+
+    /// A disagreement with no readable mtime drops the time clause
+    /// rather than the second event.
+    #[test]
+    fn a_disagreement_without_an_mtime_still_names_both_dodots() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            heartbeat: Some(heartbeat("100 5.0.0", None)),
+            ..skewless()
+        };
+        assert_eq!(
+            evidence.evidence_line(),
+            "This shell loaded dodot 5.6.0; the last shell to load ran dodot 5.0.0."
+        );
+    }
+
+    // ── Run time is not generation time ──────────────────────────────
+
+    /// The measured divergence from the spec (§2.2): heartbeat content
+    /// written when `up` generated the script, mtime written when a
+    /// shell last sourced it. The footer must report the mtime.
+    #[test]
+    fn last_loaded_comes_from_the_heartbeat_mtime_not_its_contents() {
+        let env = TempEnvironment::builder().build();
+        deploy_a_shell_source(&env);
+        crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+        // Content says 18:46 (when `up` wrote the script); the file was
+        // last touched 45 minutes later, by the shell that sourced it.
+        plant_heartbeat(&env, &format!("1786830419 {}", running_version()));
+        let touched = SystemTime::now() - Duration::from_secs(45 * 60);
+        env.fs
+            .set_modified(&env.paths.hookup_heartbeat_path(), touched)
+            .unwrap();
+
+        let evidence = Evidence::collect(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            EnvStamp::default(),
+            Some(1_786_830_419),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            evidence.evidence_line(),
+            format!("Last loaded 45 minutes ago by dodot {}.", running_version()),
+            "the generation inside the file is a write time, not a run time"
+        );
+    }
+
+    /// Existence is not activation. A corrupt heartbeat offers two
+    /// things that look like evidence and are not — a readable mtime
+    /// and a present second field — and the footer must decline both:
+    /// a file full of garbage proves no shell ever loaded dodot, so
+    /// line two is "Never loaded.", not "Last loaded 45 minutes ago by
+    /// dodot 5.6.0". This is the generation contract
+    /// ([`parse_generation`]) held on the version and run-time axes too.
+    #[test]
+    fn a_corrupt_heartbeat_reads_as_no_activation_on_every_axis() {
+        let env = TempEnvironment::builder().build();
+        deploy_a_shell_source(&env);
+        crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+        // Garbage where the generation belongs, and a field after it
+        // shaped exactly like a version — the most tempting corruption.
+        plant_heartbeat(&env, "not-a-generation 5.6.0");
+        let touched = SystemTime::now() - Duration::from_secs(45 * 60);
+        env.fs
+            .set_modified(&env.paths.hookup_heartbeat_path(), touched)
+            .unwrap();
+
+        let evidence = Evidence::collect(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            EnvStamp::default(),
+            Some(1_786_830_419),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(evidence.loaded_version(), None);
+        assert_eq!(evidence.state(), ActivationState::NeverActivated);
+        assert_eq!(
+            evidence.evidence_line(),
+            "Never loaded.",
+            "neither the mtime nor the trailing field is evidence a shell loaded dodot"
+        );
+    }
+
+    /// The version-less shape of the same corruption: no second field
+    /// to mistake for a version, and the `≤` bound must not be reached
+    /// for either — a corrupt file is not a pre-RCS01 activation.
+    #[test]
+    fn a_corrupt_heartbeat_is_not_a_pre_version_activation() {
+        let evidence = Evidence {
+            heartbeat: read_heartbeat_from(""),
+            ..skewless()
+        };
+        assert_eq!(evidence.loaded_version(), None);
+        assert_eq!(evidence.evidence_line(), "Never loaded.");
+    }
+
+    /// Plant `contents` as the heartbeat and read it back through the
+    /// production path, so the corruption tests exercise the real gate
+    /// rather than a hand-built `Heartbeat`.
+    fn read_heartbeat_from(contents: &str) -> Option<Heartbeat> {
+        let env = TempEnvironment::builder().build();
+        plant_heartbeat(&env, contents);
+        read_heartbeat(env.fs.as_ref(), env.paths.as_ref())
+    }
+
+    #[test]
+    fn an_unreadable_mtime_says_so_instead_of_guessing() {
+        let evidence = Evidence {
+            heartbeat: Some(heartbeat("100 5.6.0", None)),
+            ..skewless()
+        };
+        assert_eq!(
+            evidence.evidence_line(),
+            "Last loaded at an unknown time by dodot 5.6.0."
+        );
+    }
+
+    // ── Footer strings, per state ────────────────────────────────────
+
+    /// WS04's documentation quotes these, so they are pinned as exact
+    /// strings — a reworded line is a doc bug, not a cosmetic change.
+    #[test]
+    fn every_state_renders_its_pinned_two_lines() {
+        let cases = [
+            (
+                ActivationState::Healthy,
+                "ok",
+                "Shell hookup: dodot is sourced in new shells.",
+            ),
+            (
+                ActivationState::VersionSkew,
+                "warning",
+                "Shell hookup: your shells load a different dodot.",
+            ),
+            (
+                ActivationState::EmptyScript,
+                "info",
+                "Shell hookup: wired, but no packs are deployed.",
+            ),
+            (
+                ActivationState::StaleShell,
+                "info",
+                "Shell hookup: this shell predates your last `dodot up`.",
+            ),
+            (
+                ActivationState::NeverActivated,
+                "warning",
+                "Shell hookup: no shell has loaded dodot yet.",
+            ),
+            (
+                ActivationState::ShellNotLoaded,
+                "info",
+                "Shell hookup: this shell did not load dodot.",
+            ),
+            (
+                ActivationState::VerifiedBroken,
+                "error",
+                "Shell hookup: a new shell did not load dodot.",
+            ),
+        ];
+        for (state, severity, message) in cases {
+            let notice = ActivationNotice::for_state(state, "HOOK", None, "Never loaded.".into());
+            assert_eq!(notice.state, state.as_str());
+            assert_eq!(notice.severity, severity, "{state:?}");
+            assert_eq!(notice.message, message, "{state:?}");
+            assert_eq!(notice.evidence, "Never loaded.", "{state:?}");
+        }
+    }
+
+    #[test]
+    fn the_healthy_footer_reads_as_the_spec_tabulates_it() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            ..skewless()
+        };
+        let notice = evidence.footer("HOOK", None);
+        assert_eq!(
+            notice.message,
+            "Shell hookup: dodot is sourced in new shells."
+        );
+        assert_eq!(notice.evidence, "Last loaded 4 minutes ago by dodot 5.6.0.");
+        assert_eq!(notice.hint, None);
+    }
+
+    /// One rule, three occasions: after `down`, with every pack
+    /// ignored, and after a first `up` that deployed nothing. All three
+    /// reach here as "the script carries no contributions".
+    #[test]
+    fn a_contribution_less_script_says_so_instead_of_claiming_health() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            script_has_contributions: false,
+            ..skewless()
+        };
+        assert_eq!(evidence.state(), ActivationState::EmptyScript);
+
+        // A hookup that is *also* broken has a bigger problem to report.
+        let broken = Evidence {
+            stamp: EnvStamp::default(),
+            heartbeat: None,
+            script_has_contributions: false,
+            ..skewless()
+        };
+        assert_eq!(broken.state(), ActivationState::NeverActivated);
+    }
+
+    // ── Notices ──────────────────────────────────────────────────────
 
     #[test]
     fn never_activated_is_prominent_and_names_the_manual_hook() {
@@ -679,8 +1629,12 @@ mod tests {
             "[ -f \"$HOME/.local/share/dodot/shell/dodot-init.sh\" ] && . \"$HOME/.local/share/dodot/shell/dodot-init.sh\""
         );
 
-        let notice =
-            ActivationNotice::for_state(ActivationState::NeverActivated, &hook, true).unwrap();
+        let notice = ActivationNotice::for_state(
+            ActivationState::NeverActivated,
+            &hook,
+            None,
+            "Never loaded.".into(),
+        );
         assert_eq!(notice.severity, "warning");
         assert!(notice.message.contains("no shell has loaded dodot yet"));
         let hint = notice.hint.unwrap();
@@ -696,14 +1650,23 @@ mod tests {
 
     #[test]
     fn shell_not_loaded_lets_the_rc_scan_pick_the_next_step() {
+        let not_loaded = |scan| {
+            ActivationNotice::for_state(
+                ActivationState::ShellNotLoaded,
+                "HOOK",
+                scan,
+                "Never loaded.".into(),
+            )
+        };
+
         // Hook absent: no new shell fixes it — name the file and the fix.
-        let absent = ActivationNotice::for_shell_not_loaded(
-            Some((HookPresence::Absent, "~/.zshrc".into())),
-            "HOOK",
-        );
+        let absent = not_loaded(Some((HookPresence::Absent, "~/.zshrc".into())));
         assert_eq!(absent.state, "shell-not-loaded");
         assert_eq!(absent.severity, "warning");
-        assert_eq!(absent.message, "This shell hasn't loaded dodot.");
+        assert_eq!(
+            absent.message,
+            "Shell hookup: this shell did not load dodot."
+        );
         let hint = absent.hint.unwrap();
         assert!(hint.contains("~/.zshrc") && hint.contains("dodot install --write"));
         assert!(!hint.contains("new shell"), "{hint}");
@@ -711,8 +1674,7 @@ mod tests {
         // Hook present (managed or manual): an old shell is the likely
         // story — advise a new one, escalate to `up` after that.
         for presence in [HookPresence::ManagedBlock, HookPresence::Manual] {
-            let present =
-                ActivationNotice::for_shell_not_loaded(Some((presence, "~/.zshrc".into())), "HOOK");
+            let present = not_loaded(Some((presence, "~/.zshrc".into())));
             assert_eq!(present.severity, "info");
             let hint = present.hint.unwrap();
             assert!(
@@ -722,15 +1684,19 @@ mod tests {
         }
 
         // No rc to name (unsupported shell): just the manual line.
-        let unknown = ActivationNotice::for_shell_not_loaded(None, "HOOK");
+        let unknown = not_loaded(None);
         assert_eq!(unknown.severity, "info");
         assert!(unknown.hint.unwrap().contains("HOOK"));
     }
 
     #[test]
     fn stale_shell_says_open_a_new_shell() {
-        let notice =
-            ActivationNotice::for_state(ActivationState::StaleShell, "hook", true).unwrap();
+        let notice = ActivationNotice::for_state(
+            ActivationState::StaleShell,
+            "hook",
+            None,
+            "Never loaded.".into(),
+        );
         assert_eq!(notice.severity, "info");
         assert!(notice.hint.unwrap().contains("Open a new shell"));
     }
