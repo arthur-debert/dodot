@@ -93,12 +93,26 @@ pub fn decode_native_path(spelling: &str) -> Result<PathBuf> {
 /// The filesystem questions root selection asks, injected so the selection
 /// and trust logic stay testable without a real repository.
 ///
-/// Only two questions matter, and both come from the Spec's explicit-value
-/// rules: a candidate must resolve to a readable directory, and it is then
-/// canonicalized once per invocation.
+/// The questions come from the Spec's explicit-value rules: a candidate is
+/// canonicalized once per invocation and must then be a readable directory.
+/// Being a directory and being readable are asked separately because a
+/// refused user is told *which* one failed — "is not a directory" and
+/// "cannot be read" are different mistakes with different fixes, and one
+/// boolean could not tell them apart.
 pub trait PathProbe: Send + Sync {
     /// Resolve `path` to its canonical absolute form, following symlinks.
+    ///
+    /// This is also what separates "nothing is there" from "something is
+    /// there that cannot be resolved": the two arrive as
+    /// [`ErrorKind::NotFound`](std::io::ErrorKind::NotFound) and any other
+    /// error respectively.
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf>;
+
+    /// Whether `path` is a directory at all.
+    ///
+    /// Asked of an already-canonical path, so the answer is about the
+    /// symlink's target rather than the link.
+    fn is_directory(&self, path: &Path) -> bool;
 
     /// Whether `path` is a directory whose entries can be listed.
     ///
@@ -115,6 +129,10 @@ pub struct OsPathProbe;
 impl PathProbe for OsPathProbe {
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
         std::fs::canonicalize(path)
+    }
+
+    fn is_directory(&self, path: &Path) -> bool {
+        path.is_dir()
     }
 
     fn is_readable_dir(&self, path: &Path) -> bool {
@@ -220,11 +238,39 @@ mod tests {
         let probe = OsPathProbe;
 
         let canonical = probe.canonicalize(dir.path()).unwrap();
+        assert!(probe.is_directory(&canonical));
         assert!(probe.is_readable_dir(&canonical));
 
         let file = canonical.join("not-a-dir");
         std::fs::write(&file, b"").unwrap();
+        assert!(!probe.is_directory(&file));
         assert!(!probe.is_readable_dir(&file));
+        assert!(!probe.is_directory(&canonical.join("missing")));
         assert!(!probe.is_readable_dir(&canonical.join("missing")));
+    }
+
+    /// The two directory questions are asked separately so a diagnostic can
+    /// say which one failed: a mode-000 directory *is* a directory, and only
+    /// the listing fails.
+    #[test]
+    fn os_probe_separates_being_a_directory_from_being_readable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        // Running as root defeats the permission bits entirely.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+
+        let parent = tempfile::tempdir().unwrap();
+        let locked = parent.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let probe = OsPathProbe;
+        assert!(probe.is_directory(&locked));
+        assert!(!probe.is_readable_dir(&locked));
+
+        // Let the TempDir clean itself up.
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
 }

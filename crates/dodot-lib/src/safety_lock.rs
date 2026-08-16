@@ -50,11 +50,16 @@
 //!
 //! # Work Stream status
 //!
-//! ACC01-WS01 establishes this vocabulary and the persisted schema. The
-//! selection, trust-lifecycle, decision, inventory, and scoping entry points
+//! ACC01-WS01 establishes this vocabulary and the persisted schema; ACC01-WS02
+//! fills in [`environment`], the authoritative `DOTFILES_ROOT` path. The
+//! remaining trust-lifecycle, decision, inventory, and scoping entry points
 //! carry documented signatures with `todo!()` bodies; each names the Work
-//! Stream that fills it in. The data model and the schema are complete and
-//! tested.
+//! Stream that fills it in. The data model, the schema, and environment
+//! selection are complete and tested.
+//!
+//! Nothing in this module is wired into a command yet: the process boundary
+//! that captures the environment, the current directory, and Git — and the
+//! gate that consults all of this — arrives with WS07.
 
 pub mod check;
 pub mod environment;
