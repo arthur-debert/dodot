@@ -161,7 +161,7 @@ pub fn resolve_environment_root(
 
     if !probe.is_readable_dir(&canonical) {
         return Err(unusable(format!(
-            "{named} is a directory whose contents cannot be listed"
+            "{named} is a directory whose contents cannot be read"
         )));
     }
 
@@ -469,7 +469,7 @@ mod tests {
 
         assert!(missing.contains("does not exist"), "{missing}");
         assert!(not_a_dir.contains("is not a directory"), "{not_a_dir}");
-        assert!(unreadable.contains("cannot be listed"), "{unreadable}");
+        assert!(unreadable.contains("cannot be read"), "{unreadable}");
         assert!(
             uncanonicalizable.contains("could not be resolved"),
             "{uncanonicalizable}"
