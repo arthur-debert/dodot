@@ -48,12 +48,27 @@ pub enum SafetyLockError {
     #[error("could not determine a dotfiles root from `{}`", current_dir.display())]
     NoImplicitRoot { current_dir: PathBuf },
 
-    /// A path that must be canonical and absolute was neither.
+    /// A path that must be canonical and absolute was not absolute.
     ///
     /// Root identity is the canonical absolute path (ADR-0001); a relative
     /// spelling has no stable identity to approve or revoke.
     #[error("`{spelling}` is not an absolute path, so it cannot identify a dotfiles root")]
     RelativeRootIdentity { spelling: String },
+
+    /// An absolute path carried a `..` component, so it is an *alias* of a
+    /// root rather than the root itself.
+    ///
+    /// `..` cannot be resolved without consulting the filesystem — under a
+    /// symlink `/a/b/..` is not `/a` — so an identity is refused rather than
+    /// lexically rewritten. Two spellings of one directory would otherwise
+    /// become two identities and slip past duplicate detection and approval
+    /// lookup alike (ADR-0001). Resolve the path first: selection
+    /// canonicalizes through [`PathProbe`](super::util::PathProbe).
+    #[error(
+        "`{spelling}` contains `..`, so it names an alias rather than a \
+         dotfiles root — pass the resolved path instead"
+    )]
+    NonCanonicalRootIdentity { spelling: String },
 
     /// A stored spelling could not be read back into a native path — the
     /// tagged encoding was truncated or contained non-hex characters.

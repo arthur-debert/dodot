@@ -10,7 +10,7 @@
 //! `RootIdentity`.
 
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -67,9 +67,19 @@ impl fmt::Display for RootSource {
 ///
 /// Equality, ordering, and hashing compare the native path exactly, so two
 /// roots that merely *render* alike stay two identities (ADR-0001). The path
-/// is held privately because every construction route validates it: an
-/// identity that is relative — and therefore cannot be approved or revoked
-/// unambiguously — is not representable.
+/// is held privately because every construction route enforces the identity
+/// invariant rather than trusting the caller for it: the stored path is
+/// always absolute, always free of `..`, and always spelled with single
+/// separators and no trailing one. A relative path — which cannot be approved
+/// or revoked unambiguously — and a `..` alias — which would be a *second*
+/// identity for a root already approved — are both unrepresentable.
+///
+/// What the type cannot promise is symlink resolution: that needs the
+/// filesystem. Selection canonicalizes once per invocation through
+/// [`PathProbe`](super::util::PathProbe) and builds the identity from that
+/// result (ADR-0001); the invariant here is what holds for *every* identity,
+/// including one read back from trust state long after the path it names
+/// stopped existing.
 ///
 /// Serialization uses the reversible spelling of
 /// [`encode_native_path`](super::util::encode_native_path), which is what
@@ -81,11 +91,25 @@ pub struct RootIdentity {
 }
 
 impl RootIdentity {
-    /// Build an identity from an already-canonicalized absolute path.
+    /// Build an identity from an absolute path, enforcing everything
+    /// canonicality means that can be decided without touching the
+    /// filesystem.
     ///
-    /// Canonicalization itself belongs to the selection modules — this
-    /// constructor only enforces the invariant every consumer relies on
-    /// (absolute path, native bytes preserved).
+    /// Refused: a relative path, and any path carrying a `..` component.
+    /// Accepted and made canonical in place: purely syntactic spelling
+    /// differences that name the same path unconditionally — repeated
+    /// separators, a trailing separator, an interior `.`. `/srv//dots/`,
+    /// `/srv/./dots`, and `/srv/dots` are therefore one identity, not three,
+    /// so no alias can slip past duplicate detection or approval lookup.
+    ///
+    /// `..` is refused rather than folded away because folding it is only
+    /// correct when no component is a symlink, which this constructor cannot
+    /// know. Symlink resolution belongs to selection, which canonicalizes
+    /// through [`PathProbe`](super::util::PathProbe) and passes the result
+    /// here.
+    ///
+    /// Native bytes are preserved: normalization rewrites separators only,
+    /// never a component.
     pub fn new(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
         if !path.is_absolute() {
@@ -93,19 +117,35 @@ impl RootIdentity {
                 spelling: encode_native_path(&path),
             });
         }
-        Ok(Self { path })
+
+        let mut canonical = PathBuf::new();
+        for component in path.components() {
+            if component == Component::ParentDir {
+                return Err(SafetyLockError::NonCanonicalRootIdentity {
+                    spelling: encode_native_path(&path),
+                });
+            }
+            canonical.push(component.as_os_str());
+        }
+
+        Ok(Self { path: canonical })
     }
 
     /// Read an identity back from a stored or user-supplied spelling.
     ///
     /// Accepts both forms [`spelling`](Self::spelling) produces, so a line
     /// copied out of `roots list` can be passed straight back to
-    /// `roots forget`.
+    /// `roots forget`, and applies the same invariant as
+    /// [`new`](Self::new) — a stored entry that is relative or aliased fails
+    /// the read instead of becoming a second identity.
     pub fn parse(spelling: &str) -> Result<Self> {
         Self::new(decode_native_path(spelling)?)
     }
 
-    /// The canonical native path.
+    /// The canonical native path: absolute, free of `..`, singly separated.
+    ///
+    /// Canonical up to symlinks — see [`RootIdentity`] for what the type does
+    /// and does not decide without the filesystem.
     pub fn as_path(&self) -> &Path {
         &self.path
     }
@@ -120,10 +160,19 @@ impl RootIdentity {
     /// Whether `candidate` is this root or lies inside it.
     ///
     /// Used by mutation scoping to keep an authorized root and the mutated
-    /// root the same one (ADR-0002). Both sides must already be canonical;
-    /// this is a path comparison, not a filesystem check.
+    /// root the same one (ADR-0002). This is a path comparison, not a
+    /// filesystem check: the caller canonicalizes `candidate` first, and a
+    /// candidate that is not canonical is answered `false` rather than
+    /// trusted. `/srv/dots/../../etc/passwd` starts with `/srv/dots`
+    /// component-wise, so a plain prefix test would authorize a write clean
+    /// outside the root; here it lands in the out-of-root report instead,
+    /// which is the direction that fails closed.
     pub fn contains(&self, candidate: &Path) -> bool {
-        candidate.starts_with(&self.path)
+        candidate.is_absolute()
+            && !candidate
+                .components()
+                .any(|component| component == Component::ParentDir)
+            && candidate.starts_with(&self.path)
     }
 }
 
@@ -236,6 +285,65 @@ mod tests {
         );
     }
 
+    /// The alias case the authorization boundary turns on: `..` cannot be
+    /// resolved without the filesystem, so an identity carrying one is
+    /// refused instead of becoming a second record for an already-approved
+    /// root.
+    #[test]
+    fn parent_dir_aliases_are_not_identities() {
+        for alias in ["/srv/dots/../other", "/srv/dots/..", "/../srv/dots"] {
+            let err = RootIdentity::new(alias).unwrap_err();
+            assert!(
+                matches!(err, SafetyLockError::NonCanonicalRootIdentity { .. }),
+                "`{alias}` was accepted as an identity: {err:?}"
+            );
+        }
+
+        // Every construction route, not just the direct one.
+        assert!(RootIdentity::parse("/srv/dots/../other").is_err());
+        assert!(serde_json::from_str::<RootIdentity>("\"/srv/dots/../other\"").is_err());
+    }
+
+    /// A `..` alias must not be able to reach a distinct identity by any
+    /// route — a lexically resolved spelling and the real path are one
+    /// record, and duplicate detection sees them as one.
+    #[test]
+    fn aliases_cannot_produce_a_second_identity_for_one_root() {
+        let root = identity("/srv/dots/other");
+
+        for alias in ["/srv//dots/other", "/srv/dots/other/", "/srv/./dots/other"] {
+            let from_alias = RootIdentity::new(alias).unwrap();
+            assert_eq!(from_alias, root, "`{alias}` became a second identity");
+            assert_eq!(from_alias.spelling(), root.spelling());
+        }
+
+        let set: HashSet<RootIdentity> =
+            ["/srv//dots/other", "/srv/dots/other/", "/srv/dots/other"]
+                .into_iter()
+                .map(identity)
+                .collect();
+        assert_eq!(
+            set.len(),
+            1,
+            "spelling variants de-duplicated into one root"
+        );
+    }
+
+    /// Normalization rewrites separators only: a non-Unicode component keeps
+    /// its bytes, so the identity still round-trips through trust state.
+    #[test]
+    fn normalization_preserves_native_component_bytes() {
+        let original = non_unicode_identity(b"\x80dots");
+        let with_trailing_separator = {
+            let mut bytes = b"/tmp/".to_vec();
+            bytes.extend_from_slice(b"\x80dots/");
+            RootIdentity::new(PathBuf::from(OsString::from_vec(bytes))).unwrap()
+        };
+
+        assert_eq!(with_trailing_separator, original);
+        assert_eq!(original.spelling(), "os-bytes:2f746d702f80646f7473");
+    }
+
     #[test]
     fn identity_displays_its_reversible_spelling() {
         assert_eq!(
@@ -285,6 +393,22 @@ mod tests {
         assert!(!root.contains(Path::new("/home/alice/other/vimrc")));
         // Prefix-of-a-component, not a real descendant.
         assert!(!root.contains(Path::new("/home/alice/dotfiles-backup/vimrc")));
+    }
+
+    /// Containment is the mutation-scoping gate, so a candidate that walks
+    /// back out of the root must not be reported as inside it — a plain
+    /// component-prefix test says it is.
+    #[test]
+    fn containment_refuses_candidates_that_escape_through_parent_dirs() {
+        let root = identity("/home/alice/dotfiles");
+
+        assert!(
+            Path::new("/home/alice/dotfiles/../../../etc/passwd").starts_with(root.as_path()),
+            "test premise: a bare prefix test accepts this escape"
+        );
+        assert!(!root.contains(Path::new("/home/alice/dotfiles/../../../etc/passwd")));
+        assert!(!root.contains(Path::new("/home/alice/dotfiles/vim/../vimrc")));
+        assert!(!root.contains(Path::new("dotfiles/vim/vimrc")));
     }
 
     #[test]

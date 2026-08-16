@@ -28,9 +28,10 @@
 //! Environment-selected roots never appear here: `DOTFILES_ROOT` *is* the
 //! deliberate selection, so it is authorized without a record (ADR-0003).
 //!
-//! This module owns the schema and the store's coordinates only. Loading and
-//! writing belong to the caller: the checking, listing, and forgetting APIs
-//! take an already-loaded [`SafetyLockConfig`] and return typed state changes.
+//! This module owns the schema, the store's coordinates, and the one
+//! validated way to load it ([`SafetyLockConfig::load_from`]). *Writing*
+//! belongs to the caller: the checking, listing, and forgetting APIs take an
+//! already-loaded [`SafetyLockConfig`] and return typed state changes.
 
 use std::path::{Path, PathBuf};
 
@@ -83,6 +84,13 @@ impl SafetyLockConfig {
     /// document at a known location, not a merged hierarchy. The environment
     /// layer is off deliberately — an env var that could inject an approved
     /// root would be a bypass around the confirmation gate.
+    ///
+    /// [`validate`](Self::validate) is attached as clapfig's post-validation
+    /// hook, so **every** route through this builder — `load`, and the config
+    /// actions — either yields a config satisfying the invariants or fails.
+    /// Validation is not a step a caller can forget: an invariant checked
+    /// only by convention is one [`is_approved`](Self::is_approved) would
+    /// eventually answer from unvalidated state.
     pub fn store_in(data_dir: &Path) -> ClapfigBuilder<Self> {
         Clapfig::builder::<Self>()
             .app_name("dodot")
@@ -93,6 +101,23 @@ impl SafetyLockConfig {
                 SearchPath::Path(data_dir.to_path_buf()),
             )
             .no_env()
+            .post_validate(|config: &Self| config.validate().map_err(|err| err.to_string()))
+    }
+
+    /// Load the trust file from `data_dir`, or the empty default when it is
+    /// absent.
+    ///
+    /// The loading API Safety Lock consumers use. Fails closed on every other
+    /// outcome — unreadable file, malformed entry, violated invariant — so a
+    /// trust file Dodot cannot fully read never resolves to a smaller, or
+    /// empty, set of approvals (ADR-0001).
+    pub fn load_from(data_dir: &Path) -> Result<Self> {
+        Self::store_in(data_dir)
+            .load()
+            .map_err(|err| SafetyLockError::TrustStateUnusable {
+                path: Self::path_in(data_dir),
+                reason: err.to_string(),
+            })
     }
 
     /// Whether `identity` is approved.
@@ -105,12 +130,17 @@ impl SafetyLockConfig {
 
     /// Check the invariants a loaded trust file must satisfy.
     ///
-    /// Only one can be violated by a syntactically valid file: the same
-    /// canonical root listed twice. (Relative or malformed entries cannot be
-    /// represented — [`RootIdentity`] rejects them while deserializing.) A
-    /// duplicate is a hard error rather than a silent de-duplication because
-    /// trust state Dodot does not fully understand must never be treated as
-    /// approval.
+    /// Runs automatically on every load — [`store_in`](Self::store_in)
+    /// attaches it as clapfig's post-validation hook — and is public for the
+    /// other direction: checking a collection Dodot has just changed, before
+    /// writing it back.
+    ///
+    /// Only one invariant can be violated by a syntactically valid file: the
+    /// same canonical root listed twice. (Relative, aliased, or malformed
+    /// entries cannot be represented — [`RootIdentity`] rejects them while
+    /// deserializing.) A duplicate is a hard error rather than a silent
+    /// de-duplication because trust state Dodot does not fully understand
+    /// must never be treated as approval.
     pub fn validate(&self) -> Result<()> {
         let approved = &self.roots.approved;
         for (index, identity) in approved.iter().enumerate() {
@@ -157,7 +187,11 @@ mod tests {
     }
 
     fn load(data_dir: &Path) -> SafetyLockConfig {
-        SafetyLockConfig::store_in(data_dir).load().unwrap()
+        SafetyLockConfig::load_from(data_dir).unwrap()
+    }
+
+    fn write_trust_file(data_dir: &Path, content: &str) {
+        std::fs::write(SafetyLockConfig::path_in(data_dir), content).unwrap();
     }
 
     #[test]
@@ -202,7 +236,7 @@ mod tests {
             },
         })
         .unwrap();
-        std::fs::write(SafetyLockConfig::path_in(data_dir.path()), &written).unwrap();
+        write_trust_file(data_dir.path(), &written);
 
         // Valid UTF-8 roots are stored plainly; only the non-Unicode one is
         // tagged. The file stays a document a user can read and edit.
@@ -229,11 +263,7 @@ mod tests {
                 approved: vec![one.clone(), other.clone()],
             },
         };
-        std::fs::write(
-            SafetyLockConfig::path_in(data_dir.path()),
-            toml::to_string(&config).unwrap(),
-        )
-        .unwrap();
+        write_trust_file(data_dir.path(), &toml::to_string(&config).unwrap());
 
         let loaded = load(data_dir.path());
         assert_eq!(loaded.roots.approved, vec![one.clone(), other.clone()]);
@@ -279,14 +309,57 @@ mod tests {
     /// a smaller — or empty — set of approvals.
     #[test]
     fn a_malformed_entry_fails_the_load_instead_of_reading_as_empty() {
-        let data_dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            SafetyLockConfig::path_in(data_dir.path()),
-            "[roots]\napproved = [\"relative/dotfiles\"]\n",
-        )
-        .unwrap();
+        for entry in ["relative/dotfiles", "/home/alice/dotfiles/../other"] {
+            let data_dir = tempfile::tempdir().unwrap();
+            write_trust_file(
+                data_dir.path(),
+                &format!("[roots]\napproved = [\"{entry}\"]\n"),
+            );
 
+            assert!(
+                SafetyLockConfig::load_from(data_dir.path()).is_err(),
+                "`{entry}` loaded as a usable approval"
+            );
+        }
+    }
+
+    /// The invariant has to hold at the *loading* seam, not only for a value
+    /// a caller remembered to check: `is_approved` answers authorization
+    /// straight off a loaded config, so an invalid file must never become
+    /// one.
+    #[test]
+    fn duplicate_roots_in_the_file_fail_the_production_load() {
+        let data_dir = tempfile::tempdir().unwrap();
+        write_trust_file(
+            data_dir.path(),
+            "[roots]\napproved = [\"/home/alice/dotfiles\", \"/home/alice/dotfiles\"]\n",
+        );
+
+        let err = SafetyLockConfig::load_from(data_dir.path()).unwrap_err();
+        assert!(
+            matches!(err, SafetyLockError::TrustStateUnusable { .. }),
+            "unexpected error: {err}"
+        );
+        assert!(
+            err.to_string().contains("/home/alice/dotfiles"),
+            "the diagnostic must name the offending root: {err}"
+        );
+
+        // Not merely the wrapper's doing: the builder itself refuses.
         assert!(SafetyLockConfig::store_in(data_dir.path()).load().is_err());
+    }
+
+    /// Two spellings of one root are a duplicate too — identity
+    /// normalization is what makes the check see through the alias.
+    #[test]
+    fn spelling_variants_of_one_root_are_caught_as_duplicates() {
+        let data_dir = tempfile::tempdir().unwrap();
+        write_trust_file(
+            data_dir.path(),
+            "[roots]\napproved = [\"/home/alice/dotfiles\", \"/home/alice//dotfiles/\"]\n",
+        );
+
+        assert!(SafetyLockConfig::load_from(data_dir.path()).is_err());
     }
 
     /// The file is self-documenting: clapfig generates its template from the
