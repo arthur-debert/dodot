@@ -1378,7 +1378,7 @@ mod tests {
 
         let heartbeat = activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref())
             .expect("sourcing must leave a heartbeat");
-        assert_eq!(heartbeat.generation, Some(gen));
+        assert_eq!(heartbeat.generation, gen);
         assert_eq!(heartbeat.version.as_deref(), Some(version));
     }
 
@@ -1466,8 +1466,7 @@ mod tests {
         }
 
         assert_eq!(
-            activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref())
-                .and_then(|h| h.generation),
+            activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref()).map(|h| h.generation),
             Some(gen)
         );
     }

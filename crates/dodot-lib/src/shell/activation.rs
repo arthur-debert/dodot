@@ -212,10 +212,17 @@ impl EnvStamp {
 }
 
 /// Signal 2's raw form: the heartbeat file, contents and mtime.
+///
+/// A `Heartbeat` only exists for a file whose contents parsed: a
+/// corrupt one reads as no activation at all ([`read_heartbeat`]), so
+/// no field of this struct can be mistaken for evidence that a shell
+/// loaded dodot. That is why [`Heartbeat::generation`] is not an
+/// `Option` — an unparseable generation is the absence of a heartbeat,
+/// not a heartbeat with an absent generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Heartbeat {
     /// The generation the last shell to source init was running.
-    pub generation: Option<u64>,
+    pub generation: u64,
     /// The dodot that generated that script.
     pub version: Option<String>,
     /// When the file was last written — i.e. when a shell last
@@ -228,6 +235,12 @@ pub struct Heartbeat {
 
 impl Heartbeat {
     /// The version the last shell loaded.
+    ///
+    /// Unconditional, unlike [`EnvStamp::evidence_version`], because a
+    /// `Heartbeat` that exists already carries a parsed generation — a
+    /// shell demonstrably loaded dodot — so the only question left is
+    /// *which* dodot, and a missing field answers that as
+    /// [`EvidenceVersion::PreVersion`].
     pub fn evidence_version(&self) -> EvidenceVersion {
         EvidenceVersion::from_field(self.version.as_deref())
     }
@@ -236,8 +249,9 @@ impl Heartbeat {
 /// Split heartbeat text into its generation and version fields.
 ///
 /// The file holds `<generation> <version>`; a pre-RCS01 one holds just
-/// `<generation>`. Anything else yields no generation, so a corrupt
-/// file reads as no activation rather than as the oldest possible one.
+/// `<generation>`. Anything else yields no generation, which
+/// [`read_heartbeat`] turns into no activation at all rather than into
+/// the oldest possible one.
 pub fn parse_heartbeat(raw: &str) -> (Option<u64>, Option<String>) {
     let mut fields = raw.split_whitespace();
     let generation = fields.next().and_then(parse_generation);
@@ -246,8 +260,16 @@ pub fn parse_heartbeat(raw: &str) -> (Option<u64>, Option<String>) {
 }
 
 /// Read the heartbeat left by the last shell activation. `None` when no
-/// shell has ever sourced the init script on this machine (or the
-/// marker is unreadable).
+/// shell has ever sourced the init script on this machine, the marker
+/// is unreadable, or its contents do not parse.
+///
+/// The last of those is the whole point of reading the file rather than
+/// stat-ing it: *existence is not activation*. A corrupt marker has a
+/// perfectly readable mtime and a perfectly present version field, and
+/// treating either as a signal would report "Last loaded 4 minutes ago
+/// by dodot ≤5.5.1" for a file full of garbage. One gate here keeps
+/// every downstream reader — the generation ladder, the version, the
+/// "last loaded" time — honest without each having to remember.
 pub fn read_heartbeat(fs: &dyn Fs, paths: &dyn Pather) -> Option<Heartbeat> {
     let path = paths.hookup_heartbeat_path();
     if !fs.exists(&path) {
@@ -256,7 +278,7 @@ pub fn read_heartbeat(fs: &dyn Fs, paths: &dyn Pather) -> Option<Heartbeat> {
     let raw = fs.read_to_string(&path).ok()?;
     let (generation, version) = parse_heartbeat(&raw);
     Some(Heartbeat {
-        generation,
+        generation: generation?,
         version,
         last_run: fs.modified(&path).ok(),
     })
@@ -529,6 +551,11 @@ impl Evidence {
     /// The stamp wins over the heartbeat for the same reason it wins in
     /// [`evaluate`]: it is direct evidence about the shell the user is
     /// typing in, where the heartbeat speaks for some past session.
+    ///
+    /// Both arms answer `None` for evidence that did not parse — a
+    /// version field is only ever read alongside a generation that read
+    /// back ([`EnvStamp::evidence_version`], [`read_heartbeat`]), so
+    /// garbage never renders as a loaded version.
     pub fn loaded_version(&self) -> Option<EvidenceVersion> {
         self.stamp
             .evidence_version()
@@ -568,7 +595,7 @@ impl Evidence {
         let ladder = evaluate(
             classify_stamp(self.stamp.generation, self.reference),
             classify_heartbeat(
-                self.heartbeat.as_ref().and_then(|h| h.generation),
+                self.heartbeat.as_ref().map(|h| h.generation),
                 self.reference,
             ),
             self.tty,
@@ -610,6 +637,11 @@ impl Evidence {
     /// heartbeat's mtime. `None` when there is no heartbeat, the
     /// filesystem would not say, or the mtime is in the future (a
     /// clock change, which is not a duration worth rendering).
+    ///
+    /// "No heartbeat" includes a corrupt one: an mtime is readable from
+    /// a file whose contents are garbage, and reporting one would put a
+    /// confident "last loaded 4 minutes ago" on evidence that says
+    /// nothing loaded. [`read_heartbeat`] is where that is ruled out.
     fn elapsed_since_last_run(&self) -> Option<Duration> {
         let last_run = self.heartbeat.as_ref()?.last_run?;
         self.now.duration_since(last_run).ok()
@@ -853,11 +885,14 @@ mod tests {
         Some(NOW - Duration::from_secs(seconds))
     }
 
-    /// A heartbeat from its raw file contents and mtime.
+    /// A heartbeat from its raw file contents and mtime. `raw` must
+    /// parse: a corrupt file is not a `Heartbeat` at all, and the tests
+    /// that cover that case say so with `heartbeat: None` or by
+    /// planting the file and going through [`read_heartbeat`].
     fn heartbeat(raw: &str, last_run: Option<SystemTime>) -> Heartbeat {
         let (generation, version) = parse_heartbeat(raw);
         Heartbeat {
-            generation,
+            generation: generation.expect("heartbeat fixture must carry a parseable generation"),
             version,
             last_run,
         }
@@ -1004,7 +1039,8 @@ mod tests {
         for (stamp, heartbeat, tty, expected) in cases {
             let env = TempEnvironment::builder().build();
             deploy_a_shell_source(&env);
-            crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+            crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None)
+                .unwrap();
             if let Some(h) = heartbeat {
                 plant_heartbeat(&env, &format!("{h} {}", running_version()));
             }
@@ -1035,8 +1071,20 @@ mod tests {
 
         let env = TempEnvironment::builder().build();
         plant_heartbeat(&env, "garbage");
-        let heartbeat = read_heartbeat(env.fs.as_ref(), env.paths.as_ref()).unwrap();
-        assert_eq!(heartbeat.generation, None);
+        assert_eq!(read_heartbeat(env.fs.as_ref(), env.paths.as_ref()), None);
+
+        // The same rule on the version axis, both signals: a version
+        // is only ever evidence alongside a generation that read back,
+        // so an unparseable generation takes the version down with it
+        // rather than leaving a version nobody can attribute to a run.
+        assert_eq!(
+            EnvStamp {
+                generation: None,
+                version: Some("9.9.9".into()),
+            }
+            .evidence_version(),
+            None
+        );
     }
 
     #[test]
@@ -1197,6 +1245,66 @@ mod tests {
             format!("Last loaded 45 minutes ago by dodot {}.", running_version()),
             "the generation inside the file is a write time, not a run time"
         );
+    }
+
+    /// Existence is not activation. A corrupt heartbeat offers two
+    /// things that look like evidence and are not — a readable mtime
+    /// and a present second field — and the footer must decline both:
+    /// a file full of garbage proves no shell ever loaded dodot, so
+    /// line two is "Never loaded.", not "Last loaded 45 minutes ago by
+    /// dodot 5.6.0". This is the generation contract
+    /// ([`parse_generation`]) held on the version and run-time axes too.
+    #[test]
+    fn a_corrupt_heartbeat_reads_as_no_activation_on_every_axis() {
+        let env = TempEnvironment::builder().build();
+        deploy_a_shell_source(&env);
+        crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+        // Garbage where the generation belongs, and a field after it
+        // shaped exactly like a version — the most tempting corruption.
+        plant_heartbeat(&env, "not-a-generation 5.6.0");
+        let touched = SystemTime::now() - Duration::from_secs(45 * 60);
+        env.fs
+            .set_modified(&env.paths.hookup_heartbeat_path(), touched)
+            .unwrap();
+
+        let evidence = Evidence::collect(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            EnvStamp::default(),
+            Some(1_786_830_419),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(evidence.loaded_version(), None);
+        assert_eq!(evidence.state(), ActivationState::NeverActivated);
+        assert_eq!(
+            evidence.evidence_line(),
+            "Never loaded.",
+            "neither the mtime nor the trailing field is evidence a shell loaded dodot"
+        );
+    }
+
+    /// The version-less shape of the same corruption: no second field
+    /// to mistake for a version, and the `≤` bound must not be reached
+    /// for either — a corrupt file is not a pre-RCS01 activation.
+    #[test]
+    fn a_corrupt_heartbeat_is_not_a_pre_version_activation() {
+        let evidence = Evidence {
+            heartbeat: read_heartbeat_from(""),
+            ..skewless()
+        };
+        assert_eq!(evidence.loaded_version(), None);
+        assert_eq!(evidence.evidence_line(), "Never loaded.");
+    }
+
+    /// Plant `contents` as the heartbeat and read it back through the
+    /// production path, so the corruption tests exercise the real gate
+    /// rather than a hand-built `Heartbeat`.
+    fn read_heartbeat_from(contents: &str) -> Option<Heartbeat> {
+        let env = TempEnvironment::builder().build();
+        plant_heartbeat(&env, contents);
+        read_heartbeat(env.fs.as_ref(), env.paths.as_ref())
     }
 
     #[test]

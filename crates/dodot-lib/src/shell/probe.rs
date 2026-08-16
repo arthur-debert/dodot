@@ -504,7 +504,7 @@ pub fn notice_with_probe(
     }
     let stamp = activation::classify_stamp(env_stamp.generation, reference_for_gate);
     let heartbeat = activation::classify_heartbeat(
-        activation::read_heartbeat(fs, paths).and_then(|h| h.generation),
+        activation::read_heartbeat(fs, paths).map(|h| h.generation),
         reference_for_gate,
     );
     if !gate_says_probe(stamp, heartbeat) {
