@@ -345,29 +345,40 @@ impl Verdict {
 
     /// Render the verdict for `up` / `install` output.
     ///
-    /// `evidence` is the notice the signal ladder alone produced, and
+    /// `evidence` is the footer the signal ladder alone produced,
+    /// `evidence_line` the footer's second line re-read *after* the
+    /// probe ran (the spawned shell updates the heartbeat, so the
+    /// pre-probe reading is stale by the time there is a verdict), and
     /// `hook_line` the manual line to fall back on. A couldn't-verify
     /// verdict degrades to `evidence`, clearly labeled as
     /// configuration state rather than measured activation; the other
     /// two verdicts are measurements and take precedence over it —
     /// including over the stale-shell advice, which is the wrong
     /// answer for a hookup that just measured broken.
+    ///
+    /// A measured verdict says the same thing the evidence path says
+    /// for the same state, in the same words
+    /// ([`activation::HEALTHY_MESSAGE`]): what the measurement buys is
+    /// that the claim is right, not that it is phrased differently.
     pub fn notice(
         &self,
         evidence: Option<ActivationNotice>,
+        evidence_line: &str,
         hook_line: &str,
     ) -> Option<ActivationNotice> {
         match self {
             Verdict::Verified { .. } => Some(ActivationNotice {
                 state: ActivationState::Healthy.as_str().into(),
                 severity: "ok".into(),
-                message: "Shell hookup verified: a new shell loads dodot.".into(),
+                message: activation::HEALTHY_MESSAGE.into(),
                 hint: None,
+                evidence: evidence_line.into(),
             }),
             Verdict::Broken { diagnosis } => Some(ActivationNotice {
                 state: ActivationState::VerifiedBroken.as_str().into(),
                 severity: "error".into(),
                 message: activation::VERIFIED_BROKEN_MESSAGE.into(),
+                evidence: evidence_line.into(),
                 hint: Some(match diagnosis {
                     Diagnosis::HookAbsent { rc } => format!(
                         "The dodot hook is missing from {rc} — run `dodot install --write` to add it."
@@ -424,17 +435,31 @@ pub fn measure(
     evidence: Option<ActivationNotice>,
 ) -> Option<ActivationNotice> {
     let hook_line = activation::hook_line(&paths.init_script_path(), paths.home_dir());
+    let stale_line = evidence
+        .as_ref()
+        .map(|n| n.evidence.clone())
+        .unwrap_or_else(|| "Never loaded.".into());
     let Some(shell) = shell_env.shell.as_deref().map(Path::new) else {
         return Verdict::Unverified {
             reason: "$SHELL is not set".into(),
         }
-        .notice(evidence, &hook_line);
+        .notice(evidence, &stale_line, &hook_line);
     };
 
     eprintln!("{}", announcement(shell));
     let outcome = run(shell, timeout);
     let hook = rc::scan_expected_rc(fs, paths.home_dir(), shell_env, rc_override);
-    Verdict::from_outcome(outcome, reference, hook).notice(evidence, &hook_line)
+    // Line two is re-read now, not before the spawn: a shell that
+    // activated wrote the heartbeat on its way through, and "last
+    // loaded 9 days ago" under a verdict that just watched it load
+    // would contradict itself. A shell that did *not* activate left
+    // the heartbeat alone, so the same read still reports the last
+    // time one did — which is the evidence the broken verdict wants.
+    let evidence_line =
+        activation::Evidence::collect(fs, paths, activation::EnvStamp::default(), reference, false)
+            .map(|e| e.evidence_line())
+            .unwrap_or(stale_line);
+    Verdict::from_outcome(outcome, reference, hook).notice(evidence, &evidence_line, &hook_line)
 }
 
 /// Evaluate shell activation for a command that is allowed to measure.
@@ -445,27 +470,29 @@ pub fn measure(
 ///
 /// `reference_for_gate` is the generation the *evidence* is judged
 /// against (for `up`, the pre-regeneration one — see
-/// `up::activation_notice`), while the probe is judged against the
-/// script on disk, which is what a shell started now would source.
+/// `commands::shell_hookup_footer`), while the probe is judged against
+/// the script on disk, which is what a shell started now would source.
+///
+/// `tty` is the session evidence the stampless ladder falls back on
+/// (#279). A caller that will measure passes `false` — it gets the
+/// real answer from the spawn instead of inferring one from the
+/// session — so in practice this is only ever `true` alongside
+/// [`ProbePolicy::Never`].
 pub fn notice_with_probe(
     fs: &dyn Fs,
     paths: &dyn Pather,
     policy: &ProbePolicy,
     shell_env: &ShellEnv,
-    env_stamp: Option<u64>,
+    env_stamp: &activation::EnvStamp,
     reference_for_gate: Option<u64>,
-    quiet_ok: bool,
+    tty: bool,
 ) -> Option<ActivationNotice> {
-    // `tty: false` — session evidence is `status`'s tie-breaker
-    // (#279); callers here get the real answer by measuring, so the
-    // evidence fallback keeps the plain two-signal reading.
     let evidence = activation::notice_for(
         fs,
         paths,
-        env_stamp,
+        env_stamp.clone(),
         reference_for_gate,
-        quiet_ok,
-        false,
+        tty,
         shell_env,
     );
     let Some(timeout) = policy.timeout() else {
@@ -475,9 +502,11 @@ pub fn notice_with_probe(
         // Nothing deployed: there is no hookup to measure yet.
         return evidence;
     }
-    let stamp = activation::classify_stamp(env_stamp, reference_for_gate);
-    let heartbeat =
-        activation::classify_heartbeat(activation::read_heartbeat(fs, paths), reference_for_gate);
+    let stamp = activation::classify_stamp(env_stamp.generation, reference_for_gate);
+    let heartbeat = activation::classify_heartbeat(
+        activation::read_heartbeat(fs, paths).and_then(|h| h.generation),
+        reference_for_gate,
+    );
     if !gate_says_probe(stamp, heartbeat) {
         return evidence;
     }
@@ -569,10 +598,16 @@ mod tests {
             hook(HookPresence::ManagedBlock),
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
-        let notice = v.notice(None, "HOOK").unwrap();
+        let notice = v
+            .notice(None, "Last loaded just now by dodot 5.6.0.", "HOOK")
+            .unwrap();
         assert_eq!(notice.state, "healthy");
         assert_eq!(notice.severity, "ok");
-        assert!(notice.message.contains("verified"), "{}", notice.message);
+        // A measurement reports the healthy state in the state's own
+        // words: what the spawn buys is that the claim is right, not a
+        // second phrasing of it for the docs to keep in sync.
+        assert_eq!(notice.message, activation::HEALTHY_MESSAGE);
+        assert_eq!(notice.evidence, "Last loaded just now by dodot 5.6.0.");
     }
 
     #[test]
@@ -586,7 +621,7 @@ mod tests {
                 }
             }
         );
-        let notice = v.notice(None, "HOOK").unwrap();
+        let notice = v.notice(None, "Never loaded.", "HOOK").unwrap();
         assert_eq!(notice.state, "verified-broken");
         assert_eq!(notice.severity, "error");
         let hint = notice.hint.unwrap();
@@ -598,7 +633,11 @@ mod tests {
     fn no_stamp_with_the_hook_present_blames_the_rc_file_instead() {
         for presence in [HookPresence::ManagedBlock, HookPresence::Manual] {
             let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), hook(presence));
-            let hint = v.notice(None, "HOOK").unwrap().hint.unwrap();
+            let hint = v
+                .notice(None, "Never loaded.", "HOOK")
+                .unwrap()
+                .hint
+                .unwrap();
             assert!(
                 hint.contains("never reached"),
                 "{presence:?} should diagnose a broken rc, not a missing hook: {hint}"
@@ -619,7 +658,11 @@ mod tests {
                 diagnosis: Diagnosis::Unknown
             }
         );
-        let hint = v.notice(None, "THE-HOOK-LINE").unwrap().hint.unwrap();
+        let hint = v
+            .notice(None, "Never loaded.", "THE-HOOK-LINE")
+            .unwrap()
+            .hint
+            .unwrap();
         assert!(hint.contains("THE-HOOK-LINE"), "{hint}");
     }
 
@@ -646,15 +689,18 @@ mod tests {
         let evidence = ActivationNotice {
             state: "never-activated".into(),
             severity: "warning".into(),
-            message: "Deployed, but no shell has loaded dodot yet.".into(),
+            message: "Shell hookup: no shell has loaded dodot yet.".into(),
             hint: Some("Add this to your rc file: HOOK".into()),
+            evidence: "Never loaded.".into(),
         };
         for outcome in [
             ProbeOutcome::TimedOut,
             ProbeOutcome::SpawnFailed("no such file".into()),
         ] {
             let v = Verdict::from_outcome(outcome, Some(100), hook(HookPresence::Absent));
-            let notice = v.notice(Some(evidence.clone()), "HOOK").unwrap();
+            let notice = v
+                .notice(Some(evidence.clone()), "Never loaded.", "HOOK")
+                .unwrap();
             // The evidence verdict survives untouched...
             assert_eq!(notice.state, "never-activated");
             assert_eq!(notice.severity, "warning");
@@ -673,7 +719,7 @@ mod tests {
         let v = Verdict::Unverified {
             reason: "boom".into(),
         };
-        assert_eq!(v.notice(None, "HOOK"), None);
+        assert_eq!(v.notice(None, "Never loaded.", "HOOK"), None);
     }
 
     // ── Spawn mechanics, against fabricated shells ──────────────

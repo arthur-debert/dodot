@@ -1042,37 +1042,25 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     })
 }
 
-/// Evaluate the shell-hookup evidence for a `status` render.
+/// The shell-hookup footer for a `status` render.
 ///
 /// The reference generation is whatever the init script on disk says:
 /// `status` regenerates nothing, so "current" means "what a shell
-/// started right now would load". `up` deliberately does NOT reuse
-/// this — it judges against the pre-regeneration generation instead
-/// (`up::activation_notice`).
+/// started right now would load". `up` and `down` deliberately do NOT
+/// reuse this — they judge against the generation they captured before
+/// rewriting the script.
 ///
-/// `status` is the one caller that passes real session evidence
-/// (`ctx.tty`, #279): it answers "is my setup working?" for the
-/// session it runs from, and may not probe (spec §9), so the tty
-/// signal plus the static rc scan are all it has against a heartbeat
-/// certifying a hookup that has since died. This makes `status`
-/// output session-dependent — inherent to the question being asked.
-///
-/// `status` is a report, so it also shows the quiet healthy line; the
-/// states and their copy come from `shell-hookup.lex` §5.
+/// `status` never spawns a shell whatever the policy says (spec §9),
+/// so it reports on evidence alone: the tty signal plus the static rc
+/// scan are all it has against a heartbeat certifying a hookup that has
+/// since died. This makes `status` output session-dependent — inherent
+/// to the question being asked.
 pub(crate) fn shell_hookup_notice(
     ctx: &ExecutionContext,
 ) -> Option<crate::shell::ActivationNotice> {
-    use crate::shell::activation;
-    let reference = activation::read_script_generation(ctx.fs.as_ref(), ctx.paths.as_ref());
-    activation::notice_for(
-        ctx.fs.as_ref(),
-        ctx.paths.as_ref(),
-        ctx.env_init_gen,
-        reference,
-        true,
-        ctx.tty,
-        &ctx.shell_env,
-    )
+    let reference =
+        crate::shell::activation::read_script_generation(ctx.fs.as_ref(), ctx.paths.as_ref());
+    crate::commands::shell_hookup_footer(ctx, reference, &crate::shell::ProbePolicy::Never)
 }
 
 /// Run `--check-drift` over the supplied packs and emit a one-line
@@ -1289,7 +1277,7 @@ mod tests {
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
             host_facts: Arc::new(crate::gates::HostFacts::detect()),
-            env_init_gen: None,
+            env_stamp: Default::default(),
             tty: false,
             shell_probe: crate::shell::ProbePolicy::Never,
             shell_env: crate::shell::ShellEnv::default(),

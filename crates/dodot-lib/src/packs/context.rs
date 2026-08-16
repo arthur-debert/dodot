@@ -72,13 +72,14 @@ pub struct ExecutionContext {
     /// matching avoid re-running `hostname(1)`/env reads. Constructed
     /// by [`Self::production`]; tests build via `HostFacts::for_tests`.
     pub host_facts: Arc<HostFacts>,
-    /// The init-script generation the calling shell exported
-    /// (`DODOT_INIT_GEN`), if any — signal 1 of the shell-hookup
-    /// ladder (`docs/proposals/shipped/shell-hookup.lex` §2.1). Snapshotted at
-    /// context construction by [`Self::production`] so activation
-    /// evaluation is a function of its inputs and tests can inject a
-    /// stamp instead of mutating process-global environment.
-    pub env_init_gen: Option<u64>,
+    /// What the calling shell exported about the init script it
+    /// sourced — `DODOT_INIT_GEN` and `DODOT_INIT_VERSION`, signal 1 of
+    /// the shell-hookup ladder
+    /// (`docs/proposals/shell-hookup-ergonomics.lex` §2.1).
+    /// Snapshotted at context construction by [`Self::production`] so
+    /// activation evaluation is a function of its inputs and tests can
+    /// inject a stamp instead of mutating process-global environment.
+    pub env_stamp: crate::shell::activation::EnvStamp,
     /// Whether this invocation is attached to a terminal — the
     /// *session* evidence that breaks the stampless tie in the
     /// shell-hookup ladder (#279): a tty-attached process with no
@@ -87,9 +88,10 @@ pub struct ExecutionContext {
     /// claims about past sessions. Snapshotted at context construction
     /// (stderr `isatty`, the fd least likely to be redirected) so
     /// evaluation stays a function of its inputs; `false` in tests
-    /// unless a test opts in. Consumed only by `status`
-    /// (`status::shell_hookup_notice`) — `up` and `install` measure
-    /// instead of inferring from the session.
+    /// unless a test opts in. Consumed by the callers that may not
+    /// measure (`status`, `down` — see
+    /// `commands::shell_hookup_footer`); `up` and `install` spawn a
+    /// shell instead of inferring from the session.
     pub tty: bool,
     /// Whether this invocation may spawn a shell to *measure*
     /// activation — signal 3 of the hookup ladder
@@ -182,7 +184,7 @@ impl ExecutionContext {
             group_mode: crate::commands::GroupMode::default(),
             verbose,
             host_facts: Arc::new(HostFacts::detect()),
-            env_init_gen: crate::shell::activation::read_env_stamp(),
+            env_stamp: crate::shell::activation::EnvStamp::read(),
             tty: std::io::IsTerminal::is_terminal(&std::io::stderr()),
             shell_probe: crate::shell::ProbePolicy::production(),
             shell_env: crate::shell::ShellEnv::from_process(),

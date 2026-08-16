@@ -79,12 +79,14 @@ fn sources_dodot(env: &TempEnvironment) -> String {
     format!(". \"{}\"", env.paths.init_script_path().display())
 }
 
+/// The heartbeat a shell running this dodot would have left behind at
+/// `generation`.
 fn simulate_activation(env: &TempEnvironment, generation: u64) {
     env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
     env.fs
         .write_file(
             &env.paths.hookup_heartbeat_path(),
-            generation.to_string().as_bytes(),
+            format!("{generation} {}", activation::running_version()).as_bytes(),
         )
         .unwrap();
 }
@@ -110,7 +112,8 @@ fn a_healthy_machine_never_spawns_a_probe() {
         !env.fs.exists(&spawn_marker(&env)),
         "a fresh heartbeat is proof; spawning a shell anyway is the cost we promised not to pay"
     );
-    assert_eq!(result.shell_hookup, None);
+    // The footer still renders — it just costs nothing to produce.
+    assert_eq!(result.shell_hookup.map(|n| n.state), Some("healthy".into()));
 }
 
 #[test]
@@ -121,7 +124,7 @@ fn a_live_shell_is_proof_enough_on_its_own() {
         activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
 
     let mut ctx = probing_ctx(&env, &sources_dodot(&env));
-    ctx.env_init_gen = Some(generation);
+    ctx.env_stamp = activation::EnvStamp::at(generation);
     up::up(None, &ctx).unwrap();
 
     assert!(
@@ -181,10 +184,16 @@ fn a_first_up_ends_on_a_measured_verdict_when_the_shell_activates() {
         .expect("a measured verdict is the point of the first up");
     assert_eq!(notice.state, "healthy");
     assert_eq!(notice.severity, "ok");
-    assert!(
-        notice.message.contains("verified"),
-        "measured, not inferred: {}",
-        notice.message
+    assert_eq!(notice.message, crate::shell::activation::HEALTHY_MESSAGE);
+    // Line two is re-read after the spawn: the shell the probe just
+    // started is the one that wrote the heartbeat, so a fresh install
+    // reports the activation it measured, not "never loaded".
+    assert_eq!(
+        notice.evidence,
+        format!(
+            "Last loaded just now by dodot {}.",
+            activation::running_version()
+        )
     );
 }
 

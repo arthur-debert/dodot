@@ -26,6 +26,10 @@ standout-render = "7.3"
 tar = "0.4"
 tempfile = { version = "3", optional = true }
 thiserror = "2"
+# Relative time ("4 minutes ago") for the shell-hookup footer. Default
+# features off: the formatter takes a `std::time::Duration`, so no
+# date-time crate enters the tree.
+timeago = { version = "0.6.1", default-features = false }
 toml = "0.8"
 tracing = "0.1"
 ureq = { version = "2", default-features = false, features = ["tls"] }

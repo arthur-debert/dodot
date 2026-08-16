@@ -36,7 +36,7 @@ echo tool output'
     # 1. A green `up` on a machine with no hookup does not stay silent.
     run dodot up
     [ "$status" -eq 0 ]
-    assert_output_contains "Deployed, but a new shell did not load dodot."
+    assert_output_contains "Shell hookup: a new shell did not load dodot."
     assert_output_contains "dodot install --write"
 
     # 2. `status` agrees, from evidence alone.
@@ -52,7 +52,7 @@ echo tool output'
     # 4. `--write` wires it and ends on a *measured* verdict.
     run dodot install --write
     [ "$status" -eq 0 ]
-    assert_output_contains "Shell hookup verified: a new shell loads dodot."
+    assert_output_contains "Shell hookup: dodot is sourced in new shells."
     assert_file_contains "$HOME/.bashrc" "# >>> dodot shell hookup >>>"
     assert_file_contains "$HOME/.bashrc" "dodot-init.sh"
 
@@ -67,7 +67,8 @@ echo tool output'
 
     # 6. And dodot now says so without spawning anything.
     run dodot status
-    assert_output_contains "shell hookup: ok"
+    assert_output_contains "Shell hookup: dodot is sourced in new shells."
+    assert_output_contains "Last loaded"
     assert_output_not_contains "no shell has loaded dodot yet"
 }
 
@@ -163,6 +164,6 @@ echo tool output'
     rm -f "$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
 
     run dodot up
-    assert_output_contains "Deployed, but a new shell did not load dodot."
+    assert_output_contains "Shell hookup: a new shell did not load dodot."
     assert_output_contains "never reached"
 }

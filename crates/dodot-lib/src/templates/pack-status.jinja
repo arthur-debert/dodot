@@ -71,8 +71,10 @@
 {% for d in diffs %}
 [pack-name]{{ d.pack }} / {{ d.file }}[/pack-name]
 {{ d.body }}{% endfor %}{% endif %}{% if shell_hookup %}
-{% if shell_hookup.severity == "warning" %}[warning]⚠ {{ shell_hookup.message }}[/warning]
+{% if shell_hookup.severity == "error" %}[error]✗ {{ shell_hookup.message }}[/error]
+{% elif shell_hookup.severity == "warning" %}[warning]⚠ {{ shell_hookup.message }}[/warning]
 {% elif shell_hookup.severity == "info" %}[message]{{ shell_hookup.message }}[/message]
-{% else %}[dim]{{ shell_hookup.message }}[/dim]
+{% else %}[deployed]✓ {{ shell_hookup.message }}[/deployed]
 {% endif %}{% if shell_hookup.hint %}[dim]{{ shell_hookup.hint }}[/dim]
-{% endif %}{% endif %}
+{% endif %}[dim]{{ shell_hookup.evidence }}[/dim]
+{% endif %}
