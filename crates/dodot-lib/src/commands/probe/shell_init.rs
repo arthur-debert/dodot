@@ -111,18 +111,23 @@ fn is_stale(profile_ts: u64, last_up_ts: Option<u64>) -> bool {
 const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Build the live half of the report: resolve the shell, the rc, and
-/// the hook line; spawn the trace; judge what `dodot` resolves to
-/// there.
+/// the hook; spawn the trace; judge what the hook line actually
+/// reaches — what `dodot` resolves to on the traced `PATH` for the
+/// `eval` form, whether the script *that line names* is there for the
+/// file-source form.
 ///
 /// Nothing to trace is not an error (an unsupported shell, no rc, no
 /// hook — each reports plainly and spawns nothing), and a trace that
 /// could not run degrades to a "could not trace" line rather than
 /// failing the command: the recorded half must survive a hostile rc.
+/// A hook line dodot cannot read gets the same treatment one level
+/// down ([`crate::shell::trace::TraceVerdict::ScriptUnresolved`]) — an unanswered
+/// question, never an answered one about the wrong file.
 /// The spawn is announced before it runs and rides the INS01 envelope
 /// via [`crate::shell::trace::run_trace`].
 fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
     use crate::shell::rc;
-    use crate::shell::trace::{self, HookForm, TraceError};
+    use crate::shell::trace::{self, HookForm, SourcedScript, TraceError};
 
     let fs = ctx.fs.as_ref();
     let home = ctx.paths.home_dir();
@@ -159,13 +164,14 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
             rc_display.clone(),
         );
     };
-    let Some((hook_line, hook_form)) = trace::find_hook(&rc_text) else {
+    let Some(hook) = trace::find_hook(&rc_text, home) else {
         return skipped_trace(
             format!("no dodot hook in {rc_display} — run `dodot install --write` to add one"),
             shell_name,
             rc_display.clone(),
         );
     };
+    let hook_line = hook.line;
 
     // Only a context that may measure gets to spawn; every
     // non-production context leaves the policy at `Never`.
@@ -179,15 +185,20 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
     };
 
     eprintln!("{}", trace::announcement(shell));
-    let run = match trace::run_trace(
-        fs,
-        std::path::Path::new(&shell_path),
+    let request = trace::TraceRequest {
+        shell_path: std::path::Path::new(&shell_path),
         shell,
-        target.nominal(),
-        &target.path,
+        home,
+        // The same `$ZDOTDIR` the rc ladder resolved this target with,
+        // so the traced startup and the named rc file can never come
+        // from two different readings of the environment.
+        zdotdir: ctx.shell_env.zdotdir.as_deref(),
+        rc_nominal: target.nominal(),
+        rc_resolved: &target.path,
         hook_line,
         timeout,
-    ) {
+    };
+    let run = match trace::run_trace(fs, &request) {
         Ok(run) => run,
         Err(TraceError::TimedOut) => {
             return untraced(
@@ -226,7 +237,7 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
     let record = trace::record_at(&run.records, &[target.nominal(), &target.path], hook_line);
     let verdict = match record {
         None => trace::TraceVerdict::HookNeverRan,
-        Some(record) => match hook_form {
+        Some(record) => match hook.form {
             HookForm::Eval => {
                 // The verdict is an identity comparison against the
                 // running binary. Without it there is no comparison to
@@ -240,18 +251,20 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
                         hook_line,
                     );
                 };
-                trace::judge_eval_hook(fs, &record.path, &running_exe, &version_by_running)
+                trace::judge_eval_hook(fs, record, &running_exe, &version_by_running)
             }
             // The file-source hook involves no PATH: the equivalent
-            // check is whether the script the hook sources exists —
+            // check is whether the script *that line* sources exists —
             // the structural reason that form is the recommended one.
-            HookForm::FileSource => {
-                let script = ctx.paths.init_script_path();
-                if fs.exists(&script) {
-                    trace::TraceVerdict::ScriptPresent { script }
-                } else {
-                    trace::TraceVerdict::ScriptMissing { script }
-                }
+            // The path comes from the hook, never from
+            // `paths.init_script_path()`: a line pointing at a stale
+            // copy elsewhere must not be certified by the presence of
+            // the copy dodot happens to own.
+            HookForm::FileSource(SourcedScript::Path(script)) => {
+                trace::judge_file_source_hook(fs, script)
+            }
+            HookForm::FileSource(SourcedScript::Unresolved { raw }) => {
+                trace::TraceVerdict::ScriptUnresolved { raw }
             }
         },
     };
@@ -371,6 +384,9 @@ fn verdict_trace_view(
         ),
         TraceVerdict::Unresolvable { path, resolution } => {
             let mut details = skips(&resolution);
+            // An empty PATH is still a search — of the working
+            // directory, which is what an empty entry means to the
+            // shell — so it is reported as empty, not as unsearched.
             details.push(if path.is_empty() {
                 "PATH is empty at that line".to_string()
             } else {
@@ -427,6 +443,20 @@ fn verdict_trace_view(
             "deployed",
             format!("the init script sourced at {rc}:{hook_line} is present — the hookup is sound"),
             vec![show(&script)],
+        ),
+        // Not a verdict: the line names its script in a form dodot
+        // will not resolve without interpreting shell, and a guess
+        // here would be a claim about a file the hook may not source.
+        TraceVerdict::ScriptUnresolved { raw } => (
+            "script-unresolved",
+            "warning",
+            format!("dodot could not tell which file the hook at {rc}:{hook_line} sources"),
+            vec![
+                format!("the line sources {raw}"),
+                "dodot expands only an absolute path or one under `$HOME` — check that file \
+                 yourself, or run `dodot install --write` to wire the hook it can read"
+                    .to_string(),
+            ],
         ),
     };
     ShellInitTraceView {

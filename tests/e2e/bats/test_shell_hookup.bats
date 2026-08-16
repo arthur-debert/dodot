@@ -272,6 +272,41 @@ echo tool output'
     assert_output_not_contains "tracing shell startup"
 }
 
+# The file-source half of the same rule: the verdict is about the
+# script the hook line names, not the one `dodot up` writes. Both
+# exist here — the datastore's script is perfectly intact — and the
+# hook sources a copy that is not there. Judging the expected path
+# would report this dead hookup as sound.
+@test "probe shell-init judges the script the hook line sources, not the one up wrote" {
+    dodot up
+    # `up` wrote this one, and it is fine.
+    [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ]
+
+    # The hook sources a copy that does not exist.
+    printf '[ -f "$HOME/old/dodot-init.sh" ] && . "$HOME/old/dodot-init.sh"\n' \
+        > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains ".bashrc:1"
+    assert_output_contains "does not exist"
+    assert_output_contains "old/dodot-init.sh"
+    assert_output_not_contains "the hookup is sound"
+}
+
+# A hook line dodot cannot resolve without running a shell gets an
+# honest non-answer. The alternative is a verdict about whichever file
+# dodot guessed at, which is the failure mode this epic is about.
+@test "probe shell-init declines to guess at a hook line it cannot resolve" {
+    dodot up
+    printf '. "$XDG_DATA_HOME/dodot/shell/dodot-init.sh"\n' > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains "could not tell which file the hook"
+    assert_output_not_contains "the hookup is sound"
+}
+
 @test "probe shell-init reports an absent hook plainly and spawns nothing" {
     dodot up
     printf 'alias ll="ls -l"\n' > "$HOME/.bashrc"

@@ -156,6 +156,17 @@ impl EvidenceVersion {
     }
 }
 
+/// Whether `loaded` names a dodot other than `running`.
+///
+/// The one place the skew rule lives. [`Evidence`] applies it to the
+/// two cheap signals and [`crate::shell::probe`] applies it to what a
+/// spawned shell reported, so an inferred skew and a measured one can
+/// never disagree about what counts as skew. `None` — nothing loaded
+/// — is never skew: there is no version to differ from.
+pub fn is_skewed(loaded: Option<&EvidenceVersion>, running: &str) -> bool {
+    loaded.is_some_and(|v| !v.is(running))
+}
+
 impl fmt::Display for EvidenceVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -545,12 +556,16 @@ impl Evidence {
         })
     }
 
-    /// The version the evidence says was loaded, or `None` when it says
-    /// nothing was.
+    /// The version the *state* is decided on, or `None` when the
+    /// evidence says nothing loaded.
     ///
     /// The stamp wins over the heartbeat for the same reason it wins in
     /// [`evaluate`]: it is direct evidence about the shell the user is
-    /// typing in, where the heartbeat speaks for some past session.
+    /// typing in, where the heartbeat speaks for some past session. That
+    /// makes this the right input to [`Evidence::skewed`] and the wrong
+    /// input to line two — picking a winner between two signals is
+    /// exactly what [`Evidence::evidence_line`] must not do, because the
+    /// losing signal is where the timestamp comes from.
     ///
     /// Both arms answer `None` for evidence that did not parse — a
     /// version field is only ever read alongside a generation that read
@@ -570,8 +585,7 @@ impl Evidence {
     /// [`EvidenceVersion::is`] for why the bound release itself is the
     /// one exception.
     fn skewed(&self) -> bool {
-        self.loaded_version()
-            .is_some_and(|v| !v.is(&self.running_version))
+        is_skewed(self.loaded_version().as_ref(), &self.running_version)
     }
 
     /// Fold everything into one state.
@@ -613,23 +627,41 @@ impl Evidence {
 
     /// Line two: when a shell last loaded dodot, and which dodot.
     ///
-    /// The time comes from the heartbeat file's mtime — a property of
-    /// the last shell that *sourced* the script — never from the
+    /// Both halves of that sentence must describe the *same*
+    /// activation. The two signals can describe two different ones —
+    /// the stamp says which dodot the invoking shell loaded, the
+    /// heartbeat's mtime says when *some* shell last loaded one — so
+    /// pairing one's time with the other's version states a fact that
+    /// never happened. The time therefore only ever appears beside the
+    /// version of the event it belongs to:
+    ///
+    /// - one signal, or two naming the same dodot → one sentence,
+    ///   carrying the mtime and that version;
+    /// - a stamp with no heartbeat → the unknown-time sentence: a stamp
+    ///   records which dodot this shell loaded, never when;
+    /// - two signals naming different dodots → both, as two events,
+    ///   with the time attached to the heartbeat's.
+    ///
+    /// The time itself is always the heartbeat file's mtime — a
+    /// property of the last shell that *sourced* the script — never the
     /// generation written inside it, which is a property of the `up`
     /// that *wrote* it. Under the file-source hook those diverge
     /// permanently (spec §2.2).
     pub fn evidence_line(&self) -> String {
-        let Some(version) = self.loaded_version() else {
-            return "Never loaded.".into();
-        };
         let tail = if self.state() == ActivationState::VersionSkew {
             format!(" — you are running {}.", self.running_version)
         } else {
-            ".".into()
+            ".".to_string()
         };
-        match self.elapsed_since_last_run() {
-            Some(elapsed) => format!("Last loaded {} by dodot {version}{tail}", relative(elapsed)),
-            None => format!("Last loaded at an unknown time by dodot {version}{tail}"),
+        let when = self.elapsed_since_last_run().map(relative);
+        let beat = self.heartbeat.as_ref().map(Heartbeat::evidence_version);
+        match (self.stamp.evidence_version(), beat) {
+            (None, None) => "Never loaded.".to_string(),
+            // A stamp with no heartbeat carries no time of its own, so
+            // `when` is `None` here by construction.
+            (Some(v), None) | (None, Some(v)) => one_event(when, &v, &tail),
+            (Some(stamp), Some(beat)) if stamp == beat => one_event(when, &beat, &tail),
+            (Some(stamp), Some(beat)) => two_events(when, &stamp, &beat, &tail),
         }
     }
 
@@ -659,6 +691,37 @@ impl Evidence {
         scan: Option<(HookPresence, String)>,
     ) -> ActivationNotice {
         ActivationNotice::for_state(self.state(), hook_line, scan, self.evidence_line())
+    }
+}
+
+/// Line two when a single activation accounts for both fields.
+fn one_event(when: Option<String>, version: &EvidenceVersion, tail: &str) -> String {
+    match when {
+        Some(ago) => format!("Last loaded {ago} by dodot {version}{tail}"),
+        None => format!("Last loaded at an unknown time by dodot {version}{tail}"),
+    }
+}
+
+/// Line two when the two signals describe two different activations.
+///
+/// Each clause keeps its own event's fields: the stamp names the dodot
+/// the invoking shell loaded and nothing about when, the heartbeat's
+/// version and mtime both belong to whichever shell wrote it last.
+fn two_events(
+    when: Option<String>,
+    stamp: &EvidenceVersion,
+    beat: &EvidenceVersion,
+    tail: &str,
+) -> String {
+    match when {
+        Some(ago) => format!(
+            "This shell loaded dodot {stamp}; the last shell to load ran dodot {beat}, {ago}{tail}"
+        ),
+        None => {
+            format!(
+                "This shell loaded dodot {stamp}; the last shell to load ran dodot {beat}{tail}"
+            )
+        }
     }
 }
 
@@ -721,7 +784,10 @@ pub struct ActivationNotice {
     /// The fix, when line one reports a hookup that needs one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
-    /// Line two: when a shell last loaded dodot, and which dodot.
+    /// Line two: when a shell last loaded dodot, and which dodot —
+    /// or, when the two signals disagree about which dodot, both
+    /// activations rather than one blended from the pair
+    /// ([`Evidence::evidence_line`]).
     pub evidence: String,
 }
 
@@ -1171,11 +1237,14 @@ mod tests {
 
         // Current generation, different version: the failure the epic
         // exists to catch — wired, sourced, and running the wrong dodot.
+        // Both signals name that same wrong dodot, so line two is the
+        // one-event sentence the docs tabulate.
         let skewed = Evidence {
             stamp: EnvStamp {
                 generation: Some(100),
                 version: Some("5.0.0".into()),
             },
+            heartbeat: Some(heartbeat("100 5.0.0", ago(4 * 60))),
             ..skewless()
         };
         assert_eq!(skewed.state(), ActivationState::VersionSkew);
@@ -1195,9 +1264,14 @@ mod tests {
     }
 
     /// The stamp speaks for the shell the user is typing in, so it
-    /// decides the version the same way it decides the generation.
+    /// decides the *state* the same way it decides the generation —
+    /// but deciding the state is the whole of its authority. The
+    /// timestamp belongs to the heartbeat's activation, so a stamp that
+    /// outranks the heartbeat cannot take the heartbeat's time with it:
+    /// "Last loaded 4 minutes ago by dodot 5.6.0" would report a moment
+    /// at which no 5.6.0 shell loaded anything.
     #[test]
-    fn the_stamp_version_outranks_the_heartbeat_version() {
+    fn a_disagreement_reports_two_events_never_one_blended_from_both() {
         let evidence = Evidence {
             stamp: EnvStamp {
                 generation: Some(100),
@@ -1206,10 +1280,92 @@ mod tests {
             heartbeat: Some(heartbeat("100 5.0.0", ago(4 * 60))),
             ..skewless()
         };
+        // The stamp still decides: this shell runs the current dodot.
         assert_eq!(evidence.state(), ActivationState::Healthy);
+        let line = evidence.evidence_line();
+        assert_eq!(
+            line,
+            "This shell loaded dodot 5.6.0; the last shell to load ran dodot 5.0.0, 4 minutes ago."
+        );
+        // The failure this replaces: one signal's time beside the
+        // other's version.
+        assert!(!line.contains("4 minutes ago by dodot 5.6.0"), "{line}");
+    }
+
+    /// The mirror case — the stamp is the *older* dodot, which is the
+    /// skew story — and the same rule: the time stays with the
+    /// heartbeat's version, and the "you are running" tail names the
+    /// binary rendering the footer.
+    #[test]
+    fn a_skewed_stamp_beside_a_newer_heartbeat_keeps_both_events_intact() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.0.0".into()),
+            },
+            heartbeat: Some(heartbeat("100 5.6.0", ago(4 * 60))),
+            ..skewless()
+        };
+        assert_eq!(evidence.state(), ActivationState::VersionSkew);
+        assert_eq!(
+            evidence.evidence_line(),
+            "This shell loaded dodot 5.0.0; the last shell to load ran dodot 5.6.0, 4 minutes ago \
+             — you are running 5.6.0."
+        );
+    }
+
+    /// Two signals that name the same dodot describe one activation as
+    /// far as the sentence is concerned, so it stays one sentence.
+    #[test]
+    fn agreeing_signals_render_a_single_event() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            heartbeat: Some(heartbeat("100 5.6.0", ago(4 * 60))),
+            ..skewless()
+        };
         assert_eq!(
             evidence.evidence_line(),
             "Last loaded 4 minutes ago by dodot 5.6.0."
+        );
+    }
+
+    /// A stamp with no heartbeat has no time in it at all: the shell
+    /// loaded *some* time before now, and the footer says exactly that
+    /// rather than borrowing a timestamp from nowhere.
+    #[test]
+    fn a_stamp_without_a_heartbeat_reports_an_unknown_time() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            heartbeat: None,
+            ..skewless()
+        };
+        assert_eq!(
+            evidence.evidence_line(),
+            "Last loaded at an unknown time by dodot 5.6.0."
+        );
+    }
+
+    /// A disagreement with no readable mtime drops the time clause
+    /// rather than the second event.
+    #[test]
+    fn a_disagreement_without_an_mtime_still_names_both_dodots() {
+        let evidence = Evidence {
+            stamp: EnvStamp {
+                generation: Some(100),
+                version: Some("5.6.0".into()),
+            },
+            heartbeat: Some(heartbeat("100 5.0.0", None)),
+            ..skewless()
+        };
+        assert_eq!(
+            evidence.evidence_line(),
+            "This shell loaded dodot 5.6.0; the last shell to load ran dodot 5.0.0."
         );
     }
 

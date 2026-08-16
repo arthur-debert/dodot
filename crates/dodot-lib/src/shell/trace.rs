@@ -25,18 +25,23 @@
 //!
 //! An rc that overrides `PS4` (or drops `PROMPT_SUBST`) costs the
 //! marker, which is detectable — as does bash 3.2 (macOS's shipped
-//! `/bin/bash`), which truncates long expanded `PS4` values at around
-//! a hundred bytes, severing the record before its suffix. Both
-//! degrade the same way. The fallback works on a *copy*: a
+//! `/bin/bash`), which truncates expanded `PS4` values at 100 bytes,
+//! severing the record before its suffix. Carrying `PWD` as well as
+//! `PATH` puts a typical record past that limit, so on macOS's system
+//! bash the fallback is the normal route rather than the exception —
+//! the report line it inserts is a `printf`, not a prompt, and is
+//! never truncated. Both degrade the same way. The fallback works on a *copy*: a
 //! temporary `ZDOTDIR` (zsh) or `--rcfile` (bash) holding the rc with
 //! a report line **inserted** before the hook — insertion, not
 //! truncation, so the file stays parseable inside any conditional or
-//! function — the always-read zsh files symlinked in, and `ZDOTDIR`
-//! reassigned to the real directory on line one so the rc's own
-//! `$ZDOTDIR` references still resolve. The user's real files are
-//! never written; the copy lives in a scratch directory created
-//! exclusively under a random name at mode `0700` (see
-//! [`scratch_dir`]) and removed when the run ends.
+//! function. For zsh the scratch directory also carries a `.zshenv`
+//! that replays the real two-stage startup — the user's own first-stage
+//! `.zshenv` sourced from where it really lives, then `ZDOTDIR` moved
+//! to the scratch copy for stage two and restored inside it (see
+//! [`zshenv_stage_one`]). The user's real files are never written; the
+//! copy lives in a scratch directory created exclusively under a random
+//! name at mode `0700` (see [`scratch_dir`]) and removed when the run
+//! ends.
 //!
 //! The copy must reproduce the shell's startup, not approximate it. A
 //! shell that read a different set of files than the real one does
@@ -77,14 +82,22 @@ pub const RECORD_SUFFIX: &str = "|> ";
 /// The `PS4` value handed to the spawned shell.
 ///
 /// zsh expands prompt escapes (`%N` = file being sourced, `%i` = line
-/// within it) natively but needs `PROMPT_SUBST` for the `$PATH`
-/// expansion — set on the command line (see [`trace_args`]), never in
-/// the user's files. bash expands parameters in `PS4` by default.
+/// within it) natively but needs `PROMPT_SUBST` for the `$PWD` and
+/// `$PATH` expansions — set on the command line (see [`trace_args`]),
+/// never in the user's files. bash expands parameters in `PS4` by
+/// default.
+///
+/// `PWD` rides along because a `PATH` is not a set of locations on its
+/// own: an empty entry means the working directory and a relative one
+/// is resolved against it, so the same `PATH` string picks a different
+/// binary depending on where the rc had `cd`'d to by the hook line
+/// ([`resolve_on_path`]). `PATH` stays last so it remains the field
+/// terminated by [`RECORD_SUFFIX`].
 pub fn ps4(shell: HookupShell) -> String {
     match shell {
-        HookupShell::Zsh => format!("+{TRACE_MARKER}%N|%i|$PATH{RECORD_SUFFIX}"),
+        HookupShell::Zsh => format!("+{TRACE_MARKER}%N|%i|$PWD|$PATH{RECORD_SUFFIX}"),
         HookupShell::Bash => {
-            format!("+{TRACE_MARKER}${{BASH_SOURCE}}|${{LINENO}}|${{PATH}}{RECORD_SUFFIX}")
+            format!("+{TRACE_MARKER}${{BASH_SOURCE}}|${{LINENO}}|${{PWD}}|${{PATH}}{RECORD_SUFFIX}")
         }
     }
 }
@@ -101,11 +114,14 @@ fn trace_args(shell: HookupShell) -> &'static [&'static str] {
 // ── Trace parsing (pure) ────────────────────────────────────────
 
 /// One `PS4` record read back out of a trace: which file, which line,
-/// and what `PATH` held when that line ran.
+/// and what `PWD` and `PATH` held when that line ran.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceRecord {
     pub file: String,
     pub line: usize,
+    /// The shell's working directory at that line — the directory an
+    /// empty or relative `PATH` entry resolves against.
+    pub cwd: String,
     pub path: String,
 }
 
@@ -133,6 +149,7 @@ fn parse_record(line: &str) -> Option<TraceRecord> {
     let (file, rest) = rest.split_once('|')?;
     let (line_no, rest) = rest.split_once('|')?;
     let line_no = line_no.parse::<usize>().ok()?;
+    let (cwd, rest) = rest.split_once('|')?;
     // PATH runs to the record suffix; the traced command follows. A
     // PATH containing the suffix itself would truncate early — a
     // pathological name this deliberately does not chase.
@@ -140,6 +157,7 @@ fn parse_record(line: &str) -> Option<TraceRecord> {
     Some(TraceRecord {
         file: file.to_string(),
         line: line_no,
+        cwd: cwd.to_string(),
         path: path.to_string(),
     })
 }
@@ -163,36 +181,167 @@ pub fn record_at<'a>(
 /// Which shape of hook a line carries — they get different
 /// resolution halves ([`TraceVerdict`]): the `eval` form asks what
 /// `dodot` resolves to on PATH; the file-source form asks only
-/// whether the sourced script exists, no PATH involved — the
+/// whether the script *that line names* exists, no PATH involved — the
 /// structural reason the file-source form is the recommended one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HookForm {
     /// `eval "$(dodot init-sh)"` — resolution rides on PATH.
     Eval,
-    /// `. …/dodot-init.sh` — a fixed path, present or not.
-    FileSource,
+    /// `. …/dodot-init.sh` — a fixed path, carried here as the line
+    /// itself gives it.
+    FileSource(SourcedScript),
 }
 
-/// Locate the hook in rc text: 1-indexed line number and form.
+/// The script a file-source hook line sources.
 ///
-/// The same recognition [`rc::scan_hook`] uses, plus the location:
-/// the first uncommented line mentioning either hook form. A
-/// commented-out hook is exactly the broken-hookup story and must not
-/// count.
-pub fn find_hook(text: &str) -> Option<(usize, HookForm)> {
+/// Carried out of [`find_hook`] instead of recomputed downstream:
+/// hook *recognition* is loose by design (any uncommented line
+/// mentioning `dodot-init.sh`, matching [`rc::scan_hook`]), so the
+/// line dodot found may well source a copy somewhere other than the
+/// one `dodot up` writes — a stale one, or one that is gone. Judging
+/// the datastore's path instead would report that hookup sound on the
+/// strength of a file the line never mentions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SourcedScript {
+    /// The exact path the line sources, `$HOME` expanded.
+    Path(PathBuf),
+    /// The line sources something dodot will not resolve without
+    /// interpreting shell — another variable, a command substitution,
+    /// a relative path whose directory is the shell's business. The
+    /// raw word is kept for the report; no verdict is drawn from it.
+    Unresolved { raw: String },
+}
+
+/// Where the hook sits in an rc file, and what it does there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hook {
+    /// 1-indexed line number — the address the trace record is looked
+    /// up by.
+    pub line: usize,
+    /// Which shape the line takes, and for the file-source shape what
+    /// it sources.
+    pub form: HookForm,
+}
+
+/// Locate the hook in rc text.
+///
+/// The same recognition [`rc::scan_hook`] uses, plus the location and,
+/// for the file-source form, the path the line actually sources: the
+/// first uncommented line mentioning either hook form. A commented-out
+/// hook is exactly the broken-hookup story and must not count.
+///
+/// `home` expands the one variable form dodot itself writes and users
+/// copy — see [`expand_hook_path`] for why that is where the expansion
+/// stops.
+pub fn find_hook(text: &str, home: &Path) -> Option<Hook> {
     for (idx, raw) in text.lines().enumerate() {
         let line = raw.trim();
         if line.starts_with('#') {
             continue;
         }
-        if line.contains("dodot init-sh") {
-            return Some((idx + 1, HookForm::Eval));
-        }
-        if line.contains("dodot-init.sh") {
-            return Some((idx + 1, HookForm::FileSource));
-        }
+        let form = if line.contains("dodot init-sh") {
+            HookForm::Eval
+        } else if line.contains("dodot-init.sh") {
+            HookForm::FileSource(sourced_script(line, home))
+        } else {
+            continue;
+        };
+        return Some(Hook {
+            line: idx + 1,
+            form,
+        });
     }
     None
+}
+
+/// The script a file-source hook line sources, or why dodot will not
+/// say.
+///
+/// The argument to the line's `.` / `source` builtin, never the first
+/// path-looking word on it: dodot's own hook line names the same path
+/// twice, once inside a `[ -f … ]` guard and once as the thing being
+/// sourced, and only the second is what the shell reads.
+fn sourced_script(line: &str, home: &Path) -> SourcedScript {
+    let Some(raw) = source_argument(line) else {
+        return SourcedScript::Unresolved {
+            raw: line.to_string(),
+        };
+    };
+    match expand_hook_path(&raw, home) {
+        Some(path) => SourcedScript::Path(path),
+        None => SourcedScript::Unresolved { raw },
+    }
+}
+
+/// The word after the line's `.` or `source` builtin, unquoted.
+fn source_argument(line: &str) -> Option<String> {
+    let mut rest = line;
+    loop {
+        let (word, after) = next_word(rest)?;
+        if word == "." || word == "source" {
+            return next_word(after).map(|(argument, _)| argument);
+        }
+        rest = after;
+    }
+}
+
+/// Split one shell word off the front of `rest`, honouring a single
+/// layer of quoting, and return it beside what follows.
+///
+/// Enough to read the argument of a `source` line and no more, and it
+/// says so by refusing the rest: a word that opens a quote it never
+/// closes, or that glues a quoted part to an unquoted one
+/// (`"$HOME"/x`), yields `None`. The caller lands on
+/// [`SourcedScript::Unresolved`], which is the right answer — half a
+/// path is not a path, and dodot is not writing a shell parser.
+fn next_word(rest: &str) -> Option<(String, &str)> {
+    let rest = rest.trim_start();
+    if rest.is_empty() {
+        return None;
+    }
+    for quote in ['"', '\''] {
+        if let Some(body) = rest.strip_prefix(quote) {
+            let end = body.find(quote)?;
+            let after = &body[end + 1..];
+            let word_ends_here = after.is_empty() || after.starts_with(char::is_whitespace);
+            return word_ends_here.then(|| (body[..end].to_string(), after));
+        }
+    }
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    Some((rest[..end].to_string(), &rest[end..]))
+}
+
+/// Anything in a hook line's path that would need a running shell to
+/// resolve: a variable, a substitution, a glob, or a separator the
+/// word split would otherwise have swallowed into the path.
+const NEEDS_A_SHELL: [char; 10] = ['$', '`', '*', '?', '~', ';', '&', '|', '<', '>'];
+
+/// Expand a hook line's script path, or `None` when resolving it would
+/// mean guessing.
+///
+/// `$HOME`, `${HOME}` and `~` are expanded because they are what
+/// dodot's own hook line uses and what a hand-wired one copies.
+/// Everything else is refused rather than approximated: the characters
+/// in [`NEEDS_A_SHELL`] need a shell to resolve, and a relative path
+/// needs the working directory of a shell that is not running yet. A
+/// refusal costs the user one honest "could not tell"; a guess costs
+/// them a verdict about a file the hook does not source.
+///
+/// The refusal is applied to the part that came off the line, never to
+/// `home` — dodot resolved that itself, and a home directory with an
+/// unusual character in it is not a line dodot cannot read.
+fn expand_hook_path(raw: &str, home: &Path) -> Option<PathBuf> {
+    let under_home = ["${HOME}", "$HOME", "~"]
+        .iter()
+        .find_map(|prefix| raw.strip_prefix(prefix));
+    let rest = under_home.map_or(raw, |rest| rest.trim_start_matches('/'));
+    if rest.contains(NEEDS_A_SHELL) {
+        return None;
+    }
+    match under_home {
+        Some(_) => Some(home.join(rest)),
+        None => Path::new(rest).is_absolute().then(|| PathBuf::from(rest)),
+    }
 }
 
 // ── PATH resolution (pure over an injected Fs) ──────────────────
@@ -253,13 +402,27 @@ impl Resolution {
 /// first executable match wins — but reporting what the shell skips
 /// silently. Pure over the injected [`Fs`]. The walk stops at the
 /// winner: entries after it were never passed over.
-pub fn resolve_on_path(fs: &dyn Fs, path_var: &str, binary: &str) -> Resolution {
+///
+/// `cwd` is the working directory at the traced line, and it is part
+/// of the lookup rather than a nicety: an **empty** `PATH` component
+/// means the working directory to every shell that implements the
+/// POSIX rule — measured on bash 5 and zsh 5.9, for a leading,
+/// trailing, doubled *and* wholly empty `PATH` — and a **relative**
+/// component is resolved against it too. Dropping the empty entries
+/// and reading the relative ones against dodot's own directory would
+/// answer for a search the traced shell never performed, which is the
+/// diagnostic being wrong in exactly the way it exists to catch.
+pub fn resolve_on_path(fs: &dyn Fs, path_var: &str, cwd: &Path, binary: &str) -> Resolution {
     let mut candidates = Vec::new();
     let mut winner = None;
-    for dir in path_var.split(':').filter(|d| !d.is_empty()) {
-        let dir = Path::new(dir);
+    for entry in path_var.split(':') {
+        let dir = match entry {
+            "" => cwd.to_path_buf(),
+            other if Path::new(other).is_absolute() => PathBuf::from(other),
+            relative => cwd.join(relative),
+        };
         let candidate = dir.join(binary);
-        let skipped = classify(fs, dir, &candidate);
+        let skipped = classify(fs, &dir, &candidate);
         let won = skipped.is_none();
         candidates.push(Candidate {
             path: candidate.clone(),
@@ -320,14 +483,44 @@ pub enum TraceVerdict {
     /// `dodot` resolves to the running binary: the hook is sound and
     /// the fault, if any, is elsewhere.
     RunningBinary { path: PathBuf },
-    /// File-source hook whose script path is gone — `dodot up`
-    /// regenerates it.
+    /// File-source hook whose script path names nothing sourceable —
+    /// `dodot up` regenerates the one it owns.
     ScriptMissing { script: PathBuf },
     /// File-source hook and the script is where the hook says: sound.
     ScriptPresent { script: PathBuf },
+    /// File-source hook whose sourced path dodot declines to resolve
+    /// (see [`SourcedScript::Unresolved`]). Deliberately not a
+    /// judgment: an honest "could not tell" is the only answer a line
+    /// dodot cannot read supports.
+    ScriptUnresolved { raw: String },
 }
 
-/// Judge an `eval`-form hook from the PATH its trace record carried.
+/// Judge a file-source hook from the path the hook line names.
+///
+/// The path comes from the line, never from
+/// [`Pather::init_script_path`](crate::paths::Pather::init_script_path):
+/// a hand-wired hook may source a stale copy elsewhere while the
+/// datastore's script sits there perfectly intact, and checking the
+/// path dodot *would* have written reports that hookup sound on
+/// evidence about a different file — the expected-instead-of-measured
+/// mistake this epic exists to correct.
+///
+/// "Present" means a regular file, following symlinks: a directory or
+/// a dangling link at that path is not something `.` can source, and
+/// counting it would be the same false green in a different disguise.
+pub fn judge_file_source_hook(fs: &dyn Fs, script: PathBuf) -> TraceVerdict {
+    match fs.stat(&script) {
+        Ok(meta) if meta.is_file => TraceVerdict::ScriptPresent { script },
+        _ => TraceVerdict::ScriptMissing { script },
+    }
+}
+
+/// Judge an `eval`-form hook from the trace record at its line.
+///
+/// The whole record rather than its `path` field alone: the search
+/// depends on the working directory as much as on `PATH`
+/// ([`resolve_on_path`]), and taking both from one record is what keeps
+/// them from being read off two different moments of the startup.
 ///
 /// `version_of` is how the winner's version is learned — injected so
 /// the judgment stays pure; production executes `<winner> --version`
@@ -336,14 +529,14 @@ pub enum TraceVerdict {
 /// through a link *is* the running binary if the link lands on it.
 pub fn judge_eval_hook(
     fs: &dyn Fs,
-    traced_path: &str,
+    record: &TraceRecord,
     running_exe: &Path,
     version_of: &dyn Fn(&Path) -> Option<String>,
 ) -> TraceVerdict {
-    let resolution = resolve_on_path(fs, traced_path, "dodot");
+    let resolution = resolve_on_path(fs, &record.path, Path::new(&record.cwd), "dodot");
     let Some(winner) = resolution.winner.clone() else {
         return TraceVerdict::Unresolvable {
-            path: traced_path.to_string(),
+            path: record.path.clone(),
             resolution,
         };
     };
@@ -397,10 +590,10 @@ pub enum TraceError {
     RcUnreadable(String),
     /// The fallback's scratch copy could not be built so that it
     /// reproduces the shell's startup faithfully — the scratch
-    /// directory would not open, or an always-read file could not be
-    /// linked in. A verdict computed from a shell that read a
-    /// different set of files than the real one does is worse than no
-    /// verdict, because the user acts on it.
+    /// directory would not open, or one of the files that stands in
+    /// for a startup file could not be written. A verdict computed
+    /// from a shell that read a different set of files than the real
+    /// one does is worse than no verdict, because the user acts on it.
     FallbackUnfaithful(String),
 }
 
@@ -412,13 +605,42 @@ pub struct TraceRun {
     pub used_fallback: bool,
 }
 
+/// Everything one trace needs to know about the shell it is
+/// reproducing.
+#[derive(Debug, Clone, Copy)]
+pub struct TraceRequest<'a> {
+    /// The shell binary to spawn.
+    pub shell_path: &'a Path,
+    pub shell: HookupShell,
+    /// `$HOME` — where zsh looks for the *first* file it reads,
+    /// `.zshenv`, when the environment exports no `$ZDOTDIR`.
+    pub home: &'a Path,
+    /// `$ZDOTDIR` exactly as the shell would inherit it, when the
+    /// environment carries one. Only the fallback consults it, and
+    /// only for zsh — see [`run_fallback`].
+    pub zdotdir: Option<&'a str>,
+    /// The path the shell opens (what zsh's `%N` / bash's
+    /// `BASH_SOURCE` will name).
+    pub rc_nominal: &'a Path,
+    /// The symlink-resolved file that holds the bytes.
+    pub rc_resolved: &'a Path,
+    /// 1-indexed line the hook sits on.
+    pub hook_line: usize,
+    pub timeout: Duration,
+}
+
+impl TraceRequest<'_> {
+    /// The two paths a record at the hook line may be addressed by.
+    fn rc_paths(&self) -> [&Path; 2] {
+        [self.rc_nominal, self.rc_resolved]
+    }
+}
+
 /// Spawn the shell under xtrace and read the hook-line records back,
 /// falling back to the inserted-report copy when the primary run
 /// yields no record at the hook's location.
 ///
-/// `rc_nominal` is the path the shell opens (what zsh's `%N` / bash's
-/// `BASH_SOURCE` will name); `rc_resolved` the symlink-resolved file
-/// that holds the bytes. Records are matched against both. The
+/// Records are matched against both of the request's rc paths. The
 /// fallback runs whenever the primary record is missing — an rc-side
 /// `PS4` override can strip the marker from any suffix of the file,
 /// so absence alone cannot distinguish "hook never ran" from "marker
@@ -426,38 +648,23 @@ pub struct TraceRun {
 /// when the hook line would be reached. A missing record *after* the
 /// fallback is therefore the hook-never-ran answer, confirmed on a
 /// copy that cannot lose the marker.
-pub fn run_trace(
-    fs: &dyn Fs,
-    shell_path: &Path,
-    shell: HookupShell,
-    rc_nominal: &Path,
-    rc_resolved: &Path,
-    hook_line: usize,
-    timeout: Duration,
-) -> Result<TraceRun, TraceError> {
-    let mut command = Command::new(shell_path);
-    command.env("PS4", ps4(shell)).args(trace_args(shell));
-    let records = match spawn_captured(command, timeout) {
+pub fn run_trace(fs: &dyn Fs, req: &TraceRequest) -> Result<TraceRun, TraceError> {
+    let mut command = Command::new(req.shell_path);
+    command
+        .env("PS4", ps4(req.shell))
+        .args(trace_args(req.shell));
+    let records = match spawn_captured(command, req.timeout) {
         SpawnOutcome::TimedOut => return Err(TraceError::TimedOut),
         SpawnOutcome::SpawnFailed(e) => return Err(TraceError::SpawnFailed(e)),
         SpawnOutcome::Finished(capture) => parse_trace(&capture.stderr),
     };
-    if record_at(&records, &[rc_nominal, rc_resolved], hook_line).is_some() {
+    if record_at(&records, &req.rc_paths(), req.hook_line).is_some() {
         return Ok(TraceRun {
             records,
             used_fallback: false,
         });
     }
-    run_fallback(
-        fs,
-        shell_path,
-        shell,
-        rc_nominal,
-        rc_resolved,
-        hook_line,
-        timeout,
-    )
-    .map(|records| TraceRun {
+    run_fallback(fs, req).map(|records| TraceRun {
         records,
         used_fallback: true,
     })
@@ -475,65 +682,101 @@ pub fn run_trace(
 /// of files than the real one does ends the trace with
 /// [`TraceError::FallbackUnfaithful`] rather than yielding a verdict
 /// the user would act on.
-fn run_fallback(
-    fs: &dyn Fs,
-    shell_path: &Path,
-    shell: HookupShell,
-    rc_nominal: &Path,
-    rc_resolved: &Path,
-    hook_line: usize,
-    timeout: Duration,
-) -> Result<Vec<TraceRecord>, TraceError> {
+fn run_fallback(fs: &dyn Fs, req: &TraceRequest) -> Result<Vec<TraceRecord>, TraceError> {
     let rc_text = fs
-        .read_to_string(rc_resolved)
+        .read_to_string(req.rc_resolved)
         .map_err(|e| TraceError::RcUnreadable(format!("{e}")))?;
     // Dropped at the end of this function — every exit path, the
     // timeout and the error paths included, takes the copy with it.
     let scratch = scratch_dir()?;
     let temp = scratch.path();
-    let mut command = Command::new(shell_path);
-    match shell {
+    let unfaithful = |e: crate::DodotError| TraceError::FallbackUnfaithful(format!("{e}"));
+    let mut command = Command::new(req.shell_path);
+    let copy = insert_report_line(&rc_text, req.rc_nominal, req.hook_line);
+    match req.shell {
         HookupShell::Zsh => {
-            let real_zdot = rc_nominal.parent().unwrap_or(Path::new("/"));
-            // Line one points $ZDOTDIR back at the real directory
-            // before anything in the rc can read it; the report
-            // line goes in front of the hook.
-            let copy = format!(
-                "ZDOTDIR={}\n{}",
-                shell_quote(&real_zdot.display().to_string()),
-                insert_report_line(&rc_text, rc_nominal, hook_line)
-            );
-            fs.write_file(&temp.join(".zshrc"), copy.as_bytes())
-                .map_err(|e| TraceError::FallbackUnfaithful(format!("{e}")))?;
-            // The always-read files still get read — from where they
-            // really live. A link that cannot be made is not a
-            // cosmetic loss: the shell would start from a different
-            // set of files, so it ends the trace.
-            for name in [".zshenv", ".zprofile", ".zlogin"] {
-                let real = real_zdot.join(name);
-                if fs.exists(&real) {
-                    fs.symlink(&real, &temp.join(name))
-                        .map_err(|e| TraceError::FallbackUnfaithful(format!("{e}")))?;
-                }
-            }
+            fs.write_file(&temp.join(".zshrc"), zshrc_copy(&copy).as_bytes())
+                .map_err(unfaithful)?;
+            fs.write_file(
+                &temp.join(".zshenv"),
+                zshenv_stage_one(req, temp).as_bytes(),
+            )
+            .map_err(unfaithful)?;
             command.env("ZDOTDIR", temp).args(["-i", "-c", "true"]);
         }
         HookupShell::Bash => {
-            let copy = insert_report_line(&rc_text, rc_nominal, hook_line);
             let rcfile = temp.join("bashrc");
             fs.write_file(&rcfile, copy.as_bytes())
-                .map_err(|e| TraceError::FallbackUnfaithful(format!("{e}")))?;
+                .map_err(unfaithful)?;
             command
                 .arg("--rcfile")
                 .arg(&rcfile)
                 .args(["-i", "-c", "true"]);
         }
     }
-    match spawn_captured(command, timeout) {
+    match spawn_captured(command, req.timeout) {
         SpawnOutcome::TimedOut => Err(TraceError::TimedOut),
         SpawnOutcome::SpawnFailed(e) => Err(TraceError::SpawnFailed(e)),
         SpawnOutcome::Finished(capture) => Ok(parse_trace(&capture.stderr)),
     }
+}
+
+/// Shell variable the fallback's `.zshenv` parks the effective
+/// `ZDOTDIR` in, so the copied `.zshrc` can restore the value the real
+/// startup would have reached by that point.
+const EFFECTIVE_ZDOTDIR: &str = "DODOT_TRACE_ZDOTDIR";
+
+/// The scratch `.zshenv`: stage one of zsh's startup, reproduced.
+///
+/// zsh's file lookup is two-stage, and the stages disagree about where
+/// `ZDOTDIR` points. It reads `$ZDOTDIR/.zshenv` *first*, with
+/// `ZDOTDIR` still holding whatever the environment exported — which
+/// for most users is nothing, making the first file `~/.zshenv`. Only
+/// then does it look up `$ZDOTDIR/.zshrc`, by which time that very
+/// file may have moved `ZDOTDIR` somewhere else. Pointing `ZDOTDIR` at
+/// the scratch directory from the start and linking the *final*
+/// directory's `.zshenv` in — the shape this replaces — gets that
+/// backwards twice over: it skips the `~/.zshenv` that establishes
+/// `ZDOTDIR` (along with every `PATH` line in it, which is exactly what
+/// the trace is measuring), and it reads a `.zshenv` beside the
+/// `.zshrc` that real zsh never opens.
+///
+/// So the scratch `.zshenv` *is* stage one: it restores `ZDOTDIR` to
+/// the value the real shell would have held, sources the real
+/// first-stage file from where it really lives, records where that
+/// left `ZDOTDIR`, and only then points `ZDOTDIR` at the scratch
+/// directory so stage two finds the copied `.zshrc`.
+fn zshenv_stage_one(req: &TraceRequest, temp: &Path) -> String {
+    let inherited = match req.zdotdir {
+        Some(dir) => format!("ZDOTDIR={}", shell_quote(dir)),
+        None => "unset ZDOTDIR".to_string(),
+    };
+    let first_stage = req
+        .zdotdir
+        .map(PathBuf::from)
+        .unwrap_or_else(|| req.home.to_path_buf())
+        .join(".zshenv");
+    format!(
+        "{inherited}\n\
+         [ -f {first} ] && . {first}\n\
+         {EFFECTIVE_ZDOTDIR}=\"${{ZDOTDIR:-$HOME}}\"\n\
+         ZDOTDIR={temp}\n",
+        first = shell_quote(&first_stage.display().to_string()),
+        temp = shell_quote(&temp.display().to_string()),
+    )
+}
+
+/// The scratch `.zshrc`: the rc copy, preceded by the line that undoes
+/// the scratch `ZDOTDIR`.
+///
+/// The rc's own `$ZDOTDIR` references have to resolve to what stage one
+/// left behind, not to the scratch directory that got zsh here — and
+/// the effective value is read back from the variable stage one
+/// recorded rather than recomputed, so a `.zshenv` that derives
+/// `ZDOTDIR` at runtime is reproduced as faithfully as one that
+/// assigns it literally.
+fn zshrc_copy(rc_copy: &str) -> String {
+    format!("ZDOTDIR=\"${EFFECTIVE_ZDOTDIR}\"\nunset {EFFECTIVE_ZDOTDIR}\n{rc_copy}")
 }
 
 /// The rc text with the report line inserted immediately before
@@ -542,7 +785,7 @@ fn run_fallback(
 /// record lookup is unchanged.
 fn insert_report_line(rc_text: &str, rc_nominal: &Path, hook_line: usize) -> String {
     let report = format!(
-        "printf '+{TRACE_MARKER}%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PATH\" >&2\n",
+        "printf '+{TRACE_MARKER}%s|%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PWD\" \"$PATH\" >&2\n",
         shell_quote(&rc_nominal.display().to_string()),
         hook_line,
     );
@@ -604,6 +847,7 @@ mod tests {
     const BASH_NO_MARKER: &str = include_str!("fixtures/bash-xtrace-no-marker.txt");
 
     const FIXTURE_PATH: &str = "/opt/homebrew/bin:/usr/bin:/bin";
+    const FIXTURE_CWD: &str = "/tmp/dodot-trace-exp";
 
     #[test]
     fn the_zsh_record_at_the_hook_line_is_addressable() {
@@ -611,6 +855,7 @@ mod tests {
         let rc = Path::new("/tmp/dodot-trace-exp/zdot/.zshrc");
         let record = record_at(&records, &[rc], 4).expect("hook-line record");
         assert_eq!(record.path, FIXTURE_PATH);
+        assert_eq!(record.cwd, FIXTURE_CWD);
         assert_eq!(record.line, 4);
         // Other lines of the same file are records too — PATH at
         // *every* line is what the trace buys.
@@ -625,6 +870,7 @@ mod tests {
         let rc = Path::new("/tmp/dodot-trace-exp/home/.bashrc");
         let record = record_at(&records, &[rc], 4).expect("hook-line record");
         assert_eq!(record.path, FIXTURE_PATH);
+        assert_eq!(record.cwd, FIXTURE_CWD);
     }
 
     #[test]
@@ -649,18 +895,22 @@ mod tests {
     #[test]
     fn record_parsing_rejects_near_misses() {
         // No leading '+': not a trace line, whatever it contains.
-        assert_eq!(parse_record("dodot-trace|/rc|1|/bin|> x"), None);
-        // No record suffix: the PATH field never terminated.
-        assert_eq!(parse_record("+dodot-trace|/rc|1|/bin"), None);
+        assert_eq!(parse_record("dodot-trace|/rc|1|/home|/bin|> x"), None);
+        // No record suffix: the PATH field never terminated — the
+        // shape bash 3.2's 100-byte PS4 truncation produces.
+        assert_eq!(parse_record("+dodot-trace|/rc|1|/home|/bin"), None);
+        // Truncated a field earlier: no PATH field at all.
+        assert_eq!(parse_record("+dodot-trace|/rc|1|/home"), None);
         // Line number is not a number.
-        assert_eq!(parse_record("+dodot-trace|/rc|x|/bin|> x"), None);
+        assert_eq!(parse_record("+dodot-trace|/rc|x|/home|/bin|> x"), None);
         // Empty PATH is still a record — an empty PATH at the hook
         // line is exactly the unresolvable story.
         assert_eq!(
-            parse_record("+dodot-trace|/rc|3||> eval"),
+            parse_record("+dodot-trace|/rc|3|/home||> eval"),
             Some(TraceRecord {
                 file: "/rc".into(),
                 line: 3,
+                cwd: "/home".into(),
                 path: String::new(),
             })
         );
@@ -668,20 +918,121 @@ mod tests {
 
     // ── Hook location ───────────────────────────────────────────
 
+    const HOME: &str = "/home/u";
+
+    fn hook_in(rc_text: &str) -> Option<Hook> {
+        find_hook(rc_text, Path::new(HOME))
+    }
+
+    /// The path a file-source hook resolved to, or the test's own
+    /// panic — every caller below asserts about one or the other.
+    fn sourced(rc_text: &str) -> SourcedScript {
+        match hook_in(rc_text).expect("a hook").form {
+            HookForm::FileSource(script) => script,
+            other => panic!("expected a file-source hook, got {other:?}"),
+        }
+    }
+
     #[test]
     fn find_hook_names_line_and_form() {
         let eval_rc = "# comment\nexport A=1\neval \"$(dodot init-sh)\"\n";
-        assert_eq!(find_hook(eval_rc), Some((3, HookForm::Eval)));
+        assert_eq!(
+            hook_in(eval_rc),
+            Some(Hook {
+                line: 3,
+                form: HookForm::Eval
+            })
+        );
 
+        // dodot's own hook line names the path twice — once in the
+        // guard, once as the argument. The second one is what gets
+        // sourced, and both happen to agree here.
         let file_rc = "[ -f \"$HOME/.local/share/dodot/shell/dodot-init.sh\" ] && \
                        . \"$HOME/.local/share/dodot/shell/dodot-init.sh\"\n";
-        assert_eq!(find_hook(file_rc), Some((1, HookForm::FileSource)));
+        assert_eq!(
+            hook_in(file_rc),
+            Some(Hook {
+                line: 1,
+                form: HookForm::FileSource(SourcedScript::Path(
+                    "/home/u/.local/share/dodot/shell/dodot-init.sh".into()
+                ))
+            })
+        );
+    }
+
+    /// The finding this retained path exists for: hook recognition
+    /// accepts any line mentioning `dodot-init.sh`, so the line may
+    /// well source a copy somewhere other than the one `dodot up`
+    /// writes. What comes back is that copy, not the datastore's.
+    #[test]
+    fn the_retained_path_is_the_one_the_line_sources() {
+        for (rc, expected) in [
+            (
+                ". \"$HOME/old/dodot-init.sh\"\n",
+                "/home/u/old/dodot-init.sh",
+            ),
+            (
+                "source ${HOME}/old/dodot-init.sh\n",
+                "/home/u/old/dodot-init.sh",
+            ),
+            (". ~/old/dodot-init.sh\n", "/home/u/old/dodot-init.sh"),
+            (
+                ". /opt/elsewhere/dodot-init.sh\n",
+                "/opt/elsewhere/dodot-init.sh",
+            ),
+            // The guard names one file and the source another: the
+            // sourced one is the only one that runs.
+            (
+                "[ -f \"$HOME/a/dodot-init.sh\" ] && . \"$HOME/b/dodot-init.sh\"\n",
+                "/home/u/b/dodot-init.sh",
+            ),
+        ] {
+            assert_eq!(
+                sourced(rc),
+                SourcedScript::Path(expected.into()),
+                "rc: {rc}"
+            );
+        }
+    }
+
+    /// Lines dodot will not resolve without interpreting shell. Each
+    /// yields an honest non-answer rather than a path — a guess here
+    /// would be a verdict about a file the hook may not source.
+    #[test]
+    fn a_line_dodot_cannot_read_resolves_to_nothing_rather_than_a_guess() {
+        for rc in [
+            // A variable dodot does not expand.
+            ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\"\n",
+            // A command substitution.
+            ". \"$(dirname \"$0\")/dodot-init.sh\"\n",
+            // Relative: resolved against a working directory that
+            // belongs to a shell which is not running yet.
+            ". ./dodot-init.sh\n",
+            // A glob.
+            ". /opt/*/dodot-init.sh\n",
+            // A separator the word split would otherwise have taken
+            // for part of the filename.
+            "if true; then . $HOME/dodot-init.sh; fi\n",
+            // Quoted and unquoted parts glued together: dodot reads
+            // one layer of quoting, not shell concatenation.
+            ". \"$HOME\"/dodot-init.sh\n",
+            // Mentioned but never sourced — no `.`/`source` argument
+            // to read at all.
+            "echo dodot-init.sh is missing\n",
+            // A quote that never closes: half a path is not a path.
+            ". \"/opt/dodot-init.sh\n",
+        ] {
+            assert!(
+                matches!(sourced(rc), SourcedScript::Unresolved { .. }),
+                "rc must not resolve: {rc}"
+            );
+        }
     }
 
     #[test]
     fn a_commented_hook_is_no_hook() {
-        assert_eq!(find_hook("# eval \"$(dodot init-sh)\"\n"), None);
-        assert_eq!(find_hook("alias ll='ls -l'\n"), None);
+        assert_eq!(hook_in("# eval \"$(dodot init-sh)\"\n"), None);
+        assert_eq!(hook_in("alias ll='ls -l'\n"), None);
     }
 
     // ── PATH resolution ─────────────────────────────────────────
@@ -696,6 +1047,12 @@ mod tests {
         path
     }
 
+    /// A working directory no PATH entry in these tests refers to, so
+    /// only the tests that mean to exercise it can be affected by it.
+    fn nowhere() -> &'static Path {
+        Path::new("/nonexistent-cwd")
+    }
+
     #[test]
     fn the_first_executable_match_wins() {
         let env = TempEnvironment::builder().build();
@@ -706,7 +1063,7 @@ mod tests {
             env.home.join("a").display(),
             env.home.join("b").display()
         );
-        let r = resolve_on_path(env.fs.as_ref(), &path_var, "dodot");
+        let r = resolve_on_path(env.fs.as_ref(), &path_var, nowhere(), "dodot");
         assert_eq!(r.winner, Some(first));
         // The walk stops at the winner: b's entry was never passed
         // over, so it is not a candidate.
@@ -723,7 +1080,7 @@ mod tests {
         let real = executable(&env, "real", "dodot");
 
         let path_var = format!("{}:{}", linkdir.display(), env.home.join("real").display());
-        let r = resolve_on_path(env.fs.as_ref(), &path_var, "dodot");
+        let r = resolve_on_path(env.fs.as_ref(), &path_var, nowhere(), "dodot");
         assert_eq!(r.winner, Some(real));
         let skips: Vec<_> = r.notable_skips().collect();
         assert_eq!(skips.len(), 1);
@@ -749,7 +1106,7 @@ mod tests {
             env.home.join("empty").display()
         );
         env.fs.mkdir_all(&env.home.join("empty")).unwrap();
-        let r = resolve_on_path(env.fs.as_ref(), &path_var, "dodot");
+        let r = resolve_on_path(env.fs.as_ref(), &path_var, nowhere(), "dodot");
         assert_eq!(r.winner, None);
         assert_eq!(r.candidates.len(), 3);
         assert_eq!(r.candidates[0].skipped, Some(SkipReason::MissingDir));
@@ -759,12 +1116,45 @@ mod tests {
         assert_eq!(r.notable_skips().count(), 2);
     }
 
+    /// An empty `PATH` component means the working directory — to
+    /// bash 5, bash 3.2 and zsh 5.9 alike, verified against all three.
+    /// Leading, trailing, doubled, and the wholly empty `PATH` that is
+    /// one empty component: every one of them searches there, so
+    /// filtering them out reports on a search the shell never did.
     #[test]
-    fn an_empty_path_resolves_nothing() {
+    fn empty_path_components_search_the_working_directory() {
         let env = TempEnvironment::builder().build();
-        let r = resolve_on_path(env.fs.as_ref(), "", "dodot");
+        let here = executable(&env, "here", "dodot");
+        let cwd = env.home.join("here");
+        let elsewhere = env.home.join("elsewhere").display().to_string();
+
+        for path_var in [
+            "",
+            ":",
+            &format!(":{elsewhere}"),
+            &format!("{elsewhere}:"),
+            &format!("{elsewhere}::{elsewhere}"),
+        ] {
+            let r = resolve_on_path(env.fs.as_ref(), path_var, &cwd, "dodot");
+            assert_eq!(r.winner, Some(here.clone()), "PATH={path_var:?}");
+        }
+    }
+
+    /// A relative component is resolved against the traced shell's
+    /// working directory, not dodot's — the rc may well have `cd`'d
+    /// before the hook line, and dodot's own cwd has nothing to do
+    /// with the search that happened.
+    #[test]
+    fn relative_path_components_resolve_against_the_traced_directory() {
+        let env = TempEnvironment::builder().build();
+        let nested = executable(&env, "project/bin", "dodot");
+        let r = resolve_on_path(env.fs.as_ref(), "bin", &env.home.join("project"), "dodot");
+        assert_eq!(r.winner, Some(nested));
+        // The same PATH from anywhere else finds nothing: the answer
+        // is a property of the pair, which is why they travel together
+        // in one `TraceRecord`.
+        let r = resolve_on_path(env.fs.as_ref(), "bin", &env.home, "dodot");
         assert_eq!(r.winner, None);
-        assert!(r.candidates.is_empty());
     }
 
     // ── Verdicts: all four reachable ────────────────────────────
@@ -773,11 +1163,22 @@ mod tests {
         None
     }
 
+    /// A record carrying `path` at the hook line, from a working
+    /// directory the PATH entries under test do not depend on.
+    fn record(path: &str) -> TraceRecord {
+        TraceRecord {
+            file: "/home/u/.zshrc".into(),
+            line: 1,
+            cwd: nowhere().display().to_string(),
+            path: path.to_string(),
+        }
+    }
+
     #[test]
     fn verdict_unresolvable_carries_the_searched_path() {
         let env = TempEnvironment::builder().build();
         let running = executable(&env, "run", "dodot");
-        let v = judge_eval_hook(env.fs.as_ref(), "/nowhere", &running, &no_version);
+        let v = judge_eval_hook(env.fs.as_ref(), &record("/nowhere"), &running, &no_version);
         match v {
             TraceVerdict::Unresolvable { path, resolution } => {
                 assert_eq!(path, "/nowhere");
@@ -798,7 +1199,7 @@ mod tests {
         env.fs.symlink(&running, &linkdir.join("dodot")).unwrap();
         let v = judge_eval_hook(
             env.fs.as_ref(),
-            &linkdir.display().to_string(),
+            &record(&linkdir.display().to_string()),
             &running,
             &no_version,
         );
@@ -821,7 +1222,7 @@ mod tests {
         };
         let v = judge_eval_hook(
             env.fs.as_ref(),
-            &env.home.join("old").display().to_string(),
+            &record(&env.home.join("old").display().to_string()),
             &running,
             &version_of,
         );
@@ -838,6 +1239,58 @@ mod tests {
             }
             other => panic!("expected DifferentBinary, got {other:?}"),
         }
+    }
+
+    /// The file-source verdict is about the path the *line* names.
+    /// The regression it guards: a hook pointing at a stale copy
+    /// elsewhere was reported sound because the datastore's own script
+    /// existed — a verdict drawn from a file the hook never mentions.
+    #[test]
+    fn the_file_source_verdict_judges_the_sourced_path_not_the_expected_one() {
+        use crate::paths::Pather;
+        let env = TempEnvironment::builder().build();
+        // The script `dodot up` writes, present and healthy.
+        let datastore = env.paths.init_script_path();
+        env.fs.mkdir_all(datastore.parent().unwrap()).unwrap();
+        env.fs.write_file(&datastore, b"# init\n").unwrap();
+
+        // A hand-wired hook sourcing a copy that is not there.
+        let stale = env.home.join("old/dodot-init.sh");
+        assert_eq!(
+            judge_file_source_hook(env.fs.as_ref(), stale.clone()),
+            TraceVerdict::ScriptMissing { script: stale },
+            "the datastore's script existing says nothing about this hook"
+        );
+
+        // And the sound case, judged on the same path.
+        assert_eq!(
+            judge_file_source_hook(env.fs.as_ref(), datastore.clone()),
+            TraceVerdict::ScriptPresent { script: datastore }
+        );
+    }
+
+    /// Sourceable means a regular file. A directory or a dangling
+    /// symlink at that path is not something `.` can read, and calling
+    /// it present is the same false green wearing a different hat.
+    #[test]
+    fn a_path_that_is_not_a_readable_file_is_not_a_present_script() {
+        let env = TempEnvironment::builder().build();
+        let dir = env.home.join("dodot-init.sh");
+        env.fs.mkdir_all(&dir).unwrap();
+        assert!(matches!(
+            judge_file_source_hook(env.fs.as_ref(), dir),
+            TraceVerdict::ScriptMissing { .. }
+        ));
+
+        let dangling = env.home.join("link/dodot-init.sh");
+        env.fs.mkdir_all(&env.home.join("link")).unwrap();
+        env.fs
+            .symlink(&env.home.join("gone.sh"), &dangling)
+            .unwrap();
+        assert!(matches!(
+            judge_file_source_hook(env.fs.as_ref(), dangling),
+            TraceVerdict::ScriptMissing { .. }
+        ));
     }
 
     // The fourth verdict — HookNeverRan — is produced by the caller
@@ -865,6 +1318,9 @@ mod tests {
         assert_eq!(lines.len(), 4, "insertion, not replacement: {copy}");
         assert!(lines[1].starts_with("printf '+dodot-trace|"), "{copy}");
         assert!(lines[1].contains("'/home/u/.zshrc' 2"), "{copy}");
+        // The report produces the same four-field record the PS4 path
+        // does — one parser, two producers.
+        assert!(lines[1].contains("\"$PWD\" \"$PATH\""), "{copy}");
         // Everything around the insertion survives byte for byte.
         assert_eq!(lines[0], "if true; then");
         assert_eq!(lines[2], "  eval \"$(dodot init-sh)\"");
@@ -911,6 +1367,27 @@ mod tests {
 
     const TIMEOUT: Duration = Duration::from_secs(10);
 
+    /// A request tracing `rc` at `hook_line` with the given shell,
+    /// rooted at the test environment's home.
+    fn request<'a>(
+        env: &'a TempEnvironment,
+        shell_path: &'a Path,
+        shell: HookupShell,
+        rc: &'a Path,
+        hook_line: usize,
+    ) -> TraceRequest<'a> {
+        TraceRequest {
+            shell_path,
+            shell,
+            home: &env.home,
+            zdotdir: None,
+            rc_nominal: rc,
+            rc_resolved: rc,
+            hook_line,
+            timeout: TIMEOUT,
+        }
+    }
+
     #[test]
     fn a_real_bash_reports_path_at_the_hook_line() {
         let Some(bash) = bash() else { return };
@@ -926,12 +1403,7 @@ mod tests {
 
         let run = run_trace(
             env.fs.as_ref(),
-            bash,
-            HookupShell::Bash,
-            &rc,
-            &rc,
-            2,
-            TIMEOUT,
+            &request(&env, bash, HookupShell::Bash, &rc, 2),
         )
         .expect("trace runs");
         // Which route produced the record is the shell's business:
@@ -959,12 +1431,7 @@ mod tests {
 
         let run = run_trace(
             env.fs.as_ref(),
-            bash,
-            HookupShell::Bash,
-            &rc,
-            &rc,
-            3,
-            TIMEOUT,
+            &request(&env, bash, HookupShell::Bash, &rc, 3),
         )
         .expect("fallback runs");
         assert!(run.used_fallback);
@@ -992,24 +1459,21 @@ mod tests {
 
         let run = run_trace(
             env.fs.as_ref(),
-            bash,
-            HookupShell::Bash,
-            &rc,
-            &rc,
-            3,
-            TIMEOUT,
+            &request(&env, bash, HookupShell::Bash, &rc, 3),
         )
         .expect("trace runs");
         assert!(run.used_fallback);
         assert!(record_at(&run.records, &[&rc], 3).is_none());
     }
 
+    fn zsh() -> Option<&'static Path> {
+        let p = Path::new("/bin/zsh");
+        p.exists().then_some(p)
+    }
+
     #[test]
     fn a_real_zsh_reports_path_at_the_hook_line_via_zdotdir() {
-        let zsh = Path::new("/bin/zsh");
-        if !zsh.exists() {
-            return;
-        }
+        let Some(zsh) = zsh() else { return };
         let env = TempEnvironment::builder().build();
         let zdot = env.home.join("zdot");
         env.fs.mkdir_all(&zdot).unwrap();
@@ -1024,12 +1488,104 @@ mod tests {
         // ZDOTDIR set, zsh reads every user dotfile from it, so the
         // developer's own rc files are unreachable without touching
         // $HOME.
-        let _zdot = EnvVarGuard::set("ZDOTDIR", &zdot.display().to_string());
+        let zdot_display = zdot.display().to_string();
+        let _zdot = EnvVarGuard::set("ZDOTDIR", &zdot_display);
 
-        let run = run_trace(env.fs.as_ref(), zsh, HookupShell::Zsh, &rc, &rc, 2, TIMEOUT)
-            .expect("trace runs");
+        let mut req = request(&env, zsh, HookupShell::Zsh, &rc, 2);
+        req.zdotdir = Some(&zdot_display);
+        let run = run_trace(env.fs.as_ref(), &req).expect("trace runs");
         let record = record_at(&run.records, &[&rc], 2).expect("hook-line record");
         assert_eq!(record.path, "/mangled/by/zshrc");
+    }
+
+    /// The shape the fallback used to get wrong, end to end in a real
+    /// zsh: `~/.zshenv` is what *sets* `ZDOTDIR`, and it exports PATH
+    /// on the way. Real startup reads it first, from `$HOME`, and only
+    /// then looks up `$ZDOTDIR/.zshrc`.
+    ///
+    /// The old fallback started with `ZDOTDIR` already pointed at the
+    /// scratch directory and linked in `<final-ZDOTDIR>/.zshenv` — a
+    /// file zsh never reads in this shape — so `~/.zshenv` never ran
+    /// and its PATH never appeared. The hook-line PATH came back
+    /// missing the entry every real shell has, presented as a faithful
+    /// measurement. A `PS4` override forces the fallback, which is the
+    /// only route this exercises.
+    #[test]
+    fn the_zsh_fallback_runs_the_zshenv_that_establishes_zdotdir() {
+        let Some(zsh) = zsh() else { return };
+        let env = TempEnvironment::builder().build();
+        let zdot = env.home.join("config/zsh");
+        env.fs.mkdir_all(&zdot).unwrap();
+        // Stage one: sets ZDOTDIR *and* mutates PATH. Both must land.
+        env.fs
+            .write_file(
+                &env.home.join(".zshenv"),
+                format!(
+                    "export ZDOTDIR={}\nexport PATH=/from/zshenv\n",
+                    zdot.display()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        // Stage two, from the directory stage one named. The PS4
+        // override costs the marker, so the fallback has to answer.
+        let rc = zdot.join(".zshrc");
+        env.fs
+            .write_file(
+                &rc,
+                b"PS4='+ '\nexport PATH=$PATH:/from/zshrc\neval \"$(dodot init-sh)\"\n",
+            )
+            .unwrap();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+
+        // No ZDOTDIR in the environment: `~/.zshenv` is where it comes
+        // from, which is the whole point of the shape.
+        let run = run_trace(
+            env.fs.as_ref(),
+            &request(&env, zsh, HookupShell::Zsh, &rc, 3),
+        )
+        .expect("trace runs");
+        assert!(run.used_fallback);
+        let record = record_at(&run.records, &[&rc], 3).expect("hook-line record");
+        assert_eq!(
+            record.path, "/from/zshenv:/from/zshrc",
+            "the PATH at the hook line must include what ~/.zshenv exported"
+        );
+    }
+
+    /// The rc's own `$ZDOTDIR` references have to resolve to the
+    /// directory the real startup would have left there, not to the
+    /// scratch copy that got zsh to read it.
+    #[test]
+    fn the_fallback_restores_zdotdir_inside_the_copy() {
+        let Some(zsh) = zsh() else { return };
+        let env = TempEnvironment::builder().build();
+        let zdot = env.home.join("config/zsh");
+        env.fs.mkdir_all(&zdot).unwrap();
+        env.fs
+            .write_file(
+                &env.home.join(".zshenv"),
+                format!("export ZDOTDIR={}\n", zdot.display()).as_bytes(),
+            )
+            .unwrap();
+        let rc = zdot.join(".zshrc");
+        // The rc reports its own $ZDOTDIR through PATH, which is the
+        // field the record carries.
+        env.fs
+            .write_file(
+                &rc,
+                b"PS4='+ '\nexport PATH=$ZDOTDIR\neval \"$(dodot init-sh)\"\n",
+            )
+            .unwrap();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+
+        let run = run_trace(
+            env.fs.as_ref(),
+            &request(&env, zsh, HookupShell::Zsh, &rc, 3),
+        )
+        .expect("trace runs");
+        let record = record_at(&run.records, &[&rc], 3).expect("hook-line record");
+        assert_eq!(record.path, zdot.display().to_string());
     }
 
     #[test]
@@ -1043,12 +1599,7 @@ mod tests {
         assert!(matches!(
             run_trace(
                 env.fs.as_ref(),
-                &missing,
-                HookupShell::Bash,
-                &rc,
-                &rc,
-                1,
-                TIMEOUT
+                &request(&env, &missing, HookupShell::Bash, &rc, 1)
             ),
             Err(TraceError::SpawnFailed(_))
         ));

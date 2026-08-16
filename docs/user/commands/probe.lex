@@ -85,10 +85,16 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
         :: table align=ll ::
 
-        For the managed file-source hook there is no PATH involved — the check is whether the sourced script exists at that point, and the verdicts are the matching pair:
+        For the managed file-source hook there is no PATH involved — the check is whether the script *that line names* exists at that point. dodot reads the path off the hook line itself, never from where `dodot up` would have written one, so a hand-wired hook pointing at a stale copy elsewhere is judged on the copy it actually sources. The verdicts are the matching pair:
 
             the init script sourced at <rc>:<line> is present — the hookup is sound
             the init script sourced at <rc>:<line> does not exist — run `dodot up` to regenerate it
+
+        :: text ::
+
+        "Present" means a readable file: a directory or a dangling symlink at that path is not something your shell can source, and counts as missing. And a hook line whose path dodot cannot resolve without running a shell — another variable, a command substitution, a relative path — gets an honest non-answer rather than a guess about a file it may not source:
+
+            dodot could not tell which file the hook at <rc>:<line> sources
 
         :: text ::
 

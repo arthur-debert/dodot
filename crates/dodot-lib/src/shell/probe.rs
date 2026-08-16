@@ -39,11 +39,20 @@
 //!
 //! # Verdicts
 //!
-//! [`Verdict`] keeps three outcomes apart because they demand
-//! different action: verified, verified-broken (with the static rc
-//! scan splitting *hook absent* from *hook present but never
+//! [`Verdict`] keeps four outcomes apart because they demand
+//! different action: verified, version-skew (the shell activated, from
+//! a dodot other than the one running), verified-broken (with the
+//! static rc scan splitting *hook absent* from *hook present but never
 //! reached*), and couldn't-verify, which degrades to the scan's answer
 //! labeled as configuration state. A probe failure never wedges `up`.
+//!
+//! The skew arm is why the probed shell reports *both* halves of the
+//! stamp ([`ProbeStamp`]). A generation alone cannot tell a working
+//! hookup from one that resolves to the wrong binary — a hand-wired
+//! `eval` hook running some other dodot mints a fresh generation just
+//! as convincingly as the right one — so reading it alone would report
+//! the epic's own failure as health, on the first `up`, which is the
+//! run this probe exists for.
 
 use std::io::Read;
 use std::path::Path;
@@ -53,13 +62,18 @@ use std::time::{Duration, Instant};
 use crate::fs::Fs;
 use crate::paths::Pather;
 use crate::shell::activation::{
-    self, ActivationNotice, ActivationState, HeartbeatState, StampState, INIT_GEN_ENV,
+    self, ActivationNotice, ActivationState, EvidenceVersion, HeartbeatState, StampState,
+    INIT_GEN_ENV, INIT_VERSION_ENV,
 };
 use crate::shell::rc::{self, HookPresence, ShellEnv};
 
-/// Prefix the probe command prints its stamp behind, so the one bit we
+/// Prefix the probe command prints its stamp behind, so the record we
 /// read survives arbitrary rc noise on the same stream.
-pub const PROBE_MARKER: &str = "dodot-probe-gen:";
+pub const PROBE_MARKER: &str = "dodot-probe-stamp:";
+
+/// Separates the two fields of a probe record: the generation the
+/// spawned shell sourced, and the dodot that wrote it.
+pub const PROBE_FIELD_SEP: char = '|';
 
 /// How long a spawned shell gets before its process group is killed.
 /// Spec §3.2 calls for "order of 5 seconds": long enough for a heavy
@@ -127,11 +141,28 @@ pub fn gate_says_probe(stamp: StampState, heartbeat: HeartbeatState) -> bool {
 
 // ── Running one ─────────────────────────────────────────────────
 
+/// What the spawned shell reported about the init script it sourced.
+///
+/// Both fields, never just the generation: a hookup can source a
+/// current-generation script written by a *different* dodot, and a
+/// generation alone reads that as health (`shell-hookup-ergonomics.lex`
+/// §2.3). [`EvidenceVersion`] rather than an `Option<String>` so a
+/// version-less report carries the same bounded meaning here as it does
+/// in the evidence path — one rule, both signals.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeStamp {
+    /// `DODOT_INIT_GEN` as the spawned shell exported it.
+    pub generation: u64,
+    /// `DODOT_INIT_VERSION`, or [`EvidenceVersion::PreVersion`] when
+    /// the script that ran was too old to export one.
+    pub version: EvidenceVersion,
+}
+
 /// What one shell spawn reported back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProbeOutcome {
-    /// The shell finished and printed a parseable generation stamp.
-    Stamp(u64),
+    /// The shell finished and printed a parseable stamp.
+    Stamp(ProbeStamp),
     /// The shell finished and printed no stamp — it did not source
     /// dodot's init script.
     NoStamp,
@@ -152,22 +183,38 @@ pub fn announcement(shell: &Path) -> String {
     format!("verifying shell integration ({name})…")
 }
 
-/// The command handed to the spawned shell: print the stamp we may or
-/// may not have inherited from its rc, behind a marker.
+/// The command handed to the spawned shell: print both halves of the
+/// stamp it may or may not have inherited from its rc, behind a marker.
+///
+/// Both are printed unconditionally, empty when unset, so the record
+/// always has its two fields and the parser never has to guess which
+/// one a lone value was.
 fn probe_command() -> String {
-    format!("printf '{PROBE_MARKER}%s\\n' \"${{{INIT_GEN_ENV}-}}\"")
+    format!(
+        "printf '{PROBE_MARKER}%s{PROBE_FIELD_SEP}%s\\n' \
+         \"${{{INIT_GEN_ENV}-}}\" \"${{{INIT_VERSION_ENV}-}}\""
+    )
 }
 
 /// Extract the stamp from captured probe output.
 ///
 /// Scans every line for the marker and takes the last one: an rc file
 /// is free to print whatever it likes before our command runs, and the
-/// probe reads exactly one bit out of the noise.
-pub fn parse_probe_output(stdout: &str) -> Option<u64> {
+/// probe reads exactly one record out of the noise. A record whose
+/// generation does not parse is not a stamp at all — the same rule
+/// [`activation::read_heartbeat`] holds the heartbeat to, so an
+/// activation is never inferred from a version field alone.
+pub fn parse_probe_output(stdout: &str) -> Option<ProbeStamp> {
     stdout
         .lines()
         .filter_map(|line| line.trim().strip_prefix(PROBE_MARKER))
-        .filter_map(activation::parse_generation)
+        .filter_map(|record| record.split_once(PROBE_FIELD_SEP))
+        .filter_map(|(generation, version)| {
+            Some(ProbeStamp {
+                generation: activation::parse_generation(generation)?,
+                version: EvidenceVersion::from_field(Some(version)),
+            })
+        })
         .next_back()
 }
 
@@ -269,7 +316,7 @@ pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
         // A nonzero exit is not a failed probe: unrelated rc breakage
         // fails loudly and still activates dodot. The stamp is the bit.
         SpawnOutcome::Finished(capture) => match parse_probe_output(&capture.stdout) {
-            Some(generation) => ProbeOutcome::Stamp(generation),
+            Some(stamp) => ProbeOutcome::Stamp(stamp),
             None => ProbeOutcome::NoStamp,
         },
     }
@@ -333,8 +380,17 @@ pub enum Diagnosis {
 /// The measured answer to "would a new shell activate dodot?"
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
-    /// Measured ✓ — the spawned shell reported the current generation.
+    /// Measured ✓ — the spawned shell reported the current generation,
+    /// from the dodot now running.
     Verified { generation: u64 },
+    /// The shell activated, and from a *different* dodot than the one
+    /// running. Measured, so it is the same finding
+    /// [`ActivationState::VersionSkew`] names from evidence, arrived at
+    /// the one way that cannot be talked out of it.
+    VersionSkew {
+        generation: u64,
+        loaded: EvidenceVersion,
+    },
     /// The shell ran and did not activate dodot.
     Broken { diagnosis: Diagnosis },
     /// The measurement itself failed. Degrade to configuration state.
@@ -344,13 +400,30 @@ pub enum Verdict {
 impl Verdict {
     /// Fold one spawn's outcome into a verdict, using the static rc
     /// scan only where spec §2.2 allows it: to explain a failure.
+    ///
+    /// `running` is the version every measured stamp is judged against,
+    /// through [`activation::is_skewed`] — the same rule
+    /// [`activation::Evidence`] applies to the cheap signals, called
+    /// rather than restated, so a probe cannot certify a hookup the
+    /// footer would call skewed. Skew outranks the generation ladder
+    /// for the same reason it does there: a current generation from
+    /// the wrong dodot is not health, and a stale one from the wrong
+    /// dodot is not fixed by opening a new shell.
     pub fn from_outcome(
         outcome: ProbeOutcome,
         reference: Option<u64>,
+        running: &str,
         hook: Option<(HookPresence, String)>,
     ) -> Verdict {
         match outcome {
-            ProbeOutcome::Stamp(found) => {
+            ProbeOutcome::Stamp(stamp) if activation::is_skewed(Some(&stamp.version), running) => {
+                Verdict::VersionSkew {
+                    generation: stamp.generation,
+                    loaded: stamp.version,
+                }
+            }
+            ProbeOutcome::Stamp(stamp) => {
+                let found = stamp.generation;
                 match activation::classify_stamp(Some(found), reference) {
                     StampState::Current => Verdict::Verified { generation: found },
                     // Unreachable in practice — a new shell sources the
@@ -396,9 +469,13 @@ impl Verdict {
     /// answer for a hookup that just measured broken.
     ///
     /// A measured verdict says the same thing the evidence path says
-    /// for the same state, in the same words
-    /// ([`activation::HEALTHY_MESSAGE`]): what the measurement buys is
+    /// for the same state, in the same words — the healthy and the
+    /// skewed footers are built by [`ActivationNotice::for_state`]
+    /// itself rather than restated here: what the measurement buys is
     /// that the claim is right, not that it is phrased differently.
+    /// Only [`Verdict::Broken`] writes its own hint, because only it
+    /// has something the evidence path cannot know — which of the
+    /// [`Diagnosis`] shapes the failure took.
     pub fn notice(
         &self,
         evidence: Option<ActivationNotice>,
@@ -406,13 +483,18 @@ impl Verdict {
         hook_line: &str,
     ) -> Option<ActivationNotice> {
         match self {
-            Verdict::Verified { .. } => Some(ActivationNotice {
-                state: ActivationState::Healthy.as_str().into(),
-                severity: "ok".into(),
-                message: activation::HEALTHY_MESSAGE.into(),
-                hint: None,
-                evidence: evidence_line.into(),
-            }),
+            Verdict::Verified { .. } => Some(ActivationNotice::for_state(
+                ActivationState::Healthy,
+                hook_line,
+                None,
+                evidence_line.into(),
+            )),
+            Verdict::VersionSkew { .. } => Some(ActivationNotice::for_state(
+                ActivationState::VersionSkew,
+                hook_line,
+                None,
+                evidence_line.into(),
+            )),
             Verdict::Broken { diagnosis } => Some(ActivationNotice {
                 state: ActivationState::VerifiedBroken.as_str().into(),
                 severity: "error".into(),
@@ -498,7 +580,11 @@ pub fn measure(
         activation::Evidence::collect(fs, paths, activation::EnvStamp::default(), reference, false)
             .map(|e| e.evidence_line())
             .unwrap_or(stale_line);
-    Verdict::from_outcome(outcome, reference, hook).notice(evidence, &evidence_line, &hook_line)
+    Verdict::from_outcome(outcome, reference, activation::running_version(), hook).notice(
+        evidence,
+        &evidence_line,
+        &hook_line,
+    )
 }
 
 /// Evaluate shell activation for a command that is allowed to measure.
@@ -587,14 +673,39 @@ mod tests {
         }
     }
 
+    /// A stamp for `generation` from `version`, the shape a probed
+    /// shell running the current dodot reports.
+    fn stamp(generation: u64, version: &str) -> ProbeStamp {
+        ProbeStamp {
+            generation,
+            version: EvidenceVersion::Known(version.into()),
+        }
+    }
+
     #[test]
     fn the_stamp_is_read_out_of_arbitrary_rc_noise() {
         let noisy = format!(
-            "Welcome to your shell!\n[oh-my-zsh] update available\n{PROBE_MARKER}1755200000\n"
+            "Welcome to your shell!\n[oh-my-zsh] update available\n{PROBE_MARKER}1755200000|5.6.0\n"
         );
-        assert_eq!(parse_probe_output(&noisy), Some(1_755_200_000));
-        // No stamp exported: the marker is there, the value is empty.
-        assert_eq!(parse_probe_output(&format!("{PROBE_MARKER}\n")), None);
+        assert_eq!(
+            parse_probe_output(&noisy),
+            Some(stamp(1_755_200_000, "5.6.0"))
+        );
+        // A shell that sourced a pre-RCS01 script reports a generation
+        // and an empty version — bounded, not unknown, exactly as the
+        // heartbeat's version-less shape reads.
+        assert_eq!(
+            parse_probe_output(&format!("{PROBE_MARKER}1755200000|\n")),
+            Some(ProbeStamp {
+                generation: 1_755_200_000,
+                version: EvidenceVersion::PreVersion,
+            })
+        );
+        // No stamp exported: the marker is there, both fields empty.
+        assert_eq!(parse_probe_output(&format!("{PROBE_MARKER}|\n")), None);
+        // A version with no generation is not evidence a shell loaded
+        // anything, the same rule the heartbeat is held to.
+        assert_eq!(parse_probe_output(&format!("{PROBE_MARKER}|5.6.0\n")), None);
         assert_eq!(parse_probe_output("nothing at all\n"), None);
     }
 
@@ -629,11 +740,17 @@ mod tests {
         Some((presence, "~/.zshrc".to_string()))
     }
 
+    /// The version every verdict test judges its measured stamp
+    /// against — a fixed string rather than [`activation::running_version`],
+    /// so the assertions do not move with the crate's own release.
+    const RUNNING: &str = "5.6.0";
+
     #[test]
     fn a_current_stamp_is_a_measured_verification() {
         let v = Verdict::from_outcome(
-            ProbeOutcome::Stamp(100),
+            ProbeOutcome::Stamp(stamp(100, RUNNING)),
             Some(100),
+            RUNNING,
             hook(HookPresence::ManagedBlock),
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
@@ -649,9 +766,98 @@ mod tests {
         assert_eq!(notice.evidence, "Last loaded just now by dodot 5.6.0.");
     }
 
+    /// The false positive this probe was rebuilt to stop reporting: a
+    /// hand-wired hook resolves to some other dodot, that dodot's init
+    /// script mints a perfectly current generation, and a
+    /// generation-only probe converts it into a green "sourced in new
+    /// shells". Both shapes skew — a named older version, and the
+    /// version-less script every pre-RCS01 dodot generates.
+    #[test]
+    fn a_current_generation_from_another_dodot_is_skew_not_health() {
+        for loaded in [
+            EvidenceVersion::Known("5.0.0".into()),
+            EvidenceVersion::PreVersion,
+        ] {
+            let v = Verdict::from_outcome(
+                ProbeOutcome::Stamp(ProbeStamp {
+                    generation: 100,
+                    version: loaded.clone(),
+                }),
+                Some(100),
+                RUNNING,
+                hook(HookPresence::Manual),
+            );
+            assert_eq!(
+                v,
+                Verdict::VersionSkew {
+                    generation: 100,
+                    loaded: loaded.clone()
+                },
+                "a current generation from {loaded} is not a verification"
+            );
+            let notice = v
+                .notice(None, "Last loaded just now by dodot 5.0.0.", "HOOK")
+                .unwrap();
+            // The state the evidence path would name, in the evidence
+            // path's own words — the measurement changes which state is
+            // reported, never how a state reads.
+            assert_eq!(notice.state, "version-skew");
+            assert_eq!(notice.severity, "warning");
+            assert_eq!(
+                notice.message,
+                "Shell hookup: your shells load a different dodot."
+            );
+            assert!(notice.hint.unwrap().contains("PATH finds first"));
+        }
+    }
+
+    /// Skew outranks the generation ladder in both directions, exactly
+    /// as [`activation::Evidence::state`] applies it: a *stale*
+    /// generation from the wrong dodot is still skew, because "open a
+    /// new shell" is not the fix.
+    #[test]
+    fn skew_outranks_a_stale_generation_the_way_the_evidence_path_does() {
+        let v = Verdict::from_outcome(
+            ProbeOutcome::Stamp(stamp(90, "5.0.0")),
+            Some(100),
+            RUNNING,
+            hook(HookPresence::ManagedBlock),
+        );
+        assert_eq!(
+            v,
+            Verdict::VersionSkew {
+                generation: 90,
+                loaded: EvidenceVersion::Known("5.0.0".into())
+            }
+        );
+    }
+
+    /// The bound release cannot tell its own version-less evidence from
+    /// an older dodot's, so it claims no skew — one rule
+    /// ([`activation::EvidenceVersion::is`]), applied here by calling
+    /// it rather than by restating it.
+    #[test]
+    fn the_bound_release_does_not_claim_skew_on_a_version_less_stamp() {
+        let v = Verdict::from_outcome(
+            ProbeOutcome::Stamp(ProbeStamp {
+                generation: 100,
+                version: EvidenceVersion::PreVersion,
+            }),
+            Some(100),
+            activation::PRE_VERSION_RELEASE,
+            hook(HookPresence::ManagedBlock),
+        );
+        assert_eq!(v, Verdict::Verified { generation: 100 });
+    }
+
     #[test]
     fn no_stamp_plus_no_hook_names_the_file_and_the_command() {
-        let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), hook(HookPresence::Absent));
+        let v = Verdict::from_outcome(
+            ProbeOutcome::NoStamp,
+            Some(100),
+            RUNNING,
+            hook(HookPresence::Absent),
+        );
         assert_eq!(
             v,
             Verdict::Broken {
@@ -671,7 +877,8 @@ mod tests {
     #[test]
     fn no_stamp_with_the_hook_present_blames_the_rc_file_instead() {
         for presence in [HookPresence::ManagedBlock, HookPresence::Manual] {
-            let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), hook(presence));
+            let v =
+                Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, hook(presence));
             let hint = v
                 .notice(None, "Never loaded.", "HOOK")
                 .unwrap()
@@ -690,7 +897,7 @@ mod tests {
 
     #[test]
     fn an_unknown_shell_falls_back_to_the_hook_line() {
-        let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), None);
+        let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, None);
         assert_eq!(
             v,
             Verdict::Broken {
@@ -708,8 +915,9 @@ mod tests {
     #[test]
     fn a_stale_sourced_script_is_reported_as_such() {
         let v = Verdict::from_outcome(
-            ProbeOutcome::Stamp(90),
+            ProbeOutcome::Stamp(stamp(90, RUNNING)),
             Some(100),
+            RUNNING,
             hook(HookPresence::ManagedBlock),
         );
         assert_eq!(
@@ -736,7 +944,7 @@ mod tests {
             ProbeOutcome::TimedOut,
             ProbeOutcome::SpawnFailed("no such file".into()),
         ] {
-            let v = Verdict::from_outcome(outcome, Some(100), hook(HookPresence::Absent));
+            let v = Verdict::from_outcome(outcome, Some(100), RUNNING, hook(HookPresence::Absent));
             let notice = v
                 .notice(Some(evidence.clone()), "Never loaded.", "HOOK")
                 .unwrap();
@@ -789,17 +997,64 @@ mod tests {
     }
 
     #[test]
-    fn a_shell_that_activates_reports_the_stamp() {
+    fn a_shell_that_activates_reports_both_halves_of_the_stamp() {
         let env = TempEnvironment::builder().build();
         let shell = fake_shell(
             &env,
             "activating-shell",
-            &format!("export {INIT_GEN_ENV}=1755200000"),
+            &format!("export {INIT_GEN_ENV}=1755200000\nexport {INIT_VERSION_ENV}=5.6.0"),
         );
         assert_eq!(
             run(&shell, Duration::from_secs(10)),
-            ProbeOutcome::Stamp(1_755_200_000)
+            ProbeOutcome::Stamp(stamp(1_755_200_000, "5.6.0"))
         );
+    }
+
+    /// The epic's own failure, measured end to end: the hook resolves
+    /// to a different dodot, whose init script exports a *current*
+    /// generation — the shape that used to come back as a green
+    /// "sourced in new shells". Both flavours of wrong binary: one that
+    /// names its version, and a pre-RCS01 one that exports none.
+    #[test]
+    fn a_shell_activating_another_dodot_measures_as_skew() {
+        for (name, exports, loaded) in [
+            (
+                "older-dodot-shell",
+                format!("export {INIT_GEN_ENV}=1755200000\nexport {INIT_VERSION_ENV}=5.0.0"),
+                EvidenceVersion::Known("5.0.0".into()),
+            ),
+            (
+                "pre-version-dodot-shell",
+                format!("export {INIT_GEN_ENV}=1755200000"),
+                EvidenceVersion::PreVersion,
+            ),
+        ] {
+            let env = TempEnvironment::builder().build();
+            let shell = fake_shell(&env, name, &exports);
+            let outcome = run(&shell, Duration::from_secs(10));
+            assert_eq!(
+                outcome,
+                ProbeOutcome::Stamp(ProbeStamp {
+                    generation: 1_755_200_000,
+                    version: loaded.clone(),
+                }),
+                "{name}"
+            );
+            let verdict = Verdict::from_outcome(
+                outcome,
+                Some(1_755_200_000),
+                RUNNING,
+                hook(HookPresence::Manual),
+            );
+            assert_eq!(
+                verdict,
+                Verdict::VersionSkew {
+                    generation: 1_755_200_000,
+                    loaded
+                },
+                "{name}: a fresh generation from the wrong dodot is not a verification"
+            );
+        }
     }
 
     #[test]
@@ -820,13 +1075,17 @@ mod tests {
              echo 'error: some unrelated rc line failed' >&2\n\
              echo 'p10k wants your attention'\n\
              export {INIT_GEN_ENV}=42\n\
+             export {INIT_VERSION_ENV}=5.6.0\n\
              eval \"$2\"\n\
              exit 3\n"
         );
         env.fs
             .write_file_with_mode(&path, script.as_bytes(), 0o755)
             .unwrap();
-        assert_eq!(run(&path, Duration::from_secs(10)), ProbeOutcome::Stamp(42));
+        assert_eq!(
+            run(&path, Duration::from_secs(10)),
+            ProbeOutcome::Stamp(stamp(42, "5.6.0"))
+        );
     }
 
     #[test]

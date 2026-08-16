@@ -103,6 +103,12 @@ Shell integration
 
     "Last loaded" is the heartbeat file's modification time — when a shell last actually sourced the init script, which is not the same as when `dodot up` generated it. The version is the dodot that generated the script that shell loaded. Evidence left by a dodot old enough to carry no version renders as `≤5.5.1` — the last release before the evidence learned to identify itself. When no shell has ever loaded dodot, the line reads `Never loaded.`; when the heartbeat's timestamp is unreadable, `Last loaded at an unknown time by dodot <version>.`
 
+    Two things can be true at once here, and the line says so rather than blending them. dodot has two signals: the shell you are typing in reports which dodot *it* loaded, and the heartbeat reports when *some* shell last loaded one. Usually they name the same dodot and there is one sentence. When they disagree — mid-upgrade, most often — the time belongs to the heartbeat's activation and not to your shell's, so the line reports both events instead of pairing one's timestamp with the other's version:
+
+        This shell loaded dodot 5.6.0; the last shell to load ran dodot 5.0.0, 4 minutes ago.
+
+    :: shell ::
+
     One case has no footer at all: before a first deploy there is no init script on disk, so there is no hookup to have. `dodot status` on a machine where `dodot up` has never run says nothing about activation — and neither does a `dodot up --dry-run` there, which regenerates nothing. A real `up` writes the script before it reports, so it always ends on a footer.
 
     This section is where every state and its exact message live; other pages link here rather than repeating them. There are seven states, and seven different things to do.
@@ -133,6 +139,8 @@ Shell integration
         Last loaded 4 minutes ago by dodot 5.0.0 — you are running 5.6.0.
 
     :: shell ::
+
+    This state is not only inferred. When `dodot up` or `dodot install --write` starts a shell to check the hookup (see _Verified broken_ below), that shell reports both halves of what it loaded — the generation *and* the dodot that wrote it — so a hookup that mints a perfectly current generation from the wrong binary is measured as skew rather than certified as healthy. That is the failure this whole page exists for, and it is exactly the case a generation alone reads as fine.
 
     For the measured answer — which binary `dodot` resolves to at the hook line, and why — run `dodot probe shell-init` ([./commands/probe.lex] §4).
 

@@ -82,6 +82,8 @@ Design Specification: Shell Hookup Ergonomics
 
         No new write is required: the redirect already updates mtime on every activation. When the heartbeat is missing or unreadable, "last run" is simply unknown, and the second line says so rather than guessing.
 
+        *Amended during review.* The run time and the version have to come from the same activation. The stamp decides the *state* — it speaks for the session the user can act on — but the mtime belongs to whichever shell wrote the heartbeat, so a stamp that outranks the heartbeat may not take the heartbeat's timestamp with it: a shell stamped 5.6.0 beside a more recently written 5.0.0 heartbeat would otherwise render "Last loaded 4 minutes ago by dodot 5.6.0", a moment at which no 5.6.0 shell loaded anything. When the two signals name different dodots, line two reports both activations ("This shell loaded dodot 5.6.0; the last shell to load ran dodot 5.0.0, 4 minutes ago."); a stamp with no heartbeat at all carries no time and says so.
+
     2.3. The Two-Line Footer
 
         The single activation notice becomes a footer of two lines, emitted by the *shared* status renderer — so `up`, `down`, and `status` all carry it. This deliberately supersedes [./shipped/shell-hookup.lex] §5's "a healthy hookup after `up` is silence": the footer is short, and a deploy that says nothing about activation is the gap INS01 set out to close.
