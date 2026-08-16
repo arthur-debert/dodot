@@ -34,7 +34,16 @@
 //! function — the always-read zsh files symlinked in, and `ZDOTDIR`
 //! reassigned to the real directory on line one so the rc's own
 //! `$ZDOTDIR` references still resolve. The user's real files are
-//! never written.
+//! never written; the copy lives in a scratch directory created
+//! exclusively under a random name at mode `0700` (see
+//! [`scratch_dir`]) and removed when the run ends.
+//!
+//! The copy must reproduce the shell's startup, not approximate it. A
+//! shell that read a different set of files than the real one does
+//! yields a verdict the user would act on and should not — so a copy
+//! that cannot be built faithfully ends the trace
+//! ([`TraceError::FallbackUnfaithful`]) and the command reports "could
+//! not trace" instead of a measurement.
 //!
 //! # Boundaries
 //!
@@ -299,10 +308,13 @@ pub enum TraceVerdict {
         resolution: Resolution,
     },
     /// The hook line runs a different binary than the one running now
-    /// — both paths, both versions.
+    /// — both paths, both versions. `running` is carried here rather
+    /// than re-read at display time so the two halves of the
+    /// comparison can never disagree about which binary "now" is.
     DifferentBinary {
         found: PathBuf,
         found_version: Option<String>,
+        running: PathBuf,
         resolution: Resolution,
     },
     /// `dodot` resolves to the running binary: the hook is sound and
@@ -343,6 +355,7 @@ pub fn judge_eval_hook(
         TraceVerdict::DifferentBinary {
             found_version: version_of(&winner),
             found: winner,
+            running: running_exe.to_path_buf(),
             resolution,
         }
     }
@@ -382,6 +395,13 @@ pub enum TraceError {
     SpawnFailed(String),
     /// The rc file could not be read for the fallback copy.
     RcUnreadable(String),
+    /// The fallback's scratch copy could not be built so that it
+    /// reproduces the shell's startup faithfully — the scratch
+    /// directory would not open, or an always-read file could not be
+    /// linked in. A verdict computed from a shell that read a
+    /// different set of files than the real one does is worse than no
+    /// verdict, because the user acts on it.
+    FallbackUnfaithful(String),
 }
 
 /// One completed trace: the records read back, and whether the
@@ -449,6 +469,12 @@ pub fn run_trace(
 /// the `PS4` path produces — one parser, two producers — addressed to
 /// the *original* rc location, so the lookup does not care which path
 /// produced the record. The user's real files are never written.
+///
+/// The copy has to reproduce the shell's startup, not approximate it:
+/// anything that would leave the spawned shell reading a different set
+/// of files than the real one does ends the trace with
+/// [`TraceError::FallbackUnfaithful`] rather than yielding a verdict
+/// the user would act on.
 fn run_fallback(
     fs: &dyn Fs,
     shell_path: &Path,
@@ -461,53 +487,53 @@ fn run_fallback(
     let rc_text = fs
         .read_to_string(rc_resolved)
         .map_err(|e| TraceError::RcUnreadable(format!("{e}")))?;
-    let temp = temp_dir_for_fallback();
-    fs.mkdir_all(&temp)
-        .map_err(|e| TraceError::SpawnFailed(format!("{e}")))?;
-    let outcome = (|| {
-        let mut command = Command::new(shell_path);
-        match shell {
-            HookupShell::Zsh => {
-                let real_zdot = rc_nominal.parent().unwrap_or(Path::new("/"));
-                // Line one points $ZDOTDIR back at the real directory
-                // before anything in the rc can read it; the report
-                // line goes in front of the hook.
-                let copy = format!(
-                    "ZDOTDIR={}\n{}",
-                    shell_quote(&real_zdot.display().to_string()),
-                    insert_report_line(&rc_text, rc_nominal, hook_line)
-                );
-                fs.write_file(&temp.join(".zshrc"), copy.as_bytes())
-                    .map_err(|e| TraceError::SpawnFailed(format!("{e}")))?;
-                // The always-read files still get read — from where
-                // they really live.
-                for name in [".zshenv", ".zprofile", ".zlogin"] {
-                    let real = real_zdot.join(name);
-                    if fs.exists(&real) {
-                        let _ = fs.symlink(&real, &temp.join(name));
-                    }
+    // Dropped at the end of this function — every exit path, the
+    // timeout and the error paths included, takes the copy with it.
+    let scratch = scratch_dir()?;
+    let temp = scratch.path();
+    let mut command = Command::new(shell_path);
+    match shell {
+        HookupShell::Zsh => {
+            let real_zdot = rc_nominal.parent().unwrap_or(Path::new("/"));
+            // Line one points $ZDOTDIR back at the real directory
+            // before anything in the rc can read it; the report
+            // line goes in front of the hook.
+            let copy = format!(
+                "ZDOTDIR={}\n{}",
+                shell_quote(&real_zdot.display().to_string()),
+                insert_report_line(&rc_text, rc_nominal, hook_line)
+            );
+            fs.write_file(&temp.join(".zshrc"), copy.as_bytes())
+                .map_err(|e| TraceError::FallbackUnfaithful(format!("{e}")))?;
+            // The always-read files still get read — from where they
+            // really live. A link that cannot be made is not a
+            // cosmetic loss: the shell would start from a different
+            // set of files, so it ends the trace.
+            for name in [".zshenv", ".zprofile", ".zlogin"] {
+                let real = real_zdot.join(name);
+                if fs.exists(&real) {
+                    fs.symlink(&real, &temp.join(name))
+                        .map_err(|e| TraceError::FallbackUnfaithful(format!("{e}")))?;
                 }
-                command.env("ZDOTDIR", &temp).args(["-i", "-c", "true"]);
             }
-            HookupShell::Bash => {
-                let copy = insert_report_line(&rc_text, rc_nominal, hook_line);
-                let rcfile = temp.join("bashrc");
-                fs.write_file(&rcfile, copy.as_bytes())
-                    .map_err(|e| TraceError::SpawnFailed(format!("{e}")))?;
-                command
-                    .arg("--rcfile")
-                    .arg(&rcfile)
-                    .args(["-i", "-c", "true"]);
-            }
+            command.env("ZDOTDIR", temp).args(["-i", "-c", "true"]);
         }
-        match spawn_captured(command, timeout) {
-            SpawnOutcome::TimedOut => Err(TraceError::TimedOut),
-            SpawnOutcome::SpawnFailed(e) => Err(TraceError::SpawnFailed(e)),
-            SpawnOutcome::Finished(capture) => Ok(parse_trace(&capture.stderr)),
+        HookupShell::Bash => {
+            let copy = insert_report_line(&rc_text, rc_nominal, hook_line);
+            let rcfile = temp.join("bashrc");
+            fs.write_file(&rcfile, copy.as_bytes())
+                .map_err(|e| TraceError::FallbackUnfaithful(format!("{e}")))?;
+            command
+                .arg("--rcfile")
+                .arg(&rcfile)
+                .args(["-i", "-c", "true"]);
         }
-    })();
-    let _ = fs.remove_dir_all(&temp);
-    outcome
+    }
+    match spawn_captured(command, timeout) {
+        SpawnOutcome::TimedOut => Err(TraceError::TimedOut),
+        SpawnOutcome::SpawnFailed(e) => Err(TraceError::SpawnFailed(e)),
+        SpawnOutcome::Finished(capture) => Ok(parse_trace(&capture.stderr)),
+    }
 }
 
 /// The rc text with the report line inserted immediately before
@@ -540,16 +566,24 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-/// A collision-safe scratch directory for one fallback run. Hand-
-/// rolled rather than a tempfile dependency: pid plus nanos is unique
-/// enough for a directory that lives for one spawn and is removed on
-/// the way out.
-fn temp_dir_for_fallback() -> PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!("dodot-trace-{}-{nanos}", std::process::id()))
+/// The scratch directory one fallback run writes its copy into.
+///
+/// It lands in the system temp directory, which is world-writable, so
+/// its creation carries the whole guarantee: `mkdir(2)` under a random
+/// name, which fails outright if anything already occupies the path
+/// (so the directory written into is always one this process just
+/// made, never a planted symlink pointing elsewhere), at mode `0700`
+/// applied by `mkdir` itself rather than a follow-up `chmod` — the
+/// same create-time-mode reasoning as [`Fs::write_file_with_mode`].
+/// The returned handle removes the directory and its contents when
+/// dropped.
+fn scratch_dir() -> Result<tempfile::TempDir, TraceError> {
+    use std::os::unix::fs::PermissionsExt;
+    tempfile::Builder::new()
+        .prefix("dodot-trace-")
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .map_err(|e| TraceError::FallbackUnfaithful(format!("{e}")))
 }
 
 #[cfg(test)]
@@ -795,10 +829,12 @@ mod tests {
             TraceVerdict::DifferentBinary {
                 found,
                 found_version,
+                running: reported_running,
                 ..
             } => {
                 assert_eq!(found, stale);
                 assert_eq!(found_version.as_deref(), Some("5.0.0"));
+                assert_eq!(reported_running, running);
             }
             other => panic!("expected DifferentBinary, got {other:?}"),
         }
@@ -839,6 +875,25 @@ mod tests {
     fn shell_quoting_survives_embedded_single_quotes() {
         assert_eq!(shell_quote("plain"), "'plain'");
         assert_eq!(shell_quote("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn the_scratch_dir_is_private_unpredictable_and_transient() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let scratch = scratch_dir().expect("scratch dir");
+        let path = scratch.path().to_path_buf();
+        // A real directory this process made, not something waiting
+        // in the world-writable temp dir under a guessable name.
+        let meta = std::fs::symlink_metadata(&path).expect("scratch dir exists");
+        assert!(meta.file_type().is_dir(), "a directory, never a symlink");
+        assert_eq!(meta.permissions().mode() & 0o777, 0o700, "{path:?}");
+        // Two runs never land on the same path, whatever the clock or
+        // the pid says.
+        let other = scratch_dir().expect("second scratch dir");
+        assert_ne!(other.path(), path);
+        drop(scratch);
+        assert!(!path.exists(), "removed with its handle");
     }
 
     // ── Spawn round-trips, against a real bash ──────────────────

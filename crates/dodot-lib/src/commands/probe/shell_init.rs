@@ -213,6 +213,14 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
                 hook_line,
             )
         }
+        Err(TraceError::FallbackUnfaithful(e)) => {
+            return untraced(
+                format!("could not reproduce your shell's startup files ({e})"),
+                shell_name,
+                rc_display,
+                hook_line,
+            )
+        }
     };
 
     let record = trace::record_at(&run.records, &[target.nominal(), &target.path], hook_line);
@@ -220,7 +228,18 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
         None => trace::TraceVerdict::HookNeverRan,
         Some(record) => match hook_form {
             HookForm::Eval => {
-                let running_exe = std::env::current_exe().unwrap_or_default();
+                // The verdict is an identity comparison against the
+                // running binary. Without it there is no comparison to
+                // make — only a false "different dodot" report, since
+                // no resolved path equals a path we do not know.
+                let Ok(running_exe) = std::env::current_exe() else {
+                    return untraced(
+                        "could not identify the running dodot binary".to_string(),
+                        shell_name,
+                        rc_display,
+                        hook_line,
+                    );
+                };
                 trace::judge_eval_hook(fs, &record.path, &running_exe, &version_by_running)
             }
             // The file-source hook involves no PATH: the equivalent
@@ -367,6 +386,7 @@ fn verdict_trace_view(
         TraceVerdict::DifferentBinary {
             found,
             found_version,
+            running,
             resolution,
         } => {
             let found_version = found_version.unwrap_or_else(|| "version unknown".into());
@@ -375,13 +395,7 @@ fn verdict_trace_view(
                     "at {rc}:{hook_line}, `dodot` resolves to {} ({found_version})",
                     show(&found)
                 ),
-                format!(
-                    "you are running {} ({})",
-                    std::env::current_exe()
-                        .map(|p| show(&p))
-                        .unwrap_or_else(|_| "dodot".into()),
-                    running_version()
-                ),
+                format!("you are running {} ({})", show(&running), running_version()),
             ];
             details.extend(skips(&resolution));
             (
