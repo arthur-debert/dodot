@@ -62,9 +62,9 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
     4.1. The hook-line trace (default)
 
-        A hookup can be wired, fire on every shell start, and still be dead — because the `dodot` your rc resolves at the hook line is not the dodot you run at the prompt. No static scan can see that. So the bare `probe shell-init` spawns your shell once and runs your whole rc under tracing, announcing itself first:
+        A hookup can be wired, fire on every shell start, and still be dead — because the `dodot` your rc resolves at the hook line is not the dodot you run at the prompt. No static scan can see that. So the bare `probe shell-init` spawns your shell and runs your whole rc under tracing, announcing itself first:
 
-            tracing shell startup (zsh)… (runs your rc file once)
+            tracing shell startup (zsh)… (runs your rc file, up to twice)
 
         :: text ::
 
@@ -85,14 +85,19 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
         :: table align=ll ::
 
-        For the managed file-source hook there is no PATH involved — the check is whether the script *that line names* exists at that point. dodot reads the path off the hook line itself, never from where `dodot up` would have written one, so a hand-wired hook pointing at a stale copy elsewhere is judged on the copy it actually sources. The verdicts are the matching pair:
+        For the managed file-source hook there is no PATH involved. The question is instead *which dodot wrote the script that line sources* — and both halves of that matter. dodot reads the path off the hook line itself, never from where `dodot up` would have written one, so a hand-wired hook pointing at a copy elsewhere is judged on the copy it actually sources; and it reads that file rather than merely checking it is there, because "a file exists at this path" is a fact about your disk and "the hookup is sound" is a claim about which dodot your shells load. A 5.0.0 init script sitting exactly where the hook says is present, readable, and completely broken.
 
-            the init script sourced at <rc>:<line> is present — the hookup is sound
-            the init script sourced at <rc>:<line> does not exist — run `dodot up` to regenerate it
+        File-source verdicts, quoted verbatim:
+            | Verdict                                                                        | What to do                                                                          |
+            | the init script sourced at <rc>:<line> was written by the running dodot — the hookup is sound | Nothing; whatever you are chasing lives elsewhere.                    |
+            | the init script sourced at <rc>:<line> does not exist                          | Run `dodot up` to regenerate it. A directory or a dangling symlink at that path counts as missing — your shell cannot source either. |
+            | the init script sourced at <rc>:<line> was written by a different dodot        | The file-source form of version skew. Your hook loads that script, not the one `dodot up` maintains — re-point the hook, or `dodot install --write`. |
+            | the init script sourced at <rc>:<line> is older than the one \`dodot up\` maintains | A copy left behind. Same fix: re-point the hook or re-run `dodot install --write`.  |
+            | dodot could not tell which dodot wrote the script sourced at <rc>:<line>       | The file is unreadable, or carries no dodot stamp and so is not a script dodot generated. Look at it yourself. |
 
-        :: text ::
+        :: table align=ll ::
 
-        "Present" means a readable file: a directory or a dangling symlink at that path is not something your shell can source, and counts as missing. And a hook line whose path dodot cannot resolve without running a shell — another variable, a command substitution, a relative path — gets an honest non-answer rather than a guess about a file it may not source:
+        And a hook line whose path dodot cannot resolve without running a shell — another variable, a command substitution, a relative path — gets an honest non-answer rather than a guess about a file it may not source:
 
             dodot could not tell which file the hook at <rc>:<line> sources
 
@@ -154,6 +159,6 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
     - *`probe app` is macOS-acute.* On Linux, `app_support_dir` collapses onto `$XDG_CONFIG_HOME`, the brew/Spotlight enrichment doesn't apply, and the output is correspondingly thinner. The command isn't an error elsewhere; it just has less to say.
     - *`probe shell-init`'s timings require the timing wrapper.* The init script only writes timing data when `[shell_init].profiling.enabled = true` (see `dodot config get shell_init.profiling.enabled`). Without it the command reports "no profiles yet, open a new shell that sources `dodot-init.sh`." The hook-line trace needs no profiling — it measures live.
-    - *The default `probe shell-init` runs your rc.* Once, announced, in a throwaway shell — your rc's side effects (a `neofetch`, a network call) run with it. `--no-trace` if that matters right now.
+    - *The default `probe shell-init` runs your rc.* Announced, in a throwaway shell — your rc's side effects (a `neofetch`, a network call) run with it. Up to twice: if the first pass comes back unreadable (a `PS4` override, or macOS's bash 3.2, where it usually does) dodot re-runs it on a copy. `--no-trace` if that matters right now.
     - *`probe deployment-map` shows only what dodot owns.* Files at the deploy target that dodot didn't create (regular files, foreign symlinks) don't appear here — `dodot status` is where those surface as conflicts or `error` rows.
     - *`show-data-dir --depth 8` can be a lot.* A repo with many packs and many handlers fills the tree quickly. Start at the default depth 4; deepen only when you're hunting a specific path.

@@ -893,7 +893,7 @@ fn build_clap_command() -> ClapCommand {
                 .subcommand(
                     ClapCommand::new("shell-init")
                         .about(
-                            "Startup timings + live hook diagnosis (spawns your shell once, running your whole rc file; --no-trace for timings only)",
+                            "Startup timings + live hook diagnosis (spawns your shell, running your whole rc file up to twice; --no-trace for timings only)",
                         )
                         .arg(
                             Arg::new("filter")

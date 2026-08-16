@@ -373,7 +373,7 @@ fn down_reports_the_wired_but_empty_script() {
     assert_eq!(notice.state, "empty-script");
     assert_eq!(
         notice.message,
-        "Shell hookup: wired, but the init script is empty — nothing is deployed."
+        "Shell hookup: wired, but no packs are deployed."
     );
 }
 

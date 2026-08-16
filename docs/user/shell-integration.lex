@@ -117,9 +117,9 @@ Shell integration
         | State            | Line one                                                                | What to do                                     |
         | healthy          | Shell hookup: dodot is sourced in new shells.                           | Nothing.                                       |
         | version skew     | Shell hookup: your shells load a different dodot.                       | Find which install your PATH resolves first — see below. |
-        | empty script     | Shell hookup: wired, but the init script is empty — nothing is deployed. | `dodot up` — expected right after `dodot down`. |
+        | empty script     | Shell hookup: wired, but no packs are deployed. | `dodot up` — expected right after `dodot down`. |
         | stale shell      | Shell hookup: this shell predates your last \`dodot up\`.               | Open a new shell.                              |
-        | this shell only  | Shell hookup: this shell did not load dodot.                            | What the hint names: the hook is missing from your rc (wire it), or it's there and this is likely an old shell (open a new one). |
+        | shell not loaded | Shell hookup: this shell did not load dodot.                            | What the hint names: the hook is missing from your rc (wire it), or it's there and this is likely an old shell (open a new one). |
         | never activated  | Shell hookup: no shell has loaded dodot yet.                            | `dodot install --write`.                       |
         | verified broken  | Shell hookup: a new shell did not load dodot.                           | Fix what the diagnosis names — see below.      |
 
@@ -144,9 +144,9 @@ Shell integration
 
     For the measured answer — which binary `dodot` resolves to at the hook line, and why — run `dodot probe shell-init` ([./commands/probe.lex] §4).
 
-    _Empty script_ — the hookup is wired and firing, but the generated script carries no pack contributions, so a healthy-sounding line would be misleading. This is what `dodot down` leaves behind, and also a first `up` that deployed nothing:
+    _Empty script_ — the hookup is wired and firing, but the generated script carries no pack contributions, so a healthy-sounding line would be misleading. This is what `dodot down` leaves behind, and also a first `up` that deployed nothing. The line says "no packs", not "the script is empty": on a Homebrew host the script still carries the `brew shellenv` block ([#3]) and is doing real work — just none of yours. It reads the same whether dodot inferred the hookup was firing or measured it:
 
-        Shell hookup: wired, but the init script is empty — nothing is deployed.
+        Shell hookup: wired, but no packs are deployed.
         Run `dodot up` to deploy your packs.
         Last loaded just now by dodot 5.6.0.
 
@@ -160,7 +160,7 @@ Shell integration
 
     :: shell ::
 
-    _This shell only_ comes from `dodot status`, and only when it runs attached to a terminal: no matter what the heartbeat says some past shell did, the shell you are typing in exported no generation stamp, so it demonstrably did not load dodot. This is how `status` catches a hookup that *used to* work and then broke — an rc rewrite, a commented-out hook, a moved dotfiles repo — without starting a shell. A scan of your rc file picks the hint. Hook missing:
+    _Shell not loaded_ comes from any command running attached to a terminal that did not start a shell to check: no matter what the heartbeat says some past shell did, the shell you are typing in exported no generation stamp, so it demonstrably did not load dodot. That is `dodot status` always, and `dodot up` whenever the cheap evidence was conclusive enough that it never spawned anything — most often *because* the heartbeat is fresh, which is the exact reading this state exists to overrule. The two agree, deliberately: a hookup that has quietly died gets the same answer whichever command you happen to run. This is how dodot catches a hookup that *used to* work and then broke — an rc rewrite, a commented-out hook, a moved dotfiles repo — without starting a shell. A scan of your rc file picks the hint. Hook missing:
 
         ⚠ Shell hookup: this shell did not load dodot.
         ~/.zshrc doesn't have the dodot hook. Run `dodot install --write` to wire it up, or add this line yourself: [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"

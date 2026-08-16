@@ -121,11 +121,13 @@ const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// could not run degrades to a "could not trace" line rather than
 /// failing the command: the recorded half must survive a hostile rc.
 /// A hook line dodot cannot read gets the same treatment one level
-/// down ([`crate::shell::trace::TraceVerdict::ScriptUnresolved`]) — an unanswered
-/// question, never an answered one about the wrong file.
+/// down — an unanswered question, never an answered one about the
+/// wrong file.
+///
 /// The spawn is announced before it runs and rides the INS01 envelope
 /// via [`crate::shell::trace::run_trace`].
 fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
+    use crate::shell::activation;
     use crate::shell::rc;
     use crate::shell::trace::{self, HookForm, SourcedScript, TraceError};
 
@@ -254,15 +256,18 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
                 trace::judge_eval_hook(fs, record, &running_exe, &version_by_running)
             }
             // The file-source hook involves no PATH: the equivalent
-            // check is whether the script *that line* sources exists —
-            // the structural reason that form is the recommended one.
-            // The path comes from the hook, never from
-            // `paths.init_script_path()`: a line pointing at a stale
-            // copy elsewhere must not be certified by the presence of
-            // the copy dodot happens to own.
-            HookForm::FileSource(SourcedScript::Path(script)) => {
-                trace::judge_file_source_hook(fs, script)
-            }
+            // check is which dodot wrote the script *that line*
+            // sources — the path from the hook, never from
+            // `paths.init_script_path()`, and the identity read out of
+            // the script rather than assumed from its existence.
+            HookForm::FileSource(SourcedScript::Path(script)) => trace::judge_file_source_hook(
+                fs,
+                script,
+                // The generation `dodot up` last wrote: what a sound
+                // hook's script should be carrying.
+                activation::read_script_generation(fs, ctx.paths.as_ref()),
+                activation::running_version(),
+            ),
             HookForm::FileSource(SourcedScript::Unresolved { raw }) => {
                 trace::TraceVerdict::ScriptUnresolved { raw }
             }
@@ -441,8 +446,54 @@ fn verdict_trace_view(
         TraceVerdict::ScriptPresent { script } => (
             "script-ok",
             "deployed",
-            format!("the init script sourced at {rc}:{hook_line} is present — the hookup is sound"),
+            format!(
+                "the init script sourced at {rc}:{hook_line} was written by the running dodot — \
+                 the hookup is sound"
+            ),
             vec![show(&script)],
+        ),
+        // The file-source twin of `different-binary`: the hook sources
+        // a real dodot init script, written by a dodot that is not
+        // this one.
+        TraceVerdict::ScriptSkewed { script, version } => (
+            "script-skewed",
+            "error",
+            format!("the init script sourced at {rc}:{hook_line} was written by a different dodot"),
+            vec![
+                format!("{} says dodot {version}", show(&script)),
+                format!("you are running {}", running_version()),
+                "your shells load that script, not the one `dodot up` maintains — re-point the \
+                 hook, or run `dodot install --write` to rewrite it"
+                    .to_string(),
+            ],
+        ),
+        TraceVerdict::ScriptStale {
+            script,
+            found,
+            expected,
+        } => (
+            "script-stale",
+            "error",
+            format!(
+                "the init script sourced at {rc}:{hook_line} is older than the one `dodot up` \
+                 maintains"
+            ),
+            vec![
+                format!(
+                    "{} is generation {found}; the current one is {expected}",
+                    show(&script)
+                ),
+                "it is a copy left behind — re-point the hook, or run `dodot install --write`"
+                    .to_string(),
+            ],
+        ),
+        TraceVerdict::ScriptUnverified { script, reason } => (
+            "script-unverified",
+            "warning",
+            format!(
+                "dodot could not tell which dodot wrote the script sourced at {rc}:{hook_line}"
+            ),
+            vec![format!("{} — {reason}", show(&script))],
         ),
         // Not a verdict: the line names its script in a form dodot
         // will not resolve without interpreting shell, and a guess

@@ -116,6 +116,62 @@ fn a_healthy_machine_never_spawns_a_probe() {
     assert_eq!(result.shell_hookup.map(|n| n.state), Some("healthy".into()));
 }
 
+/// Permission to spawn is not a spawn. The gate above declines on a
+/// fresh heartbeat — which is *exactly* the case #279 gave the session
+/// signal to overrule: some other shell activated, and the one the
+/// user is typing in demonstrably did not. Reading "will we measure?"
+/// off the policy instead of off the gate meant `up` announced a
+/// healthy hookup for that session while `status`, one command later
+/// in the same terminal, correctly called it out — neither of them
+/// having spawned anything.
+#[test]
+fn up_does_not_certify_a_session_it_never_measured() {
+    let env = env_with_shell_pack();
+    up::up(None, &make_ctx(&env)).unwrap();
+    let generation =
+        activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+    // Another shell activated; this one carries no stamp and is
+    // attached to a terminal.
+    simulate_activation(&env, generation);
+
+    let mut ctx = probing_ctx(&env, &sources_dodot(&env));
+    ctx.tty = true;
+    let up_notice = up::up(None, &ctx).unwrap().shell_hookup.unwrap();
+
+    assert!(
+        !env.fs.exists(&spawn_marker(&env)),
+        "the gate declines on a fresh heartbeat — no spawn happened"
+    );
+    assert_eq!(
+        up_notice.state, "shell-not-loaded",
+        "no measurement replaced the session evidence, so the session evidence stands"
+    );
+
+    // And the two commands agree, which is the point.
+    let status_notice = status::status(None, &ctx).unwrap().shell_hookup.unwrap();
+    assert_eq!(status_notice.state, up_notice.state);
+    assert_eq!(status_notice.message, up_notice.message);
+}
+
+/// The other half of the same rule: when a spawn *does* happen, it
+/// answers the question and the session signal stays out of it.
+#[test]
+fn a_measured_verdict_still_outranks_the_session_signal() {
+    let env = env_with_shell_pack();
+    up::up(None, &make_ctx(&env)).unwrap();
+
+    // No heartbeat and no stamp, so the gate fires and the fabricated
+    // shell — which really does source the init script — measures a
+    // working hookup. A tty-attached session would otherwise have
+    // reported "this shell did not load dodot".
+    let mut ctx = probing_ctx(&env, &sources_dodot(&env));
+    ctx.tty = true;
+    let notice = up::up(None, &ctx).unwrap().shell_hookup.unwrap();
+
+    assert!(env.fs.exists(&spawn_marker(&env)), "the gate fired");
+    assert_eq!(notice.state, "healthy");
+}
+
 #[test]
 fn a_live_shell_is_proof_enough_on_its_own() {
     let env = env_with_shell_pack();

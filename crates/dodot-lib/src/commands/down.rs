@@ -242,7 +242,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         group_mode: ctx.group_mode.as_str().into(),
         diffs: Vec::new(),
         // `down` carries the footer like every other pack-status
-        // render. It reads as "wired, but the init script is empty"
+        // render. It reads as "wired, but no packs are deployed"
         // rather than as a healthy deployment, because the footer
         // reports the *script's* content — no `down` special case
         // (`shell-hookup-ergonomics.lex` §2.3). `down` never spawns a

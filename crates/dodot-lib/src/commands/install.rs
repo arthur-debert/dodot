@@ -209,25 +209,31 @@ fn verdict(
     target: &RcTarget,
 ) -> Option<ActivationNotice> {
     let reference = activation::read_script_generation(ctx.fs.as_ref(), ctx.paths.as_ref());
-    // `tty: false` — session evidence is `status`'s tie-breaker
-    // (#279); `install` reports configuration and, with `--write`,
-    // measures, so its evidence fallback stays two-signal.
+    // Nothing to activate without a script: the hook is wired, and the
+    // user's next `dodot up` is what gives it something to source.
+    let timeout = ctx
+        .shell_probe
+        .timeout()
+        .filter(|_| opts.write)
+        .filter(|_| ctx.fs.exists(&ctx.paths.init_script_path()));
+    // The session signal is dropped only where a spawn replaces it —
+    // the same rule `notice_with_probe` applies, decided from what
+    // will actually happen rather than from the policy. A dry run
+    // measures nothing, so a tty-attached session with no stamp is
+    // still direct evidence that *this* shell did not load dodot
+    // (#279), and saying otherwise would put `install` at odds with a
+    // `status` run in the same terminal.
     let evidence = activation::notice_for(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         ctx.env_stamp.clone(),
         reference,
-        false,
+        ctx.tty && timeout.is_none(),
         &ctx.shell_env,
     );
-    let Some(timeout) = ctx.shell_probe.timeout().filter(|_| opts.write) else {
+    let Some(timeout) = timeout else {
         return evidence;
     };
-    if !ctx.fs.exists(&ctx.paths.init_script_path()) {
-        // Nothing to activate yet: the hook is wired, and the user's
-        // next `dodot up` is what gives it something to source.
-        return evidence;
-    }
     // The diagnosis talks about the file we just wrote — including a
     // `--rc` override, which the ladder would not have found itself.
     probe::measure(

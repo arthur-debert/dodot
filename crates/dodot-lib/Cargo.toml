@@ -27,7 +27,11 @@ tar = "0.4"
 # The scratch directory the hook-line trace's fallback copy runs from
 # (`shell::trace`): exclusive creation under an unpredictable name,
 # 0700 at creation, removed on drop. Production code, not just tests.
-tempfile = "3"
+# 3.9 for `Builder::permissions`, which is how the trace's scratch
+# directory gets mode 0700 from `mkdir` itself rather than a
+# follow-up `chmod` (see `shell::trace::scratch_dir`). A bare "3"
+# resolves fine today and would break on any older 3.x.
+tempfile = "3.9"
 thiserror = "2"
 # Relative time ("4 minutes ago") for the shell-hookup footer. Default
 # features off: the formatter takes a `std::time::Duration`, so no

@@ -218,11 +218,22 @@ pub fn parse_probe_output(stdout: &str) -> Option<ProbeStamp> {
         .next_back()
 }
 
-/// Both streams a spawned process wrote before finishing.
+/// Both streams a spawned process wrote before finishing, and how it
+/// finished.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpawnCapture {
     pub stdout: String,
     pub stderr: String,
+    /// The exit code, or `None` when the process was killed by a
+    /// signal.
+    ///
+    /// The activation probe ignores it on purpose — unrelated rc
+    /// breakage exits non-zero and still activates dodot, so the stamp
+    /// is the bit. [`crate::shell::trace`] needs it for the opposite
+    /// kind of question: `<shell> -n` answers *only* through its exit
+    /// status, and a syntax check whose answer is discarded is a
+    /// syntax check that never ran.
+    pub status: Option<i32>,
 }
 
 /// What became of one enveloped spawn.
@@ -274,9 +285,9 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     let stderr = child.stderr.take().map(drain);
 
     let deadline = Instant::now() + timeout;
-    let timed_out = loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break false,
+            Ok(Some(status)) => break Some(status),
             Ok(None) => {}
             Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
         }
@@ -285,7 +296,7 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
             // Reap: the group is dead, so this returns promptly and we
             // leave no zombie behind.
             let _ = child.wait();
-            break true;
+            break None;
         }
         std::thread::sleep(POLL_INTERVAL);
     };
@@ -293,10 +304,14 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     let stdout = stdout.and_then(|h| h.join().ok()).unwrap_or_default();
     let stderr = stderr.and_then(|h| h.join().ok()).unwrap_or_default();
 
-    if timed_out {
+    let Some(status) = status else {
         return SpawnOutcome::TimedOut;
-    }
-    SpawnOutcome::Finished(SpawnCapture { stdout, stderr })
+    };
+    SpawnOutcome::Finished(SpawnCapture {
+        stdout,
+        stderr,
+        status: status.code(),
+    })
 }
 
 /// Spawn `shell` interactively and read the stamp back.
@@ -469,32 +484,45 @@ impl Verdict {
     /// answer for a hookup that just measured broken.
     ///
     /// A measured verdict says the same thing the evidence path says
-    /// for the same state, in the same words — the healthy and the
-    /// skewed footers are built by [`ActivationNotice::for_state`]
-    /// itself rather than restated here: what the measurement buys is
-    /// that the claim is right, not that it is phrased differently.
-    /// Only [`Verdict::Broken`] writes its own hint, because only it
-    /// has something the evidence path cannot know — which of the
-    /// [`Diagnosis`] shapes the failure took.
+    /// for the same state, in the same words — and reaches the state
+    /// the same way. A spawn settles the generation ladder's rung with
+    /// certainty and learns nothing about the two rules that override
+    /// it, so the ladder's answer goes through the shared
+    /// [`activation::refine`] before [`ActivationNotice::for_state`]
+    /// renders it. Short-circuiting straight to `Healthy` is how the
+    /// measured path used to report "dodot is sourced in new shells"
+    /// for a deployment of no packs, contradicting the `status` run
+    /// immediately after it.
+    ///
+    /// `script_has_contributions` is the input that rule needs; it is
+    /// a property of the script on disk, which the spawn does not
+    /// change. Only [`Verdict::Broken`] writes its own hint, because
+    /// only it has something the evidence path cannot know — which of
+    /// the [`Diagnosis`] shapes the failure took.
     pub fn notice(
         &self,
         evidence: Option<ActivationNotice>,
         evidence_line: &str,
         hook_line: &str,
+        script_has_contributions: bool,
     ) -> Option<ActivationNotice> {
         match self {
-            Verdict::Verified { .. } => Some(ActivationNotice::for_state(
-                ActivationState::Healthy,
-                hook_line,
-                None,
-                evidence_line.into(),
-            )),
-            Verdict::VersionSkew { .. } => Some(ActivationNotice::for_state(
-                ActivationState::VersionSkew,
-                hook_line,
-                None,
-                evidence_line.into(),
-            )),
+            // One arm: a measured activation is the ladder's `Healthy`
+            // rung, and which state that *is* depends on the same two
+            // overrides the evidence path applies.
+            Verdict::Verified { .. } | Verdict::VersionSkew { .. } => {
+                let state = activation::refine(
+                    ActivationState::Healthy,
+                    matches!(self, Verdict::VersionSkew { .. }),
+                    script_has_contributions,
+                );
+                Some(ActivationNotice::for_state(
+                    state,
+                    hook_line,
+                    None,
+                    evidence_line.into(),
+                ))
+            }
             Verdict::Broken { diagnosis } => Some(ActivationNotice {
                 state: ActivationState::VerifiedBroken.as_str().into(),
                 severity: "error".into(),
@@ -560,11 +588,15 @@ pub fn measure(
         .as_ref()
         .map(|n| n.evidence.clone())
         .unwrap_or_else(|| "Never loaded.".into());
+    // Read once, before the spawn: the probe runs the user's rc, not
+    // `dodot up`, so the script it sources is the same file afterwards.
+    let has_contributions = activation::read_script(fs, paths)
+        .is_some_and(|script| crate::shell::script_has_contributions(&script));
     let Some(shell) = shell_env.shell.as_deref().map(Path::new) else {
         return Verdict::Unverified {
             reason: "$SHELL is not set".into(),
         }
-        .notice(evidence, &stale_line, &hook_line);
+        .notice(evidence, &stale_line, &hook_line, has_contributions);
     };
 
     eprintln!("{}", announcement(shell));
@@ -584,6 +616,7 @@ pub fn measure(
         evidence,
         &evidence_line,
         &hook_line,
+        has_contributions,
     )
 }
 
@@ -599,10 +632,21 @@ pub fn measure(
 /// the script on disk, which is what a shell started now would source.
 ///
 /// `tty` is the session evidence the stampless ladder falls back on
-/// (#279). A caller that will measure passes `false` — it gets the
-/// real answer from the spawn instead of inferring one from the
-/// session — so in practice this is only ever `true` alongside
-/// [`ProbePolicy::Never`].
+/// (#279), and callers pass it **as it is** — whether it gets used is
+/// this function's decision, not theirs.
+///
+/// It is consulted only when no measurement happens, because a spawn
+/// answers the same question better. But "may this caller spawn" and
+/// "did a spawn happen" are different facts, and only the second one
+/// licences dropping the session signal: [`gate_says_probe`] declines
+/// whenever the heartbeat is `Fresh`, which is *precisely* the case
+/// #279 introduced the session signal to overrule — some other shell
+/// activated, this one demonstrably did not. Deciding from the policy
+/// instead let `up` print "dodot is sourced in new shells" in a session
+/// that had not loaded dodot, while `status` in the same terminal
+/// correctly said it had not, neither of them having spawned anything.
+/// So the gate runs first and its answer, not the policy's permission,
+/// is what suppresses the signal.
 pub fn notice_with_probe(
     fs: &dyn Fs,
     paths: &dyn Pather,
@@ -612,29 +656,31 @@ pub fn notice_with_probe(
     reference_for_gate: Option<u64>,
     tty: bool,
 ) -> Option<ActivationNotice> {
+    // Nothing deployed means there is no hookup to measure yet, so the
+    // script's existence is part of the same question.
+    let timeout = policy
+        .timeout()
+        .filter(|_| fs.exists(&paths.init_script_path()))
+        .filter(|_| {
+            gate_says_probe(
+                activation::classify_stamp(env_stamp.generation, reference_for_gate),
+                activation::classify_heartbeat(
+                    activation::read_heartbeat(fs, paths).map(|h| h.generation),
+                    reference_for_gate,
+                ),
+            )
+        });
     let evidence = activation::notice_for(
         fs,
         paths,
         env_stamp.clone(),
         reference_for_gate,
-        tty,
+        tty && timeout.is_none(),
         shell_env,
     );
-    let Some(timeout) = policy.timeout() else {
+    let Some(timeout) = timeout else {
         return evidence;
     };
-    if !fs.exists(&paths.init_script_path()) {
-        // Nothing deployed: there is no hookup to measure yet.
-        return evidence;
-    }
-    let stamp = activation::classify_stamp(env_stamp.generation, reference_for_gate);
-    let heartbeat = activation::classify_heartbeat(
-        activation::read_heartbeat(fs, paths).map(|h| h.generation),
-        reference_for_gate,
-    );
-    if !gate_says_probe(stamp, heartbeat) {
-        return evidence;
-    }
     let reference = activation::read_script_generation(fs, paths);
     measure(fs, paths, timeout, shell_env, None, reference, evidence)
 }
@@ -745,6 +791,11 @@ mod tests {
     /// so the assertions do not move with the crate's own release.
     const RUNNING: &str = "5.6.0";
 
+    /// `script_has_contributions` for a machine with packs deployed —
+    /// the ordinary case, and the one the verdict tests below are not
+    /// about. The empty case has a test of its own.
+    const DEPLOYED: bool = true;
+
     #[test]
     fn a_current_stamp_is_a_measured_verification() {
         let v = Verdict::from_outcome(
@@ -755,7 +806,12 @@ mod tests {
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
         let notice = v
-            .notice(None, "Last loaded just now by dodot 5.6.0.", "HOOK")
+            .notice(
+                None,
+                "Last loaded just now by dodot 5.6.0.",
+                "HOOK",
+                DEPLOYED,
+            )
             .unwrap();
         assert_eq!(notice.state, "healthy");
         assert_eq!(notice.severity, "ok");
@@ -796,7 +852,12 @@ mod tests {
                 "a current generation from {loaded} is not a verification"
             );
             let notice = v
-                .notice(None, "Last loaded just now by dodot 5.0.0.", "HOOK")
+                .notice(
+                    None,
+                    "Last loaded just now by dodot 5.0.0.",
+                    "HOOK",
+                    DEPLOYED,
+                )
                 .unwrap();
             // The state the evidence path would name, in the evidence
             // path's own words — the measurement changes which state is
@@ -809,6 +870,57 @@ mod tests {
             );
             assert!(notice.hint.unwrap().contains("PATH finds first"));
         }
+    }
+
+    /// A measurement settles which rung of the generation ladder the
+    /// hookup is on. It says nothing about whether the script that
+    /// shell sourced deploys anything, so the measured path has to run
+    /// its answer through the same [`activation::refine`] the evidence
+    /// path does. Short-circuiting to `Healthy` had `up` say "dodot is
+    /// sourced in new shells" on a fresh install with no packs, with
+    /// `status` contradicting it a second later.
+    #[test]
+    fn a_measured_activation_of_an_empty_script_is_not_reported_healthy() {
+        let v = Verdict::from_outcome(
+            ProbeOutcome::Stamp(stamp(100, RUNNING)),
+            Some(100),
+            RUNNING,
+            hook(HookPresence::ManagedBlock),
+        );
+        assert_eq!(v, Verdict::Verified { generation: 100 });
+
+        let deployed = v
+            .notice(None, "Last loaded just now.", "HOOK", DEPLOYED)
+            .unwrap();
+        assert_eq!(deployed.state, "healthy");
+
+        let empty = v
+            .notice(None, "Last loaded just now.", "HOOK", false)
+            .unwrap();
+        assert_eq!(
+            empty.state, "empty-script",
+            "the spawn proved the hookup fires; it proved nothing about what it deploys"
+        );
+        // The evidence path's words for the state, not a second set.
+        assert_eq!(
+            empty.message,
+            "Shell hookup: wired, but no packs are deployed."
+        );
+    }
+
+    /// Skew outranks the empty-script rule for the measured path too —
+    /// the order is [`activation::refine`]'s, applied once, not
+    /// re-decided here.
+    #[test]
+    fn a_measured_skew_outranks_an_empty_script() {
+        let v = Verdict::VersionSkew {
+            generation: 100,
+            loaded: EvidenceVersion::Known("5.0.0".into()),
+        };
+        let notice = v
+            .notice(None, "Last loaded just now.", "HOOK", false)
+            .unwrap();
+        assert_eq!(notice.state, "version-skew");
     }
 
     /// Skew outranks the generation ladder in both directions, exactly
@@ -866,7 +978,7 @@ mod tests {
                 }
             }
         );
-        let notice = v.notice(None, "Never loaded.", "HOOK").unwrap();
+        let notice = v.notice(None, "Never loaded.", "HOOK", DEPLOYED).unwrap();
         assert_eq!(notice.state, "verified-broken");
         assert_eq!(notice.severity, "error");
         let hint = notice.hint.unwrap();
@@ -880,7 +992,7 @@ mod tests {
             let v =
                 Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, hook(presence));
             let hint = v
-                .notice(None, "Never loaded.", "HOOK")
+                .notice(None, "Never loaded.", "HOOK", DEPLOYED)
                 .unwrap()
                 .hint
                 .unwrap();
@@ -905,7 +1017,7 @@ mod tests {
             }
         );
         let hint = v
-            .notice(None, "Never loaded.", "THE-HOOK-LINE")
+            .notice(None, "Never loaded.", "THE-HOOK-LINE", DEPLOYED)
             .unwrap()
             .hint
             .unwrap();
@@ -946,7 +1058,7 @@ mod tests {
         ] {
             let v = Verdict::from_outcome(outcome, Some(100), RUNNING, hook(HookPresence::Absent));
             let notice = v
-                .notice(Some(evidence.clone()), "Never loaded.", "HOOK")
+                .notice(Some(evidence.clone()), "Never loaded.", "HOOK", DEPLOYED)
                 .unwrap();
             // The evidence verdict survives untouched...
             assert_eq!(notice.state, "never-activated");
@@ -966,7 +1078,7 @@ mod tests {
         let v = Verdict::Unverified {
             reason: "boom".into(),
         };
-        assert_eq!(v.notice(None, "Never loaded.", "HOOK"), None);
+        assert_eq!(v.notice(None, "Never loaded.", "HOOK", DEPLOYED), None);
     }
 
     // ── Spawn mechanics, against fabricated shells ──────────────

@@ -324,13 +324,24 @@ pub fn write_init_script(
 ///   script *this* shell loaded. Without it a hookup can be wired,
 ///   sourced on every start, and still dead, because the binary that
 ///   wrote the script is not the binary the user runs.
-/// - `echo <generation> <version> > <heartbeat> 2>/dev/null || :` — one
+/// - `echo <generation> <version> >| <heartbeat> 2>/dev/null || :` — one
 ///   builtin and one truncating redirect, now carrying both fields so a
 ///   detached caller can answer the same question about the last shell
 ///   anywhere. `2>/dev/null` keeps an unwritable data dir from spraying
 ///   errors across every shell start, and the `|| :` keeps the failed
 ///   redirect's non-zero status from aborting an rc file that runs
 ///   under `set -e`.
+///
+/// `>|`, not `>`: `setopt noclobber` / `set -C` is an ordinary rc line,
+/// and under it a plain `>` *refuses* to write a file that already
+/// exists. The heartbeat exists after the first activation, so every
+/// activation from then on would fail silently — the two guards above
+/// see to the silence — and freeze "last loaded" at the first shell
+/// that ever ran. Three claims now rest on that file (the footer's
+/// timestamp, the skew comparison, and the probe gate), so the failure
+/// reads as a confident wrong answer rather than a missing one.
+/// `>|` overrides `noclobber` and is POSIX; verified against zsh, bash
+/// and dash, where plain `>` leaves the file untouched.
 ///
 /// Still two exports and one redirect: no command execution, no `dodot`
 /// invocation on the shell startup path.
@@ -342,7 +353,7 @@ fn emit_activation_evidence(script: &mut String, generation: u64, heartbeat_path
     writeln!(script, "export {}={version}", activation::INIT_VERSION_ENV).unwrap();
     writeln!(
         script,
-        "echo {generation} {version} > {heartbeat} 2>/dev/null || :"
+        "echo {generation} {version} >| {heartbeat} 2>/dev/null || :"
     )
     .unwrap();
     writeln!(script).unwrap();
@@ -1243,9 +1254,13 @@ mod tests {
                 )),
                 "{label}: missing version stamp:\n{script}"
             );
+            // `>|`, not `>`: under `noclobber` a plain `>` refuses to
+            // overwrite the heartbeat once it exists, and the `2>/dev/null
+            // || :` guards swallow the refusal — freezing "last loaded"
+            // at the first shell that ever ran.
             assert!(
                 script.contains(&format!(
-                    "echo {TEST_GEN} {} > '{}' 2>/dev/null || :",
+                    "echo {TEST_GEN} {} >| '{}' 2>/dev/null || :",
                     activation::running_version(),
                     env.paths.hookup_heartbeat_path().display()
                 )),
@@ -1255,6 +1270,50 @@ mod tests {
                 activation::parse_script_generation(&script),
                 Some(TEST_GEN),
                 "{label}: generation must round-trip out of the script"
+            );
+        }
+    }
+
+    /// `noclobber` is an ordinary rc line, and under it a plain `>`
+    /// refuses to write a file that already exists. The heartbeat
+    /// exists from the second activation onward, so with `>` every
+    /// activation after the first fails — silently, because the
+    /// redirect carries `2>/dev/null || :` — and "last loaded" freezes
+    /// at the first shell the user ever opened. Three of this epic's
+    /// claims read that file, so the freeze surfaces as a confident
+    /// wrong answer rather than a missing one.
+    ///
+    /// Run against every shell that can source the generated script,
+    /// because the fix is a redirect operator and its support is the
+    /// whole question.
+    #[test]
+    fn the_heartbeat_write_survives_noclobber_in_every_shell() {
+        let env = TempEnvironment::builder().build();
+        let heartbeat = env.paths.hookup_heartbeat_path();
+        env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
+        let script_path = env.home.join("dodot-init.sh");
+        env.fs.write_file(&script_path, script.as_bytes()).unwrap();
+
+        for shell in ["/bin/sh", "/bin/bash", "/bin/zsh"] {
+            if !Path::new(shell).exists() {
+                continue;
+            }
+            // A heartbeat from an earlier activation is what a plain
+            // `>` would refuse to overwrite.
+            env.fs.write_file(&heartbeat, b"1 0.0.0\n").unwrap();
+            let status = std::process::Command::new(shell)
+                .arg("-c")
+                .arg(format!("set -C; . '{}'", script_path.display()))
+                .status()
+                .expect("the shell runs");
+            assert!(status.success(), "{shell}: sourcing the script failed");
+            assert_eq!(
+                env.fs.read_to_string(&heartbeat).unwrap().trim(),
+                format!("{TEST_GEN} {}", activation::running_version()),
+                "{shell}: noclobber must not freeze the heartbeat"
             );
         }
     }

@@ -390,17 +390,23 @@ pub struct PackStatusResult {
 /// judging against the fresh one would call the invoking shell stale
 /// after every single run.
 ///
-/// `probe` is the caller's licence to measure (spec §3.1, §9). When it
-/// declines to spawn a shell, the session's tty-attachment stands in as
-/// the tie-breaker the measurement would have settled (#279); when it
-/// measures, the answer comes from the spawn and the session is not
-/// consulted.
+/// `probe` is the caller's licence to measure (spec §3.1, §9). When no
+/// shell is spawned, the session's tty-attachment stands in as the
+/// tie-breaker the measurement would have settled (#279); when one is,
+/// the answer comes from the spawn and the session is not consulted.
+///
+/// Which of those happened is
+/// [`notice_with_probe`](crate::shell::probe::notice_with_probe)'s to
+/// decide, so `ctx.tty` is handed over unmodified. Deciding it here
+/// meant reading it off the *policy*, which only says a spawn is
+/// permitted — the gate that says whether one occurs runs later, and
+/// declines on a fresh heartbeat, which is the exact case the session
+/// signal exists for.
 pub(crate) fn shell_hookup_footer(
     ctx: &crate::packs::orchestration::ExecutionContext,
     reference: Option<u64>,
     probe: &crate::shell::ProbePolicy,
 ) -> Option<crate::shell::ActivationNotice> {
-    let measures = probe.timeout().is_some();
     crate::shell::probe::notice_with_probe(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
@@ -408,7 +414,7 @@ pub(crate) fn shell_hookup_footer(
         &ctx.shell_env,
         &ctx.env_stamp,
         reference,
-        ctx.tty && !measures,
+        ctx.tty,
     )
 }
 

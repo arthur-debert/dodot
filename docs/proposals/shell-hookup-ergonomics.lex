@@ -68,11 +68,13 @@ Design Specification: Shell Hookup Ergonomics
 
             export DODOT_INIT_GEN=1786830419
             export DODOT_INIT_VERSION=5.6.0
-            echo '1786830419 5.6.0' > '…/probes/hookup/heartbeat' 2>/dev/null || :
+            echo '1786830419 5.6.0' >| '…/probes/hookup/heartbeat' 2>/dev/null || :
 
         :: sh ::
 
         The export answers "which dodot did *this* shell load"; the heartbeat field answers "which dodot did the last shell anywhere load". Both are needed: the first is what a user's own session can act on, the second is what a detached caller sees.
+
+        *Amended during review.* The redirect is `>|`, not `>`. Under `setopt noclobber` / `set -C` — an ordinary rc line — a plain `>` refuses to write a file that already exists, and the `2>/dev/null || :` guards hide the refusal. The heartbeat exists after the first activation, so every activation after that would fail silently and freeze "last loaded" at the first shell ever run. This epic newly rests three claims on that file — the footer's timestamp, the skew comparison, and the probe gate — so the frozen file reads as a confident wrong answer. `>|` is POSIX; verified against zsh, bash and dash.
 
         A heartbeat or stamp carrying no version renders as `≤5.5.1` — one rule covering both a pre-RCS01 binary and a stale heartbeat left on disk by one. The boundary version is a single constant, set to the release preceding this work.
 
@@ -95,7 +97,7 @@ Design Specification: Shell Hookup Ergonomics
             | healthy | Shell hookup: dodot is sourced in new shells. | Last loaded 4 minutes ago by dodot 5.6.0. |
             | version skew | Shell hookup: your shells load a different dodot. | Last loaded 4 minutes ago by dodot 5.0.0 — you are running 5.6.0. |
             | stale shell | Shell hookup: this shell predates your last \`dodot up\`. | Last loaded 4 minutes ago by dodot 5.6.0. |
-            | this shell only | Shell hookup: this shell did not load dodot. | Last loaded 2 days ago by dodot 5.6.0. |
+            | shell not loaded | Shell hookup: this shell did not load dodot. | Last loaded 2 days ago by dodot 5.6.0. |
             | never | Shell hookup: no shell has loaded dodot yet. | Never loaded. |
             | verified broken | Shell hookup: a new shell did not load dodot. | Last loaded 9 days ago by dodot ≤5.5.1. |
 
@@ -103,7 +105,9 @@ Design Specification: Shell Hookup Ergonomics
 
         Version skew is a new state, and the one the evidence change exists to catch: a stamp or heartbeat whose version differs from the running binary's. It is a warning, not an error — a user mid-upgrade will see it transiently — and its hint names both paths, which is the whole diagnosis in the common case.
 
-        *After `down`*, a footer claiming a healthy hookup is technically true and practically misleading: the hook is wired, but the script it sources now deploys nothing. Rather than special-casing the command, the footer reports the script's *content*: when the generated script carries no pack contributions, line one says so (`Shell hookup: wired, but the init script is empty — nothing is deployed.`). That covers `down`, a repository with every pack ignored, and a first `up` that deployed nothing, under one rule.
+        *After `down`*, a footer claiming a healthy hookup is technically true and practically misleading: the hook is wired, but the script it sources now deploys nothing. Rather than special-casing the command, the footer reports the script's *content*: when the generated script carries no pack contributions, line one says so (`Shell hookup: wired, but no packs are deployed.`). That covers `down`, a repository with every pack ignored, and a first `up` that deployed nothing, under one rule.
+
+        *Amended during review.* The line says "no packs", not "the init script is empty", because packs are what the measurement counts. On a Homebrew host the script still carries the `brew shellenv` block from [#4] after a `down` — twenty-odd lines that rewrite `PATH` — so a claim about the file being empty would be false exactly where this epic added the content.
 
     2.4. Relative Time
 

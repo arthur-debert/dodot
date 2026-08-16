@@ -317,12 +317,32 @@ pub fn read_script_generation(fs: &dyn Fs, paths: &dyn Pather) -> Option<u64> {
 
 /// Extract the generation from init-script text — the value of the
 /// single `export DODOT_INIT_GEN=<n>` line the generator emits.
+///
+/// Doubles as the test of whether a file *is* a dodot init script: no
+/// other file carries that export, and no dodot writes one without it.
 pub fn parse_script_generation(script: &str) -> Option<u64> {
     let prefix = format!("export {INIT_GEN_ENV}=");
     script
         .lines()
         .find_map(|line| line.trim().strip_prefix(&prefix))
         .and_then(parse_generation)
+}
+
+/// Extract the version from init-script text — the value of the single
+/// `export DODOT_INIT_VERSION=<v>` line the generator emits, absent in
+/// a script written before the field existed.
+///
+/// The pair with [`parse_script_generation`], so a script on disk can
+/// be identified by the same two fields the environment stamp and the
+/// heartbeat carry — and judged by the same rules.
+pub fn parse_script_version(script: &str) -> Option<String> {
+    let prefix = format!("export {INIT_VERSION_ENV}=");
+    script
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(&prefix))
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
 }
 
 /// Signal 1: what the calling shell's environment says.
@@ -378,11 +398,17 @@ pub enum ActivationState {
     /// state would call this one healthy or stale and send the user to
     /// a fix that cannot work.
     VersionSkew,
-    /// Shells are loading dodot and the script they load deploys
-    /// nothing — after `down`, in a repository where every pack is
+    /// Shells are loading dodot and the script they load deploys no
+    /// packs — after `down`, in a repository where every pack is
     /// ignored, or after a first `up` that deployed nothing. A healthy
     /// hookup line here is technically true and practically
     /// misleading.
+    ///
+    /// The claim is about *packs*, not about the file: the measurement
+    /// behind it ([`crate::shell::script_has_contributions`]) counts
+    /// pack contributions, and on a Homebrew host the script still
+    /// carries the bootstrap block that rewrites `PATH`, so "the init
+    /// script is empty" would be flatly false there.
     EmptyScript,
     /// Something activated, but not at the current generation — most
     /// often the terminal the user is typing in, which predates their
@@ -479,6 +505,47 @@ pub fn classify_heartbeat(heartbeat: Option<u64>, reference: Option<u64>) -> Hea
 /// means shells are activating and this process just isn't one of
 /// them; old means nothing has activated since the last regeneration;
 /// absent means nothing ever has.
+/// Apply the two rules that override the generation ladder.
+///
+/// The ladder ([`evaluate`]) only ever answers "did a shell load, and
+/// how recently". Two facts outrank that answer, and they outrank it
+/// the same way no matter who established the ladder's verdict — the
+/// two cheap signals, or a shell dodot actually spawned:
+///
+/// - **Version skew** replaces `Healthy` and `StaleShell`. Both say
+///   the hookup is working; a version mismatch says the working
+///   hookup is running the wrong dodot, which is strictly more
+///   specific and is the one thing "open a new shell" may not fix.
+///   It never fires on staleness alone — a mismatch is required —
+///   and it never overrides a state that already says a shell
+///   loaded nothing, where the missing hookup is the news and the
+///   version still shows on line two.
+/// - **An empty script** replaces `Healthy` only: the hookup is
+///   sound and the script it sources deploys no packs, which is the
+///   one claim a healthy line would get wrong. A hookup that is
+///   *also* broken has a bigger problem to report first.
+///
+/// This is a free function rather than a method on [`Evidence`]
+/// because [`crate::shell::probe`] has to reach it too. A measurement
+/// establishes the *ladder's* rung with certainty and learns nothing
+/// about these two rules, so a measured verdict that skipped them
+/// would report `Healthy` for a deployment of nothing — the shared
+/// classifier is shared precisely so the two paths cannot answer
+/// differently.
+pub fn refine(
+    ladder: ActivationState,
+    skewed: bool,
+    script_has_contributions: bool,
+) -> ActivationState {
+    match ladder {
+        ActivationState::Healthy | ActivationState::StaleShell if skewed => {
+            ActivationState::VersionSkew
+        }
+        ActivationState::Healthy if !script_has_contributions => ActivationState::EmptyScript,
+        other => other,
+    }
+}
+
 pub fn evaluate(stamp: StampState, heartbeat: HeartbeatState, tty: bool) -> ActivationState {
     match (stamp, heartbeat) {
         (StampState::Current, _) => ActivationState::Healthy,
@@ -588,23 +655,8 @@ impl Evidence {
         is_skewed(self.loaded_version().as_ref(), &self.running_version)
     }
 
-    /// Fold everything into one state.
-    ///
-    /// The generation ladder ([`evaluate`]) decides first, then two
-    /// rules override it:
-    ///
-    /// - **Version skew** replaces `Healthy` and `StaleShell`. Both say
-    ///   the hookup is working; a version mismatch says the working
-    ///   hookup is running the wrong dodot, which is strictly more
-    ///   specific and is the one thing "open a new shell" may not fix.
-    ///   It never fires on staleness alone — a mismatch is required —
-    ///   and it never overrides a state that already says a shell
-    ///   loaded nothing, where the missing hookup is the news and the
-    ///   version still shows on line two.
-    /// - **An empty script** replaces `Healthy` only: the hookup is
-    ///   sound and the script it sources deploys nothing, which is the
-    ///   one claim a healthy line would get wrong. A hookup that is
-    ///   *also* broken has a bigger problem to report first.
+    /// Fold everything into one state: the generation ladder
+    /// ([`evaluate`]), then the two overrides ([`refine`]).
     pub fn state(&self) -> ActivationState {
         let ladder = evaluate(
             classify_stamp(self.stamp.generation, self.reference),
@@ -614,15 +666,7 @@ impl Evidence {
             ),
             self.tty,
         );
-        match ladder {
-            ActivationState::Healthy | ActivationState::StaleShell if self.skewed() => {
-                ActivationState::VersionSkew
-            }
-            ActivationState::Healthy if !self.script_has_contributions => {
-                ActivationState::EmptyScript
-            }
-            other => other,
-        }
+        refine(ladder, self.skewed(), self.script_has_contributions)
     }
 
     /// Line two: when a shell last loaded dodot, and which dodot.
@@ -820,7 +864,7 @@ impl ActivationNotice {
             ),
             ActivationState::EmptyScript => (
                 "info",
-                "Shell hookup: wired, but the init script is empty — nothing is deployed.",
+                "Shell hookup: wired, but no packs are deployed.",
                 Some("Run `dodot up` to deploy your packs.".into()),
             ),
             ActivationState::StaleShell => (
@@ -1495,7 +1539,7 @@ mod tests {
             (
                 ActivationState::EmptyScript,
                 "info",
-                "Shell hookup: wired, but the init script is empty — nothing is deployed.",
+                "Shell hookup: wired, but no packs are deployed.",
             ),
             (
                 ActivationState::StaleShell,

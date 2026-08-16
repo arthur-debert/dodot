@@ -219,7 +219,7 @@ echo tool output'
 
     run dodot status
     [ "$status" -eq 0 ]
-    assert_output_contains "Shell hookup: wired, but the init script is empty — nothing is deployed."
+    assert_output_contains "Shell hookup: wired, but no packs are deployed."
     assert_output_contains "Run \`dodot up\` to deploy your packs."
 }
 
@@ -291,6 +291,26 @@ echo tool output'
     assert_output_contains ".bashrc:1"
     assert_output_contains "does not exist"
     assert_output_contains "old/dodot-init.sh"
+    assert_output_not_contains "the hookup is sound"
+}
+
+# The same rule one level deeper: the script is *there*, and it is a
+# real dodot init script — written by an older dodot. Every filesystem
+# fact says "present"; the hookup is the epic's motivating failure.
+@test "probe shell-init reports a foreign init script as skew, not as sound" {
+    dodot up
+
+    # A 5.0.0 init script, stamped the way that dodot stamped them.
+    mkdir -p "$HOME/old"
+    printf '# dodot init\nexport DODOT_INIT_GEN=1\nexport DODOT_INIT_VERSION=5.0.0\n' \
+        > "$HOME/old/dodot-init.sh"
+    printf '[ -f "$HOME/old/dodot-init.sh" ] && . "$HOME/old/dodot-init.sh"\n' \
+        > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains "written by a different dodot"
+    assert_output_contains "5.0.0"
     assert_output_not_contains "the hookup is sound"
 }
 

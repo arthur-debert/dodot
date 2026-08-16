@@ -48,7 +48,26 @@
 //! yields a verdict the user would act on and should not — so a copy
 //! that cannot be built faithfully ends the trace
 //! ([`TraceError::FallbackUnfaithful`]) and the command reports "could
-//! not trace" instead of a measurement.
+//! not trace" instead of a measurement. That covers the copy the
+//! shell *reads* as well as the files it opens: the inserted report
+//! line can cost a `case` pattern or a heredoc its parse, so both the
+//! original and the copy go through `<shell> -n` first
+//! ([`insertion_broke_the_parse`]).
+//!
+//! # Known fidelity limits
+//!
+//! Two things about the traced shell differ from the real one, both
+//! unavoidable and neither silent:
+//!
+//! - **Option state.** Tracing needs `xtrace` (and, for zsh,
+//!   `promptsubst`), which a normal startup has off. An rc that
+//!   branches on `$-` or on `setopt` output therefore takes a
+//!   different path under the trace than it does in earnest. Reading
+//!   `PATH` at the hook line is what this buys, and there is no way to
+//!   buy it without the option set.
+//! - **The rc runs up to twice.** The fallback re-runs it on a copy,
+//!   so side effects in the rc happen again. [`announcement`] says so
+//!   before anything is spawned.
 //!
 //! # Boundaries
 //!
@@ -66,6 +85,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use crate::fs::Fs;
+use crate::shell::activation::{self, EvidenceVersion};
 use crate::shell::probe::{spawn_captured, SpawnOutcome};
 use crate::shell::rc::{self, HookupShell};
 
@@ -382,17 +402,22 @@ pub struct Resolution {
 }
 
 impl Resolution {
-    /// The candidates worth telling the user about: entries that
-    /// exist in some form but lost, or whose directory is missing.
-    /// [`SkipReason::NotPresent`] rows are omitted — "no dodot in
-    /// /usr/bin" is not a finding.
+    /// The candidates worth telling the user about: entries where a
+    /// `dodot` is present in some form and still lost the search.
+    ///
+    /// [`SkipReason::NotPresent`] is omitted because "no dodot in
+    /// /usr/bin" is not a finding, and
+    /// [`SkipReason::MissingDir`] is omitted for the same reason:
+    /// an ordinary macOS `PATH` carries several directories that do
+    /// not exist, so listing them costs six noise lines with the
+    /// dangling-symlink row — the one line this whole walk exists to
+    /// surface — buried in the middle. A report nobody reads to the
+    /// end has the same value as no report.
     pub fn notable_skips(&self) -> impl Iterator<Item = &Candidate> {
         self.candidates.iter().filter(|c| {
             matches!(
                 c.skipped,
-                Some(SkipReason::DanglingSymlink { .. })
-                    | Some(SkipReason::NotExecutable)
-                    | Some(SkipReason::MissingDir)
+                Some(SkipReason::DanglingSymlink { .. }) | Some(SkipReason::NotExecutable)
             )
         })
     }
@@ -486,8 +511,28 @@ pub enum TraceVerdict {
     /// File-source hook whose script path names nothing sourceable —
     /// `dodot up` regenerates the one it owns.
     ScriptMissing { script: PathBuf },
-    /// File-source hook and the script is where the hook says: sound.
+    /// File-source hook sourcing a script this dodot wrote, at the
+    /// current generation: sound.
     ScriptPresent { script: PathBuf },
+    /// File-source hook sourcing a real init script written by a
+    /// *different* dodot — the epic's motivating failure, in the hook
+    /// form the docs recommend.
+    ScriptSkewed {
+        script: PathBuf,
+        version: EvidenceVersion,
+    },
+    /// File-source hook sourcing an init script older than the one
+    /// `dodot up` maintains: a copy left behind somewhere.
+    ScriptStale {
+        script: PathBuf,
+        found: u64,
+        expected: u64,
+    },
+    /// File-source hook whose script exists but cannot be identified —
+    /// unreadable, or carrying no dodot stamp at all. Not a judgment:
+    /// "there is a file there" is a fact about the filesystem, and
+    /// "the hookup is sound" is a claim about activation.
+    ScriptUnverified { script: PathBuf, reason: String },
     /// File-source hook whose sourced path dodot declines to resolve
     /// (see [`SourcedScript::Unresolved`]). Deliberately not a
     /// judgment: an honest "could not tell" is the only answer a line
@@ -495,23 +540,63 @@ pub enum TraceVerdict {
     ScriptUnresolved { raw: String },
 }
 
-/// Judge a file-source hook from the path the hook line names.
+/// Judge a file-source hook from the script the hook line names.
+///
+/// Two separate corrections live here, and they are the same one.
 ///
 /// The path comes from the line, never from
 /// [`Pather::init_script_path`](crate::paths::Pather::init_script_path):
 /// a hand-wired hook may source a stale copy elsewhere while the
 /// datastore's script sits there perfectly intact, and checking the
 /// path dodot *would* have written reports that hookup sound on
-/// evidence about a different file — the expected-instead-of-measured
-/// mistake this epic exists to correct.
+/// evidence about a different file.
 ///
-/// "Present" means a regular file, following symlinks: a directory or
-/// a dangling link at that path is not something `.` can source, and
-/// counting it would be the same false green in a different disguise.
-pub fn judge_file_source_hook(fs: &dyn Fs, script: PathBuf) -> TraceVerdict {
-    match fs.stat(&script) {
-        Ok(meta) if meta.is_file => TraceVerdict::ScriptPresent { script },
-        _ => TraceVerdict::ScriptMissing { script },
+/// And the file's *existence* is not the verdict either. A regular
+/// file at that path is a filesystem fact; "the hookup is sound" is a
+/// claim about which dodot the user's shells activate. Deciding the
+/// second from the first certified an init script written by dodot
+/// 5.0.0 as sound while the footer on the same machine — reading the
+/// heartbeat that same script had written — correctly reported version
+/// skew. So the script is read and identified by the two fields every
+/// other signal carries, then judged by the two rules every other
+/// signal is judged by, in the same order: [`activation::is_skewed`]
+/// first, then [`activation::classify_stamp`] against the generation
+/// `dodot up` last wrote. Unreadable or unstamped is neither sound nor
+/// broken — it is unverified.
+pub fn judge_file_source_hook(
+    fs: &dyn Fs,
+    script: PathBuf,
+    reference: Option<u64>,
+    running: &str,
+) -> TraceVerdict {
+    // A directory or a dangling link is not something `.` can source.
+    if !matches!(fs.stat(&script), Ok(meta) if meta.is_file) {
+        return TraceVerdict::ScriptMissing { script };
+    }
+    let Ok(text) = fs.read_to_string(&script) else {
+        return TraceVerdict::ScriptUnverified {
+            script,
+            reason: "it could not be read".into(),
+        };
+    };
+    let Some(found) = activation::parse_script_generation(&text) else {
+        return TraceVerdict::ScriptUnverified {
+            script,
+            reason: "it carries no dodot activation stamp, so it is not a script dodot generated"
+                .into(),
+        };
+    };
+    let version = EvidenceVersion::from_field(activation::parse_script_version(&text).as_deref());
+    if activation::is_skewed(Some(&version), running) {
+        return TraceVerdict::ScriptSkewed { script, version };
+    }
+    match activation::classify_stamp(Some(found), reference) {
+        activation::StampState::Current => TraceVerdict::ScriptPresent { script },
+        _ => TraceVerdict::ScriptStale {
+            script,
+            found,
+            expected: reference.unwrap_or(found),
+        },
     }
 }
 
@@ -570,9 +655,16 @@ pub fn parse_version_output(stdout: &str) -> Option<String> {
 
 /// The line printed before any shell is spawned. The trace is
 /// announced, never covert — same rule as the INS01 probe.
+///
+/// It says "up to twice" because that is true: the fallback re-runs
+/// the rc on a copy, and on macOS's `/bin/bash` it is the normal
+/// route. This line is the user's only warning before their own rc's
+/// side effects happen, so promising "once" understated the thing they
+/// are being warned about — and the count is not knowable until the
+/// first pass comes back unreadable.
 pub fn announcement(shell: HookupShell) -> String {
     format!(
-        "tracing shell startup ({})… (runs your rc file once)",
+        "tracing shell startup ({})… (runs your rc file, up to twice)",
         shell.as_str()
     )
 }
@@ -693,9 +785,13 @@ fn run_fallback(fs: &dyn Fs, req: &TraceRequest) -> Result<Vec<TraceRecord>, Tra
     let unfaithful = |e: crate::DodotError| TraceError::FallbackUnfaithful(format!("{e}"));
     let mut command = Command::new(req.shell_path);
     let copy = insert_report_line(&rc_text, req.rc_nominal, req.hook_line);
+    // The file that stands in for the user's rc — the one whose parse
+    // has to survive the insertion.
+    let copy_path;
     match req.shell {
         HookupShell::Zsh => {
-            fs.write_file(&temp.join(".zshrc"), zshrc_copy(&copy).as_bytes())
+            copy_path = temp.join(".zshrc");
+            fs.write_file(&copy_path, zshrc_copy(&copy).as_bytes())
                 .map_err(unfaithful)?;
             fs.write_file(
                 &temp.join(".zshenv"),
@@ -705,19 +801,91 @@ fn run_fallback(fs: &dyn Fs, req: &TraceRequest) -> Result<Vec<TraceRecord>, Tra
             command.env("ZDOTDIR", temp).args(["-i", "-c", "true"]);
         }
         HookupShell::Bash => {
-            let rcfile = temp.join("bashrc");
-            fs.write_file(&rcfile, copy.as_bytes())
+            copy_path = temp.join("bashrc");
+            fs.write_file(&copy_path, copy.as_bytes())
                 .map_err(unfaithful)?;
             command
                 .arg("--rcfile")
-                .arg(&rcfile)
+                .arg(&copy_path)
                 .args(["-i", "-c", "true"]);
         }
+    }
+    let copy_path = copy_path.as_path();
+    if let Some(broken) = insertion_broke_the_parse(req, copy_path) {
+        return Err(TraceError::FallbackUnfaithful(broken));
     }
     match spawn_captured(command, req.timeout) {
         SpawnOutcome::TimedOut => Err(TraceError::TimedOut),
         SpawnOutcome::SpawnFailed(e) => Err(TraceError::SpawnFailed(e)),
         SpawnOutcome::Finished(capture) => Ok(parse_trace(&capture.stderr)),
+    }
+}
+
+/// Whether inserting the report line cost the copy its parse, and the
+/// shell's complaint if so.
+///
+/// [`insert_report_line`] puts a whole command where the shell was
+/// expecting the next line of something else, and "somewhere else" is
+/// not always a statement boundary: a `case` pattern, a line
+/// continuation, and the body of a heredoc all take the insertion as
+/// part of themselves and stop parsing. The copy then produces no
+/// record at all, which reads downstream as `hook-never-ran` — an
+/// error-severity claim that the hook did not run, about a hook that
+/// ran perfectly well. And on macOS's `/bin/bash` the fallback is the
+/// normal route, not the exception, so that is not a rare shape.
+///
+/// `<shell> -n` reads a file and exits without running a line of it,
+/// which is exactly the question and none of the risk. Both files are
+/// checked because only a *newly introduced* error is dodot's: an rc
+/// that already did not parse is the user's own breakage, still worth
+/// tracing, and refusing it would replace a real finding with a
+/// shrug. `None` from either check — the syntax check itself could not
+/// run — is not evidence of anything and does not block the trace.
+fn insertion_broke_the_parse(req: &TraceRequest, copy: &Path) -> Option<String> {
+    let original = parses(req, req.rc_resolved)?;
+    let copied = parses(req, copy)?;
+    match (original.ok, copied.ok) {
+        (true, false) => Some(format!(
+            "inserting the trace's report line before {}:{} left the rc copy unparseable, so a \
+             trace of it would describe a shell that never got past the insertion{}",
+            req.rc_nominal.display(),
+            req.hook_line,
+            complaint(&copied.stderr),
+        )),
+        _ => None,
+    }
+}
+
+/// What `<shell> -n <file>` said.
+struct ParseCheck {
+    ok: bool,
+    stderr: String,
+}
+
+/// Ask the shell whether it can parse `file`, without running it.
+///
+/// `None` when the check could not be carried out — the shell would
+/// not spawn, or outlived the timeout — which is a fact about the
+/// check, never about the file.
+fn parses(req: &TraceRequest, file: &Path) -> Option<ParseCheck> {
+    let mut command = Command::new(req.shell_path);
+    command.arg("-n").arg(file);
+    match spawn_captured(command, req.timeout) {
+        SpawnOutcome::Finished(capture) => Some(ParseCheck {
+            ok: capture.status == Some(0),
+            stderr: capture.stderr,
+        }),
+        _ => None,
+    }
+}
+
+/// The shell's own diagnostic, trimmed to its first line and rendered
+/// as a parenthetical — the answer to "unparseable *how*", which was
+/// being captured and dropped on the floor.
+fn complaint(stderr: &str) -> String {
+    match stderr.lines().find(|l| !l.trim().is_empty()) {
+        Some(line) => format!(" ({})", line.trim()),
+        None => String::new(),
     }
 }
 
@@ -780,9 +948,16 @@ fn zshrc_copy(rc_copy: &str) -> String {
 }
 
 /// The rc text with the report line inserted immediately before
-/// `hook_line` (1-indexed). Insertion keeps every surrounding block
-/// parseable; the report addresses the original `<rc>:<line>` so the
-/// record lookup is unchanged.
+/// `hook_line` (1-indexed). The report addresses the original
+/// `<rc>:<line>` so the record lookup is unchanged.
+///
+/// Insertion keeps the *common* shapes parseable — a hook inside a
+/// conditional, a loop, a function — which is what truncation could
+/// not do. It is not a guarantee: a `case` pattern, a line
+/// continuation, and a heredoc body all swallow the inserted line and
+/// stop the parse. [`insertion_broke_the_parse`] is what turns that
+/// from a silent wrong verdict into a refusal to answer, because
+/// nothing in this function can tell.
 fn insert_report_line(rc_text: &str, rc_nominal: &Path, hook_line: usize) -> String {
     let report = format!(
         "printf '+{TRACE_MARKER}%s|%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PWD\" \"$PATH\" >&2\n",
@@ -1112,8 +1287,14 @@ mod tests {
         assert_eq!(r.candidates[0].skipped, Some(SkipReason::MissingDir));
         assert_eq!(r.candidates[1].skipped, Some(SkipReason::NotExecutable));
         assert_eq!(r.candidates[2].skipped, Some(SkipReason::NotPresent));
-        // The bare not-present row is completeness, not a finding.
-        assert_eq!(r.notable_skips().count(), 2);
+        // Every candidate is classified; only the one where a `dodot`
+        // is actually present and still lost is worth a report line.
+        // A missing directory and a directory without a dodot are both
+        // ordinary facts about anyone's PATH, and printing them buries
+        // the row that matters.
+        let notable: Vec<_> = r.notable_skips().collect();
+        assert_eq!(notable.len(), 1);
+        assert_eq!(notable[0].skipped, Some(SkipReason::NotExecutable));
     }
 
     /// An empty `PATH` component means the working directory — to
@@ -1241,31 +1422,127 @@ mod tests {
         }
     }
 
+    /// The generation `dodot up` last wrote, for the file-source tests
+    /// below — what a sound hook's script should be carrying.
+    const CURRENT_GEN: u64 = 100;
+
+    /// Write an init script carrying `generation` and, when given, a
+    /// version export — the two fields every dodot init script stamps.
+    fn init_script(env: &TempEnvironment, at: &Path, generation: u64, version: Option<&str>) {
+        let mut text = format!("# dodot init\nexport DODOT_INIT_GEN={generation}\n");
+        if let Some(v) = version {
+            text.push_str(&format!("export DODOT_INIT_VERSION={v}\n"));
+        }
+        env.fs.mkdir_all(at.parent().unwrap()).unwrap();
+        env.fs.write_file(at, text.as_bytes()).unwrap();
+    }
+
+    fn judge(env: &TempEnvironment, script: &Path) -> TraceVerdict {
+        judge_file_source_hook(
+            env.fs.as_ref(),
+            script.to_path_buf(),
+            Some(CURRENT_GEN),
+            "5.6.0",
+        )
+    }
+
     /// The file-source verdict is about the path the *line* names.
-    /// The regression it guards: a hook pointing at a stale copy
-    /// elsewhere was reported sound because the datastore's own script
-    /// existed — a verdict drawn from a file the hook never mentions.
+    /// The regression it guards: a hook pointing at a copy elsewhere
+    /// was reported sound because the datastore's own script existed —
+    /// a verdict drawn from a file the hook never mentions.
     #[test]
     fn the_file_source_verdict_judges_the_sourced_path_not_the_expected_one() {
         use crate::paths::Pather;
         let env = TempEnvironment::builder().build();
         // The script `dodot up` writes, present and healthy.
         let datastore = env.paths.init_script_path();
-        env.fs.mkdir_all(datastore.parent().unwrap()).unwrap();
-        env.fs.write_file(&datastore, b"# init\n").unwrap();
+        init_script(&env, &datastore, CURRENT_GEN, Some("5.6.0"));
 
         // A hand-wired hook sourcing a copy that is not there.
-        let stale = env.home.join("old/dodot-init.sh");
+        let gone = env.home.join("old/dodot-init.sh");
         assert_eq!(
-            judge_file_source_hook(env.fs.as_ref(), stale.clone()),
-            TraceVerdict::ScriptMissing { script: stale },
+            judge(&env, &gone),
+            TraceVerdict::ScriptMissing {
+                script: gone.clone()
+            },
             "the datastore's script existing says nothing about this hook"
         );
 
         // And the sound case, judged on the same path.
         assert_eq!(
-            judge_file_source_hook(env.fs.as_ref(), datastore.clone()),
+            judge(&env, &datastore),
             TraceVerdict::ScriptPresent { script: datastore }
+        );
+    }
+
+    /// The finding this file-source arm exists for, and the one the
+    /// existence check could not see: the hook sources a *real* dodot
+    /// init script — written by dodot 5.0.0. Every filesystem fact
+    /// about it says "present", and the footer on the same machine,
+    /// reading the heartbeat that same script writes, correctly says
+    /// version skew. The two halves of the tool must not contradict
+    /// each other.
+    #[test]
+    fn a_script_written_by_another_dodot_is_skew_not_soundness() {
+        let env = TempEnvironment::builder().build();
+        let foreign = env.home.join("old/dodot-init.sh");
+        init_script(&env, &foreign, CURRENT_GEN, Some("5.0.0"));
+        assert_eq!(
+            judge(&env, &foreign),
+            TraceVerdict::ScriptSkewed {
+                script: foreign,
+                version: EvidenceVersion::Known("5.0.0".into())
+            }
+        );
+
+        // The version-less shape — a script from a dodot that predates
+        // the field — is the same finding against the bound.
+        let pre = env.home.join("older/dodot-init.sh");
+        init_script(&env, &pre, CURRENT_GEN, None);
+        assert_eq!(
+            judge(&env, &pre),
+            TraceVerdict::ScriptSkewed {
+                script: pre,
+                version: EvidenceVersion::PreVersion
+            }
+        );
+    }
+
+    /// Right dodot, older script: a copy left behind. Judged by
+    /// `classify_stamp` against the generation `up` last wrote — the
+    /// same rule, in the same order after skew, that the activation
+    /// probe applies to what a spawned shell reports.
+    #[test]
+    fn a_script_older_than_the_one_up_maintains_is_stale_not_sound() {
+        let env = TempEnvironment::builder().build();
+        let old = env.home.join("old/dodot-init.sh");
+        init_script(&env, &old, CURRENT_GEN - 10, Some("5.6.0"));
+        assert_eq!(
+            judge(&env, &old),
+            TraceVerdict::ScriptStale {
+                script: old,
+                found: CURRENT_GEN - 10,
+                expected: CURRENT_GEN
+            }
+        );
+    }
+
+    /// A file that is not a dodot init script at all cannot be
+    /// certified as one. Neither sound nor broken — unverified.
+    #[test]
+    fn an_unstamped_file_is_unverified_never_sound() {
+        let env = TempEnvironment::builder().build();
+        let impostor = env.home.join("other/dodot-init.sh");
+        env.fs.mkdir_all(impostor.parent().unwrap()).unwrap();
+        env.fs
+            .write_file(&impostor, b"# someone else's script\nexport PATH=/x\n")
+            .unwrap();
+        assert!(
+            matches!(
+                judge(&env, &impostor),
+                TraceVerdict::ScriptUnverified { .. }
+            ),
+            "a file with no dodot stamp is not a dodot init script"
         );
     }
 
@@ -1278,7 +1555,7 @@ mod tests {
         let dir = env.home.join("dodot-init.sh");
         env.fs.mkdir_all(&dir).unwrap();
         assert!(matches!(
-            judge_file_source_hook(env.fs.as_ref(), dir),
+            judge(&env, &dir),
             TraceVerdict::ScriptMissing { .. }
         ));
 
@@ -1288,7 +1565,7 @@ mod tests {
             .symlink(&env.home.join("gone.sh"), &dangling)
             .unwrap();
         assert!(matches!(
-            judge_file_source_hook(env.fs.as_ref(), dangling),
+            judge(&env, &dangling),
             TraceVerdict::ScriptMissing { .. }
         ));
     }
@@ -1439,6 +1716,80 @@ mod tests {
         assert_eq!(record.path, "/from/fallback");
         // The user's real rc was never written.
         assert_eq!(env.fs.read_to_string(&rc).unwrap(), before);
+    }
+
+    /// The insertion is not free. A `case` pattern line is a shape
+    /// where putting a whole command in front of the hook costs the
+    /// copy its parse: the shell stops, no record is produced, and the
+    /// caller reads that absence as `hook-never-ran` — an
+    /// error-severity claim that the hook did not run, about a hook
+    /// that ran. `TraceError::FallbackUnfaithful` exists for exactly
+    /// this and was never being reached.
+    ///
+    /// A `PS4` override forces the fallback, which is the only path
+    /// this can happen on — and on macOS's `/bin/bash` the fallback is
+    /// the ordinary path, not an edge case.
+    #[test]
+    fn an_insertion_that_breaks_the_copys_parse_refuses_to_answer() {
+        let Some(bash) = bash() else { return };
+        let env = TempEnvironment::builder().build();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+        let rc = env.home.join(".bashrc");
+        // The hook rides the `case` *pattern* line — the idiomatic
+        // `case $- in *i*) …;; esac` interactive guard. The original
+        // parses; a command inserted between `case … in` and its first
+        // pattern does not.
+        env.fs
+            .write_file(
+                &rc,
+                b"PS4='+ '\ncase x in\n  x) eval \"$(dodot init-sh)\" ;;\nesac\n",
+            )
+            .unwrap();
+
+        let err = run_trace(
+            env.fs.as_ref(),
+            &request(&env, bash, HookupShell::Bash, &rc, 3),
+        )
+        .expect_err("an unparseable copy is not a verdict");
+        let TraceError::FallbackUnfaithful(reason) = err else {
+            panic!("expected FallbackUnfaithful, got {err:?}");
+        };
+        assert!(reason.contains("unparseable"), "{reason}");
+        // The shell's own complaint, which used to be captured and
+        // dropped, is what makes the refusal actionable.
+        assert!(
+            reason.contains("syntax error") || reason.contains("unexpected"),
+            "the shell's diagnostic must survive into the message: {reason}"
+        );
+    }
+
+    /// An rc that *already* does not parse is the user's own breakage,
+    /// and still worth tracing — refusing it would trade a real
+    /// finding for a shrug. Only a parse error dodot introduced counts.
+    #[test]
+    fn an_rc_that_never_parsed_is_still_traced() {
+        let Some(bash) = bash() else { return };
+        let env = TempEnvironment::builder().build();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+        let rc = env.home.join(".bashrc");
+        env.fs
+            .write_file(
+                &rc,
+                b"PS4='+ '\nif then fi oops(\neval \"$(dodot init-sh)\"\n",
+            )
+            .unwrap();
+
+        // Whatever comes back, it is not a refusal to try.
+        match run_trace(
+            env.fs.as_ref(),
+            &request(&env, bash, HookupShell::Bash, &rc, 3),
+        ) {
+            Ok(_) => {}
+            Err(TraceError::FallbackUnfaithful(reason)) => {
+                panic!("an already-broken rc must not read as dodot's doing: {reason}")
+            }
+            Err(_) => {}
+        }
     }
 
     #[test]
