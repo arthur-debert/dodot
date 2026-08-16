@@ -10,8 +10,9 @@
 //!
 //! The generated script is written to `data_dir/shell/dodot-init.sh`.
 //! `dodot install --write` wires the line below into the user's rc
-//! file ([`rc`]), and [`probe`] measures whether a new shell actually
-//! runs it. Users can also add it by hand:
+//! file ([`rc`]), [`probe`] measures whether a new shell actually
+//! runs it, and [`trace`] reports what `dodot` resolves to at that
+//! rc line (`dodot probe shell-init`). Users can also add it by hand:
 //!
 //! ```sh
 //! [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
@@ -82,6 +83,7 @@ pub mod activation;
 pub mod homebrew;
 pub mod probe;
 pub mod rc;
+pub mod trace;
 pub mod validate;
 pub use activation::{ActivationNotice, ActivationState, INIT_GEN_ENV, INIT_VERSION_ENV};
 pub use homebrew::{BrewBlocks, BrewBootstrapMode, BrewHost};

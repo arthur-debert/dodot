@@ -40,6 +40,11 @@
   [dim] then re-run `dodot probe shell-init`)[/dim]
 {% else %}  [dim](profiling is disabled in config — set [profiling] enabled = true,[/dim]
   [dim] run `dodot up`, then start a new shell)[/dim]
+{% endif %}{% endif %}{% if trace %}
+[header]Hook resolution[/header]{% if trace.rc %} [dim]{{ trace.rc }}{% if trace.hook_line > 0 %}:{{ trace.hook_line }}{% endif %} ({{ trace.shell }})[/dim]{% endif %}
+  [{{ trace.status_class }}]{{ trace.headline }}[/{{ trace.status_class }}]
+{% for line in trace.detail_lines %}  [dim]{{ line }}[/dim]
+{% endfor %}{% if trace.used_fallback %}  [dim](traced via a temporary copy of your rc — your real files were not touched)[/dim]
 {% endif %}{% endif %}
   [dim]profiles dir:[/dim] {{ profiles_dir }}
   [dim]for intra-file profiling, see `zprof` (zsh) or PS4 tracing (bash).[/dim]

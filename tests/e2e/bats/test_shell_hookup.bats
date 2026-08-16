@@ -167,3 +167,62 @@ echo tool output'
     assert_output_contains "Shell hookup: a new shell did not load dodot."
     assert_output_contains "never reached"
 }
+
+# ── The hook-line trace (`probe shell-init`, RCS01 WS02) ────────
+
+@test "probe shell-init names the hook line and the stale binary a mangled PATH resolves to" {
+    dodot up
+
+    # A stale dodot the mangled PATH will resolve to instead of the
+    # binary under test.
+    mkdir -p "$HOME/stale-bin"
+    printf '#!/bin/sh\necho "dodot 5.0.0"\n' > "$HOME/stale-bin/dodot"
+    chmod +x "$HOME/stale-bin/dodot"
+
+    # An rc that rebuilds PATH *before* the hand-wired hook — the
+    # epic's motivating failure. The hook sits on line 2.
+    printf 'export PATH=%s\neval "$(dodot init-sh)"\n' "$HOME/stale-bin" \
+        > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains "Hook resolution"
+    # The right line…
+    assert_output_contains ".bashrc:2"
+    # …and the right binary, version included.
+    assert_output_contains "different dodot"
+    assert_output_contains "stale-bin/dodot"
+    assert_output_contains "5.0.0"
+}
+
+@test "probe shell-init --no-trace keeps the report passive" {
+    dodot up
+    printf 'eval "$(dodot init-sh)"\n' > "$HOME/.bashrc"
+
+    run dodot probe shell-init --no-trace
+    [ "$status" -eq 0 ]
+    assert_output_not_contains "Hook resolution"
+    assert_output_not_contains "tracing shell startup"
+}
+
+@test "a file argument keeps probe shell-init passive too" {
+    # The shipped status warning points users at exactly this
+    # invocation; it must stay cheap and spawn nothing.
+    dodot up
+    printf 'eval "$(dodot init-sh)"\n' > "$HOME/.bashrc"
+
+    run dodot probe shell-init gpg/env.sh
+    [ "$status" -eq 0 ]
+    assert_output_not_contains "Hook resolution"
+    assert_output_not_contains "tracing shell startup"
+}
+
+@test "probe shell-init reports an absent hook plainly and spawns nothing" {
+    dodot up
+    printf 'alias ll="ls -l"\n' > "$HOME/.bashrc"
+
+    run dodot probe shell-init
+    [ "$status" -eq 0 ]
+    assert_output_contains "no dodot hook"
+    assert_output_not_contains "tracing shell startup"
+}

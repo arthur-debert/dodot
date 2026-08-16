@@ -31,6 +31,12 @@
 //! environment — an inherited stamp would be a false positive every
 //! time the probe runs from an already-live shell.
 //!
+//! That defensive envelope lives in [`spawn_captured`], which is the
+//! one place dodot spawns anything user-authored: [`run`] uses it for
+//! the activation probe, and [`crate::shell::trace`] reuses it
+//! unchanged for the hook-line trace (RCS01 WS02) — one audited
+//! process-group kill, not two.
+//!
 //! # Verdicts
 //!
 //! [`Verdict`] keeps three outcomes apart because they demand
@@ -165,21 +171,36 @@ pub fn parse_probe_output(stdout: &str) -> Option<u64> {
         .next_back()
 }
 
-/// Spawn `shell` interactively and read the stamp back.
+/// Both streams a spawned process wrote before finishing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpawnCapture {
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// What became of one enveloped spawn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SpawnOutcome {
+    /// The process finished (any exit status) within the timeout.
+    Finished(SpawnCapture),
+    /// The process outlived its timeout; its process group was killed.
+    TimedOut,
+    /// The process could not be spawned at all.
+    SpawnFailed(String),
+}
+
+/// Run `command` under the probe envelope and capture both streams.
 ///
-/// Safe against hostile rc files by construction — see the module
-/// docstring. Never returns an error: every failure mode is an
-/// outcome, because a probe that could not run must degrade, not
-/// propagate (spec §3.3).
-pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
-    let mut command = Command::new(shell);
+/// The envelope, applied here so every caller gets all of it: stdin
+/// from `/dev/null` (an rc file that prompts gets EOF instead of
+/// blocking), stdout/stderr captured off-thread (a chatty rc cannot
+/// deadlock a full pipe against our wait loop), `DODOT_INIT_*`
+/// scrubbed (an inherited stamp must never masquerade as the child's),
+/// its own process group, and a hard timeout that kills that whole
+/// group. Callers set the program, arguments, and any extra
+/// environment before handing the command over.
+pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     command
-        // Interactive non-login: the mode that reads the rc file the
-        // hook lives in.
-        .arg("-ic")
-        .arg(probe_command())
-        // No tty, nothing to read: an rc file that prompts gets EOF
-        // instead of blocking forever.
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -196,7 +217,7 @@ pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
 
     let mut child = match command.spawn() {
         Ok(c) => c,
-        Err(e) => return ProbeOutcome::SpawnFailed(format!("{e}")),
+        Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
     };
     let pid = child.id();
 
@@ -210,7 +231,7 @@ pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
         match child.try_wait() {
             Ok(Some(_)) => break false,
             Ok(None) => {}
-            Err(e) => return ProbeOutcome::SpawnFailed(format!("{e}")),
+            Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
         }
         if Instant::now() >= deadline {
             kill_process_group(pid);
@@ -222,17 +243,35 @@ pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
         std::thread::sleep(POLL_INTERVAL);
     };
 
-    let captured = stdout.and_then(|h| h.join().ok()).unwrap_or_default();
-    drop(stderr.map(|h| h.join()));
+    let stdout = stdout.and_then(|h| h.join().ok()).unwrap_or_default();
+    let stderr = stderr.and_then(|h| h.join().ok()).unwrap_or_default();
 
     if timed_out {
-        return ProbeOutcome::TimedOut;
+        return SpawnOutcome::TimedOut;
     }
-    // A nonzero exit is not a failed probe: unrelated rc breakage
-    // fails loudly and still activates dodot. The stamp is the bit.
-    match parse_probe_output(&captured) {
-        Some(generation) => ProbeOutcome::Stamp(generation),
-        None => ProbeOutcome::NoStamp,
+    SpawnOutcome::Finished(SpawnCapture { stdout, stderr })
+}
+
+/// Spawn `shell` interactively and read the stamp back.
+///
+/// Safe against hostile rc files by construction — the whole
+/// [`spawn_captured`] envelope. Never returns an error: every failure
+/// mode is an outcome, because a probe that could not run must
+/// degrade, not propagate (spec §3.3).
+pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
+    let mut command = Command::new(shell);
+    // Interactive non-login: the mode that reads the rc file the hook
+    // lives in.
+    command.arg("-ic").arg(probe_command());
+    match spawn_captured(command, timeout) {
+        SpawnOutcome::SpawnFailed(e) => ProbeOutcome::SpawnFailed(e),
+        SpawnOutcome::TimedOut => ProbeOutcome::TimedOut,
+        // A nonzero exit is not a failed probe: unrelated rc breakage
+        // fails loudly and still activates dodot. The stamp is the bit.
+        SpawnOutcome::Finished(capture) => match parse_probe_output(&capture.stdout) {
+            Some(generation) => ProbeOutcome::Stamp(generation),
+            None => ProbeOutcome::NoStamp,
+        },
     }
 }
 

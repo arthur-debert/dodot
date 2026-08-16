@@ -1,0 +1,9 @@
+bash: no job control in this shell
++dodot-trace|/tmp/dodot-trace-exp/home/.bashrc|2|/opt/homebrew/bin:/usr/bin:/bin|> export FOO=bar
++dodot-trace|/tmp/dodot-trace-exp/home/.bashrc|2|/opt/homebrew/bin:/usr/bin:/bin|> FOO=bar
++dodot-trace|/tmp/dodot-trace-exp/home/.bashrc|3|/opt/homebrew/bin:/usr/bin:/bin|> '[' -n bar ']'
+++dodot-trace|/tmp/dodot-trace-exp/home/.bashrc|4|/opt/homebrew/bin:/usr/bin:/bin|> command dodot init-sh
+++dodot-trace|/tmp/dodot-trace-exp/home/.bashrc|4|/opt/homebrew/bin:/usr/bin:/bin|> true
++dodot-trace|/tmp/dodot-trace-exp/home/.bashrc|4|/opt/homebrew/bin:/usr/bin:/bin|> eval ''
++dodot-trace|/tmp/dodot-trace-exp/home/.bashrc|6|/opt/homebrew/bin:/usr/bin:/bin|> alias 'll=ls -l'
++dodot-trace||0|/opt/homebrew/bin:/usr/bin:/bin|> true

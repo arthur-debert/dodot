@@ -1,0 +1,55 @@
++dodot-trace|/etc/zshrc|8|/opt/homebrew/bin:/usr/bin:/bin|> [[ ! -x /usr/bin/locale ]]
++dodot-trace|/etc/zshrc|8|/opt/homebrew/bin:/usr/bin:/bin|> [[+dodot-trace|/etc/zshrc|8|/opt/homebrew/bin:/usr/bin:/bin|> locale LC_CTYPE
++dodot-trace|/etc/zshrc|8|/opt/homebrew/bin:/usr/bin:/bin|> [[ US-ASCII == UTF-8 ]]
++dodot-trace|/etc/zshrc|13|/opt/homebrew/bin:/usr/bin:/bin|> disable log
++dodot-trace|/etc/zshrc|16|/opt/homebrew/bin:/usr/bin:/bin|> HISTFILE=/tmp/dodot-trace-exp/zdot/.zsh_history 
++dodot-trace|/etc/zshrc|17|/opt/homebrew/bin:/usr/bin:/bin|> HISTSIZE=2000 
++dodot-trace|/etc/zshrc|18|/opt/homebrew/bin:/usr/bin:/bin|> SAVEHIST=1000 
++dodot-trace|/etc/zshrc|21|/opt/homebrew/bin:/usr/bin:/bin|> setopt BEEP
++dodot-trace|/etc/zshrc|25|/opt/homebrew/bin:/usr/bin:/bin|> [[ -r /tmp/dodot-trace-exp/zdot/.zkbd/-apple ]]
++dodot-trace|/etc/zshrc|28|/opt/homebrew/bin:/usr/bin:/bin|> typeset -g -A key
++dodot-trace|/etc/zshrc|30|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|31|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|32|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|33|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|34|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|35|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|36|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|37|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|38|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|39|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|40|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|41|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|42|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|43|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|44|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|45|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|46|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|47|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|48|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|49|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|50|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|51|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|52|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|53|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|54|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|55|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|56|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|57|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|58|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|59|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|60|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|64|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|65|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|66|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|67|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|68|/opt/homebrew/bin:/usr/bin:/bin|> [[ -n '' ]]
++dodot-trace|/etc/zshrc|71|/opt/homebrew/bin:/usr/bin:/bin|> PS1='%n@%m %1~ %# ' 
++dodot-trace|/etc/zshrc|74|/opt/homebrew/bin:/usr/bin:/bin|> [ -r /etc/zshrc_ ']'
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|2|/opt/homebrew/bin:/usr/bin:/bin|> export FOO=bar
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|3|/opt/homebrew/bin:/usr/bin:/bin|> [ -n bar ']'
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|4|/opt/homebrew/bin:/usr/bin:/bin|> dodot init-sh
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|4|/opt/homebrew/bin:/usr/bin:/bin|> true
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|4|/opt/homebrew/bin:/usr/bin:/bin|> eval ''
++dodot-trace|/tmp/dodot-trace-exp/zdot/.zshrc|6|/opt/homebrew/bin:/usr/bin:/bin|> alias 'll=ls -l'
++dodot-trace|zsh|1|/opt/homebrew/bin:/usr/bin:/bin|> true
