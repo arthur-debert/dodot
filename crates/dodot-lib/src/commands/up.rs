@@ -234,18 +234,23 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         // `brew` spawns per `up`, one per shell dialect; the capture
         // belongs to `up`, not to every generation. A host without
         // brew captures nothing (clearing any stale cache) and this
-        // `up` heals it.
+        // `up` heals it. A *detected* brew that fails to answer is a
+        // different event: the previous capture is kept and a warning
+        // lands in this run's output (#301).
         let brew = shell::homebrew::capture_and_persist(
             ctx.fs.as_ref(),
             ctx.command_runner.as_ref(),
             &root_config,
             ctx.paths.as_ref(),
         )?;
+        if let Some(warning) = brew.warning {
+            planning_warnings.push(warning);
+        }
         shell::write_init_script(
             ctx.fs.as_ref(),
             ctx.paths.as_ref(),
             root_config.profiling.enabled,
-            brew.as_ref(),
+            brew.blocks.as_ref(),
         )?;
         info!("writing deployment map");
         probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;

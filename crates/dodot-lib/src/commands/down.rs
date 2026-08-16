@@ -198,18 +198,22 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         // tearing packs down should not take the user's `brew` off PATH.
         // `[shell] homebrew = "off"` is the way to be rid of it. Like
         // `up`, the capture is persisted to the datastore cache that
-        // `dodot init-sh` emits from.
+        // `dodot init-sh` emits from, and a detected brew that fails
+        // to answer keeps the previous capture and warns (#301).
         let brew = shell::homebrew::capture_and_persist(
             ctx.fs.as_ref(),
             ctx.command_runner.as_ref(),
             &root_config,
             ctx.paths.as_ref(),
         )?;
+        if let Some(warning) = brew.warning {
+            warnings.push(warning);
+        }
         shell::write_init_script(
             ctx.fs.as_ref(),
             ctx.paths.as_ref(),
             root_config.profiling.enabled,
-            brew.as_ref(),
+            brew.blocks.as_ref(),
         )?;
         info!("writing deployment map");
         probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;
