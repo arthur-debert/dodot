@@ -325,11 +325,11 @@ pub struct ShellSection {
     /// additions, so pack contributions stay the last word. It is also
     /// the one thing dodot puts on the shell startup path that spends
     /// processes: brew's own block re-execs `path_helper`, about 2-3 ms
-    /// per shell start — and under the hand-wired
-    /// `eval "$(dodot init-sh)"` hook the capture itself runs per shell
-    /// too, two `brew shellenv` calls at ~10-20 ms each. See
+    /// per shell start. The capture itself (`brew shellenv`, twice)
+    /// runs only at `dodot up`/`down` and is cached in the datastore,
+    /// so both hook shapes pay a shell the same. See
     /// `docs/proposals/shell-hookup-ergonomics.lex` §4 and
-    /// [`crate::shell::homebrew`] for the per-hook breakdown.
+    /// [`crate::shell::homebrew`] for the cost breakdown.
     #[config(default = "auto")]
     pub homebrew: String,
 }

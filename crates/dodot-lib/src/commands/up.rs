@@ -227,15 +227,19 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         orchestration::sweep_pack_state(&ignored.sweep_dir_names, ctx)?;
         info!("regenerating shell init script");
         let root_config = ctx.config_manager.root_config()?;
-        // Ask brew for its bootstrap now, at generation time, so a shell
-        // sourcing the written script never has to
-        // (shell-hookup-ergonomics.lex §4). Two `brew` spawns per `up`,
-        // one per shell dialect. A host without brew captures nothing
-        // and this `up` heals it.
-        let brew = shell::homebrew::capture_from_config(
+        // Ask brew for its bootstrap now and persist it to the
+        // datastore cache, so no generation path ever has to —
+        // including `dodot init-sh`, which emits from this cache on
+        // every shell start (shell-hookup-ergonomics.lex §4). Two
+        // `brew` spawns per `up`, one per shell dialect; the capture
+        // belongs to `up`, not to every generation. A host without
+        // brew captures nothing (clearing any stale cache) and this
+        // `up` heals it.
+        let brew = shell::homebrew::capture_and_persist(
             ctx.fs.as_ref(),
             ctx.command_runner.as_ref(),
             &root_config,
+            ctx.paths.as_ref(),
         )?;
         shell::write_init_script(
             ctx.fs.as_ref(),
