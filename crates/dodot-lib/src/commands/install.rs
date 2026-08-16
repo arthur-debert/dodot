@@ -215,9 +215,8 @@ fn verdict(
     let evidence = activation::notice_for(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
-        ctx.env_init_gen,
+        ctx.env_stamp.clone(),
         reference,
-        true,
         false,
         &ctx.shell_env,
     );

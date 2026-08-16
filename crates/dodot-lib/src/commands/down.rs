@@ -38,6 +38,14 @@ use crate::Result;
 pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     info!(dry_run = ctx.dry_run, "starting down command");
 
+    // The generation the user's shells were hooked up to *before* this
+    // run regenerates the init script — the only fair yardstick for the
+    // footer below, exactly as in `up`: judging the invoking shell
+    // against the generation we are about to write would call it stale
+    // on every `down`.
+    let pre_down_generation =
+        shell::activation::read_script_generation(ctx.fs.as_ref(), ctx.paths.as_ref());
+
     // Orphaned state: datastore subtrees whose pack no longer exists in
     // the dotfiles root. Scanned before validation so `dodot down
     // <orphan>` is accepted instead of rejected as PackNotFound — the
@@ -230,9 +238,18 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
         diffs: Vec::new(),
-        // `down` deactivates; nagging about shell hookup on the way
-        // out is advice for a deployment the user just removed.
-        shell_hookup: None,
+        // `down` carries the footer like every other pack-status
+        // render. It reads as "wired, but the init script is empty"
+        // rather than as a healthy deployment, because the footer
+        // reports the *script's* content — no `down` special case
+        // (`shell-hookup-ergonomics.lex` §2.3). `down` never spawns a
+        // shell: it removed a deployment, which is not the moment to
+        // spend a shell start measuring one.
+        shell_hookup: crate::commands::shell_hookup_footer(
+            ctx,
+            pre_down_generation,
+            &crate::shell::ProbePolicy::Never,
+        ),
     })
 }
 

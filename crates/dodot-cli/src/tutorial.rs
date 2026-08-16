@@ -285,7 +285,7 @@ impl TutorialEnv {
             group_mode: GroupMode::Name,
             verbose: false,
             host_facts: std::sync::Arc::new(dodot_lib::gates::HostFacts::detect()),
-            env_init_gen: dodot_lib::shell::activation::read_env_stamp(),
+            env_stamp: dodot_lib::shell::activation::EnvStamp::read(),
             // Not `isatty` here: the tutorial is always run from a
             // terminal that hasn't loaded its sandbox deployment, so
             // the session tie-breaker (#279) would flag every status

@@ -362,33 +362,29 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     })
 }
 
-/// The activation verdict `up` reports (`shell-hookup.lex` §5).
+/// The shell-hookup footer `up` reports.
 ///
-/// Two things make this different from the `status` evaluation
-/// (`status::shell_hookup_notice`), which the rendering pass would
-/// otherwise have supplied:
+/// The shared builder (`commands::shell_hookup_footer`) with `up`'s two
+/// choices filled in:
 ///
 /// - It judges against `pre_up_generation` — the generation the user's
 ///   shells could actually have loaded before this run rewrote the
 ///   script. Judging against the new one would tell every user to open
 ///   a new shell after every deploy.
-/// - A healthy hookup is silent here. `up` output is already long, and
-///   "your shell integration still works" is not news; `status` is
-///   where the quiet ok line belongs.
+/// - It is the one command where a *measurement* is worth its cost:
+///   when the cheap signals come back inconclusive, `up` spawns the
+///   user's shell and reports what actually happened (spec §3.1). A
+///   green first `up` ends on a measured verdict, not a promise; a
+///   healthy machine never spawns anything.
 ///
 /// A fresh install has no heartbeat and no stamp, so this is where the
 /// new-user failure story gets caught: at the end of a green first
-/// `up`. And it is the one place a *measurement* is worth its cost —
-/// when the cheap signals come back inconclusive, `up` spawns the
-/// user's shell and reports what actually happened
-/// (`shell::probe::notice_with_probe`, spec §3.1). A green first `up`
-/// ends on a measured verdict, not a promise; a healthy machine never
-/// spawns anything.
+/// `up`.
 ///
 /// A `--dry-run` regenerated no script, so measuring the current one
 /// would report on a world this run did not create — evidence only
-/// there, which `activation::notice_for` keeps silent anyway when
-/// nothing has ever been deployed.
+/// there, which the footer omits entirely when nothing has ever been
+/// deployed.
 fn activation_notice(
     ctx: &ExecutionContext,
     pre_up_generation: Option<u64>,
@@ -398,15 +394,7 @@ fn activation_notice(
     } else {
         ctx.shell_probe
     };
-    crate::shell::probe::notice_with_probe(
-        ctx.fs.as_ref(),
-        ctx.paths.as_ref(),
-        &policy,
-        &ctx.shell_env,
-        ctx.env_init_gen,
-        pre_up_generation,
-        false,
-    )
+    crate::commands::shell_hookup_footer(ctx, pre_up_generation, &policy)
 }
 
 /// Run `up`, falling back to a status render when a cross-pack conflict

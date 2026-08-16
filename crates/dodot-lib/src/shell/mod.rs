@@ -17,26 +17,32 @@
 //! [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
 //! ```
 //!
-//! # Activation evidence (shell-hookup.lex §2.1)
+//! # Activation evidence (shell-hookup-ergonomics.lex §2.1)
 //!
 //! Every generated script — profiled or not, empty datastore or not —
-//! opens with two lines that prove it ran: an `export DODOT_INIT_GEN=`
-//! carrying the *generation* the script was written at, and a single
-//! truncating redirect of that same generation into the heartbeat
-//! marker. `dodot up` and `dodot status` read them back through
-//! [`activation`] to tell "no shell has ever loaded dodot" from "this
-//! terminal predates your last `up`" from "healthy".
+//! opens with three lines that prove it ran and say who wrote it: an
+//! `export DODOT_INIT_GEN=` carrying the *generation* the script was
+//! written at, an `export DODOT_INIT_VERSION=` carrying the dodot that
+//! wrote it, and a single truncating redirect of both fields into the
+//! heartbeat marker. `dodot up`, `dodot down` and `dodot status` read
+//! them back through [`activation`] to tell "no shell has ever loaded
+//! dodot" from "this terminal predates your last `up`" from "your
+//! shells load a different dodot" from "healthy".
 //!
 //! The generation is an argument, not something the generator invents:
 //! callers that write the script stamp [`activation::current_generation`],
-//! and tests pin a value so the emitted script is deterministic.
+//! and tests pin a value so the emitted script is deterministic. The
+//! version is not — it is this binary's, by definition.
 //!
-//! Both lines are on a strict budget — one export, one redirect, no
-//! command execution — because they run on every shell start forever.
+//! The block is on a strict budget — exports and one redirect, no
+//! command execution — because it runs on every shell start forever.
 //! That is also why the heartbeat is a whole-file rewrite of static
 //! content: concurrent shell startups race, and last-writer-wins on a
 //! truncating redirect is a correct answer to that race, where an
-//! append or a read-modify-write would not be.
+//! append or a read-modify-write would not be. It is also why "when did
+//! a shell last load dodot" is read from that file's *mtime* rather
+//! than from anything written inside it: the redirect already updates
+//! mtime on every activation, so the answer costs no extra write.
 //!
 //! # Homebrew bootstrap (shell-hookup-ergonomics.lex §4)
 //!
@@ -77,7 +83,7 @@ pub mod homebrew;
 pub mod probe;
 pub mod rc;
 pub mod validate;
-pub use activation::{ActivationNotice, ActivationState, INIT_GEN_ENV};
+pub use activation::{ActivationNotice, ActivationState, INIT_GEN_ENV, INIT_VERSION_ENV};
 pub use homebrew::{BrewBlocks, BrewBootstrapMode, BrewHost};
 pub use probe::ProbePolicy;
 pub use rc::ShellEnv;
@@ -86,9 +92,30 @@ pub use validate::{
     ShellValidationReport, SyntaxCheckResult, SyntaxChecker, SystemSyntaxChecker, ERRORS_SUBDIR,
 };
 
+/// The line an init script with no pack contributions carries, and the
+/// marker [`script_has_contributions`] reads back.
+///
+/// One string, written by the generator and parsed by the footer, so
+/// "the script is empty" can never mean two different things in the
+/// two halves of the round trip.
+pub const EMPTY_SCRIPT_MARKER: &str = "# No shell scripts or PATH additions to load.";
+
+/// Whether generated init-script text sources or PATHs anything.
+///
+/// `false` for the three ways a script ends up with nothing to do —
+/// after `dodot down`, in a repository where every pack is ignored, and
+/// after a first `up` that deployed nothing — which is the one rule the
+/// footer needs to say "wired, but nothing is deployed" instead of
+/// claiming a healthy deployment (`shell-hookup-ergonomics.lex` §2.3).
+pub fn script_has_contributions(script: &str) -> bool {
+    !script
+        .lines()
+        .any(|line| line.trim() == EMPTY_SCRIPT_MARKER)
+}
+
 /// Append the "nothing to do" notice for an empty init script.
 fn append_empty_notice(script: &mut String) {
-    writeln!(script, "# No shell scripts or PATH additions to load.").unwrap();
+    writeln!(script, "{EMPTY_SCRIPT_MARKER}").unwrap();
     writeln!(
         script,
         "# Run `dodot up` to deploy packs, or `dodot status` to see available packs."
@@ -284,20 +311,35 @@ pub fn write_init_script(
 
 // ── Activation evidence emitter ──────────────────────────────────────
 
-/// Emit the two evidence lines (shell-hookup.lex §2.1).
+/// Emit the evidence block (shell-hookup-ergonomics.lex §2.1).
 ///
 /// - `export DODOT_INIT_GEN=<generation>` — free to read back from any
 ///   dodot process that the shell later spawns.
-/// - `echo <generation> > <heartbeat> 2>/dev/null || :` — one builtin
-///   and one truncating redirect. `2>/dev/null` keeps an unwritable
-///   data dir from spraying errors across every shell start, and the
-///   `|| :` keeps the failed redirect's non-zero status from aborting
-///   an rc file that runs under `set -e`.
+/// - `export DODOT_INIT_VERSION=<version>` — which dodot generated the
+///   script *this* shell loaded. Without it a hookup can be wired,
+///   sourced on every start, and still dead, because the binary that
+///   wrote the script is not the binary the user runs.
+/// - `echo <generation> <version> > <heartbeat> 2>/dev/null || :` — one
+///   builtin and one truncating redirect, now carrying both fields so a
+///   detached caller can answer the same question about the last shell
+///   anywhere. `2>/dev/null` keeps an unwritable data dir from spraying
+///   errors across every shell start, and the `|| :` keeps the failed
+///   redirect's non-zero status from aborting an rc file that runs
+///   under `set -e`.
+///
+/// Still two exports and one redirect: no command execution, no `dodot`
+/// invocation on the shell startup path.
 fn emit_activation_evidence(script: &mut String, generation: u64, heartbeat_path: &Path) {
     let heartbeat = sh_quote(&heartbeat_path.display().to_string());
+    let version = activation::running_version();
     writeln!(script, "# ── dodot activation evidence ──").unwrap();
     writeln!(script, "export {}={generation}", activation::INIT_GEN_ENV).unwrap();
-    writeln!(script, "echo {generation} > {heartbeat} 2>/dev/null || :").unwrap();
+    writeln!(script, "export {}={version}", activation::INIT_VERSION_ENV).unwrap();
+    writeln!(
+        script,
+        "echo {generation} {version} > {heartbeat} 2>/dev/null || :"
+    )
+    .unwrap();
     writeln!(script).unwrap();
 }
 
@@ -814,6 +856,67 @@ mod tests {
         );
     }
 
+    /// The whole emission order in one script, read back as text.
+    ///
+    /// The version stamp (`shell-hookup-ergonomics.lex` §2.1) and the
+    /// Homebrew bootstrap (§4) were written against the same generator
+    /// and only meet here, so the order they compose into is asserted
+    /// rather than inferred from the fact that both compile: activation
+    /// evidence first — all three lines, the version among them —
+    /// then brew, then anything a pack contributed.
+    #[test]
+    fn the_evidence_block_precedes_the_homebrew_block_precedes_the_packs() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .file("bin/myscript", "#!/bin/sh")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+        ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
+            .unwrap();
+
+        let script = generate_init_script(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            TEST_GEN,
+            Some(&sample_brew_blocks()),
+        )
+        .unwrap();
+
+        let positions = [
+            ("evidence header", "# ── dodot activation evidence ──"),
+            ("generation export", "export DODOT_INIT_GEN="),
+            ("version export", "export DODOT_INIT_VERSION="),
+            ("heartbeat redirect", "echo "),
+            ("Homebrew block", "# ── Homebrew environment ──"),
+            ("PATH additions", "# PATH additions"),
+            ("shell sources", "# Shell scripts"),
+        ]
+        .map(|(label, needle)| {
+            (
+                label,
+                script
+                    .find(needle)
+                    .unwrap_or_else(|| panic!("missing {label} ({needle}), script:\n{script}")),
+            )
+        });
+
+        for pair in positions.windows(2) {
+            let [(before, at), (after, then)] = pair else {
+                unreachable!()
+            };
+            assert!(
+                at < then,
+                "{before} must precede {after}, script:\n{script}"
+            );
+        }
+    }
+
     /// The bootstrap does not depend on any pack having deployed, so a
     /// datastore with nothing in it still carries it — that is the case
     /// where the user's rc file is empty and brew is all they need.
@@ -1130,7 +1233,15 @@ mod tests {
             );
             assert!(
                 script.contains(&format!(
-                    "echo {TEST_GEN} > '{}' 2>/dev/null || :",
+                    "export DODOT_INIT_VERSION={}",
+                    activation::running_version()
+                )),
+                "{label}: missing version stamp:\n{script}"
+            );
+            assert!(
+                script.contains(&format!(
+                    "echo {TEST_GEN} {} > '{}' 2>/dev/null || :",
+                    activation::running_version(),
                     env.paths.hookup_heartbeat_path().display()
                 )),
                 "{label}: missing heartbeat write:\n{script}"
@@ -1143,11 +1254,12 @@ mod tests {
         }
     }
 
-    /// The hot-path budget: one export plus one redirect, and nothing
-    /// that costs a process. A `mkdir -p` or a `dodot` call here would
-    /// be paid on every shell start, forever.
+    /// The hot-path budget: the version rides along inside the shape
+    /// INS01 set — exports and one redirect — and nothing that costs a
+    /// process. A `mkdir -p` or a `dodot` call here would be paid on
+    /// every shell start, forever.
     #[test]
-    fn evidence_costs_one_export_and_one_redirect() {
+    fn evidence_costs_two_exports_and_one_redirect() {
         let env = TempEnvironment::builder().build();
         let script =
             generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
@@ -1155,11 +1267,12 @@ mod tests {
 
         let evidence: Vec<&str> = script
             .lines()
-            .filter(|l| l.contains("DODOT_INIT_GEN") || l.contains("heartbeat"))
+            .filter(|l| l.contains("DODOT_INIT") || l.contains("heartbeat"))
             .collect();
-        assert_eq!(evidence.len(), 2, "evidence block: {evidence:?}");
+        assert_eq!(evidence.len(), 3, "evidence block: {evidence:?}");
         assert!(evidence[0].starts_with("export DODOT_INIT_GEN="));
-        assert!(evidence[1].starts_with("echo "));
+        assert!(evidence[1].starts_with("export DODOT_INIT_VERSION="));
+        assert!(evidence[2].starts_with("echo "));
         for forbidden in ["mkdir", "dodot ", "date", "$(", "`"] {
             assert!(
                 !evidence.iter().any(|l| l.contains(forbidden)),
@@ -1237,30 +1350,58 @@ mod tests {
     }
 
     /// The evidence is only worth anything if sourcing the script
-    /// actually leaves it: run the real thing under `sh` and read both
-    /// signals back.
+    /// actually leaves it: run the real thing under `sh` and read
+    /// every signal back — both exports and both heartbeat fields.
     #[test]
     fn sourcing_the_script_exports_the_stamp_and_writes_the_heartbeat() {
         let env = TempEnvironment::builder().build();
         let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
         let gen = activation::read_script_generation(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let version = activation::running_version();
 
         let out = std::process::Command::new("sh")
             .arg("-c")
             .arg(format!(
-                ". '{}'; printf '%s' \"$DODOT_INIT_GEN\"",
+                ". '{}'; printf '%s %s' \"$DODOT_INIT_GEN\" \"$DODOT_INIT_VERSION\"",
                 path.display()
             ))
             .env_remove(activation::INIT_GEN_ENV)
+            .env_remove(activation::INIT_VERSION_ENV)
             .output()
             .expect("sh is required to run dodot's own init script");
         assert!(out.status.success(), "sourcing failed: {out:?}");
-        assert_eq!(String::from_utf8_lossy(&out.stdout), gen.to_string());
         assert_eq!(
-            activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref()),
-            Some(gen),
-            "sourcing must leave a heartbeat at the script's generation"
+            String::from_utf8_lossy(&out.stdout),
+            format!("{gen} {version}"),
+            "sourcing must export both the generation and the version"
         );
+
+        let heartbeat = activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref())
+            .expect("sourcing must leave a heartbeat");
+        assert_eq!(heartbeat.generation, gen);
+        assert_eq!(heartbeat.version.as_deref(), Some(version));
+    }
+
+    /// The one rule that tells "wired and deploying nothing" from
+    /// "wired and working" — the footer's, and `down`'s, whole basis.
+    #[test]
+    fn an_empty_script_is_readable_as_having_no_contributions() {
+        let env = TempEnvironment::builder().build();
+        let empty =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, 100, None).unwrap();
+        assert!(!script_has_contributions(&empty), "{empty}");
+
+        let env = TempEnvironment::builder().build();
+        let shell_dir = env.paths.handler_data_dir("vim", "shell");
+        env.fs.mkdir_all(&shell_dir).unwrap();
+        let target = env.home.join("aliases.sh");
+        env.fs.write_file(&target, b"alias v=vim").unwrap();
+        env.fs
+            .symlink(&target, &shell_dir.join("aliases.sh"))
+            .unwrap();
+        let deployed =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, 100, None).unwrap();
+        assert!(script_has_contributions(&deployed), "{deployed}");
     }
 
     /// Parsing the guard is not the same as honouring it: source the
@@ -1325,7 +1466,7 @@ mod tests {
         }
 
         assert_eq!(
-            activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref()),
+            activation::read_heartbeat(env.fs.as_ref(), env.paths.as_ref()).map(|h| h.generation),
             Some(gen)
         );
     }
