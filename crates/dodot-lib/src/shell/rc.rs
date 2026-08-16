@@ -323,8 +323,10 @@ fn absolutize(path: &Path, home: &Path) -> PathBuf {
 ///
 /// Bounded and total: a cycle, a broken link, or an unreadable link
 /// stops the walk and yields the last path we could name, which is
-/// the same path a plain write would have used.
-fn resolve_symlinks(fs: &dyn Fs, path: &Path) -> PathBuf {
+/// the same path a plain write would have used. `pub(crate)` for
+/// [`crate::shell::trace`], which uses the same walk to decide whether
+/// a resolved `dodot` *is* the running binary behind a symlink.
+pub(crate) fn resolve_symlinks(fs: &dyn Fs, path: &Path) -> PathBuf {
     let mut current = path.to_path_buf();
     for _ in 0..MAX_SYMLINK_HOPS {
         if !fs.is_symlink(&current) {

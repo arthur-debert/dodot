@@ -293,7 +293,7 @@ fn probe_shell_init_banner_when_profile_predates_last_up() {
     // Up happened one hour after the profile.
     write_last_up_marker_at(&env, 1714003600);
 
-    let result = commands::probe::shell_init(&ctx).unwrap();
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["stale"], true);
@@ -327,7 +327,7 @@ fn probe_shell_init_no_banner_when_profile_postdates_last_up() {
         &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
     );
 
-    let result = commands::probe::shell_init(&ctx).unwrap();
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["stale"], false);
@@ -352,7 +352,7 @@ fn probe_shell_init_no_banner_when_no_last_up_marker() {
         &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
     );
 
-    let result = commands::probe::shell_init(&ctx).unwrap();
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
     let text = render::render("probe", &result, OutputMode::Text).unwrap();
     assert!(
         !text.contains("warning:"),
@@ -368,7 +368,7 @@ fn probe_shell_init_no_banner_when_no_profile() {
     let ctx = make_ctx(&env);
     write_last_up_marker_at(&env, 1714000000);
 
-    let result = commands::probe::shell_init(&ctx).unwrap();
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
     let text = render::render("probe", &result, OutputMode::Text).unwrap();
     assert!(
         !text.contains("warning:"),
@@ -1130,4 +1130,200 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         !hint_text.contains("isn't installed"),
         "hint should not falsely claim the cask is uninstalled, got: {hint_text}"
     );
+}
+
+// ── probe shell-init: the live hook-line trace ────────────────────
+
+/// A context that is *allowed* to trace, pointed at a fabricated
+/// shell. The base `make_ctx` leaves `ProbePolicy::Never`, which is
+/// what every other test wants; these opt in explicitly.
+fn make_tracing_ctx(env: &TempEnvironment, shell: &str) -> ExecutionContext {
+    let mut ctx = make_ctx(env);
+    ctx.shell_probe = crate::shell::ProbePolicy::Gated {
+        timeout: std::time::Duration::from_secs(10),
+    };
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some(shell.to_string()),
+        zdotdir: None,
+    };
+    ctx
+}
+
+#[test]
+fn probe_shell_init_without_trace_has_null_trace_field() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert!(parsed["trace"].is_null(), "suppressed trace must be absent");
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("Hook resolution"),
+        "no trace section when suppressed:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_trace_reports_an_unsupported_shell_plainly() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_tracing_ctx(&env, "/usr/bin/fish");
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["trace"]["status"], "skipped");
+    let headline = parsed["trace"]["headline"].as_str().unwrap();
+    assert!(headline.contains("fish"), "{headline}");
+    assert!(headline.contains("bash and zsh"), "{headline}");
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(text.contains("Hook resolution"), "{text}");
+}
+
+#[test]
+fn probe_shell_init_trace_reports_a_missing_rc_plainly() {
+    let env = TempEnvironment::builder().build();
+    // A fresh home has no .bashrc: nothing to trace, no spawn.
+    let ctx = make_tracing_ctx(&env, "/bin/bash");
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["trace"]["status"], "skipped");
+    let headline = parsed["trace"]["headline"].as_str().unwrap();
+    assert!(headline.contains("no rc file"), "{headline}");
+    assert!(headline.contains(".bashrc"), "{headline}");
+}
+
+#[test]
+fn probe_shell_init_trace_reports_an_absent_hook_plainly() {
+    let env = TempEnvironment::builder().build();
+    env.fs
+        .write_file(&env.home.join(".bashrc"), b"alias ll='ls -l'\n")
+        .unwrap();
+    let ctx = make_tracing_ctx(&env, "/bin/bash");
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["trace"]["status"], "skipped");
+    let headline = parsed["trace"]["headline"].as_str().unwrap();
+    assert!(headline.contains("no dodot hook"), "{headline}");
+    assert!(headline.contains("dodot install --write"), "{headline}");
+}
+
+#[test]
+fn probe_shell_init_trace_degrades_when_the_policy_forbids_spawning() {
+    // A context that wants the trace but may not spawn (the default
+    // for every non-production context) reports "could not trace"
+    // instead of failing the command or spawning anyway.
+    let env = TempEnvironment::builder().build();
+    env.fs
+        .write_file(&env.home.join(".bashrc"), b"eval \"$(dodot init-sh)\"\n")
+        .unwrap();
+    let mut ctx = make_ctx(&env);
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/bash".into()),
+        zdotdir: None,
+    };
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["trace"]["status"], "untraced");
+    assert_eq!(parsed["trace"]["hook_line"], 1);
+    let headline = parsed["trace"]["headline"].as_str().unwrap();
+    assert!(headline.contains("could not trace"), "{headline}");
+}
+
+#[test]
+fn probe_shell_init_trace_end_to_end_names_the_stale_binary_and_the_skips() {
+    // The epic's motivating failure, end to end through the command:
+    // the rc rebuilds PATH before the hook, PATH holds a dangling
+    // symlink first and a stale `dodot` second. The report must name
+    // the dangling entry (which `command -v` would skip silently) and
+    // the stale binary with its version.
+    if !std::path::Path::new("/bin/bash").exists() {
+        return;
+    }
+    let env = TempEnvironment::builder().build();
+    // Serialise against other env-mutating tests and point the spawned
+    // bash at the fabricated home so it reads the rc this test wrote.
+    let _home = crate::testing::EnvVarGuard::set("HOME", &env.home.display().to_string());
+
+    // A dangling symlink where the good dodot used to live…
+    let linkdir = env.home.join("links");
+    env.fs.mkdir_all(&linkdir).unwrap();
+    env.fs
+        .symlink(&env.home.join("gone/dodot"), &linkdir.join("dodot"))
+        .unwrap();
+    // …and a stale dodot that resolution falls through to.
+    let staledir = env.home.join("stale");
+    env.fs.mkdir_all(&staledir).unwrap();
+    env.fs
+        .write_file_with_mode(
+            &staledir.join("dodot"),
+            b"#!/bin/sh\necho 'dodot 5.0.0'\n",
+            0o755,
+        )
+        .unwrap();
+
+    let rc = env.home.join(".bashrc");
+    env.fs
+        .write_file(
+            &rc,
+            format!(
+                "export PATH={}:{}\neval \"$(dodot init-sh)\"\n",
+                linkdir.display(),
+                staledir.display()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+
+    let ctx = make_tracing_ctx(&env, "/bin/bash");
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(parsed["trace"]["status"], "verdict");
+    assert_eq!(parsed["trace"]["verdict"], "different-binary");
+    assert_eq!(parsed["trace"]["rc"], "~/.bashrc");
+    assert_eq!(parsed["trace"]["hook_line"], 2);
+    let details = parsed["trace"]["detail_lines"].to_string();
+    assert!(details.contains("dangling symlink"), "{details}");
+    assert!(details.contains("5.0.0"), "{details}");
+    assert!(
+        details.contains("stale/dodot"),
+        "the stale winner must be named: {details}"
+    );
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(text.contains("Hook resolution"), "{text}");
+    assert!(text.contains("~/.bashrc:2"), "{text}");
+}
+
+#[test]
+fn probe_shell_init_trace_reports_a_hook_the_shell_never_reaches() {
+    // The fourth verdict: the hook is in the file but inside a branch
+    // that does not run — a static scan calls this fine; only the
+    // trace (and its fallback, whose inserted report sits in the same
+    // dead branch) finds it.
+    if !std::path::Path::new("/bin/bash").exists() {
+        return;
+    }
+    let env = TempEnvironment::builder().build();
+    let _home = crate::testing::EnvVarGuard::set("HOME", &env.home.display().to_string());
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            b"if false; then\n  eval \"$(dodot init-sh)\"\nfi\n",
+        )
+        .unwrap();
+
+    let ctx = make_tracing_ctx(&env, "/bin/bash");
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["trace"]["status"], "verdict");
+    assert_eq!(parsed["trace"]["verdict"], "hook-never-ran");
+    assert_eq!(parsed["trace"]["hook_line"], 2);
+    let headline = parsed["trace"]["headline"].as_str().unwrap();
+    assert!(headline.contains("never ran"), "{headline}");
 }

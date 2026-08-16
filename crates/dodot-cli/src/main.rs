@@ -892,16 +892,26 @@ fn build_clap_command() -> ClapCommand {
                 )
                 .subcommand(
                     ClapCommand::new("shell-init")
-                        .about("Per-source timings for the most recent shell startup")
+                        .about(
+                            "Startup timings + live hook diagnosis (spawns your shell once, running your whole rc file; --no-trace for timings only)",
+                        )
                         .arg(
                             Arg::new("filter")
                                 .help(
-                                    "Drill into one pack or file (e.g. `gpg` or `gpg/env.sh`) — shows per-run exit codes and captured stderr across recent runs",
+                                    "Drill into one pack or file (e.g. `gpg` or `gpg/env.sh`) — shows per-run exit codes and captured stderr across recent runs; suppresses the trace",
                                 )
                                 .value_name("PACK[/FILE]")
                                 .num_args(0..=1)
                                 .conflicts_with("runs")
                                 .conflicts_with("history"),
+                        )
+                        .arg(
+                            Arg::new("no-trace")
+                                .long("no-trace")
+                                .help(
+                                    "Skip the live hook-line trace (no shell is spawned; report the recorded timings only). The filter/--runs/--history/--errors-only views never trace",
+                                )
+                                .action(ArgAction::SetTrue),
                         )
                         .arg(
                             Arg::new("runs")

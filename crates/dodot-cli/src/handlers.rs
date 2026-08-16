@@ -516,16 +516,21 @@ pub fn transform_install_hook_handler(
     Ok(Output::Render(commands::transform::install_hook(&ctx)?))
 }
 
-/// `dodot probe shell-init` — most recent shell-startup profile.
+/// `dodot probe shell-init` — most recent shell-startup profile plus,
+/// by default, the live hook-line diagnosis.
 ///
 /// Five views, picked by argument shape:
 /// - `<pack>[/<file>]` positional: drill-down across recent runs with
 ///   captured stderr (wins over flags — the user is asking a specific
-///   question)
+///   question about one source's timings, so it also suppresses the
+///   trace: the shipped status warning points here and must stay
+///   cheap and passive)
 /// - `--errors-only`: cross-history list of failing targets
 /// - `--runs N`: per-target percentile aggregate over the last N runs
 /// - `--history`: one-row-per-run trend, newest first
-/// - default: single-run detail (most recent profile)
+/// - default: single-run detail (most recent profile) + the live
+///   trace — one report, two halves. `--no-trace` keeps only the
+///   recorded half; only this default view ever spawns a shell.
 pub fn probe_shell_init_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
@@ -535,6 +540,7 @@ pub fn probe_shell_init_handler(
     let runs = matches.get_one::<usize>("runs").copied();
     let history = flag_or_false(matches, "history");
     let errors_only = flag_or_false(matches, "errors-only");
+    let no_trace = flag_or_false(matches, "no-trace");
 
     let result = if errors_only {
         commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS)?
@@ -545,7 +551,7 @@ pub fn probe_shell_init_handler(
     } else if history {
         commands::probe::shell_init_history(&ctx, commands::probe::DEFAULT_HISTORY_LIMIT)?
     } else {
-        commands::probe::shell_init(&ctx)?
+        commands::probe::shell_init(&ctx, !no_trace)?
     };
     Ok(Output::Render(result))
 }

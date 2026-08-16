@@ -20,8 +20,8 @@ pub use types::{
     AppProbeEntry, AppProbeView, DeploymentDisplayEntry, ProbeResult, ProbeSubcommandInfo,
     ShellInitAggregateRow, ShellInitAggregateView, ShellInitErrorsView, ShellInitFilterRun,
     ShellInitFilterTarget, ShellInitFilterView, ShellInitGroup, ShellInitHistoryRow,
-    ShellInitHistoryView, ShellInitRow, ShellInitView, TreeLine, DEFAULT_FILTER_RUNS,
-    DEFAULT_HISTORY_LIMIT, DEFAULT_SHOW_DATA_DIR_DEPTH, PROBE_SUBCOMMANDS,
+    ShellInitHistoryView, ShellInitRow, ShellInitTraceView, ShellInitView, TreeLine,
+    DEFAULT_FILTER_RUNS, DEFAULT_HISTORY_LIMIT, DEFAULT_SHOW_DATA_DIR_DEPTH, PROBE_SUBCOMMANDS,
 };
 
 use crate::packs::orchestration::ExecutionContext;

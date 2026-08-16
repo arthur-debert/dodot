@@ -1,0 +1,9 @@
+bash: no job control in this shell
++ export FOO=bar
++ FOO=bar
++ '[' -n bar ']'
+++ command dodot init-sh
+++ true
++ eval ''
++ alias 'll=ls -l'
++ true
