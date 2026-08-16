@@ -93,8 +93,9 @@ pub trait Fs: Send + Sync {
     /// rename is atomic on POSIX) named by pid plus a process-global
     /// counter, so no two live writers — threads or processes — can
     /// ever select the same temp. Any failure after the temp is
-    /// created (a failed write, chmod, or rename) removes it rather
-    /// than abandoning it; only a crash mid-write can leave a temp
+    /// created (a failed write or rename — plus a failed chmod in
+    /// [`Fs::write_atomic_with_mode`]) removes it rather than
+    /// abandoning it; only a crash mid-write can leave a temp
     /// behind, and never a torn target.
     ///
     /// Note the trade-off: the rename replaces the *directory entry*,
