@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
-# E2E acceptance for the shell hookup (`dodot install`), spec §7.
+# E2E acceptance for the shell hookup: INS01 (`dodot install`, spec §7)
+# and RCS01 (the version-stamped footer and the hook-line trace).
 #
 # The story this file exists to prove, end to end in a clean
 # environment: install dodot, `up` (the never-activated warning
@@ -166,6 +167,60 @@ echo tool output'
     run dodot up
     assert_output_contains "Shell hookup: a new shell did not load dodot."
     assert_output_contains "never reached"
+}
+
+# ── The version-stamped footer (RCS01 WS01) ─────────────────────
+
+@test "the footer catches a heartbeat left by a different dodot version" {
+    dodot up
+    dodot install --write
+    bash -ic true   # a real shell activates, writing the heartbeat
+
+    # A shell whose rc resolves an older dodot would leave this exact
+    # heartbeat: same generation (the script is current), another
+    # version. Keep the real generation so only the version disagrees —
+    # the epic's motivating failure, invisible before RCS01.
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    read -r gen _ < "$hb"
+    echo "$gen 5.0.0" > "$hb"
+
+    run dodot status
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell hookup: your shells load a different dodot."
+    assert_output_contains "by dodot 5.0.0 — you are running"
+}
+
+@test "a version-less heartbeat renders as at most the pre-RCS01 release" {
+    dodot up
+    dodot install --write
+    bash -ic true   # a real shell activates, writing the heartbeat
+
+    # A pre-RCS01 init script wrote only the generation. One rule
+    # covers it: the version renders as a bound, never as a guess.
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    read -r gen _ < "$hb"
+    echo "$gen" > "$hb"
+
+    run dodot status
+    [ "$status" -eq 0 ]
+    assert_output_contains "by dodot ≤5.5.1"
+}
+
+@test "after down, a shell that loads the empty script reads as wired-but-empty" {
+    create_pack_file "shell" "aliases.sh" 'alias dodot_hookup_alias="echo activated"'
+    dodot up
+    dodot install --write
+    dodot down
+
+    # The hookup is still wired and firing — a real shell sources the
+    # regenerated, contribution-less script — so a healthy line would
+    # be technically true and practically misleading.
+    bash -ic true
+
+    run dodot status
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell hookup: wired, but the init script is empty — nothing is deployed."
+    assert_output_contains "Run \`dodot up\` to deploy your packs."
 }
 
 # ── The hook-line trace (`probe shell-init`, RCS01 WS02) ────────
