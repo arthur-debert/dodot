@@ -121,6 +121,18 @@ pub trait Pather: Send + Sync {
         self.shell_dir().join("dodot-init.sh")
     }
 
+    /// Cache of the captured `brew shellenv` blocks (JSON), sibling of
+    /// the generated init script. Written by `up`/`down` at capture
+    /// time; read by every generation path so emission spawns no brew.
+    /// See `crate::shell::homebrew`.
+    ///
+    /// Lives under `data_dir` (not `cache_dir`) deliberately: the
+    /// generated init script must stay in lockstep with it, and both
+    /// are cleared together by `dodot reset` wiping the data dir.
+    fn homebrew_cache_path(&self) -> PathBuf {
+        self.shell_dir().join("brew-shellenv.json")
+    }
+
     /// Path to the deployment map TSV, overwritten on every `up` / `down`.
     /// See `docs/proposals/profiling.lex` §3.2.
     fn deployment_map_path(&self) -> PathBuf {
@@ -550,6 +562,24 @@ mod tests {
         assert_eq!(
             pather.init_script_path(),
             PathBuf::from("/h/data/dodot/shell/dodot-init.sh")
+        );
+    }
+
+    /// The homebrew capture cache must live inside the data dir, next
+    /// to the init script it feeds — that placement is what makes
+    /// `dodot reset` (which wipes the data dir) clear it along with
+    /// the rest of dodot's state.
+    #[test]
+    fn homebrew_cache_path_sits_next_to_the_init_script() {
+        let pather = XdgPather::builder()
+            .home("/h")
+            .data_dir("/h/data/dodot")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            pather.homebrew_cache_path(),
+            PathBuf::from("/h/data/dodot/shell/brew-shellenv.json")
         );
     }
 

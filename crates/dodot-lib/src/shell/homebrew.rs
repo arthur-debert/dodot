@@ -9,16 +9,30 @@
 //! # Ask brew, don't guess
 //!
 //! `brew shellenv <shell>` already emits the block, and Homebrew is the
-//! authority on its own bootstrap. We capture that output at
-//! *generation time* — during `dodot up`, baked into `dodot-init.sh` as
-//! static text — so sourcing the script asks brew nothing and a brew
-//! that changes its block is picked up by the next `up`. A hand-written
-//! approximation would silently rot, which is why there is exactly one
-//! mechanism here and no fallback emitter (`pack-ordering.lex` §2.2).
+//! authority on its own bootstrap. We capture that output when `dodot
+//! up` / `dodot down` regenerate the init script and persist it to the
+//! datastore, next to the generated script
+//! ([`crate::paths::Pather::homebrew_cache_path`]). Every generation
+//! path — the baked-in block in `dodot-init.sh` and `dodot init-sh`'s
+//! stdout alike — emits from that cached text, so sourcing asks brew
+//! nothing and a brew that changes its block is picked up by the next
+//! `up`. A hand-written approximation would silently rot, which is why
+//! there is exactly one mechanism here and no fallback emitter
+//! (`pack-ordering.lex` §2.2).
 //!
 //! Never reach for `eval "$(brew shellenv)"` *at shell time*: that runs
-//! brew itself on every shell start. Generation-time capture is the
-//! whole point.
+//! brew itself on every shell start. Capture-at-`up` is the whole
+//! point.
+//!
+//! # Cache invalidation
+//!
+//! The cache refreshes on the next `up`/`down` — the same contract as
+//! every other artifact dodot generates, and deliberately not a
+//! freshness check against brew (a second mechanism doing the job the
+//! first already does). The one guard is the resolved prefix: it is
+//! stored with the captured text, and a cache whose prefix no longer
+//! matches the host's detected prefix (an Intel → arm move, a
+//! relocated install) is a miss, never served.
 //!
 //! # Two blocks, one guard
 //!
@@ -56,33 +70,35 @@
 //!
 //! This is the first command execution dodot has ever put on the shell
 //! startup path — brew's choice, not dodot's, but ours to state
-//! plainly. Two costs, and which ones a user pays depends on the hook
-//! shape:
+//! plainly. Two costs, identical under both hook shapes:
 //!
-//! - *The emitted block*, paid by every shell that sources the script
-//!   under either hook: two process spawns (`env` plus `path_helper`).
-//!   Measured on an Apple-silicon mac over 200 iterations: ~3.1 ms wall
-//!   per invocation, ~2.7 ms net of the ~0.5 ms `$( )` subshell
-//!   baseline.
+//! - *The emitted block*, paid by every shell that sources the script:
+//!   two process spawns (`env` plus `path_helper`). Measured on an
+//!   Apple-silicon mac over 200 iterations: ~3.1 ms wall per
+//!   invocation, ~2.7 ms net of the ~0.5 ms `$( )` subshell baseline.
 //! - *The capture itself*, two `brew shellenv` runs (`sh` and `zsh`),
-//!   ~10-20 ms each on the same machine. Under the file-source hook —
-//!   the recommended one, a marked rc block sourcing `dodot-init.sh` by
-//!   path — this is paid once per `dodot up`/`down` and never by a
-//!   shell. Under the hand-wired `eval "$(dodot init-sh)"`, generation
-//!   *is* shell start, so both runs land on every new shell: ~20-40 ms
-//!   on top of the block's ~3 ms. See
-//!   [`capture_from_config`]'s callers.
+//!   ~10-20 ms each on the same machine — paid by `dodot up`/`down`
+//!   ([`capture_and_persist`]) and cached in the datastore, so a shell
+//!   never pays it. The hand-wired `eval "$(dodot init-sh)"` hook
+//!   regenerates the script on every shell start, but generation emits
+//!   from the cache ([`cached_or_capture`]) and spawns brew zero
+//!   times. The one exception is a cold cache — the first `init-sh`
+//!   before any `up` has run: that shell captures in memory, emits,
+//!   and does not persist (`init-sh` is passive — #121); the next `up`
+//!   warms the cache.
 //!
 //! `[shell] homebrew = "off"` turns all of it off in one config key.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::config::DodotConfig;
 use crate::datastore::CommandRunner;
 use crate::fs::Fs;
+use crate::paths::Pather;
 use crate::{DodotError, Result};
 
 /// Standard Homebrew install prefixes, in probe order: Apple silicon
@@ -157,7 +173,12 @@ impl BrewHost {
 }
 
 /// One host's captured `brew shellenv` output, per shell dialect.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Also the datastore cache's serialized shape (JSON, at
+/// [`Pather::homebrew_cache_path`]): what `up` persisted is exactly
+/// what emission reads back, so the emitted block is byte-identical
+/// whether it came from the cache or from a live capture.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BrewBlocks {
     /// The prefix the blocks were captured from. Emitted as a comment
     /// so a reader of `dodot-init.sh` can see which brew answered.
@@ -168,23 +189,117 @@ pub struct BrewBlocks {
     pub zsh: String,
 }
 
-/// Capture the bootstrap for the running host from resolved config —
-/// the entry point every command that regenerates the init script uses.
+/// Capture the bootstrap live and persist it to the datastore cache —
+/// the entry point for `up` and `down`, the commands that regenerate
+/// the init script. The capture belongs to them, not to every
+/// generation.
 ///
-/// One call spawns `brew` **twice**, once per shell dialect. `up` and
-/// `down` pay that per run; `dodot init-sh` regenerates on every shell
-/// start, so under the `eval "$(dodot init-sh)"` hook a shell pays it
-/// too. See the module docs on cost.
+/// One call spawns `brew` **twice**, once per shell dialect. The
+/// result lands at [`Pather::homebrew_cache_path`] so passive
+/// generation paths ([`cached_or_capture`]) emit without spawning
+/// brew. A capture with nothing to emit — mode `off`, not macOS, no
+/// brew — *removes* the cache, keeping it in lockstep with what the
+/// written script carries: a host that lost its brew can never serve
+/// a stale block.
 ///
-/// The only error it can return is a bad `[shell] homebrew` value; a
-/// host without brew is `Ok(None)`.
-pub fn capture_from_config(
+/// The only capture error is a bad `[shell] homebrew` value; a host
+/// without brew is `Ok(None)`. Cache IO surfaces its own errors.
+pub fn capture_and_persist(
     fs: &dyn Fs,
     runner: &dyn CommandRunner,
     config: &DodotConfig,
+    paths: &dyn Pather,
 ) -> Result<Option<BrewBlocks>> {
     let mode = BrewBootstrapMode::parse(&config.shell.homebrew)?;
-    Ok(capture(fs, runner, mode, &BrewHost::detect()))
+    let blocks = capture(fs, runner, mode, &BrewHost::detect());
+    persist_cache(fs, &paths.homebrew_cache_path(), blocks.as_ref())?;
+    Ok(blocks)
+}
+
+/// Emit-side entry point for passive commands (`dodot init-sh`): serve
+/// the cached capture when it is warm and its prefix still matches the
+/// host; capture in memory on a miss; never write the datastore.
+///
+/// With a warm cache this spawns brew **zero** times — prefix
+/// detection is a couple of `stat` calls. On a miss (no `up` has run
+/// since the cache was cleared, or the prefix moved) it pays one live
+/// capture and deliberately does not persist it: `init-sh` is passive,
+/// and passive commands writing the datastore is a standing defect
+/// class (#121). The next `up` warms the cache.
+///
+/// The only error it can return is a bad `[shell] homebrew` value; a
+/// host without brew is `Ok(None)`.
+pub fn cached_or_capture(
+    fs: &dyn Fs,
+    runner: &dyn CommandRunner,
+    config: &DodotConfig,
+    paths: &dyn Pather,
+) -> Result<Option<BrewBlocks>> {
+    let mode = BrewBootstrapMode::parse(&config.shell.homebrew)?;
+    Ok(cached_or_capture_at(
+        fs,
+        runner,
+        mode,
+        &BrewHost::detect(),
+        &paths.homebrew_cache_path(),
+    ))
+}
+
+/// [`cached_or_capture`] with the host and cache path injected, so
+/// tests drive it without a mac, a brew, or a real datastore.
+fn cached_or_capture_at(
+    fs: &dyn Fs,
+    runner: &dyn CommandRunner,
+    mode: BrewBootstrapMode,
+    host: &BrewHost,
+    cache_path: &Path,
+) -> Option<BrewBlocks> {
+    if mode == BrewBootstrapMode::Off || !host.is_macos {
+        return None;
+    }
+    let prefix = detect_prefix(fs, host)?;
+    if let Some(cached) = load_cache(fs, cache_path) {
+        if cached.prefix == prefix {
+            return Some(cached);
+        }
+        debug!(
+            cached = %cached.prefix.display(),
+            detected = %prefix.display(),
+            "homebrew cache is for another prefix; capturing live"
+        );
+    }
+    capture_at(runner, &prefix)
+}
+
+/// Read the cached capture back, or `None` when it is absent or
+/// unreadable. Unreadable includes unparseable: a corrupt or
+/// old-format cache is a miss (live capture), never an error — the
+/// next `up` rewrites it wholesale.
+fn load_cache(fs: &dyn Fs, path: &Path) -> Option<BrewBlocks> {
+    let text = fs.read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Write the captured blocks to the cache, or remove the cache when
+/// there is nothing to emit. Only `up`/`down` reach this, via
+/// [`capture_and_persist`] — the emit side never writes (#121).
+fn persist_cache(fs: &dyn Fs, path: &Path, blocks: Option<&BrewBlocks>) -> Result<()> {
+    match blocks {
+        Some(blocks) => {
+            if let Some(parent) = path.parent() {
+                fs.mkdir_all(parent)?;
+            }
+            let json = serde_json::to_string_pretty(blocks)
+                .map_err(|e| DodotError::Other(format!("serialize homebrew cache: {e}")))?;
+            fs.write_file(path, json.as_bytes())
+        }
+        None => {
+            if fs.exists(path) {
+                fs.remove_file(path)?;
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Capture Homebrew's bootstrap for this host, or `None` when there is
@@ -209,11 +324,20 @@ pub fn capture(
     }
 
     let prefix = detect_prefix(fs, host)?;
-    let brew = brew_binary(&prefix);
+    capture_at(runner, &prefix)
+}
+
+/// Ask the brew at `prefix` for both dialect blocks — the two spawns
+/// every "capture" in this module ultimately means.
+fn capture_at(runner: &dyn CommandRunner, prefix: &Path) -> Option<BrewBlocks> {
+    let brew = brew_binary(prefix);
     let sh = shellenv(runner, &brew, "sh")?;
     let zsh = shellenv(runner, &brew, "zsh")?;
-
-    Some(BrewBlocks { prefix, sh, zsh })
+    Some(BrewBlocks {
+        prefix: prefix.to_path_buf(),
+        sh,
+        zsh,
+    })
 }
 
 /// First candidate prefix holding an executable `bin/brew`.
@@ -567,6 +691,223 @@ mod tests {
             &host_with(&[&prefix]),
         )
         .is_none());
+    }
+
+    // ── Datastore cache (shell-hookup-ergonomics.lex §4, #294) ──────
+
+    /// What `up` persisted is exactly what emission reads back —
+    /// `BrewBlocks` equality is byte equality on the captured text,
+    /// and emission is a pure function of it, so this is the
+    /// "byte-identical whether cached or live" guarantee.
+    #[test]
+    fn cache_round_trips_the_capture_byte_for_byte() {
+        let env = TempEnvironment::builder().build();
+        let path = env.paths.homebrew_cache_path();
+        let blocks = BrewBlocks {
+            prefix: PathBuf::from("/opt/homebrew"),
+            sh: SH_BLOCK.to_string(),
+            zsh: ZSH_BLOCK.to_string(),
+        };
+
+        persist_cache(env.fs.as_ref(), &path, Some(&blocks)).unwrap();
+        assert_eq!(load_cache(env.fs.as_ref(), &path), Some(blocks));
+    }
+
+    /// The steady state: a warm cache whose prefix still matches the
+    /// host serves the block with **zero** brew invocations — counted
+    /// through the injectable runner, not timed.
+    #[test]
+    fn warm_cache_emits_without_spawning_brew() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        let cached = BrewBlocks {
+            prefix: prefix.clone(),
+            sh: SH_BLOCK.to_string(),
+            zsh: ZSH_BLOCK.to_string(),
+        };
+        persist_cache(env.fs.as_ref(), &cache, Some(&cached)).unwrap();
+        let runner = FakeBrew::new();
+
+        let served = cached_or_capture_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+            &cache,
+        );
+
+        assert_eq!(served, Some(cached));
+        assert!(
+            runner.calls().is_empty(),
+            "a warm cache must not spawn brew: {:?}",
+            runner.calls()
+        );
+    }
+
+    /// A cold cache — first `init-sh` before any `up` — captures in
+    /// memory and emits correct content, but leaves the datastore
+    /// untouched: `init-sh` is passive (#121).
+    #[test]
+    fn cache_miss_captures_live_and_does_not_persist() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        let runner = FakeBrew::new();
+
+        let served = cached_or_capture_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+            &cache,
+        )
+        .expect("live capture must fill the miss");
+
+        assert_eq!(served.sh, SH_BLOCK);
+        assert_eq!(served.zsh, ZSH_BLOCK);
+        assert_eq!(runner.calls().len(), 2, "one capture, two dialects");
+        assert!(
+            !env.fs.exists(&cache),
+            "a passive command must never write the cache"
+        );
+    }
+
+    /// A cache captured from another prefix (Intel → arm, a relocated
+    /// install) is a miss, never served — and the mismatching file is
+    /// left for the next `up` to rewrite, not touched here.
+    #[test]
+    fn cache_for_another_prefix_is_invalidated_not_served() {
+        let env = TempEnvironment::builder().build();
+        let old_prefix = env.dotfiles_root.join("usr/local");
+        let new_prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &new_prefix); // brew moved; nothing at the old prefix
+        let cache = env.paths.homebrew_cache_path();
+        persist_cache(
+            env.fs.as_ref(),
+            &cache,
+            Some(&BrewBlocks {
+                prefix: old_prefix.clone(),
+                sh: "export STALE=1;\n".to_string(),
+                zsh: "export STALE=1;\n".to_string(),
+            }),
+        )
+        .unwrap();
+        let runner = FakeBrew::new();
+
+        let served = cached_or_capture_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&old_prefix, &new_prefix]),
+            &cache,
+        )
+        .expect("the moved brew must be captured live");
+
+        assert_eq!(served.prefix, new_prefix);
+        assert_eq!(served.sh, SH_BLOCK, "stale block must never be served");
+        assert_eq!(runner.calls().len(), 2);
+        // Passive path: the stale file stays until the next `up`.
+        assert_eq!(
+            load_cache(env.fs.as_ref(), &cache).unwrap().prefix,
+            old_prefix
+        );
+    }
+
+    /// A corrupt or old-format cache file is a miss (live capture),
+    /// never an error.
+    #[test]
+    fn corrupt_cache_is_a_miss_not_an_error() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        env.fs.mkdir_all(cache.parent().unwrap()).unwrap();
+        env.fs.write_file(&cache, b"not json {").unwrap();
+        let runner = FakeBrew::new();
+
+        let served = cached_or_capture_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+            &cache,
+        );
+
+        assert!(served.is_some());
+        assert_eq!(runner.calls().len(), 2);
+    }
+
+    /// `off` and a non-macOS host ignore even a warm cache: the gate
+    /// runs before the cache is consulted, exactly as it runs before a
+    /// live capture.
+    #[test]
+    fn off_and_non_macos_ignore_a_warm_cache() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("opt/homebrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        persist_cache(
+            env.fs.as_ref(),
+            &cache,
+            Some(&BrewBlocks {
+                prefix: prefix.clone(),
+                sh: SH_BLOCK.to_string(),
+                zsh: ZSH_BLOCK.to_string(),
+            }),
+        )
+        .unwrap();
+        let runner = FakeBrew::new();
+
+        assert!(cached_or_capture_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Off,
+            &host_with(&[&prefix]),
+            &cache,
+        )
+        .is_none());
+        let non_mac = BrewHost {
+            is_macos: false,
+            prefix_candidates: vec![prefix],
+        };
+        assert!(cached_or_capture_at(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &non_mac,
+            &cache,
+        )
+        .is_none());
+        assert!(runner.calls().is_empty());
+    }
+
+    /// A capture with nothing to emit clears the cache, keeping it in
+    /// lockstep with the script `up` just wrote: a host that lost its
+    /// brew (or turned the bootstrap off) can never serve a stale
+    /// block.
+    #[test]
+    fn persisting_an_empty_capture_clears_the_cache() {
+        let env = TempEnvironment::builder().build();
+        let cache = env.paths.homebrew_cache_path();
+        persist_cache(
+            env.fs.as_ref(),
+            &cache,
+            Some(&BrewBlocks {
+                prefix: PathBuf::from("/opt/homebrew"),
+                sh: SH_BLOCK.to_string(),
+                zsh: ZSH_BLOCK.to_string(),
+            }),
+        )
+        .unwrap();
+        assert!(env.fs.exists(&cache));
+
+        persist_cache(env.fs.as_ref(), &cache, None).unwrap();
+        assert!(!env.fs.exists(&cache));
+        // And clearing an already-absent cache is a no-op, not an error.
+        persist_cache(env.fs.as_ref(), &cache, None).unwrap();
     }
 
     #[test]

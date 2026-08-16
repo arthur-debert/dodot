@@ -188,11 +188,14 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         // The Homebrew bootstrap is a function of config and the host,
         // not of what any pack deployed, so `down` keeps emitting it:
         // tearing packs down should not take the user's `brew` off PATH.
-        // `[shell] homebrew = "off"` is the way to be rid of it.
-        let brew = shell::homebrew::capture_from_config(
+        // `[shell] homebrew = "off"` is the way to be rid of it. Like
+        // `up`, the capture is persisted to the datastore cache that
+        // `dodot init-sh` emits from.
+        let brew = shell::homebrew::capture_and_persist(
             ctx.fs.as_ref(),
             ctx.command_runner.as_ref(),
             &root_config,
+            ctx.paths.as_ref(),
         )?;
         shell::write_init_script(
             ctx.fs.as_ref(),

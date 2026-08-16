@@ -42,10 +42,11 @@
 //!
 //! Right after the evidence, and before anything a pack contributed,
 //! the script can carry Homebrew's environment as captured from
-//! `brew shellenv` at generation time. [`homebrew`] owns the capture,
-//! the `$ZSH_VERSION` guard, and the reasons for both; the generator
-//! only decides *where* it goes, which is: first, so dodot's own PATH
-//! additions are always the last word.
+//! `brew shellenv` by `dodot up`/`down` and cached in the datastore.
+//! [`homebrew`] owns the capture, the cache, the `$ZSH_VERSION` guard,
+//! and the reasons for all three; the generator only decides *where*
+//! the block goes, which is: first, so dodot's own PATH additions are
+//! always the last word.
 //!
 //! # Profiling wrapper (Phase 2 of profiling.lex)
 //!
@@ -107,9 +108,11 @@ fn append_empty_notice(script: &mut String) {
 /// early-return for an empty datastore, because "a shell sourced this"
 /// is worth knowing even when the script has nothing else to do.
 ///
-/// `homebrew` is the bootstrap block captured from `brew shellenv` by
-/// [`homebrew::capture_from_config`], or `None` when there is nothing
-/// to emit (not macOS, no brew, or `[shell] homebrew = "off"`). Like
+/// `homebrew` is the bootstrap block captured from `brew shellenv` —
+/// by [`homebrew::capture_and_persist`] in `up`/`down`, or served from
+/// the datastore cache by [`homebrew::cached_or_capture`] in passive
+/// generation paths — or `None` when there is nothing to emit (not
+/// macOS, no brew, or `[shell] homebrew = "off"`). Like
 /// the evidence it lands ahead of the empty-datastore early return: it
 /// is a function of config and the host, not of what any pack deployed,
 /// and a user whose rc file is empty still needs brew's environment.
