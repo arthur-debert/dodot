@@ -37,32 +37,16 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 
 3. Shell hookup
 
-    Deploying a pack and a shell loading it are two different things, and `status` reports both. After the per-pack rows it prints one line about *activation*: whether any shell has sourced dodot's init script.
+    Deploying a pack and a shell loading it are two different things, and `status` reports both. After the per-pack rows it ends with a two-line *activation footer*: whether dodot is sourced in new shell sessions, and when it last was, by which dodot. The healthy case:
 
-        shell hookup: ok
-
-    :: shell ::
-
-    That is the healthy case. The others:
-
-        ⚠ Deployed, but no shell has loaded dodot yet.
-        Run `dodot install --write` to wire it up, or add this to your shell rc file yourself: [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
+        ✓ Shell hookup: dodot is sourced in new shells.
+        Last loaded 4 minutes ago by dodot 5.6.0.
 
     :: shell ::
 
-        This shell started before your last `dodot up`.
-        Open a new shell to pick up the current deployment.
+    When something needs doing — no shell has loaded dodot yet, this shell predates your last `up`, your shells load a *different* dodot than the one you are running — line one names the state and a hint carries the fix. Every state and its exact message are documented once, in [./../shell-integration.lex] §5.
 
-    :: shell ::
-
-        This shell hasn't loaded dodot.
-        ~/.zshrc doesn't have the dodot hook. Run `dodot install --write` to wire it up, or add this line yourself: [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
-
-    :: shell ::
-
-    `status` reads evidence the init script leaves behind — a generation stamp in your environment, a heartbeat file, and, when you run it from a terminal, the fact that the shell in front of you exported no stamp — and never starts a shell to find out. That keeps it as passive as the rest of the command (the last message's diagnosis comes from reading your rc file, not running it). The consequence is that `status` can say "no shell has loaded dodot yet", "this shell is stale", or "this shell hasn't loaded dodot", but it can never report the *measured* verdict: only `dodot up` and `dodot install --write` start a shell, and only they can tell you a hookup is verified broken.
-
-    The five activation states and what each means are documented once, in [./../shell-integration.lex] §5.
+    `status` reads evidence the init script leaves behind — a version-stamped generation in your environment, a heartbeat file, and, when you run it from a terminal, the fact that the shell in front of you exported no stamp — and never starts a shell to find out. That keeps it as passive as the rest of the command. The consequence is that `status` can report every evidence-based state, including version skew, but it can never report the *measured* verdict: only `dodot up` and `dodot install --write` start a shell, and only they can tell you a hookup is verified broken. For the deepest cut — which binary `dodot` resolves to at the hook line — run `dodot probe shell-init` ([./probe.lex] §4).
 
     Before anything is deployed there is no init script to load, so `status` says nothing about the hookup at all.
 

@@ -108,7 +108,8 @@ Run it with `--write` and it splices its own marked block into that file, then s
         Notes
           created ~/.zshrc
 
-        ✓ Shell hookup verified: a new shell loads dodot.
+        ✓ Shell hookup: dodot is sourced in new shells.
+        Last loaded just now by dodot 5.6.0.
 
     :: shell ::
 
@@ -133,7 +134,7 @@ Run it with `--write` and it splices its own marked block into that file, then s
 
 6. Activation states
 
-    `dodot up` and `dodot status` report the same four states this command ends on. They are documented once, in [./../shell-integration.lex] §5.
+    `dodot up`, `dodot down`, and `dodot status` end on the same activation footer this command does. Every state and its exact message — including version skew — are documented once, in [./../shell-integration.lex] §5.
 
 7. Shells dodot will not guess for
 

@@ -3,6 +3,8 @@ Design Specification: Shell Hookup Ergonomics
     :: note ::
         *Status: proposed.* Epic RCS01. Successor to [./shipped/shell-hookup.lex] (INS01), which shipped the activation evidence this document extends. Read that first: the generation stamp, the heartbeat, the signal ladder, the probe, and `dodot install` are all defined there and assumed here.
 
+        Two shipped deviations, where the code is the authority. The diagnosis probe landed *inside* `dodot probe shell-init`, running by default — `--no-trace` opts out, a `<PACK[/FILE]>` argument suppresses it — not as the separate `dodot probe shell-hookup` command [#3.1] proposes (epic `#288`, decision 6). And the version-skew hint points at `$PATH` resolution generically ("check which one your PATH finds first") rather than naming both binary paths as [#2.3] promises; the probe is where both paths get named.
+
     INS01 taught dodot to ask whether any shell loads its init script. It answers that question with one bit — a generation number — and that bit turns out to be too narrow. A hookup can be wired, sourced on every shell start, and still broken, because the *binary* that generated the init script is not the binary the user runs. dodot cannot see that today, and the message it prints instead sends the user to the one fix that cannot work.
 
     This proposal widens the evidence to carry a version, replaces the single activation line with a two-line footer that says what happened and when, adds an on-demand probe that reports what `dodot` resolves to *at the hook line* rather than guessing, and moves the Homebrew bootstrap inside dodot so the shell rc no longer has to contain anything at all.
@@ -112,8 +114,8 @@ Design Specification: Shell Hookup Ergonomics
 
         Answering "what does `dodot` resolve to at the hook line" requires spawning the user's shell and running their whole rc under tracing. That is heavy, and `status` may not spawn anything at all. It therefore lands as `dodot probe shell-hookup`, on demand, in the existing `probe` family ([../user/commands/probe.lex]) where the slower, heavier-handed introspection already lives.
 
-        :: warning ::
-            `dodot probe shell-init` (profiling timings) and `dodot probe shell-hookup` (activation diagnosis) are one word apart and answer different questions. Either name the new command distinctly or accept the pairing knowingly; do not let it be decided by accident.
+        :: note ::
+            *Superseded by epic `#288`, decision 6.* No `dodot probe shell-hookup` command exists. The diagnosis shipped folded into `dodot probe shell-init`, which now traces the rc **by default**: startup timings and the hook-line verdict answer the same "what did my shell just do" question, so the one-word-apart naming hazard this section weighed was resolved by not minting a second name at all. `--no-trace` opts out; the passive views (a `<PACK[/FILE]>` filter, `--runs`, `--history`, `--errors-only`) never trace. See [../user/commands/probe.lex] §4.
 
     3.2. PATH at the Hook Line
 

@@ -89,7 +89,7 @@ Troubleshooting
         | Subcommand          | Answers                                                                |
         | `deployment-map`    | Every dodot-owned symlink, source -> target.                          |
         | `show-data-dir`     | Tree view of `$XDG_DATA_HOME/dodot/` (sentinels, staged init scripts). |
-        | `shell-init`        | Per-source timings + exit codes from your most recent shell startup.   |
+        | `shell-init`        | Startup timings + what `dodot` resolves to at the hook line.           |
         | `app` (macOS)       | App-support routing for a pack: folders, casks, bundles.               |
     :: table align=ll ::
 
@@ -112,14 +112,15 @@ Troubleshooting
 
         :: shell ::
 
-        The line below the pack rows tells you which of these you're looking at:
+        The footer below the pack rows tells you which of these you're looking at (every state and its exact message: [./shell-integration.lex] §5):
 
-        - `shell hookup: ok` — the hookup is fine, so the problem is elsewhere. Skip to the checks below.
-        - `Deployed, but no shell has loaded dodot yet.` — nothing in your shell startup loads dodot. Run `dodot install --write`; it wires the hook and then verifies it by starting a shell.
-        - `This shell started before your last dodot up.` — open a new shell.
-        - `This shell hasn't loaded dodot.` — the terminal you're typing in sourced nothing, even if some earlier shell did. The hint that follows says which case you're in: the hook is missing from your rc file (wire it with `dodot install --write`) or it's present and this is probably a shell opened before it landed (open a new one).
+        - `Shell hookup: dodot is sourced in new shells.` — the hookup is fine, so the problem is elsewhere. Skip to the checks below.
+        - `Shell hookup: no shell has loaded dodot yet.` — nothing in your shell startup loads dodot. Run `dodot install --write`; it wires the hook and then verifies it by starting a shell.
+        - `Shell hookup: this shell predates your last dodot up.` — open a new shell.
+        - `Shell hookup: this shell did not load dodot.` — the terminal you're typing in sourced nothing, even if some earlier shell did. The hint that follows says which case you're in: the hook is missing from your rc file (wire it with `dodot install --write`) or it's present and this is probably a shell opened before it landed (open a new one).
+        - `Shell hookup: your shells load a different dodot.` — the evidence line names both versions. Your shells resolve `dodot` to a different install than the one you just ran — typically a stale binary earlier on `$PATH`. `dodot probe shell-init` names the rc file, the hook line, and the exact binary your shell finds there, plus every candidate it passed over (dangling symlinks included).
 
-        For a measured answer rather than an inferred one — including the case where the hook is in your rc but something earlier in the file fails before reaching it — run `dodot install --write` (safe to re-run; an existing block is replaced, never duplicated) or a plain `dodot up`. Those are the two commands that start a shell to find out. The five states and every message are in [./shell-integration.lex] §5.
+        For a measured answer rather than an inferred one — including the case where the hook is in your rc but something earlier in the file fails before reaching it — run `dodot install --write` (safe to re-run; an existing block is replaced, never duplicated) or a plain `dodot up`. Those are the two commands that start a shell to check activation; `dodot probe shell-init` is the one that traces your rc to diagnose resolution ([./commands/probe.lex] §4).
 
         If the hookup is healthy and a specific pack still isn't landing:
 
