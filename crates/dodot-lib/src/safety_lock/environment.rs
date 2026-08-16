@@ -139,22 +139,23 @@ pub fn resolve_environment_root(
         format!("`{}`", encode_native_path(&candidate))
     };
 
-    if !candidate.is_absolute() {
-        return Err(unusable(format!(
-            "{named} is relative and the invocation directory `{}` is not \
-             absolute, so it cannot be anchored",
-            encode_native_path(&input.current_dir)
-        )));
-    }
-
     // The usability requirements themselves are shared with implicit
     // selection; only the phrasing is the variable's own, because a refused
     // user is reading about `DOTFILES_ROOT` rather than about a path Dodot
-    // picked. The last case is defensive: a canonical path from the filesystem
-    // is absolute and free of `..`, so it only fires for a probe that says
+    // picked. The first case can only be a relative value joined onto a
+    // relative invocation directory — an absolute value, and a relative one
+    // anchored to an absolute directory, are both absolute by construction —
+    // so the message names that directory rather than repeating the value.
+    // The last case is defensive: a canonical path from the filesystem is
+    // absolute and free of `..`, so it only fires for a probe that says
     // otherwise, and it stays an environment diagnostic so the message still
     // names the variable.
     let identity = canonical_root_identity(&candidate, probe).map_err(|failure| match failure {
+        UnusableRoot::Relative => unusable(format!(
+            "{named} is relative and the invocation directory `{}` is not \
+             absolute, so it cannot be anchored",
+            encode_native_path(&input.current_dir)
+        )),
         UnusableRoot::Missing => unusable(format!("{named} does not exist")),
         UnusableRoot::Unresolvable(err) => {
             unusable(format!("{named} could not be resolved: {err}"))

@@ -121,15 +121,12 @@ pub fn resolve_file_root(input: &FileRootInput, probe: &dyn PathProbe) -> Result
         reason,
     };
 
-    if !candidate.is_absolute() {
-        return Err(unusable(
+    let identity = canonical_root_identity(candidate, probe).map_err(|failure| match failure {
+        UnusableRoot::Relative => unusable(
             "it is relative, so anchoring it would depend on the process working \
              directory rather than the captured invocation directory"
                 .to_owned(),
-        ));
-    }
-
-    let identity = canonical_root_identity(candidate, probe).map_err(|failure| match failure {
+        ),
         UnusableRoot::Missing => unusable("it does not exist".to_owned()),
         UnusableRoot::Unresolvable(err) => unusable(format!("it could not be resolved: {err}")),
         UnusableRoot::NotADirectory => unusable("it is not a directory".to_owned()),
