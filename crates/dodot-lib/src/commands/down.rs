@@ -185,10 +185,20 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
 
     if !ctx.dry_run {
         info!("regenerating shell init script");
+        // The Homebrew bootstrap is a function of config and the host,
+        // not of what any pack deployed, so `down` keeps emitting it:
+        // tearing packs down should not take the user's `brew` off PATH.
+        // `[shell] homebrew = "off"` is the way to be rid of it.
+        let brew = shell::homebrew::capture_from_config(
+            ctx.fs.as_ref(),
+            ctx.command_runner.as_ref(),
+            &root_config,
+        )?;
         shell::write_init_script(
             ctx.fs.as_ref(),
             ctx.paths.as_ref(),
             root_config.profiling.enabled,
+            brew.as_ref(),
         )?;
         info!("writing deployment map");
         probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;

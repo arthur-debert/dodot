@@ -608,11 +608,26 @@ pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     // about to be sourced by the shell running the `eval`, so "now" is
     // exactly when this activation happens. A later `up` bumps the
     // generation past it and correctly ages this shell into stale.
+    // `eval "$(dodot init-sh)"` regenerates on every shell start, so
+    // this is the one hook shape where "generation time" *is* shell
+    // start: the capture below spawns `brew shellenv` twice — once for
+    // `sh`, once for `zsh` — on every new shell rather than once per
+    // `up`. Measured on an Apple-silicon mac at ~10-20 ms per call, so
+    // ~20-40 ms of brew per shell, on top of the ~3 ms the emitted
+    // block itself costs. That is the price of the hand-wired hook, not
+    // of the bootstrap: under the file-source hook only `up` and `down`
+    // spawn brew, and a shell pays the block alone.
+    let brew = dodot_lib::shell::homebrew::capture_from_config(
+        ctx.fs.as_ref(),
+        ctx.command_runner.as_ref(),
+        &root_config,
+    )?;
     let script = dodot_lib::shell::generate_init_script(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         root_config.profiling.enabled,
         dodot_lib::shell::activation::current_generation(),
+        brew.as_ref(),
     )?;
     print!("{script}");
     Ok(())
