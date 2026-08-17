@@ -18,6 +18,17 @@
 //! [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
 //! ```
 //!
+//! # Targeted verification
+//!
+//! Current init scripts open with the one-use challenge branch from
+//! `targeted-shell-init-verification.lex`: when dodot starts a fresh
+//! interactive shell only to verify that the hook is reached, the
+//! script reports its nonce, verifier PID, shell PID, generation, and
+//! dodot version, then exits before heartbeat writes, profiling, PATH
+//! setup, Homebrew, or pack contributions. Ordinary shells do not
+//! carry the challenge variables and continue into activation evidence
+//! unchanged.
+//!
 //! # Activation evidence (shell-hookup-ergonomics.lex §2.1)
 //!
 //! Every generated script — profiled or not, empty datastore or not —
@@ -118,6 +129,30 @@ pub fn script_has_contributions(script: &str) -> bool {
         .any(|line| line.trim() == EMPTY_SCRIPT_MARKER)
 }
 
+/// Whether a generated script advertises the process-bound targeted
+/// verification protocol.
+pub fn script_supports_targeted_probe(script: &str) -> bool {
+    script
+        .lines()
+        .any(|line| line.trim() == "# dodot shell-init-probe v1")
+}
+
+/// Generate the guarded challenge response fragment used by current
+/// init scripts.
+///
+/// [`generate_init_script`] embeds this fragment at the beginning of
+/// the full script. When a verifier starts a shell with a valid
+/// targeted challenge, the fragment prints the nonce-bound response and
+/// exits before activation evidence, Homebrew setup, profiling, or pack
+/// contributions run; ordinary shells continue into the generated init
+/// body. This helper returns the fragment by itself for callers that
+/// need to inspect or test the probe protocol.
+pub fn generate_init_probe_response(generation: u64) -> String {
+    let mut script = String::new();
+    emit_init_probe_response(&mut script, generation);
+    script
+}
+
 /// Append the "nothing to do" notice for an empty init script.
 fn append_empty_notice(script: &mut String) {
     writeln!(script, "{EMPTY_SCRIPT_MARKER}").unwrap();
@@ -167,6 +202,7 @@ pub fn generate_init_script(
     writeln!(script, "# Regenerated on every `dodot up` / `dodot down`.").unwrap();
     writeln!(script).unwrap();
 
+    emit_init_probe_response(&mut script, generation);
     emit_activation_evidence(&mut script, generation, &paths.hookup_heartbeat_path());
 
     if let Some(blocks) = homebrew {
@@ -322,6 +358,39 @@ pub fn write_init_script(
     fs.write_atomic_with_mode(&script_path, script_content.as_bytes(), 0o755)?;
 
     Ok(script_path)
+}
+
+/// Emit the process-bound shell-init verification branch.
+fn emit_init_probe_response(script: &mut String, generation: u64) {
+    let version = activation::running_version();
+    writeln!(script, "# dodot shell-init-probe v1").unwrap();
+    writeln!(
+        script,
+        "if [ -n \"${{{}-}}\" ] && [ \"${{{}-}}\" = \"$PPID\" ]; then",
+        probe::TARGET_PROBE_ENV,
+        probe::TARGET_PROBE_PARENT_ENV
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "    _dodot_probe_nonce=${}",
+        probe::TARGET_PROBE_ENV
+    )
+    .unwrap();
+    writeln!(script, "    unset {}", probe::TARGET_PROBE_ENV).unwrap();
+    writeln!(script, "    unset {}", probe::TARGET_PROBE_PARENT_ENV).unwrap();
+    writeln!(
+        script,
+        "    \\printf '\\n{}%s|%s|%s|{}|{}\\n' \"$_dodot_probe_nonce\" \"$PPID\" \"$$\"",
+        probe::TARGET_PROBE_MARKER,
+        generation,
+        version
+    )
+    .unwrap();
+    writeln!(script, "    unset _dodot_probe_nonce").unwrap();
+    writeln!(script, "    exit 0").unwrap();
+    writeln!(script, "fi").unwrap();
+    writeln!(script).unwrap();
 }
 
 // ── Activation evidence emitter ──────────────────────────────────────
@@ -1035,6 +1104,35 @@ mod tests {
         assert!(!script.contains("Homebrew"), "script:\n{script}");
         assert!(!script.contains("HOMEBREW"), "script:\n{script}");
         assert!(!script.contains("brew"), "script:\n{script}");
+    }
+
+    #[test]
+    fn targeted_probe_branch_precedes_activation_evidence() {
+        let env = TempEnvironment::builder().build();
+
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
+
+        let probe = script.find("# dodot shell-init-probe v1").unwrap();
+        let evidence = script.find("# ── dodot activation evidence ──").unwrap();
+        assert!(
+            probe < evidence,
+            "verification branch must answer before heartbeat/profile setup:\n{script}"
+        );
+        assert!(script_supports_targeted_probe(&script));
+    }
+
+    #[test]
+    fn eval_probe_response_contains_no_ordinary_init_body() {
+        let script = generate_init_probe_response(TEST_GEN);
+
+        assert!(script_supports_targeted_probe(&script));
+        assert!(script.contains(&format!("|{TEST_GEN}|{}", activation::running_version())));
+        assert!(!script.contains("DODOT_INIT_GEN"), "script:\n{script}");
+        assert!(!script.contains("heartbeat"), "script:\n{script}");
+        assert!(!script.contains("shell-init profile"), "script:\n{script}");
+        assert!(!script.contains("Homebrew"), "script:\n{script}");
     }
 
     // ── Phase 2: profiling wrapper ──────────────────────────────────

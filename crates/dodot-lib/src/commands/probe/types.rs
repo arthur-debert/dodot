@@ -244,11 +244,46 @@ pub struct ShellInitHistoryRow {
     pub entry_count: usize,
 }
 
-/// The live half of `probe shell-init`: what `dodot` resolves to at
-/// the rc hook line, measured by spawning the user's shell under
-/// tracing (`docs/proposals/shell-hookup-ergonomics.lex` §3). All
-/// strings are precomputed here so the template stays dumb and the
-/// JSON view carries the same words the terminal shows.
+/// Fresh time-to-hook verification for bare `probe shell-init`.
+///
+/// This is intentionally separate from the historical profile: the
+/// profile describes a previous complete shell startup, while this
+/// live answer says whether a new shell reaches the dodot hook now and
+/// how long reaching it took.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitVerificationView {
+    /// `"skipped"` (unsupported shell, no rc, no hook), `"unverified"`
+    /// (wanted to verify but could not spawn), or `"verdict"`.
+    pub status: String,
+    /// Theme style for the headline: `"deployed"`, `"warning"`,
+    /// `"error"`, or `"dim"`.
+    pub status_class: &'static str,
+    /// `"bash"` / `"zsh"`; empty when no supported shell was named.
+    pub shell: String,
+    /// Display path (`~/…`) of the rc examined; empty when none.
+    pub rc: String,
+    /// 1-indexed hook line within `rc`; 0 when unknown.
+    pub hook_line: usize,
+    /// Stable outcome tag for JSON consumers, including
+    /// `"script-unresolved"` when a file-source hook names its script
+    /// in shell syntax dodot intentionally refuses to guess.
+    pub outcome: String,
+    /// Numeric elapsed wall-clock microseconds for the live check.
+    pub elapsed_us: u64,
+    /// Human-readable elapsed duration for terminal output.
+    pub elapsed_label: String,
+    /// One-line statement of the outcome.
+    pub headline: String,
+    /// Supporting lines such as generation/version comparisons.
+    pub detail_lines: Vec<String>,
+}
+
+/// The explicit diagnostic half of `probe shell-init --trace-hook`:
+/// what `dodot` resolves to at the rc hook line, measured by spawning
+/// the user's shell under tracing (`docs/proposals/shell-hookup-
+/// ergonomics.lex` §3). All strings are precomputed here so the
+/// template stays dumb and the JSON view carries the same words the
+/// terminal shows.
 #[derive(Debug, Clone, Serialize)]
 pub struct ShellInitTraceView {
     /// `"skipped"` (nothing to trace — unsupported shell, no rc, no
@@ -315,10 +350,13 @@ pub struct ShellInitView {
     /// `YYYY-MM-DD HH:MM` of the most recent `dodot up`; empty when
     /// `up` has never run on this machine.
     pub last_up_when: String,
-    /// The live hook-line resolution — the report's second half.
-    /// `None` when suppressed (`--no-trace`; the filter/runs/history
-    /// views never carry it).
-    pub trace: Option<ShellInitTraceView>,
+    /// Fresh time-to-hook verification — the report's live half.
+    /// `None` when suppressed (`--no-verify` or deprecated
+    /// `--no-trace`; the filter/runs/history views never carry it).
+    pub verification: Option<Box<ShellInitVerificationView>>,
+    /// Explicit hook-line resolution. Only `--trace-hook` populates
+    /// this; the bare command uses targeted verification instead.
+    pub trace: Option<Box<ShellInitTraceView>>,
 }
 
 /// Display row for one entry in a shell-init group.

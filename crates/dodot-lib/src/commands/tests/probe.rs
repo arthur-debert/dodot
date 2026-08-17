@@ -1304,10 +1304,41 @@ fn probe_shell_init_without_trace_has_null_trace_field() {
 }
 
 #[test]
+fn probe_shell_init_declines_unresolved_file_source_hooks() {
+    let env = TempEnvironment::builder().build();
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            b". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\"\n",
+        )
+        .unwrap();
+    let mut ctx = make_ctx(&env);
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/bash".into()),
+        zdotdir: None,
+    };
+
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["verification"]["outcome"], "script-unresolved");
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("could not tell which file the hook"),
+        "expected unresolved-hook warning; got:\n{text}"
+    );
+    assert!(
+        !text.contains("the hookup is sound"),
+        "an unresolved hook must not be certified; got:\n{text}"
+    );
+}
+
+#[test]
 fn probe_shell_init_trace_reports_an_unsupported_shell_plainly() {
     let env = TempEnvironment::builder().build();
     let ctx = make_tracing_ctx(&env, "/usr/bin/fish");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "skipped");
@@ -1323,7 +1354,7 @@ fn probe_shell_init_trace_reports_a_missing_rc_plainly() {
     let env = TempEnvironment::builder().build();
     // A fresh home has no .bashrc: nothing to trace, no spawn.
     let ctx = make_tracing_ctx(&env, "/bin/bash");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "skipped");
@@ -1339,7 +1370,7 @@ fn probe_shell_init_trace_reports_an_absent_hook_plainly() {
         .write_file(&env.home.join(".bashrc"), b"alias ll='ls -l'\n")
         .unwrap();
     let ctx = make_tracing_ctx(&env, "/bin/bash");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "skipped");
@@ -1362,7 +1393,7 @@ fn probe_shell_init_trace_degrades_when_the_policy_forbids_spawning() {
         shell: Some("/bin/bash".into()),
         zdotdir: None,
     };
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "untraced");
@@ -1417,7 +1448,7 @@ fn probe_shell_init_trace_end_to_end_names_the_stale_binary_and_the_skips() {
         .unwrap();
 
     let ctx = make_tracing_ctx(&env, "/bin/bash");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
@@ -1457,7 +1488,7 @@ fn probe_shell_init_trace_reports_a_hook_the_shell_never_reaches() {
         .unwrap();
 
     let ctx = make_tracing_ctx(&env, "/bin/bash");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "verdict");

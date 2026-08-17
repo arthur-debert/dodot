@@ -239,7 +239,7 @@ echo tool output'
     printf 'export PATH=%s\neval "$(dodot init-sh)"\n' "$HOME/stale-bin" \
         > "$HOME/.bashrc"
 
-    run dodot probe shell-init
+    run dodot probe shell-init --trace-hook
     [ "$status" -eq 0 ]
     assert_output_contains "Hook resolution"
     # The right line…
@@ -286,7 +286,7 @@ echo tool output'
     printf '[ -f "$HOME/old/dodot-init.sh" ] && . "$HOME/old/dodot-init.sh"\n' \
         > "$HOME/.bashrc"
 
-    run dodot probe shell-init
+    run dodot probe shell-init --trace-hook
     [ "$status" -eq 0 ]
     assert_output_contains ".bashrc:1"
     assert_output_contains "does not exist"
@@ -307,7 +307,7 @@ echo tool output'
     printf '[ -f "$HOME/old/dodot-init.sh" ] && . "$HOME/old/dodot-init.sh"\n' \
         > "$HOME/.bashrc"
 
-    run dodot probe shell-init
+    run dodot probe shell-init --trace-hook
     [ "$status" -eq 0 ]
     assert_output_contains "written by a different dodot"
     assert_output_contains "5.0.0"

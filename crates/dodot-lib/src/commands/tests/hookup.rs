@@ -241,13 +241,13 @@ fn a_first_up_ends_on_a_measured_verdict_when_the_shell_activates() {
     assert_eq!(notice.state, "healthy");
     assert_eq!(notice.severity, "ok");
     assert_eq!(notice.message, crate::shell::activation::HEALTHY_MESSAGE);
-    // Line two is re-read after the spawn: the shell the probe just
-    // started is the one that wrote the heartbeat, so a fresh install
-    // reports the activation it measured, not "never loaded".
+    // Targeted verification does not write the heartbeat; the footer
+    // still reports the measured event without pretending it was
+    // ordinary activation evidence.
     assert_eq!(
         notice.evidence,
         format!(
-            "Last loaded just now by dodot {}.",
+            "Verified just now by dodot {}.",
             activation::running_version()
         )
     );
