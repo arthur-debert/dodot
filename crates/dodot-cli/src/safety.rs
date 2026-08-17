@@ -261,9 +261,13 @@ impl ProcessFacts {
     /// or empty answer is `None` — "not inside a repository" — which is a
     /// selection input, not an error: the current directory is the next
     /// candidate.
+    ///
+    /// `HOME` is resolved exactly once; the data directory is derived from
+    /// that single reading, so the captured facts cannot disagree about which
+    /// home they came from.
     pub fn capture() -> Result<Self, anyhow::Error> {
         let home_dir = XdgPather::home_dir_from_env();
-        let data_dir = XdgPather::data_dir_from_env();
+        let data_dir = XdgPather::data_dir_for_home(&home_dir);
         let current_dir = std::env::current_dir()?;
 
         let mut selection = RootSelectionInput::new(current_dir, home_dir);

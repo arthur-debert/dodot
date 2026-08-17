@@ -408,10 +408,15 @@ impl XdgPather {
         resolve_home()
     }
 
-    /// Resolve dodot's root-independent data directory from the environment.
-    pub fn data_dir_from_env() -> PathBuf {
-        let home = resolve_home();
-        resolve_data_dir(&home)
+    /// Resolve dodot's root-independent data directory for an already
+    /// resolved home directory.
+    ///
+    /// Honors `XDG_DATA_HOME`, falling back to `<home>/.local/share`. Taking
+    /// the home as a parameter (rather than re-resolving it) lets a caller
+    /// that captures several environment-derived facts do so from one `HOME`
+    /// reading, keeping the captured set internally consistent.
+    pub fn data_dir_for_home(home: &Path) -> PathBuf {
+        resolve_data_dir(home)
     }
 
     /// Resolve dodot's root-independent log directory from the environment.
