@@ -208,6 +208,12 @@ pub fn build_inventory(
     let registry = create_registry(fs, &runner);
     let scanner = Scanner::new(fs);
 
+    // Computed once, before any pack: whether the root's own gate
+    // configuration is broken on its own terms. Read only to attribute a
+    // failure the merged pass raises, never to raise one — see
+    // `gate_configuration_owner`.
+    let root_gates_broken = root_gate_configuration_is_broken(&root_config);
+
     let mut counts: BTreeMap<InventoryCategory, usize> = BTreeMap::new();
     let mut entries: Vec<InventoryEntry> = Vec::new();
 
@@ -222,8 +228,13 @@ pub fn build_inventory(
             continue;
         }
 
-        let gate_config_file =
-            gate_configuration_owner(root_path, pack, &pack_config, &root_config);
+        let gate_config_file = gate_configuration_owner(
+            root_path,
+            pack,
+            &pack_config,
+            &root_config,
+            root_gates_broken,
+        );
 
         let mut gates = GateTable::with_builtins();
         if !pack_config.gates.is_empty() {
@@ -334,31 +345,72 @@ fn unusable_routing(
     }
 }
 
+/// Whether the root's `[gates]` and `[mappings.gates]` are broken on their own
+/// terms, ignoring anything a pack adds.
+///
+/// Nothing else validates them: `[gates]` and `[mappings.gates]` are checked
+/// only when the scanner interprets a pack's *merged* configuration, which is
+/// why a failure arrives with no idea which layer wrote it. Replaying the
+/// checks against the root layer alone recovers exactly that.
+///
+/// This is an attribution signal, never an acceptance one. `[mappings.gates]`
+/// and `[gates]` are separate tables, so a root mapping may name a label only a
+/// pack defines: this reads `true` while the merged configuration is perfectly
+/// valid. The answer is therefore consulted only once the merged pass has
+/// already failed, and never used to reject a root that works.
+fn root_gate_configuration_is_broken(root_config: &crate::config::DodotConfig) -> bool {
+    let mut table = GateTable::with_builtins();
+    if table.merge_user(&root_config.gates).is_err() {
+        return true;
+    }
+
+    let Ok(compiled) = crate::gates::compile_mapping_gates(&root_config.mappings.gates, "<root>")
+    else {
+        return true;
+    };
+
+    compiled
+        .iter()
+        .any(|(_, label)| table.lookup(label).is_none())
+}
+
 /// The `.dodot.toml` to blame for gate configuration that fails during a walk.
 ///
-/// A pack's configuration is the root's with the pack's merged over it, so a
-/// gate setting the scanner rejects may have been written in either file, and
-/// the module cannot see per-key provenance through the merge. What it can see
-/// is whether the pack contributed to gate configuration *at all*: if the
-/// pack's `[gates]` and `[mappings.gates]` are the ones it inherited, every
-/// value the scan used came from the root, and the root's file is the answer —
-/// not by preference but by elimination. Blaming the pack there would name a
-/// `.dodot.toml` the user never wrote, and for a pack that carries no
-/// configuration, one that is not on disk to open (story 14: the file named
-/// has to be the file the user can act on).
+/// A pack's configuration is the root's with the pack's merged over it, and the
+/// merge keeps no per-key provenance, so a rejected gate setting does not say
+/// which file wrote it. Two things narrow it down, in order:
 ///
-/// When the pack did contribute, its file is named: it is the nearest layer
-/// that demonstrably participated, and it exists.
+/// 1. **The root's layer is independently broken** (`root_gates_broken`) — an
+///    invalid `[gates]` entry, an uncompilable glob, a `[mappings.gates]` entry
+///    naming a label the root never defines. Then the root's file is the
+///    answer even when the pack also contributed, which is the case a
+///    contributed-or-not test alone gets wrong: an unrelated valid pack entry
+///    must not move the blame off a broken root.
+/// 2. **The pack contributed no gate configuration** — its `[gates]` and
+///    `[mappings.gates]` are the ones it inherited, so every value the scan
+///    used came from the root. Naming the pack would name a `.dodot.toml` the
+///    user never wrote, and for a pack that carries no configuration, one that
+///    is not on disk to open (story 14: the file named has to be the file the
+///    user can act on).
+///
+/// Otherwise the pack's file is named: the nearest layer that demonstrably
+/// participated, and one that exists.
+///
+/// One case stays genuinely ambiguous and is not resolved here: a gate-routing
+/// conflict pits a `[mappings.gates]` entry against a filename gate token, and
+/// either the entry or the file can be changed to settle it. Both remedies are
+/// spelled out in the error's own message, which is where that choice belongs.
 fn gate_configuration_owner(
     root_path: &Path,
     pack: &crate::packs::Pack,
     pack_config: &crate::config::DodotConfig,
     root_config: &crate::config::DodotConfig,
+    root_gates_broken: bool,
 ) -> PathBuf {
     let inherited = pack_config.gates == root_config.gates
         && pack_config.mappings.gates == root_config.mappings.gates;
 
-    if inherited {
+    if root_gates_broken || inherited {
         root_path.join(DOTFILES_CONFIG_FILE)
     } else {
         pack.path.join(DOTFILES_CONFIG_FILE)
@@ -890,6 +942,89 @@ mod tests {
                 "unexpected error for root config {root_config:?}: {error}"
             );
         }
+    }
+
+    /// Both layers contributing is where "did the pack write any gate
+    /// configuration?" stops being enough: a valid pack entry that has nothing
+    /// to do with the failure would otherwise pull the blame onto the pack,
+    /// where changing or deleting that entry cannot fix anything. A root whose
+    /// own layer does not stand up is named even when the pack also wrote gate
+    /// configuration.
+    #[test]
+    fn a_broken_root_is_named_even_when_the_pack_also_configures_gates() {
+        for (root_config, pack_config) in [
+            // Invalid `[gates]` entry in the root, unrelated valid one in the
+            // pack — codex's counterexample: deleting `laptop` fixes nothing.
+            (
+                "[gates]\nbroken = { nonsense = \"x\" }\n",
+                "[gates]\nlaptop = { os = \"darwin\" }\n",
+            ),
+            // Invalid root glob, unrelated valid pack mapping.
+            (
+                "[mappings.gates]\n\"[unclosed\" = \"darwin\"\n",
+                "[mappings.gates]\n\"vimrc\" = \"darwin\"\n",
+            ),
+            // Root mapping naming a label nothing defines, beside a pack that
+            // defines a different one.
+            (
+                "[mappings.gates]\n\"aliases.sh\" = \"no-such-label\"\n",
+                "[gates]\nlaptop = { os = \"darwin\" }\n",
+            ),
+        ] {
+            let env = TempEnvironment::builder()
+                .pack("vim")
+                .config(pack_config)
+                .file("aliases.sh", "")
+                .file("vimrc", "")
+                .done()
+                .build();
+            std::fs::write(env.dotfiles_root.join(".dodot.toml"), root_config).unwrap();
+
+            let error =
+                build_inventory(&resolved(&env), env.fs.as_ref(), &host()).expect_err("accepted");
+
+            assert!(
+                matches!(
+                    &error,
+                    SafetyLockError::DotfilesConfigUnusable { config_file, reason }
+                        if config_file == &canonical_root(&env).join(DOTFILES_CONFIG_FILE)
+                            && !reason.is_empty()
+                ),
+                "unexpected error for root {root_config:?} + pack {pack_config:?}: {error}"
+            );
+        }
+    }
+
+    /// The attribution replay is read only to place blame, never to assign it.
+    ///
+    /// `[mappings.gates]` and `[gates]` are separate tables, so the root can
+    /// legitimately map a label that only a pack defines — valid merged, and
+    /// unresolvable read on its own. The inventory must still be built. (The
+    /// mirror case does not exist: gate labels deep-merge key by key, so a
+    /// pack adding `os` to a root label that already carries a bad dimension
+    /// inherits the bad dimension too. A pack cannot repair a broken root
+    /// `[gates]` entry, only a dangling root reference to one.)
+    #[test]
+    fn a_root_layer_a_pack_completes_is_not_an_error() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .config("[gates]\nlaptop = { os = \"darwin\" }\n")
+            .file("aliases.sh", "")
+            .done()
+            .build();
+        std::fs::write(
+            env.dotfiles_root.join(".dodot.toml"),
+            "[mappings.gates]\n\"aliases.sh\" = \"laptop\"\n",
+        )
+        .unwrap();
+
+        let inventory = build_inventory(&resolved(&env), env.fs.as_ref(), &host())
+            .expect("a root mapping a pack-defined label was refused");
+
+        assert_eq!(
+            sample_of(&inventory),
+            [(InventoryCategory::Shell, "vim/aliases.sh".into())]
+        );
     }
 
     /// A root that cannot be walked fails the inventory rather than reporting
