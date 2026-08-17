@@ -52,11 +52,21 @@ always live — the deployed file [item]is[/item] the source file, through a sym
     [dim]1.[/dim] [item]$DOTFILES_ROOT[/item] env var
     [dim]2.[/dim] enclosing git repo ([item]git rev-parse --show-toplevel[/item])
     [dim]3.[/dim] current working directory
-  [desc]Running commands from inside your dotfiles repo just works.[/desc]
+  [desc]A valid [item]DOTFILES_ROOT[/item] is an explicit selection, so it never prompts.
+  For an implicitly discovered root, Safety Lock asks for approval before the
+  first root-sensitive mutation. The prompt requires a terminal on stdin and
+  stderr; a non-interactive invocation refuses instead. Read-only commands and
+  documented previews bypass the prompt without recording approval.
+
+  For automation, set [item]DOTFILES_ROOT[/item] to the root you mean. Use
+  [item]dodot roots list[/item] / [item]dodot roots forget <path>[/item] to inspect or
+  revoke approvals. Factory [item]dodot reset[/item] clears them with the rest of
+  dodot's state.[/desc]
 
 [header]LEARN MORE[/header]
   [item]dodot tutorial[/item]                 [desc]Interactive 10-minute walkthrough[/desc]
   [item]dodot help <command>[/item]           [desc]Detailed help for any command[/desc]
+  [item]dodot roots --help[/item]             [desc]Safety Lock approval and recovery[/desc]
   [item]docs/user/getting-started.lex[/item]  [desc]Up and running in 5 minutes[/desc]
   [item]docs/user/commands.lex[/item]         [desc]Command-by-command reference[/desc]
   [item]docs/user/configuration.lex[/item]    [desc]The .dodot.toml schema[/desc]

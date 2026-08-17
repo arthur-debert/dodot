@@ -35,6 +35,13 @@ The pack name is inferred from the source's deployed location. Pass
   dodot adopt ~/.config/lazygit/ --into tools   [dim]# override → uses _xdg/lazygit/ in pack[/dim]
   dodot adopt ~/.gitconfig --into git --dry-run [dim]# preview the move + symlink[/dim][/example]
 
+[header]SAFETY LOCK[/header]
+  [desc]Before [item]adopt[/item] can move anything for the first time on an implicitly
+  discovered, unapproved root, dodot asks you to approve the canonical path. A
+  non-interactive invocation refuses. For automation, set a valid
+  [item]DOTFILES_ROOT[/item] explicitly. [item]adopt --dry-run[/item] bypasses the gate and
+  records no approval. Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot init[/item]    [desc]Bootstrap an explicit pack (required before [item]--into <pack>[/item] for new packs)[/desc]
   [item]dodot status[/item]  [desc]Confirm the symlink chain after adopting[/desc]

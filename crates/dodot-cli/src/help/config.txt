@@ -23,7 +23,8 @@ fully-commented starter file, or get / set / unset individual keys.[/desc]
   [item]schema[/item]  [desc]Emit a JSON Schema document describing the config struct[/desc]
 
 [header]OPTIONS[/header]
-  [item]--scope <SCOPE>[/item]   [desc]Target a named persist scope (e.g. [item]local[/item], [item]global[/item])[/desc]
+  [item]--scope <SCOPE>[/item]   [desc]Target the persist scope; [item]local[/item] is the only supported
+                    value and means the resolved root's [item].dodot.toml[/item][/desc]
 
 [header]EXAMPLES[/header]
   [example]dodot config                       [dim]# show resolved configuration[/dim]
@@ -37,6 +38,15 @@ fully-commented starter file, or get / set / unset individual keys.[/desc]
   [desc]Merge rules for the three layers:
     [dim]•[/dim] Scalars and arrays — override (later layer replaces earlier)
     [dim]•[/dim] Maps — deep-merge (nested keys combine; scalars within still override)[/desc]
+
+[header]SAFETY LOCK[/header]
+  [desc][item]config set[/item] and [item]config unset[/item] persist inside the selected root, so
+  their first use on an implicitly discovered, unapproved root asks for
+  approval before writing. A non-interactive invocation refuses. For
+  automation, set a valid [item]DOTFILES_ROOT[/item] explicitly. [item]list[/item], [item]get[/item],
+  [item]gen[/item], and [item]schema[/item] are read-only or write only to an explicit output;
+  they bypass Safety Lock and record no approval. Inspect or revoke approvals
+  with [item]dodot roots[/item].[/desc]
 
 [header]SEE ALSO[/header]
   [item]docs/user/configuration.lex[/item]   [desc]Reference for every [item].dodot.toml[/item] key[/desc]

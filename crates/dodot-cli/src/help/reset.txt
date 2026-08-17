@@ -32,6 +32,13 @@ from an older dodot — and you just want working shells back.[/desc]
   files an [item]install.sh[/item] created) are not undone — but their run-once records
   are, so the next [item]up[/item] runs install scripts and Brewfiles again.[/desc]
 
+[header]SAFETY LOCK APPROVALS[/header]
+  [desc][item]reset[/item] also removes [item]safety-lock.toml[/item], including every approved
+  root and even an unreadable or invalid approvals file. The next
+  root-sensitive mutation on each implicitly discovered root asks again.
+  [item]dodot roots forget <path>[/item] is the narrower recovery when you only want to
+  revoke one approval.[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot down[/item]     [desc]Targeted removal for specific packs[/desc]
   [item]dodot up[/item]       [desc]Redeploy after a reset[/desc]

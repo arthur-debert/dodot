@@ -326,6 +326,101 @@ mod tests {
         }
     }
 
+    /// Safety Lock sits before dispatch, so a command's help is the last
+    /// read-only surface available to someone whose implicit root is not yet
+    /// approved. Keep every mixed or mutating command family explicit about
+    /// the gate instead of relying on the separate `roots` page being found.
+    #[test]
+    fn root_sensitive_command_help_names_safety_lock() {
+        for path in [
+            "up",
+            "down",
+            "init",
+            "fill",
+            "adopt",
+            "addignore",
+            "config",
+            "refresh",
+            "transform",
+            "git-install-filters",
+            "template",
+            "tutorial",
+        ] {
+            let body = lookup(path);
+            assert!(
+                body.contains("SAFETY LOCK") && body.contains("DOTFILES_ROOT"),
+                "help/{path}.txt must explain Safety Lock and explicit-root automation"
+            );
+            assert!(
+                body.contains("non-interactive"),
+                "help/{path}.txt must explain non-interactive refusal"
+            );
+            assert!(
+                body.contains("dodot roots"),
+                "help/{path}.txt must point to approval recovery"
+            );
+        }
+    }
+
+    #[test]
+    fn top_level_help_summarizes_safety_lock_contract() {
+        let body = lookup("");
+        for required in [
+            "Safety Lock",
+            "DOTFILES_ROOT",
+            "first root-sensitive mutation",
+            "non-interactive invocation refuses",
+            "Read-only commands",
+            "documented previews",
+            "dodot roots list",
+            "dodot roots forget",
+            "dodot reset",
+        ] {
+            assert!(
+                body.contains(required),
+                "top-level help is missing Safety Lock contract text {required:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn mixed_command_help_names_its_read_only_bypass() {
+        for (path, bypass) in [
+            ("up", "up --dry-run"),
+            ("down", "down --dry-run"),
+            ("adopt", "adopt --dry-run"),
+            ("config", "list"),
+            ("refresh", "refresh --list-paths"),
+            ("transform", "check --dry-run"),
+            ("template", "template clean"),
+            ("tutorial", "dry-run preview"),
+        ] {
+            assert!(
+                lookup(path).contains(bypass),
+                "help/{path}.txt must name its Safety Lock bypass {bypass:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn audited_help_corrections_stay_pinned() {
+        let config = lookup("config");
+        assert!(config.contains("local[/item] is the only supported"));
+        assert!(
+            !config.contains("[item]global[/item]"),
+            "config help must not advertise clapfig's nonexistent global persist scope"
+        );
+
+        let tutorial = lookup("tutorial");
+        assert!(tutorial.contains("save progress"));
+        assert!(tutorial.contains("install --write"));
+        assert!(tutorial.contains("first root-sensitive mutation"));
+
+        let reset = lookup("reset");
+        assert!(reset.contains("safety-lock.toml"));
+        assert!(reset.contains("asks again"));
+    }
+
     /// Every subcommand clap knows about must have its own help text —
     /// `lookup` falling back to the top-level menu for a real command
     /// means `dodot <cmd> --help` silently shows the wrong screen

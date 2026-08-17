@@ -19,6 +19,13 @@ what dodot would do with the pack as-is.[/desc]
   dodot fill nvim                [dim]# optional: add starter handler files[/dim]
   dodot status nvim              [dim]# see what dodot would do with the new pack[/dim][/example]
 
+[header]SAFETY LOCK[/header]
+  [desc][item]init[/item] writes inside the selected root, so its first use on an implicitly
+  discovered, unapproved root asks for approval before creating the pack. A
+  non-interactive invocation refuses. For automation, set a valid
+  [item]DOTFILES_ROOT[/item] explicitly. Read-only [item]list[/item] / [item]status[/item] remain
+  available without approval. Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot fill[/item]    [desc]Add starter handler files to an [item]existing[/item] pack[/desc]
   [item]dodot adopt[/item]   [desc]Move a file from your home dir into a pack[/desc]

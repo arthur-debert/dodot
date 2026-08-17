@@ -18,6 +18,13 @@ attach shell aliases or a Brewfile to it.[/desc]
 [header]EXAMPLES[/header]
   [example]dodot fill git                 [dim]# add missing handler placeholders to the git pack[/dim][/example]
 
+[header]SAFETY LOCK[/header]
+  [desc][item]fill[/item] writes inside the selected root, so its first use on an implicitly
+  discovered, unapproved root asks for approval before creating placeholders.
+  A non-interactive invocation refuses. For automation, set a valid
+  [item]DOTFILES_ROOT[/item] explicitly. Read-only [item]list[/item] / [item]status[/item] remain
+  available without approval. Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot init[/item]    [desc]Create a [item]new[/item] pack ([item].dodot.toml[/item] only; [item]fill[/item] adds the rest)[/desc]
   [item]dodot status[/item]  [desc]Confirm the pack picks up the new files[/desc]
