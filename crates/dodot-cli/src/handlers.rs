@@ -547,9 +547,8 @@ pub fn transform_install_hook_handler(
 ///
 /// Five views, picked by argument shape:
 /// - `<pack>[/<file>]` positional: drill-down across recent runs with
-///   captured stderr (wins over flags — the user is asking a specific
-///   question about one source's timings, so it stays cheap and
-///   passive)
+///   captured stderr (kept cheap and passive; conflicts with live
+///   tracing)
 /// - `--errors-only`: cross-history list of failing targets
 /// - `--runs N`: per-target percentile aggregate over the last N runs
 /// - `--history`: one-row-per-run trend, newest first

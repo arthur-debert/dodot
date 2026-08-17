@@ -994,12 +994,13 @@ fn build_clap_command() -> ClapCommand {
                         .arg(
                             Arg::new("filter")
                                 .help(
-                                    "Drill into one pack or file (e.g. `gpg` or `gpg/env.sh`) — shows per-run exit codes and captured stderr across recent runs; suppresses the trace",
+                                    "Drill into one pack or file (e.g. `gpg` or `gpg/env.sh`) — shows per-run exit codes and captured stderr across recent runs; no shell is spawned",
                                 )
                                 .value_name("PACK[/FILE]")
                                 .num_args(0..=1)
                                 .conflicts_with("runs")
-                                .conflicts_with("history"),
+                                .conflicts_with("history")
+                                .conflicts_with("trace-hook"),
                         )
                         .arg(
                             Arg::new("no-verify")
@@ -1025,7 +1026,11 @@ fn build_clap_command() -> ClapCommand {
                                 )
                                 .action(ArgAction::SetTrue)
                                 .conflicts_with("no-verify")
-                                .conflicts_with("no-trace"),
+                                .conflicts_with("no-trace")
+                                .conflicts_with("filter")
+                                .conflicts_with("runs")
+                                .conflicts_with("history")
+                                .conflicts_with("errors-only"),
                         )
                         .arg(
                             Arg::new("runs")
@@ -1038,13 +1043,15 @@ fn build_clap_command() -> ClapCommand {
                                 // DEFAULT_RUNS, `--runs 5` overrides.
                                 .num_args(0..=1)
                                 .default_missing_value("10")
-                                .conflicts_with("history"),
+                                .conflicts_with("history")
+                                .conflicts_with("trace-hook"),
                         )
                         .arg(
                             Arg::new("history")
                                 .long("history")
                                 .help("Show one summary row per recent run, newest first")
-                                .action(ArgAction::SetTrue),
+                                .action(ArgAction::SetTrue)
+                                .conflicts_with("trace-hook"),
                         )
                         .arg(
                             Arg::new("errors-only")
@@ -1055,7 +1062,8 @@ fn build_clap_command() -> ClapCommand {
                                 .action(ArgAction::SetTrue)
                                 .conflicts_with("runs")
                                 .conflicts_with("history")
-                                .conflicts_with("filter"),
+                                .conflicts_with("filter")
+                                .conflicts_with("trace-hook"),
                         ),
                 ),
         )

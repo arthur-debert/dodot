@@ -32,10 +32,11 @@ use crate::Result;
 /// Render the most recent shell-init profile, with fresh targeted
 /// verification when `verify` is true.
 ///
-/// When no profile has been written yet (fresh install, or profiling
-/// disabled, or the user hasn't started a shell since the last `up`),
-/// returns a "no data" view with `has_profile = false`. The template
-/// uses that flag to print a hint instead of an empty table.
+/// When no complete profile has been written yet (fresh install,
+/// profiling disabled, no shell started since the last `up`, or only
+/// interrupted profiles exist), returns a "no data" view with
+/// `has_profile = false`. The template distinguishes profiling
+/// disabled, ordinary empty state, and retained incomplete profiles.
 ///
 /// `verify` is the caller's suppression switch (`--no-verify`, the
 /// deprecated `--no-trace`, or a
@@ -59,6 +60,10 @@ fn shell_init_with_mode(ctx: &ExecutionContext, verify: bool, trace: bool) -> Re
     let profiling_enabled = root_config.profiling.enabled;
 
     let profile_opt = read_latest_profile(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let latest_profile_incomplete = profile_opt.is_none()
+        && read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), 1)?
+            .first()
+            .is_some_and(|p| !p.complete);
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
     let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
     let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
@@ -73,6 +78,7 @@ fn shell_init_with_mode(ctx: &ExecutionContext, verify: bool, trace: bool) -> Re
                 shell: profile.shell.clone(),
                 profiling_enabled,
                 has_profile: true,
+                latest_profile_incomplete: false,
                 groups: shell_init_groups(&grouped),
                 user_total_us: grouped.user_total_us,
                 framing_us: grouped.framing_us,
@@ -90,6 +96,7 @@ fn shell_init_with_mode(ctx: &ExecutionContext, verify: bool, trace: bool) -> Re
             shell: String::new(),
             profiling_enabled,
             has_profile: false,
+            latest_profile_incomplete,
             groups: Vec::new(),
             user_total_us: 0,
             framing_us: 0,
@@ -164,6 +171,9 @@ fn verification_view(ctx: &ExecutionContext) -> ShellInitVerificationView {
         );
     };
     let hook_line = hook.line;
+    if let HookForm::FileSource(SourcedScript::Unresolved { raw }) = &hook.form {
+        return unresolved_hook_verification(raw.clone(), shell_name, rc_display, hook_line);
+    }
     let known_capable = match &hook.form {
         HookForm::FileSource(SourcedScript::Path(script)) => fs
             .read_to_string(script)
@@ -214,6 +224,29 @@ fn skipped_verification(reason: String, shell: String, rc: String) -> ShellInitV
         elapsed_label: humanize_us(0),
         headline: reason,
         detail_lines: Vec::new(),
+    }
+}
+
+fn unresolved_hook_verification(
+    raw: String,
+    shell: String,
+    rc: String,
+    hook_line: usize,
+) -> ShellInitVerificationView {
+    ShellInitVerificationView {
+        status: "verdict".into(),
+        status_class: "warning",
+        shell,
+        rc: rc.clone(),
+        hook_line,
+        outcome: "script-unresolved".into(),
+        elapsed_us: 0,
+        elapsed_label: humanize_us(0),
+        headline: format!("dodot could not tell which file the hook at {rc}:{hook_line} sources"),
+        detail_lines: vec![
+            format!("the line sources {raw}"),
+            "dodot expands only an absolute path or one under `$HOME` — check that file yourself, or run `dodot install --write` to wire the hook it can read".into(),
+        ],
     }
 }
 
@@ -1114,12 +1147,17 @@ pub fn shell_init_history(ctx: &ExecutionContext, limit: usize) -> Result<ProbeR
 }
 
 fn into_history_row(h: HistoryEntry) -> ShellInitHistoryRow {
+    let total_label = h
+        .total_us
+        .map(humanize_us)
+        .unwrap_or_else(|| "unknown".to_string());
     ShellInitHistoryRow {
         filename: h.filename,
         unix_ts: h.unix_ts,
         when: format_unix_ts(h.unix_ts),
         shell: h.shell,
-        total_label: humanize_us(h.total_us),
+        complete: h.complete,
+        total_label,
         user_total_label: humanize_us(h.user_total_us),
         total_us: h.total_us,
         user_total_us: h.user_total_us,
