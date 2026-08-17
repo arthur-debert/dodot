@@ -210,7 +210,21 @@ Troubleshooting
 
         `down` cleans every dodot-owned artifact for the pack (symlinks, install sentinels, brew sentinels, staged shell init lines). `up` rebuilds from the current pack contents.
 
-    10.3. "I want to undo an `adopt`"
+    10.3. "dodot has not been approved for …" — a mutating command refuses
+
+        Safety Lock stopped a mutating command on an implicitly discovered root you haven't approved (see [./safety-lock.lex]). Three ways forward:
+
+        - You're in the right repo, interactively: re-run from a terminal and answer `y` at the prompt. Approval is remembered per root.
+        - You're in a script or pipe: set the root explicitly — `DOTFILES_ROOT=~/dotfiles dodot up`. A valid explicit root never prompts.
+        - You were in the *wrong* directory: that's the guard working. `cd` to your real repo.
+
+        Related states:
+
+        - Approved something by mistake: `dodot roots forget <path>`.
+        - The refusal names `safety-lock.toml` as unreadable or invalid: the approvals file is damaged. `dodot roots list` shows the same failure; factory `dodot reset` removes the file (read-only commands keep working throughout).
+        - `DOTFILES_ROOT` names a missing/invalid path: hard error naming the path — dodot deliberately does not fall back to git or cwd. Fix or unset the variable.
+
+    10.4. "I want to undo an `adopt`"
 
         There's no `dodot un-adopt`. To reverse:
 
@@ -227,6 +241,7 @@ Troubleshooting
     - [./paths.lex] — where files end up at deploy time.
     - [./filters.lex] — the five mechanisms for keeping files out of dispatch.
     - [./shell-integration.lex] — the eval line and what runs from it.
+    - [./safety-lock.lex] — root approval: when the prompt fires, automation, recovery.
     - [./templates.lex], [./secrets.lex] — preprocessing-pipeline issues.
     - [./plists.lex] — macOS plist filter setup.
     - [./glossary/] — terminology.

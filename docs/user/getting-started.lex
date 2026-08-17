@@ -67,7 +67,7 @@ Getting started
 
     :: shell ::
 
-    Then deploy for real:
+    Then deploy for real. The very first mutating `up` on a repo dodot discovered implicitly (via git or your current directory) asks you to approve the directory first — it shows the resolved root and a sample of what it recognizes there; answer `y` and it's remembered for good. That's Safety Lock ([./safety-lock.lex]) making sure a stray `dodot up` in the wrong repo can't deploy anything.
 
         $ dodot up nvim
 

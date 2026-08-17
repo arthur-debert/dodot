@@ -366,6 +366,95 @@ fn an_approval_does_not_extend_to_a_neighbouring_root() {
     sandbox.run(&["up"]).assert_refused();
 }
 
+// ── The whole protected set ─────────────────────────────────────
+
+/// Every dispatched family in ADR-0002's protected set crosses the same
+/// gate: deployment (`down`), repository writes (`init`, `fill`, `adopt`,
+/// `addignore`), the repository-local installers, and the cache-derived
+/// writers (`refresh`, `transform check`). One invocation per family — the
+/// wiring is shared, so what this proves is that each family declared
+/// itself mutating rather than inheriting "not gated" from a helper.
+#[test]
+#[serial]
+fn every_mutating_dispatch_family_refuses_on_an_untrusted_implicit_root() {
+    let sandbox = Sandbox::new();
+
+    let families: &[&[&str]] = &[
+        &["down"],
+        &["init", "newpack"],
+        &["fill", "vim"],
+        &["adopt", "--into", "vim", "some-file"],
+        &["addignore", "vim"],
+        &["git-install-filters"],
+        &["template", "install-filter"],
+        &["transform", "install-hook"],
+        &["refresh"],
+        &["transform", "check"],
+    ];
+
+    for family in families {
+        let outcome = sandbox.run(family);
+        let diagnostic = outcome.assert_refused();
+        assert!(
+            diagnostic.contains("has not been approved"),
+            "`{}` failed for a reason other than the gate: {diagnostic}",
+            family.join(" ")
+        );
+    }
+
+    assert!(
+        !sandbox.trust_file_exists(),
+        "a refused family recorded an approval"
+    );
+}
+
+/// The documented preview of each previewable family stays available
+/// without trust — a preview is how a user decides whether to approve.
+#[test]
+#[serial]
+fn every_documented_preview_bypasses_the_gate_without_establishing_trust() {
+    let sandbox = Sandbox::new();
+
+    let previews: &[&[&str]] = &[
+        &["down", "--dry-run"],
+        &["refresh", "--list-paths"],
+        &["transform", "check", "--dry-run"],
+    ];
+
+    for preview in previews {
+        let outcome = sandbox.run(preview);
+        assert!(
+            outcome.error.is_none(),
+            "`{}` was gated despite being a preview: {}",
+            preview.join(" "),
+            outcome.error.as_deref().unwrap_or_default()
+        );
+    }
+
+    assert!(
+        !sandbox.trust_file_exists(),
+        "a preview recorded an approval"
+    );
+}
+
+/// Mutations the root did not select stay outside Safety Lock (ADR-0002):
+/// the dismissed-prompt registry lives in Dodot's own data directory, so
+/// managing it needs no trusted root.
+#[test]
+#[serial]
+fn a_root_independent_mutation_runs_on_an_untrusted_root() {
+    let sandbox = Sandbox::new();
+
+    sandbox
+        .run(&["prompts", "reset", "--all"])
+        .assert_succeeded();
+
+    assert!(
+        !sandbox.trust_file_exists(),
+        "a root-independent mutation recorded an approval"
+    );
+}
+
 // ── Root management ─────────────────────────────────────────────
 
 /// The management surface has to be usable in every mode a consumer might
