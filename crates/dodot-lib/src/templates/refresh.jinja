@@ -24,7 +24,7 @@
 {% elif e.action == "missing_deployed" -%}
   [warn]? missing deployed[/warn] {{ e.source_path }} [muted](rendered file gone; next [usage]dodot up[/usage] will recreate)[/muted]
 {% elif e.action == "stale_source" -%}
-  [warn]? stale entry[/warn] {{ e.pack }}/{{ e.filename }} [muted](baseline records no source path; next [usage]dodot up[/usage] will refresh)[/muted]
+  [warn]? stale entry[/warn] {{ e.pack }}/{{ e.handler }}/{{ e.filename }} [muted](baseline records no absolute source path; next [usage]dodot up[/usage] will refresh)[/muted]
 {% elif e.action == "unresolvable_source" -%}
   [warn]? unresolvable source[/warn] {{ e.source_path }} [muted](cannot be resolved, so it cannot be placed in this dotfiles root)[/muted]
 {% elif e.action == "out_of_root" -%}

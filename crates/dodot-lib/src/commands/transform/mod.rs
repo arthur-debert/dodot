@@ -85,8 +85,10 @@ pub enum TransformAction {
     /// The cached source belongs to a different dotfiles root. Reported;
     /// this invocation is not authorized to patch it.
     OutOfRoot,
-    /// The baseline records no absolute source path at all — an entry
-    /// written before the cache tracked source paths. Reported; the next
+    /// The baseline records no absolute source path at all — the stored
+    /// path is empty (an entry written before the cache tracked source
+    /// paths) or relative (meaningless without the process working
+    /// directory, which Safety Lock does not read). Reported; the next
     /// `dodot up` rewrites it.
     StaleSource,
     /// The cached source exists but could not be resolved, so it cannot
@@ -152,8 +154,17 @@ pub struct TransformCheckResult {
     pub unresolved_markers: Vec<UnresolvedMarkerEntry>,
     /// True iff at least one entry has a non-clean state that should
     /// make the command exit non-zero (Conflict, NeedsRebaseline,
-    /// MissingSource, MissingDeployed) or `--strict` found unresolved
-    /// markers. CLI uses this to decide the process exit code.
+    /// MissingSource, MissingDeployed, StaleSource, UnresolvableSource)
+    /// or `--strict` found unresolved markers. CLI uses this to decide
+    /// the process exit code.
+    ///
+    /// `OutOfRoot` does *not* set this, and is the one out-of-mutation-set
+    /// action that does not: a baseline belonging to another root is a
+    /// supported arrangement of two roots sharing one cache, so it is
+    /// reported and nothing more. The other three — `MissingSource`,
+    /// `StaleSource`, `UnresolvableSource` — are this cache's health and
+    /// stay findings. [`TransformAction::out_of_root`] is where that split
+    /// is decided.
     ///
     /// `Patched` does *not* set this — an unambiguous reverse-merge is
     /// the auto-merge happy path: burgertocow + diffy produced a clean

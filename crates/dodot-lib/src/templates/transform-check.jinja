@@ -25,7 +25,7 @@
     [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — rendered file is gone; next [usage]dodot up[/usage] will recreate[/muted]
 {% elif e.action == "stale_source" -%}
   [warn]? stale entry[/warn] {{ e.pack }}/{{ e.handler }}/{{ e.filename }}
-    [muted]baseline records no source path; next [usage]dodot up[/usage] will refresh[/muted]
+    [muted]baseline records no absolute source path; next [usage]dodot up[/usage] will refresh[/muted]
 {% elif e.action == "unresolvable_source" -%}
   [warn]? unresolvable source[/warn] {{ e.source_path }}
     [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — cannot be resolved, so it cannot be placed in this dotfiles root[/muted]

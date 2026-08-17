@@ -63,8 +63,10 @@ pub enum RefreshAction {
     OutOfRoot,
     /// Cached source path no longer exists on disk. Reported.
     MissingSource,
-    /// The baseline records no absolute source path at all — an entry
-    /// written before the cache tracked source paths. Reported; the next
+    /// The baseline records no absolute source path at all — the stored
+    /// path is empty (an entry written before the cache tracked source
+    /// paths) or relative (meaningless without the process working
+    /// directory, which Safety Lock does not read). Reported; the next
     /// `dodot up` rewrites it.
     StaleSource,
     /// The cached source exists but could not be resolved, so it cannot
