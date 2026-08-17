@@ -20,7 +20,7 @@
 //! that this function is a pure function of injected input: it holds no
 //! process state to re-read, so a second consultation is not merely
 //! discouraged, it is not expressible without capturing the process again —
-//! which happens once, at the boundary (WS07).
+//! which happens once, in the CLI's pre-dispatch hook.
 
 use std::ffi::OsString;
 use std::path::PathBuf;

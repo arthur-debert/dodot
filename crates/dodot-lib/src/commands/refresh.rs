@@ -144,8 +144,9 @@ pub enum RefreshMode {
 ///   - if deployed is missing → action `MissingDeployed`
 ///
 /// `authorized_root` is the canonical root this invocation may write
-/// under — the root the user selected, and (once WS07 wires the gate)
-/// approved. It is not re-derived here: the root that was authorized and
+/// under: the root the CLI gate resolved once at the process boundary and
+/// either found already approved or had the user approve. It is not
+/// re-derived here: the root that was authorized and
 /// the root that is mutated must be the same one (ADR-0001).
 ///
 /// The mtime is written to the *canonical* source path rather than the

@@ -9,6 +9,14 @@
 //!
 //! What reset deliberately does NOT touch:
 //!
+//! - The trust-file writer lock (`safety-lock.toml.lock`). It holds no
+//!   state — only the OS advisory lock serializing trust-file writers —
+//!   and its path must stay stable: unlinking it while a writer holds it
+//!   would let the next writer lock a fresh inode at the same path,
+//!   leaving two "exclusive" writers. Reset instead JOINS that
+//!   serialization: it takes the same lock before sweeping, so an
+//!   in-flight approval cannot persist a pre-reset document after the
+//!   wipe.
 //! - The dotfiles repo — sources are the user's, never dodot's.
 //! - Deploy-target symlinks in `$HOME` / `$XDG_CONFIG_HOME`. Wiping
 //!   the datastore leaves them dangling until the next `up` re-links
@@ -32,22 +40,49 @@ use tracing::info;
 
 use crate::commands::{shorten_path, MessageResult};
 use crate::packs::orchestration::ExecutionContext;
+use crate::safety_lock::{TrustFileTransaction, SAFETY_LOCK_LOCK_FILE_NAME};
 use crate::Result;
 
 /// Run the `reset` command: remove every top-level entry under the
-/// data dir. Honors `ctx.dry_run` (list, don't remove). Returns a
-/// `MessageResult` whose details name each removed entry (directories
-/// with a trailing `/`), sorted by name.
+/// data dir except the trust-file writer lock (see the module doc).
+/// A real run always holds that lock for the whole list-and-sweep,
+/// creating the data dir (which reset keeps anyway) and lock file if
+/// absent. Honors `ctx.dry_run` (list, don't remove — and take no
+/// lock). Returns a `MessageResult` whose details name each removed
+/// entry (directories with a trailing `/`), sorted by name.
 pub fn reset(ctx: &ExecutionContext) -> Result<MessageResult> {
     let data_dir = ctx.paths.data_dir().to_path_buf();
     let display_dir = shorten_path(&data_dir, ctx.paths.home_dir());
     info!(data_dir = %data_dir.display(), dry_run = ctx.dry_run, "starting reset command");
 
-    let entries = if ctx.fs.is_dir(&data_dir) {
+    // Join the trust-file writers' serialization before even LISTING the
+    // sweep: an approval mid-transaction finishes before the listing (and
+    // is listed and wiped) or begins after the sweep (and applies to the
+    // empty post-reset state) — it can never persist a pre-reset document
+    // into the freshly cleared state, and no trust file can appear between
+    // listing and removal. Unconditional for a real run — even when the
+    // data dir looks absent, a writer's `begin` can create it and the
+    // trust file at any moment, so "absent" is not a stable observation
+    // to skip locking on; `begin` creates the (kept-anyway) data dir and
+    // the stable lock inode itself. Only dry run, which previews without
+    // mutating, takes no lock.
+    let _trust_write_guard = if ctx.dry_run {
+        None
+    } else {
+        // SafetyLockError displays a complete, path-bearing message;
+        // `Other` passes it through verbatim.
+        Some(
+            TrustFileTransaction::begin(&data_dir)
+                .map_err(|err| crate::DodotError::Other(err.to_string()))?,
+        )
+    };
+
+    let mut entries = if ctx.fs.is_dir(&data_dir) {
         ctx.fs.read_dir(&data_dir)?
     } else {
         Vec::new()
     };
+    entries.retain(|entry| entry.name != SAFETY_LOCK_LOCK_FILE_NAME);
 
     if entries.is_empty() {
         return Ok(MessageResult {

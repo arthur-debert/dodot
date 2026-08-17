@@ -1,0 +1,15 @@
+[header]Approved dotfiles roots[/header]
+{% if roots %}
+{% for row in roots %}
+  [pack-name]{{ row.path }}[/pack-name]{% if not row.exists %}  [stale](missing)[/stale]{% endif %}
+
+{% endfor %}
+[dim]State: {{ state_path }}
+Revoke one with [example]dodot roots forget <path>[/example].[/dim]
+{% else %}
+  [dim]No root has been approved.[/dim]
+
+[dim]State: {{ state_path }}
+Roots are approved at the confirmation prompt of the first mutating command
+run from them, or selected deliberately with [example]DOTFILES_ROOT[/example].[/dim]
+{% endif %}

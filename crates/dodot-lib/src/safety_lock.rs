@@ -76,28 +76,21 @@
 //! [`ConfigManager`](crate::config::ConfigManager), which uses `std::fs`. See
 //! [`build_inventory`](inventory::build_inventory).
 //!
-//! # Work Stream status
+//! # Where the boundary is
 //!
-//! ACC01-WS01 establishes this vocabulary and the persisted schema; ACC01-WS02
-//! fills in [`environment`], the authoritative `DOTFILES_ROOT` path; ACC01-WS03
-//! fills in [`files`] and composes both into [`selection`]; ACC01-WS04 fills in
-//! the trust lifecycle over the loaded collection — [`check`], [`list`], and
-//! [`forget`]; ACC01-WS05 adds the [`operation`] policy and the bounded
-//! [`inventory`]; ACC01-WS06 fills in [`scope_to_root`] and scopes the two
-//! cache-derived mutations — `refresh` and `transform check` — to the root
-//! they were authorized for. Every signature here now has a body.
+//! The capture this module refuses to perform happens in exactly one place:
+//! the CLI's `safety` module, whose Standout pre-dispatch hook reads
+//! `DOTFILES_ROOT`, the current directory, and the Git top-level, calls
+//! [`resolve_root`] and [`authorize`], and hands the result to the command as
+//! an immutable value. Handlers consume that value; nothing downstream reads
+//! process state again.
 //!
-//! Dodot's pre-Safety-Lock root resolution still runs in
-//! [`crate::paths`](crate::paths) and in the CLI: replacing those callers with
-//! [`resolve_root`] is the process-boundary work of WS07, which is where the
-//! environment, cwd, and Git capture this module refuses to perform lands.
-//!
-//! [`scope_to_root`] is the one part already wired into commands, because it
-//! is not a gate: `refresh` and `transform check` take a root they are
-//! authorized for and scope their write targets to it whether or not anything
-//! asked for approval first. The gate itself — the process boundary that
-//! captures the environment, the current directory, and Git, and the
-//! [`authorize`] call that consults all of it — arrives with WS07.
+//! Two surfaces are still outside the gate: the CLI's passthrough commands,
+//! which return before Standout dispatches and so have no hook (`config`'s
+//! root-persisting actions are the one that matters), and the tutorial's real
+//! deployment step. Both resolve their root through [`resolve_root`] like
+//! everything else — what they lack is the [`authorize`] call. ACC01-WS08
+//! closes that.
 
 pub mod check;
 pub mod environment;
@@ -128,7 +121,8 @@ pub use list::{list_roots, TrustedRootEntry, TrustedRootListing};
 pub use operation::{authorize, GateOutcome, RootOperation};
 pub use roots::{ResolvedRoot, RootIdentity, RootSource};
 pub use schema::{
-    SafetyLockConfig, TrustedRootsSection, SAFETY_LOCK_FILE_NAME, SAFETY_LOCK_PERSIST_SCOPE,
+    SafetyLockConfig, TrustFileTransaction, TrustedRootsSection, SAFETY_LOCK_FILE_NAME,
+    SAFETY_LOCK_LOCK_FILE_NAME, SAFETY_LOCK_PERSIST_SCOPE,
 };
 pub use scope::{scope_to_root, MutationScope, OutOfRootReason, OutOfRootTarget, ScopeOutcome};
 pub use selection::{resolve_root, RootSelectionInput};

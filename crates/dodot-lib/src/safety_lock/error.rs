@@ -96,6 +96,17 @@ pub enum SafetyLockError {
     #[error("cannot read the trusted-roots file at {}: {reason}", path.display())]
     TrustStateUnusable { path: PathBuf, reason: String },
 
+    /// The trust file could not be written.
+    ///
+    /// Distinct from [`TrustStateUnusable`](Self::TrustStateUnusable), which
+    /// is about state Dodot read and could not use. This is the write half,
+    /// and it has one consequence the read half does not: approval that could
+    /// not be recorded must stop the mutation it was meant to authorize, or
+    /// the user would be asked again for a root Dodot had already acted on
+    /// (Spec, "Risks").
+    #[error("cannot write the trusted-roots file at {}: {reason}", path.display())]
+    TrustStateNotWritable { path: PathBuf, reason: String },
+
     /// The trust file listed the same canonical root twice, or listed an
     /// entry that is not a usable root identity.
     #[error("the trusted-roots file lists `{spelling}` more than once")]

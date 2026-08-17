@@ -726,7 +726,10 @@ dependencies = [
  "dodot-lib",
  "inquire",
  "serde",
+ "serde_json",
+ "serial_test",
  "standout",
+ "standout-test",
  "tempfile",
  "tracing",
  "tracing-appender",
@@ -783,6 +786,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
+name = "east-asian-width"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef8c47de0fcde8bd09c98fc22e4ea10ed14b9c05bf02c309e1e743aee7d0d9f6"
+
+[[package]]
+name = "either"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d"
+
+[[package]]
 name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -808,6 +823,12 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
+
+[[package]]
+name = "env_home"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
 
 [[package]]
 name = "equivalent"
@@ -925,6 +946,17 @@ name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d"
+
+[[package]]
+name = "futures-executor"
+version = "0.3.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf29c38818342a3b26b5b923639e7b1f4a61fc5e76102d4b1981c6dc7a7579d"
+dependencies = [
+ "futures-core",
+ "futures-task",
+ "futures-util",
+]
 
 [[package]]
 name = "futures-io"
@@ -2054,6 +2086,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "serial_test"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "699f4197115b8a7e7ff19c9a315a4bd6fffec26cc4626ef45ecaea389e081c6d"
+dependencies = [
+ "futures-executor",
+ "futures-util",
+ "log",
+ "once_cell",
+ "parking_lot",
+ "serial_test_derive",
+]
+
+[[package]]
+name = "serial_test_derive"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94e153fc76e1c6a068703d6d29c508a0b15c061c4b7e43da59cc097bc342673c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2083,6 +2140,12 @@ checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
 ]
+
+[[package]]
+name = "shell-words"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 
 [[package]]
 name = "shlex"
@@ -2169,9 +2232,9 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "standout"
-version = "7.6.2"
+version = "7.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11d3ea3e91e0603908e139ca5ce0f70210fc7802d59fa6f7bf6a97092febd43f"
+checksum = "54150e224fda2f268c8583499c12356daa62f241e8d76d4af824639b8719ec5f"
 dependencies = [
  "anyhow",
  "clap",
@@ -2191,22 +2254,23 @@ dependencies = [
  "standout-render",
  "standout-seeker",
  "thiserror 2.0.18",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
 name = "standout-bbparser"
-version = "7.6.2"
+version = "7.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c680a925ba33c228ec73e474a096c73e6880493ea352e914c96dc6f2a066a48"
+checksum = "8cef1e3f6b0a2c63719adb08897767c67d36788ee3444424b0f32ab5d7006503"
 dependencies = [
  "console",
 ]
 
 [[package]]
 name = "standout-dispatch"
-version = "7.6.2"
+version = "7.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fd3fca8560a9943b8ed5ad6c0552da6bdf11ab7628b101e6232ed3b20e16bfa"
+checksum = "a19c7ee86e2483f80375f9df3e6db12025f7c25f85a178fae80ec4a28d5e4fbb"
 dependencies = [
  "anyhow",
  "clap",
@@ -2217,20 +2281,24 @@ dependencies = [
 
 [[package]]
 name = "standout-input"
-version = "7.6.2"
+version = "7.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "788be3ca17c19f58328b4676aa61d44fb63c6446751ca574faecc46ceebc3adf"
+checksum = "d1991ab69868b8bf331731a3b2f2e343928398236ac83349d07931617889da05"
 dependencies = [
  "clap",
  "once_cell",
+ "sha2",
+ "shell-words",
+ "tempfile",
  "thiserror 2.0.18",
+ "which",
 ]
 
 [[package]]
 name = "standout-macros"
-version = "7.6.2"
+version = "7.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4787bc455145bfbc72b4136cd1c864afa047fa085ae99a572bbfe97cd5a3233e"
+checksum = "c3414a376bbc980643b167a5e87f2c57762adcf2455222f4a416059fcae7bb58"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2239,9 +2307,9 @@ dependencies = [
 
 [[package]]
 name = "standout-pipe"
-version = "7.6.2"
+version = "7.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "804423234172f09663ec1568c4ef29d8ca80a6edeb68225133ee6affef8f4881"
+checksum = "619e98101d64e5bbdc560bfcf313d5a3501a16ffd748c884bd57d4f7fca6ed7a"
 dependencies = [
  "thiserror 2.0.18",
  "wait-timeout",
@@ -2249,15 +2317,16 @@ dependencies = [
 
 [[package]]
 name = "standout-render"
-version = "7.6.2"
+version = "7.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f644bad81f60a76781db457f154d938041422dd1bc0edb3c72d068fcf8e47c2"
+checksum = "95757f43e2af7828650636ff38e0ba11b887339f5305616dd16c4bb7561b1b25"
 dependencies = [
  "console",
  "cssparser",
  "csv",
  "dark-light",
  "deunicode",
+ "east-asian-width",
  "minijinja",
  "once_cell",
  "quick-xml 0.36.2",
@@ -2266,17 +2335,32 @@ dependencies = [
  "serde_yaml",
  "standout-bbparser",
  "terminal_size",
+ "thiserror 2.0.18",
  "unicode-width 0.2.2",
 ]
 
 [[package]]
 name = "standout-seeker"
-version = "7.6.2"
+version = "7.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80d718307e7ad75f3abbef04968d39ac9e62e4cf72641f3f38395cab6a875834"
+checksum = "1e5b11eebd6c3e4e07379fcd622fc6e1a5c9f54f99eb98fe07c6f6e18000153c"
 dependencies = [
  "regex",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "standout-test"
+version = "7.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564e2c7d573e3df49b2c8e21a2cd0ba59a286974c02e507b370ce181b2f6f4c"
+dependencies = [
+ "clap",
+ "serial_test",
+ "standout",
+ "standout-input",
+ "standout-render",
+ "tempfile",
 ]
 
 [[package]]
@@ -2881,6 +2965,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "which"
+version = "7.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
+dependencies = [
+ "either",
+ "env_home",
+ "rustix 1.1.4",
+ "winsafe",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3097,6 +3193,12 @@ checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
 dependencies = [
  "winapi",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen"

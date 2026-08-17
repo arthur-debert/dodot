@@ -22,11 +22,19 @@ RUN cargo build --release -p dodot && \
 # ── Stage 2: Runtime ────────────────────────────────────────────
 FROM ubuntu:24.04
 
+# `bsdutils` (util-linux's essential split on Ubuntu) carries script(1) — the
+# Safety Lock suite's pseudo-terminal lane needs a real one, and without it
+# those tests skip rather than run. Named explicitly even though it ships in
+# the base image, and asserted after the install: if a base-image or package
+# reshuffle ever drops script(1), the image build fails here instead of the
+# PTY tests silently skipping.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
+    bsdutils \
     git \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && command -v script
 
 # Install bats-core + helpers
 RUN git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats && \

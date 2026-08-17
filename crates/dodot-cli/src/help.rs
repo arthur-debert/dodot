@@ -48,6 +48,7 @@ const HELP_TEXTS: &[(&str, &str)] = &[
         include_str!("help/git-show-filters.txt"),
     ),
     ("prompts", include_str!("help/prompts.txt")),
+    ("roots", include_str!("help/roots.txt")),
     ("reset", include_str!("help/reset.txt")),
     ("config", include_str!("help/config.txt")),
     ("refresh", include_str!("help/refresh.txt")),
@@ -84,6 +85,18 @@ const HELP_TEXTS: &[(&str, &str)] = &[
 /// help marker is present, returns `None` so the caller falls through
 /// to normal dispatch.
 ///
+/// Takes native `OsStr` arguments, because this scan runs over the raw
+/// process argv before Clap does: a non-Unicode argument — a native
+/// path headed for `roots forget`'s `OsString` parser — must pass
+/// through untouched, not panic the pre-scan. The markers recognized
+/// here (`--help`, `-h`, `help`, `--`) are pure ASCII, so they are
+/// matched on exact bytes; an argument that is not valid Unicode can
+/// never be one of them and stays an ordinary positional token. Such a
+/// token only ever influences the *command path* used to pick a help
+/// text — and only when a help marker was actually present — where a
+/// lossy rendering is fine: it matches no registered command and
+/// `lookup` falls back to the nearest parent's help.
+///
 /// Recognized forms:
 ///   `dodot --help`              -> Some("")
 ///   `dodot -h`                  -> Some("")
@@ -94,12 +107,12 @@ const HELP_TEXTS: &[(&str, &str)] = &[
 pub fn detect_help_request<I, T>(argv: I) -> Option<String>
 where
     I: IntoIterator<Item = T>,
-    T: AsRef<str>,
+    T: AsRef<std::ffi::OsStr>,
 {
-    let args: Vec<String> = argv
+    let args: Vec<std::ffi::OsString> = argv
         .into_iter()
         .skip(1) // program name
-        .map(|s| s.as_ref().to_string())
+        .map(|s| s.as_ref().to_os_string())
         .collect();
 
     // Scan for the help marker. Keep collecting subcommand-like tokens
@@ -118,33 +131,38 @@ where
     let mut options_terminated = false;
 
     for arg in &args {
-        if !options_terminated && arg == "--" {
+        // Exact-bytes marker matching: `to_str` yields the argument only
+        // when it is valid Unicode, so a non-Unicode argument compares
+        // equal to none of the ASCII markers below.
+        let unicode = arg.to_str();
+        let flag_like = arg.as_encoded_bytes().starts_with(b"-");
+        if !options_terminated && unicode == Some("--") {
             options_terminated = true;
             continue;
         }
         if consume_rest_as_path {
-            if !options_terminated && arg.starts_with('-') {
+            if !options_terminated && flag_like {
                 continue;
             }
-            path.push(arg.clone());
+            path.push(arg.to_string_lossy().into_owned());
             continue;
         }
-        if !options_terminated && (arg == "--help" || arg == "-h") {
+        if !options_terminated && matches!(unicode, Some("--help") | Some("-h")) {
             found_marker = true;
             break;
         }
-        if !options_terminated && arg == "help" && path.is_empty() {
+        if !options_terminated && unicode == Some("help") && path.is_empty() {
             found_marker = true;
             consume_rest_as_path = true;
             continue;
         }
-        if !options_terminated && arg.starts_with('-') {
+        if !options_terminated && flag_like {
             // skip flags / values (we don't care about flag values for
             // path detection — they can't precede the help marker in a
             // meaningful way for our command set)
             continue;
         }
-        path.push(arg.clone());
+        path.push(arg.to_string_lossy().into_owned());
     }
 
     if !found_marker {
@@ -238,6 +256,50 @@ mod tests {
             detect_help_request(["dodot", "up", "--help", "--", "x"]),
             Some("up".into())
         );
+    }
+
+    /// The pre-scan runs over raw process argv, before Clap: a native
+    /// non-Unicode argument (a path headed for `roots forget`'s
+    /// `OsString` parser) must neither panic the scan nor read as a help
+    /// marker.
+    #[test]
+    fn non_unicode_arguments_pass_through_the_scan() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let native = OsString::from_vec(b"/tmp/\x80dots".to_vec());
+
+        // No help marker: the scan falls through to normal dispatch,
+        // leaving the argument for Clap.
+        assert_eq!(
+            detect_help_request([
+                OsString::from("dodot"),
+                OsString::from("roots"),
+                OsString::from("forget"),
+                native.clone(),
+            ]),
+            None
+        );
+
+        // A non-Unicode token that merely *starts* like a flag is not a
+        // help marker either.
+        let flag_like = OsString::from_vec(b"-\x80h".to_vec());
+        assert_eq!(
+            detect_help_request([OsString::from("dodot"), flag_like]),
+            None
+        );
+
+        // With a real marker present, the scan still detects help; the
+        // non-Unicode token only shapes the lookup path, where the
+        // parent fallback absorbs it.
+        let path = detect_help_request([
+            OsString::from("dodot"),
+            OsString::from("help"),
+            OsString::from("roots"),
+            native,
+        ])
+        .expect("an explicit `help` word must be detected");
+        assert_eq!(lookup(&path), lookup("roots"));
     }
 
     #[test]
