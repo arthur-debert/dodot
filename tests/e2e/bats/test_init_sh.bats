@@ -34,7 +34,7 @@ teardown() {
 
     run bash -c "export DODOT_INTERNAL_SHELL_INIT_PROBE=stale
 export DODOT_INTERNAL_SHELL_INIT_PROBE_PARENT=0
-eval \"\$('$DODOT_BIN' init-sh)\"
+eval \"\$($DODOT_BIN init-sh)\"
 printf '%s\n' \"\${DODOT_LOADED_ZSH_ALIASES_SH:-}\""
 
     [ "$status" -eq 0 ]
