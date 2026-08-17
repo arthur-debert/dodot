@@ -18,7 +18,7 @@
 //! directory?", and a source name answers that better than a rendered one
 //! would.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use crate::config::{mappings_to_rules, ConfigManager};
@@ -208,12 +208,6 @@ pub fn build_inventory(
     let registry = create_registry(fs, &runner);
     let scanner = Scanner::new(fs);
 
-    // Computed once, before any pack: whether the root's own gate
-    // configuration is broken on its own terms. Read only to attribute a
-    // failure the merged pass raises, never to raise one — see
-    // `gate_configuration_owner`.
-    let root_gates_broken = root_gate_configuration_is_broken(&root_config);
-
     let mut counts: BTreeMap<InventoryCategory, usize> = BTreeMap::new();
     let mut entries: Vec<InventoryEntry> = Vec::new();
 
@@ -228,19 +222,23 @@ pub fn build_inventory(
             continue;
         }
 
-        let gate_config_file = gate_configuration_owner(
-            root_path,
-            pack,
-            &pack_config,
-            &root_config,
-            root_gates_broken,
-        );
+        let owner = |declared| {
+            gate_configuration_owner(root_path, pack, &pack_config, &root_config, declared)
+        };
 
+        // Each failure domain is attributed from its own evidence: a
+        // `merge_user` failure is always a `[gates]` entry, and a `scan_pack`
+        // failure never is, because the gate table it uses was already merged
+        // above. Reading one domain's verdict for the other's failure would
+        // send the user to a file that is not the one that failed.
         let mut gates = GateTable::with_builtins();
         if !pack_config.gates.is_empty() {
-            gates
-                .merge_user(&pack_config.gates)
-                .map_err(|error| unusable_config(gate_config_file.clone(), error))?;
+            gates.merge_user(&pack_config.gates).map_err(|error| {
+                unusable_config(
+                    owner(broken_gate_entry_owner(&root_config, &pack_config)),
+                    error,
+                )
+            })?;
         }
 
         let rules = mappings_to_rules(&pack_config.mappings);
@@ -253,7 +251,10 @@ pub fn build_inventory(
                 host,
                 &pack_config.mappings.gates,
             )
-            .map_err(|error| unusable_scan(&pack.path, &gate_config_file, error))?;
+            .map_err(|error| {
+                let declared = broken_mapping_entry_owner(&root_config, &pack_config, &gates);
+                unusable_scan(&pack.path, &owner(declared), error)
+            })?;
 
         for matched in matches {
             let Some(category) = category_of(&matched.handler, &registry) else {
@@ -345,75 +346,137 @@ fn unusable_routing(
     }
 }
 
-/// Whether the root's `[gates]` and `[mappings.gates]` are broken on their own
-/// terms, ignoring anything a pack adds.
-///
-/// Nothing else validates them: `[gates]` and `[mappings.gates]` are checked
-/// only when the scanner interprets a pack's *merged* configuration, which is
-/// why a failure arrives with no idea which layer wrote it. Replaying the
-/// checks against the root layer alone recovers exactly that.
-///
-/// This is an attribution signal, never an acceptance one. `[mappings.gates]`
-/// and `[gates]` are separate tables, so a root mapping may name a label only a
-/// pack defines: this reads `true` while the merged configuration is perfectly
-/// valid. The answer is therefore consulted only once the merged pass has
-/// already failed, and never used to reject a root that works.
-fn root_gate_configuration_is_broken(root_config: &crate::config::DodotConfig) -> bool {
-    let mut table = GateTable::with_builtins();
-    if table.merge_user(&root_config.gates).is_err() {
-        return true;
-    }
+/// Which `.dodot.toml` declared the entry a gate failure is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GateLayer {
+    Root,
+    Pack,
+}
 
-    let Ok(compiled) = crate::gates::compile_mapping_gates(&root_config.mappings.gates, "<root>")
-    else {
-        return true;
-    };
+/// Whether one `[gates]` entry stands up on its own.
+///
+/// Validated through [`GateTable::merge_user`] rather than a reimplementation
+/// of it, so the question asked here cannot drift from the question the walk
+/// asks.
+fn gate_entry_is_valid(label: &str, dimensions: &HashMap<String, String>) -> bool {
+    let one = HashMap::from([(label.to_string(), dimensions.clone())]);
+    GateTable::with_builtins().merge_user(&one).is_ok()
+}
 
-    compiled
-        .iter()
-        .any(|(_, label)| table.lookup(label).is_none())
+/// The layer that declared the first invalid `[gates]` entry, if any.
+///
+/// Per-entry, because per-entry is where the provenance survives: labels merge
+/// key by key, so the pack's resolved table holds every label either file
+/// declared. For each broken one, the root owns it exactly when the root's own
+/// version of that same label is broken too — which is also what makes the
+/// deep merge safe to reason about. A pack that adds `os` to a root label
+/// already carrying a bad dimension inherits the bad dimension, and the root's
+/// version fails on its own, so the root is named; a pack that breaks a label
+/// the root had valid is named itself.
+///
+/// Entries are visited in label order so a configuration with several broken
+/// entries always reports the same one.
+fn broken_gate_entry_owner(
+    root_config: &crate::config::DodotConfig,
+    pack_config: &crate::config::DodotConfig,
+) -> Option<GateLayer> {
+    let mut labels: Vec<&String> = pack_config.gates.keys().collect();
+    labels.sort();
+
+    labels.into_iter().find_map(|label| {
+        let dimensions = pack_config.gates.get(label)?;
+        if gate_entry_is_valid(label, dimensions) {
+            return None;
+        }
+
+        let root_owns = root_config
+            .gates
+            .get(label)
+            .is_some_and(|root_dimensions| !gate_entry_is_valid(label, root_dimensions));
+
+        Some(if root_owns {
+            GateLayer::Root
+        } else {
+            GateLayer::Pack
+        })
+    })
+}
+
+/// The layer that declared the first unusable `[mappings.gates]` entry, if any.
+///
+/// Exact, unlike the `[gates]` case needing a per-entry replay: this table is a
+/// flat glob-to-label map, so a resolved entry belongs to the pack precisely
+/// when the pack's value for that glob differs from the root's. An entry is
+/// unusable when its glob will not compile or when its label resolves nowhere
+/// in `gates` — the same merged table the walk uses, so a root entry whose
+/// label only a pack defines is correctly not a defect at all.
+///
+/// Entries are visited in glob order for the same reason as above.
+fn broken_mapping_entry_owner(
+    root_config: &crate::config::DodotConfig,
+    pack_config: &crate::config::DodotConfig,
+    gates: &GateTable,
+) -> Option<GateLayer> {
+    let mut globs: Vec<&String> = pack_config.mappings.gates.keys().collect();
+    globs.sort();
+
+    globs.into_iter().find_map(|glob| {
+        let label = pack_config.mappings.gates.get(glob)?;
+        let one = HashMap::from([(glob.clone(), label.clone())]);
+        let compiles = crate::gates::compile_mapping_gates(&one, "<attribution>").is_ok();
+
+        if compiles && gates.lookup(label).is_some() {
+            return None;
+        }
+
+        Some(if root_config.mappings.gates.get(glob) == Some(label) {
+            GateLayer::Root
+        } else {
+            GateLayer::Pack
+        })
+    })
 }
 
 /// The `.dodot.toml` to blame for gate configuration that fails during a walk.
 ///
 /// A pack's configuration is the root's with the pack's merged over it, and the
 /// merge keeps no per-key provenance, so a rejected gate setting does not say
-/// which file wrote it. Two things narrow it down, in order:
+/// which file wrote it. `declared` is that provenance recovered from the entry
+/// that actually fails — [`broken_gate_entry_owner`] for a `[gates]` failure,
+/// [`broken_mapping_entry_owner`] for a `[mappings.gates]` one. Deriving it
+/// from the failing entry rather than from a summary of the root's health is
+/// what keeps an unrelated defect in one file from pulling the blame off the
+/// other: the two are independent, and either may be broken while the other
+/// causes the failure at hand.
 ///
-/// 1. **The root's layer is independently broken** (`root_gates_broken`) — an
-///    invalid `[gates]` entry, an uncompilable glob, a `[mappings.gates]` entry
-///    naming a label the root never defines. Then the root's file is the
-///    answer even when the pack also contributed, which is the case a
-///    contributed-or-not test alone gets wrong: an unrelated valid pack entry
-///    must not move the blame off a broken root.
-/// 2. **The pack contributed no gate configuration** — its `[gates]` and
-///    `[mappings.gates]` are the ones it inherited, so every value the scan
-///    used came from the root. Naming the pack would name a `.dodot.toml` the
-///    user never wrote, and for a pack that carries no configuration, one that
-///    is not on disk to open (story 14: the file named has to be the file the
-///    user can act on).
+/// Some failures name no entry: a filename gate token referring to a label
+/// nothing defines, and a gate-routing conflict, are both about a *file* the
+/// walk met rather than a line either config wrote. `declared` is `None` there
+/// and the fallback is scope — the pack when it contributed gate configuration
+/// of its own, the root when it inherited all of it. That case matters most
+/// for a pack with no `.dodot.toml`, where naming the pack would name a file
+/// that is not on disk to open (story 14: the file named has to be the file
+/// the user can act on).
 ///
-/// Otherwise the pack's file is named: the nearest layer that demonstrably
-/// participated, and one that exists.
-///
-/// One case stays genuinely ambiguous and is not resolved here: a gate-routing
-/// conflict pits a `[mappings.gates]` entry against a filename gate token, and
-/// either the entry or the file can be changed to settle it. Both remedies are
-/// spelled out in the error's own message, which is where that choice belongs.
+/// The conflict stays genuinely ambiguous even so — a `[mappings.gates]` entry
+/// against a filename token, either of which can be changed to settle it. Both
+/// remedies are spelled out in the error's own message, which is where that
+/// choice belongs.
 fn gate_configuration_owner(
     root_path: &Path,
     pack: &crate::packs::Pack,
     pack_config: &crate::config::DodotConfig,
     root_config: &crate::config::DodotConfig,
-    root_gates_broken: bool,
+    declared: Option<GateLayer>,
 ) -> PathBuf {
     let inherited = pack_config.gates == root_config.gates
         && pack_config.mappings.gates == root_config.mappings.gates;
 
-    if root_gates_broken || inherited {
-        root_path.join(DOTFILES_CONFIG_FILE)
-    } else {
-        pack.path.join(DOTFILES_CONFIG_FILE)
+    match declared {
+        Some(GateLayer::Root) => root_path.join(DOTFILES_CONFIG_FILE),
+        Some(GateLayer::Pack) => pack.path.join(DOTFILES_CONFIG_FILE),
+        None if inherited => root_path.join(DOTFILES_CONFIG_FILE),
+        None => pack.path.join(DOTFILES_CONFIG_FILE),
     }
 }
 
@@ -993,6 +1056,102 @@ mod tests {
                 "unexpected error for root {root_config:?} + pack {pack_config:?}: {error}"
             );
         }
+    }
+
+    /// The mirror of the case above, and the reason blame is read off the
+    /// failing entry rather than off either file's overall health: the two
+    /// tables fail independently, so a defect in one file must not pull the
+    /// blame away from the other file's defect that actually stopped the walk.
+    ///
+    /// Both directions of the interaction, in both tables.
+    #[test]
+    fn the_layer_that_declared_the_failing_entry_is_the_one_named() {
+        struct Case {
+            root: &'static str,
+            pack: &'static str,
+            owner: &'static str,
+        }
+
+        for case in [
+            // A root mapping completed by a pack-defined label — unresolvable
+            // read alone, fine merged — beside a pack glob that will not
+            // compile. The walk stops on the pack's glob.
+            Case {
+                root: "[mappings.gates]\n\"aliases.sh\" = \"laptop\"\n",
+                pack: "[gates]\nlaptop = { os = \"darwin\" }\n\
+                       [mappings.gates]\n\"[unclosed\" = \"darwin\"\n",
+                owner: "vim/.dodot.toml",
+            },
+            // A broken root `[mappings.gates]` glob beside a broken pack
+            // `[gates]` entry. `merge_user` fails first, on the pack's entry,
+            // and the root's unrelated mapping defect must not claim it.
+            Case {
+                root: "[mappings.gates]\n\"[unclosed\" = \"darwin\"\n",
+                pack: "[gates]\nbroken = { nonsense = \"x\" }\n",
+                owner: "vim/.dodot.toml",
+            },
+            // The same shape reversed: a broken root `[gates]` entry beside a
+            // pack mapping that is merely unresolvable on its own. The
+            // `[gates]` failure comes first and belongs to the root.
+            Case {
+                root: "[gates]\nbroken = { nonsense = \"x\" }\n",
+                pack: "[mappings.gates]\n\"aliases.sh\" = \"darwin\"\n",
+                owner: ".dodot.toml",
+            },
+        ] {
+            let env = TempEnvironment::builder()
+                .pack("vim")
+                .config(case.pack)
+                .file("aliases.sh", "")
+                .file("vimrc", "")
+                .done()
+                .build();
+            std::fs::write(env.dotfiles_root.join(".dodot.toml"), case.root).unwrap();
+
+            let error =
+                build_inventory(&resolved(&env), env.fs.as_ref(), &host()).expect_err("accepted");
+
+            assert!(
+                matches!(
+                    &error,
+                    SafetyLockError::DotfilesConfigUnusable { config_file, .. }
+                        if config_file == &canonical_root(&env).join(case.owner)
+                ),
+                "root {:?} + pack {:?} should have named {}: {error}",
+                case.root,
+                case.pack,
+                case.owner
+            );
+        }
+    }
+
+    /// A pack that breaks a label the root had valid owns it, even though the
+    /// deep merge means the resolved entry carries both files' dimensions.
+    #[test]
+    fn a_pack_that_breaks_an_inherited_label_is_named_for_it() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .config("[gates]\nlaptop = { nonsense = \"x\" }\n")
+            .file("vimrc", "")
+            .done()
+            .build();
+        std::fs::write(
+            env.dotfiles_root.join(".dodot.toml"),
+            "[gates]\nlaptop = { os = \"darwin\" }\n",
+        )
+        .unwrap();
+
+        let error =
+            build_inventory(&resolved(&env), env.fs.as_ref(), &host()).expect_err("accepted");
+
+        assert!(
+            matches!(
+                &error,
+                SafetyLockError::DotfilesConfigUnusable { config_file, .. }
+                    if config_file == &canonical_root(&env).join("vim/.dodot.toml")
+            ),
+            "unexpected error: {error}"
+        );
     }
 
     /// The attribution replay is read only to place blame, never to assign it.
