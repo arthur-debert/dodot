@@ -85,7 +85,9 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     See [./install.lex] for the fix, and [./../shell-integration.lex] §5 for the activation states and the full set of messages — including version skew, the state where your shells load a *different* dodot than the one you run.
 
-7. First-time-on-this-repo prompt
+7. First-time-on-this-repo prompts
+
+    Before anything else, the first *mutating* `up` on an implicitly discovered root you haven't approved is stopped by Safety Lock: dodot shows the canonical root, how it was selected, and a sample of what it recognizes there, and asks you to approve the directory. `y`/`yes` approves and is remembered; anything else refuses and nothing deploys. `up --dry-run`, a previously approved root, and an explicit `$DOTFILES_ROOT` skip the prompt. See [./../safety-lock.lex].
 
     On the first `up` that detects features needing git-side wiring (templates, plists, or the pre-commit hook), dodot offers to install them in one Y/n — the *install ladder*. Three rungs, in dependency order: pre-commit hook, plist clean/smudge filter, template clean filter. Pick `Yes` to install whichever rungs apply, `Show` to preview the changes first, `No` to dismiss the ladder forever. (You can resurface it later with `dodot prompts reset magic.install_ladder`.)
 

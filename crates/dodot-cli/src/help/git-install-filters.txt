@@ -41,6 +41,13 @@ spots a [item]*.plist[/item] file in a pack and finds the filter unregistered.[/
   [example]dodot git-install-filters       [dim]# install once per clone[/dim]
   dodot git-show-filters         [dim]# inspect or install by hand[/dim][/example]
 
+[header]SAFETY LOCK[/header]
+  [desc]This command writes the selected root's [item].git/config[/item], so its first use
+  on an implicitly discovered, unapproved root asks for approval before writing.
+  A non-interactive invocation refuses. For automation, set a valid
+  [item]DOTFILES_ROOT[/item] explicitly. [item]git-show-filters[/item] remains available
+  read-only without approval. Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot git-show-filters[/item]   [desc]Print the config without writing[/desc]
   [item]dodot plist[/item]               [desc]The filter binary that git invokes[/desc]

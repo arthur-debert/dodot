@@ -16,20 +16,8 @@ setup() {
     git -C "$DOTFILES_ROOT" config user.name "Test"
 }
 
-# Portable mtime reader. Different stat invocations on macOS (BSD)
-# vs Linux (GNU coreutils): `-c %Y` is GNU-only, `-f %m` is BSD-only,
-# and `stat -f` on GNU coreutils silently switches to filesystem-info
-# mode (returning the mount point) rather than failing — so a naive
-# `stat -f %m || stat -c %Y` chain works on macOS but produces a
-# non-numeric result on Linux that breaks `[ -gt ]` later. Detect
-# the platform once and pick the right format.
-mtime() {
-    if [[ "$(uname)" == "Darwin" ]]; then
-        stat -f %m "$1"
-    else
-        stat -c %Y "$1"
-    fi
-}
+# The `mtime` reader these tests compare with lives in
+# helpers/assertions.bash, shared with test_safety_lock_commands.bats.
 
 teardown() {
     sandbox_teardown

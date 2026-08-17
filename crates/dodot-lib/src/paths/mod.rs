@@ -12,12 +12,13 @@
 //!    actual `$HOME`. The `testing::TempEnvironment` builder does
 //!    exactly this.
 //!
-//! 2. **Centralisation of OS-shaped policy.** The XDG fallback chain,
-//!    the `DOTFILES_ROOT` env-var lookup, and the macOS
+//! 2. **Centralisation of OS-shaped policy.** The XDG fallback chain and the macOS
 //!    `app_support_dir` selection (`docs/proposals/macos-paths.lex`)
-//!    all live in one place. The resolver, the symlink
-//!    handler, and `adopt`'s source-path inference all consult the
-//!    same accessors — drift between them is impossible by construction.
+//!    live here. Dotfiles-root selection lives exclusively in
+//!    `crate::safety_lock`; callers inject its canonical result. The symlink
+//!    handler and `adopt`'s source-path inference then consult the same
+//!    accessor — drift between selection and use is impossible by
+//!    construction.
 //!
 //! ## Adopt source-root invariants
 //!
@@ -42,7 +43,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::Result;
+use crate::{DodotError, Result};
 
 /// Provides all path calculations for dodot.
 ///
@@ -192,6 +193,21 @@ pub trait Pather: Send + Sync {
         self.data_dir().join("prompts.json")
     }
 
+    /// The Safety Lock trust file: the single clapfig-managed document
+    /// holding every dotfiles root the user has approved for root-sensitive
+    /// mutation (`crate::safety_lock::schema`).
+    ///
+    /// Lives under `data_dir`, deliberately outside the dotfiles root: a
+    /// repository-local marker would dirty the user's source tree, could
+    /// travel in Git, and would break the storage contract. Under `data_dir`
+    /// rather than `cache_dir` because losing it silently un-approves every
+    /// root — preference state, not cache — and because `dodot reset` wiping
+    /// the data dir is the documented recovery route for unusable trust
+    /// state. See `docs/spec/safety-lock.md`.
+    fn safety_lock_path(&self) -> PathBuf {
+        crate::safety_lock::schema::SafetyLockConfig::path_in(self.data_dir())
+    }
+
     /// Per-file baseline cache used by the preprocessing pipeline to
     /// detect divergence and drive cache-backed reverse-merge.
     ///
@@ -252,9 +268,9 @@ pub trait Pather: Send + Sync {
 
 /// XDG-compliant path resolver.
 ///
-/// Reads standard environment variables (`HOME`, `XDG_DATA_HOME`, etc.)
-/// and the dodot-specific `DOTFILES_ROOT`. All paths can also be set
-/// explicitly via the builder for testing.
+/// Reads standard environment variables (`HOME`, `XDG_DATA_HOME`, etc.) for
+/// root-independent coordinates. The canonical dotfiles root is always
+/// injected explicitly; root selection belongs to `crate::safety_lock`.
 #[derive(Debug, Clone)]
 pub struct XdgPather {
     home: PathBuf,
@@ -269,8 +285,8 @@ pub struct XdgPather {
 
 /// Builder for [`XdgPather`].
 ///
-/// All fields are optional. Unset fields are resolved from environment
-/// variables or XDG defaults.
+/// The dotfiles root is required. Other unset fields are resolved from
+/// environment variables or XDG defaults.
 #[derive(Debug, Default)]
 pub struct XdgPatherBuilder {
     home: Option<PathBuf>,
@@ -328,9 +344,12 @@ impl XdgPatherBuilder {
     pub fn build(self) -> Result<XdgPather> {
         let home = self.home.unwrap_or_else(resolve_home);
 
-        let dotfiles_root = self
-            .dotfiles_root
-            .unwrap_or_else(|| resolve_dotfiles_root(&home));
+        let dotfiles_root = self.dotfiles_root.ok_or_else(|| {
+            DodotError::Other(
+                "XdgPather requires an explicitly resolved dotfiles root; resolve it once with safety_lock::resolve_root and inject that canonical path"
+                    .into(),
+            )
+        })?;
 
         let xdg_config_home = self.xdg_config_home.unwrap_or_else(|| {
             std::env::var("XDG_CONFIG_HOME")
@@ -338,23 +357,13 @@ impl XdgPatherBuilder {
                 .unwrap_or_else(|_| home.join(".config"))
         });
 
-        let data_dir = self.data_dir.unwrap_or_else(|| {
-            let xdg_data = std::env::var("XDG_DATA_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| home.join(".local").join("share"));
-            xdg_data.join("dodot")
-        });
+        let data_dir = self.data_dir.unwrap_or_else(|| resolve_data_dir(&home));
 
         let config_dir = self
             .config_dir
             .unwrap_or_else(|| xdg_config_home.join("dodot"));
 
-        let cache_dir = self.cache_dir.unwrap_or_else(|| {
-            let xdg_cache = std::env::var("XDG_CACHE_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| home.join(".cache"));
-            xdg_cache.join("dodot")
-        });
+        let cache_dir = self.cache_dir.unwrap_or_else(|| resolve_cache_dir(&home));
 
         let shell_dir = data_dir.join("shell");
 
@@ -388,9 +397,32 @@ impl XdgPather {
         XdgPatherBuilder::default()
     }
 
-    /// Creates an `XdgPather` using environment variables and XDG defaults.
-    pub fn from_env() -> Result<Self> {
-        Self::builder().build()
+    /// Creates an `XdgPather` from an already resolved dotfiles root, using
+    /// environment variables and XDG defaults for every other coordinate.
+    pub fn from_env(dotfiles_root: impl Into<PathBuf>) -> Result<Self> {
+        Self::builder().dotfiles_root(dotfiles_root).build()
+    }
+
+    /// Resolve the root-independent home directory from the environment.
+    pub fn home_dir_from_env() -> PathBuf {
+        resolve_home()
+    }
+
+    /// Resolve dodot's root-independent data directory for an already
+    /// resolved home directory.
+    ///
+    /// Honors `XDG_DATA_HOME`, falling back to `<home>/.local/share`. Taking
+    /// the home as a parameter (rather than re-resolving it) lets a caller
+    /// that captures several environment-derived facts do so from one `HOME`
+    /// reading, keeping the captured set internally consistent.
+    pub fn data_dir_for_home(home: &Path) -> PathBuf {
+        resolve_data_dir(home)
+    }
+
+    /// Resolve dodot's root-independent log directory from the environment.
+    pub fn log_dir_from_env() -> PathBuf {
+        let home = resolve_home();
+        resolve_cache_dir(&home).join("logs")
     }
 }
 
@@ -439,41 +471,18 @@ fn resolve_home() -> PathBuf {
         })
 }
 
-/// Resolve the dotfiles root directory.
-///
-/// Priority:
-/// 1. `DOTFILES_ROOT` environment variable
-/// 2. Git repository root (`git rev-parse --show-toplevel`)
-/// 3. `$HOME/dotfiles` fallback
-fn resolve_dotfiles_root(home: &Path) -> PathBuf {
-    if let Ok(root) = std::env::var("DOTFILES_ROOT") {
-        return expand_tilde(&root, home);
-    }
-
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if output.status.success() {
-            let toplevel = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !toplevel.is_empty() {
-                return PathBuf::from(toplevel);
-            }
-        }
-    }
-
-    home.join("dotfiles")
+fn resolve_data_dir(home: &Path) -> PathBuf {
+    std::env::var("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| home.join(".local").join("share"))
+        .join("dodot")
 }
 
-/// Expand a leading `~` to the home directory.
-fn expand_tilde(path: &str, home: &Path) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        home.join(rest)
-    } else if path == "~" {
-        home.to_path_buf()
-    } else {
-        PathBuf::from(path)
-    }
+fn resolve_cache_dir(home: &Path) -> PathBuf {
+    std::env::var("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| home.join(".cache"))
+        .join("dodot")
 }
 
 #[cfg(test)]
@@ -527,6 +536,7 @@ mod tests {
     fn pack_data_dir_structure() {
         let pather = XdgPather::builder()
             .home("/h")
+            .dotfiles_root("/h/dotfiles")
             .data_dir("/h/data/dodot")
             .build()
             .unwrap();
@@ -541,6 +551,7 @@ mod tests {
     fn handler_data_dir_structure() {
         let pather = XdgPather::builder()
             .home("/h")
+            .dotfiles_root("/h/dotfiles")
             .data_dir("/h/data/dodot")
             .build()
             .unwrap();
@@ -555,6 +566,7 @@ mod tests {
     fn init_script_path() {
         let pather = XdgPather::builder()
             .home("/h")
+            .dotfiles_root("/h/dotfiles")
             .data_dir("/h/data/dodot")
             .build()
             .unwrap();
@@ -573,6 +585,7 @@ mod tests {
     fn homebrew_cache_path_sits_next_to_the_init_script() {
         let pather = XdgPather::builder()
             .home("/h")
+            .dotfiles_root("/h/dotfiles")
             .data_dir("/h/data/dodot")
             .build()
             .unwrap();
@@ -583,19 +596,40 @@ mod tests {
         );
     }
 
+    /// Trust state belongs to dodot, not to the dotfiles repository: an
+    /// approval marker inside the root would travel in the user's Git
+    /// history and could approve a root by being cloned.
     #[test]
-    fn expand_tilde_cases() {
-        let home = Path::new("/home/alice");
+    fn safety_lock_state_lives_under_the_data_dir_not_the_dotfiles_root() {
+        let pather = XdgPather::builder()
+            .home("/h")
+            .dotfiles_root("/h/dotfiles")
+            .data_dir("/h/data/dodot")
+            .build()
+            .unwrap();
+
         assert_eq!(
-            expand_tilde("~/dotfiles", home),
-            PathBuf::from("/home/alice/dotfiles")
+            pather.safety_lock_path(),
+            PathBuf::from("/h/data/dodot/safety-lock.toml")
         );
-        assert_eq!(expand_tilde("~", home), PathBuf::from("/home/alice"));
-        assert_eq!(
-            expand_tilde("/absolute/path", home),
-            PathBuf::from("/absolute/path")
+        assert!(!pather
+            .safety_lock_path()
+            .starts_with(pather.dotfiles_root()));
+    }
+
+    #[test]
+    fn builder_refuses_to_rediscover_a_dotfiles_root() {
+        let error = XdgPather::builder()
+            .home("/home/alice")
+            .build()
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("requires an explicitly resolved dotfiles root"),
+            "unexpected error: {error}"
         );
-        assert_eq!(expand_tilde("relative", home), PathBuf::from("relative"));
     }
 
     /// Default-XDG nesting: with no explicit `xdg_config_home`, the

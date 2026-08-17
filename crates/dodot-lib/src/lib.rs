@@ -18,6 +18,7 @@ pub mod probe;
 pub mod prompts;
 pub mod render;
 pub mod rules;
+pub mod safety_lock;
 pub mod secret;
 pub mod shell;
 

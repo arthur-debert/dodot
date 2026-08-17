@@ -154,6 +154,15 @@ pub const TEMPLATE_GIT_FILTERS: &str = include_str!("../templates/git-filters.ji
 /// Dismissed-prompt registry listing (`dodot prompts list`).
 pub const TEMPLATE_PROMPTS_LIST: &str = include_str!("../templates/prompts-list.jinja");
 
+/// Approved dotfiles roots (`dodot roots list`). See `commands::roots`.
+pub const TEMPLATE_ROOTS_LIST: &str = include_str!("../templates/roots-list.jinja");
+
+/// Safety Lock's confirmation prompt — the resolved root, how it was
+/// selected, and the bounded orientation inventory. Rendered to **stderr**
+/// by the CLI gate so structured stdout stays parseable; see
+/// `commands::safety`.
+pub const TEMPLATE_SAFETY_PROMPT: &str = include_str!("../templates/safety-prompt.jinja");
+
 /// `dodot transform check` per-file action list + optional unresolved-
 /// marker section. See `commands::transform`.
 pub const TEMPLATE_TRANSFORM_CHECK: &str = include_str!("../templates/transform-check.jinja");
@@ -261,6 +270,23 @@ pub fn render_tutorial_step<T: serde::Serialize>(
     let theme = create_theme();
     render_with_output(body, data, &theme, mode)
         .map_err(|e| crate::DodotError::Other(format!("tutorial render: {e}")))
+}
+
+/// Render Safety Lock's confirmation prompt.
+///
+/// Separate from [`render`] because this one never goes to stdout: the CLI
+/// gate writes the result to stderr, so a root-sensitive command asked for
+/// JSON or YAML still produces a parseable document on the channel a consumer
+/// reads (Spec, story 11). That is also why there is no structured branch
+/// here — the prompt is a question for a human at a terminal, and its
+/// machine-readable counterpart is `dodot roots list`.
+pub fn render_safety_prompt(
+    view: &crate::commands::safety::SafetyPromptView,
+    mode: OutputMode,
+) -> Result<String> {
+    let theme = create_theme();
+    render_with_output(TEMPLATE_SAFETY_PROMPT, view, &theme, mode)
+        .map_err(|e| crate::DodotError::Other(format!("safety prompt render: {e}")))
 }
 
 // ── Renderer ────────────────────────────────────────────────────

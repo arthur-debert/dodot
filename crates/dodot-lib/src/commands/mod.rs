@@ -18,6 +18,8 @@ pub mod probe;
 pub mod prompts;
 pub mod refresh;
 pub mod reset;
+pub mod roots;
+pub mod safety;
 pub mod secret;
 pub mod status;
 pub mod template_clean;

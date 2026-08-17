@@ -14,7 +14,6 @@
 #[cfg(test)]
 use std::collections::VecDeque;
 use std::io::Write;
-use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(test)]
 use std::sync::Mutex;
@@ -228,6 +227,19 @@ pub struct TutorialEnv {
     /// Where the dotfiles root came from (for the check_root step
     /// template) — `"DOTFILES_ROOT env var"` / `"git toplevel"` / etc.
     pub root_origin: String,
+    /// The Safety Lock gate the real deployment step crosses before it
+    /// mutates anything — the tutorial's real `up` is in ADR-0002's
+    /// protected set, and it goes through the same central gate every
+    /// dispatched mutation does rather than a check of its own. Production
+    /// ([`TutorialEnv::from_process_env`]) wires a closure over the
+    /// [`ProcessFacts`](crate::safety::ProcessFacts) and root captured when
+    /// this env was built, put to [`gate_captured`](crate::safety::gate_captured)
+    /// — never a fresh capture, so the root the gate authorizes is the root
+    /// every step of this env reads and deploys into (ADR-0001,
+    /// within-invocation stability). Tests stub it, the same seam discipline
+    /// as [`Prompts`]. The narrated read-only steps and the dry-run preview
+    /// never call it.
+    pub deployment_gate: Box<dyn Fn() -> Result<()>>,
 }
 
 impl TutorialEnv {
@@ -235,8 +247,26 @@ impl TutorialEnv {
     /// `ExecutionContext::production`, but the parts are kept so we
     /// can derive multiple ExecutionContexts with different
     /// `dry_run` flags without rebuilding everything.
+    ///
+    /// The process facts are captured and the root resolved exactly once,
+    /// here. The tutorial is a passthrough — it returns before
+    /// `app.dispatch`, so no pre-dispatch hook runs — but it goes through
+    /// the same capture and the same
+    /// [`resolve_root`](dodot_lib::safety_lock::resolve_root) as the gate,
+    /// so the root it shows in `check_root` is the root every other command
+    /// would pick and the provenance it names is the one Safety Lock's own
+    /// diagnostics use. That one captured selection then feeds everything:
+    /// the paths and config the steps read, the deployment the real `up`
+    /// step performs, and — via the [`deployment_gate`](Self::deployment_gate)
+    /// closure — the authorization itself, so what the user approves and
+    /// what the tutorial mutates cannot diverge even if the environment,
+    /// cwd, Git top-level, or a symlink target changes mid-walkthrough
+    /// (ADR-0001, within-invocation stability).
     pub fn from_process_env() -> Result<Self> {
-        let (root, origin) = discover_root_with_origin();
+        let facts = crate::safety::ProcessFacts::capture()?;
+        let resolved = facts.resolve_root()?;
+        let root = resolved.as_path().to_path_buf();
+        let origin = resolved.source().label().to_string();
         let paths = Arc::new(
             XdgPather::builder()
                 .dotfiles_root(&root)
@@ -264,6 +294,18 @@ impl TutorialEnv {
             shell_env: ShellEnv::from_process(),
             probe_policy: ProbePolicy::production(),
             root_origin: origin,
+            // The same gate `config set` crosses (`gate_passthrough`), minus
+            // the re-capture: authorize the selection this env was built
+            // from. A refusal surfaces as the gate's own diagnostic, which
+            // `main` prints verbatim before exiting 1.
+            deployment_gate: Box::new(move || {
+                crate::safety::gate_captured(
+                    facts.clone(),
+                    resolved.clone(),
+                    dodot_lib::safety_lock::RootOperation::RootSensitiveMutation,
+                )?;
+                Ok(())
+            }),
         })
     }
 
@@ -693,6 +735,10 @@ fn step_real_up(
         .chosen_pack
         .clone()
         .ok_or_else(|| anyhow!("no pack chosen"))?;
+    // The step that mutates crosses the central gate first — an untrusted
+    // implicit root is confirmed (or refused) here, exactly as a standalone
+    // `dodot up` would be, and a refusal aborts before anything deploys.
+    (env.deployment_gate)()?;
     let up_out = render_dodot_up(env, &pack, false, opts.mode)?;
     ctx.up_output = Some(up_out);
     let new_status = render_dodot_status(env, &pack, opts.mode)?;
@@ -737,28 +783,6 @@ fn build_initial_ctx(env: &TutorialEnv) -> Result<TutorialCtx> {
         packs,
         ..Default::default()
     })
-}
-
-fn discover_root_with_origin() -> (PathBuf, String) {
-    if let Ok(s) = std::env::var("DOTFILES_ROOT") {
-        let p = PathBuf::from(&s);
-        if p.exists() {
-            return (p, "DOTFILES_ROOT env var".into());
-        }
-    }
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if output.status.success() {
-            let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !s.is_empty() {
-                return (PathBuf::from(s), "git toplevel".into());
-            }
-        }
-    }
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    (cwd, "current directory".into())
 }
 
 fn render_dodot_status(env: &TutorialEnv, pack: &str, mode: OutputMode) -> Result<String> {
@@ -864,6 +888,12 @@ mod tests {
             shell_env,
             probe_policy: ProbePolicy::Never,
             root_origin: "test fixture".into(),
+            // An open gate: these tests drive the flow, not the process
+            // boundary. The gate's own behaviour is proven where a real
+            // process, terminal, and exit status exist (the Bats suite);
+            // the refusal seam is exercised by
+            // `a_refused_deployment_gate_aborts_before_anything_deploys`.
+            deployment_gate: Box::new(|| Ok(())),
         }
     }
 
@@ -940,6 +970,56 @@ mod tests {
             "expected vim/vimrc to be a symlink at {}",
             user_target.display()
         );
+    }
+
+    /// The real deployment step consults the gate before it mutates: a
+    /// refusal aborts the tutorial with the gate's own diagnostic and
+    /// nothing deployed — the same contract a refused standalone `up` has.
+    /// The read-only steps and the dry-run preview before it must all have
+    /// run without the gate answering for them (the flow reaches `real_up`
+    /// even though the gate would refuse).
+    #[test]
+    fn a_refused_deployment_gate_aborts_before_anything_deploys() {
+        let temp = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible\n")
+            .done()
+            .build();
+        let mut env = env_from(&temp);
+        env.deployment_gate =
+            Box::new(|| Err(anyhow!("dodot has not been approved for this root")));
+
+        let prompts = ScriptedPrompts::new([
+            ScriptedAnswer::Confirm(true), // intro: ready?
+            ScriptedAnswer::Confirm(true), // check_root: is this your repo?
+            ScriptedAnswer::Choice(0),     // pick_pack: vim
+            ScriptedAnswer::Enter,         // show_status
+            ScriptedAnswer::Enter,         // annotate_status
+            ScriptedAnswer::Confirm(true), // concept_targets: looks right?
+            ScriptedAnswer::Confirm(true), // dry_run: apply for real?
+        ]);
+
+        let mut buf: Vec<u8> = Vec::new();
+        let err = run_with_prompts(&env, opts_text(), &prompts, &mut buf)
+            .expect_err("a refused gate must abort the tutorial");
+
+        assert!(
+            err.to_string().contains("has not been approved"),
+            "the gate's diagnostic was rewritten: {err}"
+        );
+        // The dry-run preview ran (it needs no trust)…
+        let out = String::from_utf8(buf).unwrap();
+        assert!(
+            out.contains("Step 6 — dry run") || out.contains("dry run"),
+            "the flow never reached the dry-run step: {out}"
+        );
+        // …but the refused real step deployed nothing.
+        let user_target = temp.config_home.join("vim").join("vimrc");
+        assert!(
+            !temp.fs.exists(&user_target),
+            "a refused gate deployed anyway"
+        );
+        assert_eq!(prompts.remaining(), 0, "the refusal fired before real_up");
     }
 
     /// Quitting at the intro should not deploy anything and should

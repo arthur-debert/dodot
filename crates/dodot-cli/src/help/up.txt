@@ -44,6 +44,13 @@ the script changes. Use [item]--provision-rerun[/item] to force a re-run, or
   it says no shell has, run [item]dodot install --write[/item] — that wires the
   hook and verifies it by starting a shell.[/desc]
 
+[header]SAFETY LOCK[/header]
+  [desc]Before the first root-sensitive mutation on an implicitly discovered,
+  unapproved root, dodot asks you to approve the canonical path. A
+  non-interactive invocation refuses instead. For automation, set a valid
+  [item]DOTFILES_ROOT[/item] explicitly. [item]up --dry-run[/item] bypasses the gate and
+  records no approval. Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot tutorial[/item]   [desc]Walks you through a real [item]dodot up[/item] step by step[/desc]
   [item]dodot status[/item]     [desc]Inspect what is currently deployed and pending[/desc]

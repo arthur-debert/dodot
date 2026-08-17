@@ -8,6 +8,9 @@ mod handlers;
 mod help;
 mod interactive;
 mod logging;
+mod safety;
+#[cfg(test)]
+mod safety_tests;
 mod tutorial;
 
 fn main() {
@@ -16,7 +19,15 @@ fn main() {
     // src/help/<cmd>.txt — see the `help` module docstring for why we
     // own the dispatch instead of plumbing through standout's data
     // extractor.
-    let raw_args: Vec<String> = std::env::args().collect();
+    //
+    // argv is read as `OsString`, never `String`: `roots forget` accepts
+    // a native non-Unicode path (its Clap parser is `OsString` for
+    // exactly that), and `std::env::args()` panics on any such argument
+    // before either the pre-scan or Clap could see it. The same applies
+    // to parsing below — `parse_with` iterates `std::env::args()`
+    // internally, so the collected `OsString` argv is handed to
+    // `parse_from` instead.
+    let raw_args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if let Some(path) = help::detect_help_request(&raw_args) {
         let text = help::lookup(&path);
         // Help text is for humans — render with Auto so it picks up
@@ -27,8 +38,8 @@ fn main() {
 
     let app = build_app();
 
-    // parse_with handles help rendering (with command groups) and exits if help requested
-    let matches = app.parse_with(build_clap_command());
+    // parse_from handles help rendering (with command groups) and exits if help requested
+    let matches = app.parse_from(build_clap_command(), raw_args);
 
     // Passthrough: plist clean/smudge (git filter binary stdin/stdout).
     // Dispatched BEFORE logging::init so git filters — which fire on
@@ -78,9 +89,7 @@ fn main() {
     } else {
         logging::Verbosity::Quiet
     };
-    let log_dir = dodot_lib::paths::XdgPather::from_env()
-        .map(|p| dodot_lib::paths::Pather::log_dir(&p))
-        .unwrap_or_else(|_| std::env::temp_dir().join("dodot-logs"));
+    let log_dir = dodot_lib::paths::XdgPather::log_dir_from_env();
     let _log_guard = logging::init(&log_dir, verbosity);
 
     // Passthrough: config (clapfig handles its own output)
@@ -100,8 +109,7 @@ fn main() {
             return;
         }
         if let Err(e) = handlers::config_passthrough(sub_matches) {
-            eprintln!("error: {e}");
-            std::process::exit(1);
+            exit_passthrough_failure(e);
         }
         return;
     }
@@ -126,8 +134,7 @@ fn main() {
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
         if let Err(e) = tutorial::run(opts, &mut handle) {
-            eprintln!("error: {e}");
-            std::process::exit(1);
+            exit_passthrough_failure(e);
         }
         return;
     }
@@ -143,7 +150,9 @@ fn main() {
             // Post-up nudges. Both fire only after a successful `up`
             // and are soft (failures land in the debug log, never
             // stderr); each handler's docstring covers what it offers
-            // and when it applies.
+            // and when it applies. `up --dry-run` lands here too, but
+            // its gate authorized nothing, so `authorized_root` inside
+            // each handler turns both into a skip (ADR-0002).
             if subcommand.as_deref() == Some("up") {
                 handlers::maybe_prompt_install_ladder();
                 handlers::maybe_prompt_invalidate_cfprefsd();
@@ -174,9 +183,14 @@ fn main() {
         // it to stderr and exit non-zero so scripts piping with `&&`
         // and CI invocations see the failure. Needs standout >= 7.6.2 —
         // earlier versions reported these as `Handled` and exited 0.
-        standout::cli::RunResult::Error(msg) => {
-            eprintln!("{msg}");
-            std::process::exit(1);
+        //
+        // The status comes from the failure rather than being hard-coded,
+        // because Safety Lock's gate declares its own: a refused root exits
+        // 1 with the diagnostic exactly as the gate wrote it, and stdout
+        // untouched (`safety::refusal`).
+        standout::cli::RunResult::Error(err) => {
+            eprintln!("{err}");
+            std::process::exit(err.exit_status().code().into());
         }
         // `RunResult` is `#[non_exhaustive]` cross-crate; the wildcard
         // keeps dodot building if a future variant is added without
@@ -186,6 +200,25 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// Report a passthrough route's failure on stderr and exit 1.
+///
+/// A Safety Lock [`safety::Refusal`] is printed exactly as the gate wrote it
+/// — its diagnostic is the whole message, the same shape a refusal has under
+/// Standout dispatch — while any other error keeps the conventional
+/// `error:` prefix. The whole error chain is scanned, not just the outermost
+/// error, so a `.context(...)` added somewhere along the bubble-up cannot
+/// silently demote the refusal to a prefixed error.
+fn exit_passthrough_failure(e: anyhow::Error) -> ! {
+    match e
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<safety::Refusal>())
+    {
+        Some(refusal) => eprintln!("{refusal}"),
+        None => eprintln!("error: {e}"),
+    }
+    std::process::exit(1);
 }
 
 /// Templates shared with `dodot-lib` (via its `render` module). The
@@ -201,6 +234,7 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
     ("probe.jinja", render::TEMPLATE_PROBE),
     ("git-filters.jinja", render::TEMPLATE_GIT_FILTERS),
     ("prompts-list.jinja", render::TEMPLATE_PROMPTS_LIST),
+    ("roots-list.jinja", render::TEMPLATE_ROOTS_LIST),
     ("transform-check.jinja", render::TEMPLATE_TRANSFORM_CHECK),
     (
         "transform-install-hook.jinja",
@@ -227,7 +261,7 @@ fn pack_status_width(terminal_width: Option<usize>) -> usize {
 }
 
 fn build_app() -> App {
-    App::builder()
+    let mut builder = App::builder()
         .help_handling(true)
         .templates(EmbeddedTemplates::new(TEMPLATE_ENTRIES, ""))
         .styles(standout::embed_styles!("src/styles"))
@@ -349,6 +383,10 @@ fn build_app() -> App {
         .expect("register secret.probe")
         .command("secret.list", handlers::secret_list_handler, "secret-list")
         .expect("register secret.list")
+        .command("roots.list", handlers::roots_list_handler, "roots-list")
+        .expect("register roots.list")
+        .command("roots.forget", handlers::roots_forget_handler, "message")
+        .expect("register roots.forget")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -391,6 +429,7 @@ fn build_app() -> App {
                 title: "Misc".into(),
                 help: None,
                 commands: vec![
+                    Some("roots".into()),
                     Some("install".into()),
                     Some("transform".into()),
                     Some("refresh".into()),
@@ -402,9 +441,35 @@ fn build_app() -> App {
                     Some("help".into()),
                 ],
             },
-        ])
-        .build()
-        .expect("app build")
+        ]);
+
+    // Safety Lock's gate, wired to every dispatched command. Standout looks
+    // hooks up by exact command path and offers no all-commands seam, so the
+    // one hook implementation is registered once per row of the taxonomy —
+    // and a command absent from that table gets no root at all, which is what
+    // makes an unclassified new command fail loudly instead of quietly
+    // escaping the gate (`safety::COMMAND_SENSITIVITY`).
+    for (path, sensitivity) in safety::COMMAND_SENSITIVITY {
+        builder = builder.hooks(path, safety::hook(*sensitivity));
+    }
+
+    let app = builder.build().expect("app build");
+
+    // The two halves of the taxonomy must stay disjoint: a passthrough row
+    // for a path that is also hooked would be dead policy pretending to be
+    // the live one. The matrix test walks the whole command tree; this
+    // registration-time check catches the overlap even in a build whose
+    // tests were not run.
+    if cfg!(debug_assertions) {
+        for (path, _) in safety::PASSTHROUGH_POLICY {
+            assert!(
+                app.get_hooks(path).is_none(),
+                "`{path}` is declared in both COMMAND_SENSITIVITY and PASSTHROUGH_POLICY"
+            );
+        }
+    }
+
+    app
 }
 
 fn build_clap_command() -> ClapCommand {
@@ -734,6 +799,37 @@ fn build_clap_command() -> ClapCommand {
                 ),
         )
         .subcommand(
+            ClapCommand::new("roots")
+                .about("Inspect and revoke the dotfiles roots you have approved")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    ClapCommand::new("list").about(
+                        "Show every approved dotfiles root, and whether it still exists",
+                    ),
+                )
+                .subcommand(
+                    ClapCommand::new("forget")
+                        .about(
+                            "Revoke one approval, so the next mutating command run from \
+                             that root asks for confirmation again",
+                        )
+                        .arg(
+                            Arg::new("path")
+                                // OsString, not String: a non-Unicode root must
+                                // survive from argv to the matching rules
+                                // untouched, and `roots list` prints exactly
+                                // what this accepts back.
+                                .value_parser(clap::value_parser!(std::ffi::OsString))
+                                .help(
+                                    "The root to forget, as `dodot roots list` prints it \
+                                     (an existing path is canonicalized first)",
+                                )
+                                .required(true),
+                        ),
+                ),
+        )
+        .subcommand(
             ClapCommand::new("refresh")
                 .about(
                     "Touch template-source mtimes when deployed files have drifted, so `git \
@@ -950,6 +1046,91 @@ fn build_clap_command() -> ClapCommand {
 #[cfg(test)]
 mod tests {
     use super::pack_status_width;
+
+    /// Every leaf command the CLI has, as dotted dispatch paths — the rows
+    /// the command-policy matrix must classify.
+    fn every_leaf_path() -> Vec<String> {
+        let mut leaves = Vec::new();
+        for command in super::build_clap_command().get_subcommands() {
+            let name = command.get_name();
+            leaves.extend(
+                command
+                    .get_subcommands()
+                    .map(|sub| format!("{name}.{}", sub.get_name())),
+            );
+            // A grouping command that insists on a subcommand (`dodot
+            // roots`) never dispatches on its own; one that does not
+            // (`dodot probe`) has a bare form to classify too.
+            if !command.is_subcommand_required_set() {
+                leaves.push(name.to_string());
+            }
+        }
+        leaves
+    }
+
+    /// The command-policy matrix: every command the CLI has carries exactly
+    /// one explicit root-sensitivity classification.
+    ///
+    /// A dispatched command must have a row in
+    /// `safety::COMMAND_SENSITIVITY` — undeclared means unhooked, which
+    /// means the handler gets no resolved root and fails at its first step.
+    /// A route `main` dispatches itself must have a row in
+    /// `safety::PASSTHROUGH_POLICY` — there is no hook to fail loudly for
+    /// it, so this test is what keeps a new passthrough from quietly
+    /// escaping the gate. Either way, a new command cannot inherit "not
+    /// gated" from whichever helper it called
+    /// (`docs/adr/0002-guard-root-derived-mutations.md`); it fails here
+    /// rather than in front of a user.
+    #[test]
+    fn every_command_carries_exactly_one_root_sensitivity_classification() {
+        let app = super::build_app();
+
+        for path in every_leaf_path() {
+            let hooked = app.get_hooks(&path).is_some();
+            let passthrough = crate::safety::passthrough_policy_covers(&path);
+            assert!(
+                hooked || passthrough,
+                "`{path}` is in neither safety::COMMAND_SENSITIVITY nor \
+                 safety::PASSTHROUGH_POLICY — classify it before it ships"
+            );
+            assert!(
+                !(hooked && passthrough),
+                "`{path}` is classified in both tables; one of them is dead policy"
+            );
+        }
+    }
+
+    /// The other direction: a row naming a command that no longer exists is
+    /// dead policy, and dead policy is how a taxonomy stops being reviewable.
+    #[test]
+    fn every_declared_command_is_one_the_cli_has() {
+        let command = super::build_clap_command();
+
+        let declared = crate::safety::COMMAND_SENSITIVITY
+            .iter()
+            .map(|(path, _)| *path)
+            .chain(
+                crate::safety::PASSTHROUGH_POLICY
+                    .iter()
+                    .map(|(path, _)| *path),
+            )
+            // `help` is clap's synthesized subcommand plus main's own
+            // pre-scan; neither appears in the unbuilt command tree.
+            .filter(|path| *path != "help");
+
+        for path in declared {
+            let mut segments = path.split('.');
+            let top = segments.next().expect("a path has at least one segment");
+            let found = command.find_subcommand(top);
+            assert!(found.is_some(), "`{path}` names no dodot command");
+            if let (Some(parent), Some(leaf)) = (found, segments.next()) {
+                assert!(
+                    parent.find_subcommand(leaf).is_some(),
+                    "`{path}` names no dodot command"
+                );
+            }
+        }
+    }
 
     #[test]
     fn pack_status_width_uses_standout_value_with_80_column_fallback() {

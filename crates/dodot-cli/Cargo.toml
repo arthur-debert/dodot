@@ -19,13 +19,27 @@ serde = { version = "1", features = ["derive"] }
 inquire = "0.7"
 # 7.6.2 introduced `RunResult::Error` — required for non-zero exit on
 # handler errors (see arthur-debert/standout#141, arthur-debert/dodot#86).
-standout = "7.6.2"
+# 7.10 adds the two seams Safety Lock's gate needs: `ExternalFailure` /
+# `HookError::pre_dispatch_external`, which lets a pre-dispatch hook refuse
+# with an exact exit status and a verbatim stderr diagnostic (no framework
+# prefix), and `RunError::exit_status`, which `main` reports to the OS.
+standout = "7.10.2"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 dodot-lib = { version = "5.6.0", path = "../dodot-lib", features = ["test-utils"] }
+serde_json = "1"
+# `standout_test::serial` re-exports this macro but expands to the crate path,
+# so the crate has to be a direct dependency here too.
+serial_test = "3"
+# Standout's in-process argv-to-output harness: the level that covers clap,
+# the safety hook, and rendering together. Its seams (env, cwd, TTY, stdin,
+# output mode) are process-global, so every test using it is `#[serial]`.
+# Pinned in lockstep with `standout` — the harness runs the framework's own
+# dispatch, so a version skew is a compile error, not a subtle one.
+standout-test = "7.10.2"
 tempfile = "3"
 
 # No maintainer scripts (debian/postinst, debian/prerm) — dodot has no

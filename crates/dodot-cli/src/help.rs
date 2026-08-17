@@ -48,6 +48,7 @@ const HELP_TEXTS: &[(&str, &str)] = &[
         include_str!("help/git-show-filters.txt"),
     ),
     ("prompts", include_str!("help/prompts.txt")),
+    ("roots", include_str!("help/roots.txt")),
     ("reset", include_str!("help/reset.txt")),
     ("config", include_str!("help/config.txt")),
     ("refresh", include_str!("help/refresh.txt")),
@@ -84,6 +85,18 @@ const HELP_TEXTS: &[(&str, &str)] = &[
 /// help marker is present, returns `None` so the caller falls through
 /// to normal dispatch.
 ///
+/// Takes native `OsStr` arguments, because this scan runs over the raw
+/// process argv before Clap does: a non-Unicode argument — a native
+/// path headed for `roots forget`'s `OsString` parser — must pass
+/// through untouched, not panic the pre-scan. The markers recognized
+/// here (`--help`, `-h`, `help`, `--`) are pure ASCII, so they are
+/// matched on exact bytes; an argument that is not valid Unicode can
+/// never be one of them and stays an ordinary positional token. Such a
+/// token only ever influences the *command path* used to pick a help
+/// text — and only when a help marker was actually present — where a
+/// lossy rendering is fine: it matches no registered command and
+/// `lookup` falls back to the nearest parent's help.
+///
 /// Recognized forms:
 ///   `dodot --help`              -> Some("")
 ///   `dodot -h`                  -> Some("")
@@ -94,12 +107,12 @@ const HELP_TEXTS: &[(&str, &str)] = &[
 pub fn detect_help_request<I, T>(argv: I) -> Option<String>
 where
     I: IntoIterator<Item = T>,
-    T: AsRef<str>,
+    T: AsRef<std::ffi::OsStr>,
 {
-    let args: Vec<String> = argv
+    let args: Vec<std::ffi::OsString> = argv
         .into_iter()
         .skip(1) // program name
-        .map(|s| s.as_ref().to_string())
+        .map(|s| s.as_ref().to_os_string())
         .collect();
 
     // Scan for the help marker. Keep collecting subcommand-like tokens
@@ -118,33 +131,38 @@ where
     let mut options_terminated = false;
 
     for arg in &args {
-        if !options_terminated && arg == "--" {
+        // Exact-bytes marker matching: `to_str` yields the argument only
+        // when it is valid Unicode, so a non-Unicode argument compares
+        // equal to none of the ASCII markers below.
+        let unicode = arg.to_str();
+        let flag_like = arg.as_encoded_bytes().starts_with(b"-");
+        if !options_terminated && unicode == Some("--") {
             options_terminated = true;
             continue;
         }
         if consume_rest_as_path {
-            if !options_terminated && arg.starts_with('-') {
+            if !options_terminated && flag_like {
                 continue;
             }
-            path.push(arg.clone());
+            path.push(arg.to_string_lossy().into_owned());
             continue;
         }
-        if !options_terminated && (arg == "--help" || arg == "-h") {
+        if !options_terminated && matches!(unicode, Some("--help") | Some("-h")) {
             found_marker = true;
             break;
         }
-        if !options_terminated && arg == "help" && path.is_empty() {
+        if !options_terminated && unicode == Some("help") && path.is_empty() {
             found_marker = true;
             consume_rest_as_path = true;
             continue;
         }
-        if !options_terminated && arg.starts_with('-') {
+        if !options_terminated && flag_like {
             // skip flags / values (we don't care about flag values for
             // path detection — they can't precede the help marker in a
             // meaningful way for our command set)
             continue;
         }
-        path.push(arg.clone());
+        path.push(arg.to_string_lossy().into_owned());
     }
 
     if !found_marker {
@@ -240,6 +258,50 @@ mod tests {
         );
     }
 
+    /// The pre-scan runs over raw process argv, before Clap: a native
+    /// non-Unicode argument (a path headed for `roots forget`'s
+    /// `OsString` parser) must neither panic the scan nor read as a help
+    /// marker.
+    #[test]
+    fn non_unicode_arguments_pass_through_the_scan() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let native = OsString::from_vec(b"/tmp/\x80dots".to_vec());
+
+        // No help marker: the scan falls through to normal dispatch,
+        // leaving the argument for Clap.
+        assert_eq!(
+            detect_help_request([
+                OsString::from("dodot"),
+                OsString::from("roots"),
+                OsString::from("forget"),
+                native.clone(),
+            ]),
+            None
+        );
+
+        // A non-Unicode token that merely *starts* like a flag is not a
+        // help marker either.
+        let flag_like = OsString::from_vec(b"-\x80h".to_vec());
+        assert_eq!(
+            detect_help_request([OsString::from("dodot"), flag_like]),
+            None
+        );
+
+        // With a real marker present, the scan still detects help; the
+        // non-Unicode token only shapes the lookup path, where the
+        // parent fallback absorbs it.
+        let path = detect_help_request([
+            OsString::from("dodot"),
+            OsString::from("help"),
+            OsString::from("roots"),
+            native,
+        ])
+        .expect("an explicit `help` word must be detected");
+        assert_eq!(lookup(&path), lookup("roots"));
+    }
+
     #[test]
     fn lookup_falls_back_to_parent() {
         let got = lookup("probe.unknown-thing");
@@ -262,6 +324,152 @@ mod tests {
         for (path, expected) in HELP_TEXTS {
             assert_eq!(lookup(path), *expected, "path {path:?} should self-match");
         }
+    }
+
+    /// Safety Lock sits before dispatch, so a command's help is the last
+    /// read-only surface available to someone whose implicit root is not yet
+    /// approved. Keep every mixed or mutating command family explicit about
+    /// the gate instead of relying on the separate `roots` page being found.
+    ///
+    /// The roster is derived from the authoritative policy tables —
+    /// [`COMMAND_SENSITIVITY`]'s mutating rows plus [`PASSTHROUGH_POLICY`]'s
+    /// route-gated rows — so a newly classified mutating command fails here
+    /// until its help family names the gate, instead of staying green behind
+    /// a second hand-maintained list.
+    #[test]
+    fn root_sensitive_command_help_names_safety_lock() {
+        use crate::safety::{
+            PassthroughPolicy, RootSensitivity, COMMAND_SENSITIVITY, PASSTHROUGH_POLICY,
+        };
+
+        let mut families: Vec<&str> = COMMAND_SENSITIVITY
+            .iter()
+            .filter(|(_, sensitivity)| matches!(sensitivity, RootSensitivity::Mutating { .. }))
+            .map(|(path, _)| *path)
+            .chain(
+                PASSTHROUGH_POLICY
+                    .iter()
+                    .filter(|(_, policy)| *policy == PassthroughPolicy::GatedInRoute)
+                    .map(|(path, _)| *path),
+            )
+            // Dotted paths (`template.install-filter`) document the gate on
+            // their registered parent help page.
+            .map(|path| path.split('.').next().unwrap_or(path))
+            .collect();
+        families.sort_unstable();
+        families.dedup();
+        assert!(
+            !families.is_empty(),
+            "the safety policy tables must yield at least one gated help family"
+        );
+
+        for path in families {
+            let body = lookup(path);
+            assert!(
+                body.contains("SAFETY LOCK") && body.contains("DOTFILES_ROOT"),
+                "help/{path}.txt must explain Safety Lock and explicit-root automation"
+            );
+            assert!(
+                body.contains("non-interactive"),
+                "help/{path}.txt must explain non-interactive refusal"
+            );
+            assert!(
+                body.contains("dodot roots"),
+                "help/{path}.txt must point to approval recovery"
+            );
+        }
+    }
+
+    #[test]
+    fn top_level_help_summarizes_safety_lock_contract() {
+        let body = lookup("");
+        for required in [
+            "Safety Lock",
+            "DOTFILES_ROOT",
+            "first root-sensitive mutation",
+            "non-interactive invocation refuses",
+            "Read-only commands",
+            "documented previews",
+            "dodot roots list",
+            "dodot roots forget",
+            "dodot reset",
+        ] {
+            assert!(
+                body.contains(required),
+                "top-level help is missing Safety Lock contract text {required:?}"
+            );
+        }
+    }
+
+    /// Every declared preview flag must appear in its family's help, derived
+    /// from [`COMMAND_SENSITIVITY`] so a new previewable command cannot ship
+    /// help that omits its bypass; the audited exact phrasings below then pin
+    /// how each bypass is worded, including the route-gated ones the table
+    /// carries no flag for.
+    #[test]
+    fn mixed_command_help_names_its_read_only_bypass() {
+        use crate::safety::{RootSensitivity, COMMAND_SENSITIVITY};
+
+        for (path, sensitivity) in COMMAND_SENSITIVITY {
+            if let RootSensitivity::Mutating {
+                preview_flag: Some(flag),
+            } = sensitivity
+            {
+                let family = path.split('.').next().unwrap_or(path);
+                assert!(
+                    lookup(family).contains(&format!("--{flag}")),
+                    "help/{family}.txt must name the declared preview flag --{flag}"
+                );
+            }
+        }
+
+        for (path, bypass) in [
+            ("up", "up --dry-run"),
+            ("down", "down --dry-run"),
+            ("adopt", "adopt --dry-run"),
+            ("config", "list"),
+            ("refresh", "refresh --list-paths"),
+            ("transform", "check --dry-run"),
+            ("template", "template clean"),
+            ("tutorial", "dry-run preview"),
+        ] {
+            assert!(
+                lookup(path).contains(bypass),
+                "help/{path}.txt must name its Safety Lock bypass {bypass:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn audited_help_corrections_stay_pinned() {
+        let config = lookup("config");
+        assert!(config.contains("local[/item] is the only supported"));
+        assert!(
+            !config.contains("[item]global[/item]"),
+            "config help must not advertise clapfig's nonexistent global persist scope"
+        );
+
+        let tutorial = lookup("tutorial");
+        assert!(tutorial.contains("save progress"));
+        assert!(tutorial.contains("install --write"));
+        assert!(tutorial.contains("first root-sensitive mutation"));
+
+        let reset = lookup("reset");
+        assert!(reset.contains("safety-lock.toml"));
+        assert!(reset.contains("asks again"));
+
+        let roots = lookup("roots");
+        assert!(roots.contains("next root-sensitive mutation that implicitly"));
+        assert!(roots.contains("discovers that root asks again"));
+        assert!(
+            !roots.contains("next deploying command"),
+            "roots help must cover every gated mutation after forget, not only deployment"
+        );
+        assert!(
+            !roots.contains("mutation run from that root"),
+            "forget's promise is scoped to implicit discovery: explicit \
+             DOTFILES_ROOT selection never asks"
+        );
     }
 
     /// Every subcommand clap knows about must have its own help text —

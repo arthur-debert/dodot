@@ -1,7 +1,7 @@
 # CLI reference
 
-Per-command help is authoritative: `dodot <cmd> --help`. Every mutating command
-supports `--dry-run`.
+Per-command help is authoritative: `dodot <cmd> --help`. Use a documented
+preview where one exists; not every mutating command supports `--dry-run`.
 
 ## Daily commands
 
@@ -30,7 +30,15 @@ it cannot report a measured verdict — `up` and `install --write` can.
 Deploy: materialize symlinks, register shell sources and `bin/` on `$PATH`, run
 provisioning when its content hash changed. Phases: plan → detect cross-pack
 conflicts (stops if any) → execute (wipe each pack's stored state, re-apply from
-source). Idempotent.
+source). Idempotent. Safety Lock-gated: on an implicit unapproved root it prompts
+(non-interactive: refuses, exit 1) — set `DOTFILES_ROOT` explicitly in automation.
+The exhaustive protected set is `up`, `down`, `init`, `fill`, `adopt`,
+`addignore`, root-persisted `config set` / `config unset`, mutating `refresh`,
+`transform check`, `git-install-filters`, `template install-filter`,
+`transform install-hook`, and the tutorial's real deployment step. Their
+documented read-only or preview variants bypass the gate and establish no trust.
+`install --write`, `git-install-alias`, prompt management, factory reset, and
+stdin/stdout filter passthroughs are root-independent and remain outside it.
 
 - `--dry-run` — preview only.
 - `--no-provision` — skip install scripts and Brewfile.

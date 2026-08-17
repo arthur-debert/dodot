@@ -27,6 +27,14 @@ is a no-op.[/desc]
   dodot refresh --list-paths     [dim]# what would be touched, no writes[/dim]
   alias git='dodot refresh --quiet && command git'   [dim]# the Tier 2 wrapper[/dim][/example]
 
+[header]SAFETY LOCK[/header]
+  [desc]Mutating [item]refresh[/item] is gated before it can touch a source in the selected
+  root. Its first use on an implicitly discovered, unapproved root asks for
+  approval; a non-interactive invocation refuses. For automation, set a valid
+  [item]DOTFILES_ROOT[/item] explicitly. [item]refresh --list-paths[/item] is read-only, so it
+  bypasses the gate and records no approval. Inspect or revoke approvals with
+  [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot git-install-alias[/item]         [desc]Install the git-wrapping shell alias[/desc]
   [item]dodot transform check[/item]           [desc]Reverse-merge the edits back to source[/desc]
