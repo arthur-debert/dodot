@@ -283,6 +283,40 @@ fn probe_shell_init_default_explains_only_incomplete_profiles() {
 }
 
 #[test]
+fn probe_shell_init_default_explains_disabled_profiling_and_incomplete_profile() {
+    let env = TempEnvironment::builder().build();
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join(".dodot.toml"),
+            b"[profiling]\nenabled = false\n",
+        )
+        .unwrap();
+    let ctx = make_ctx(&env);
+    write_incomplete_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/interrupted.sh\t1.000000\t1.000200\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["profiling_enabled"], false);
+    assert_eq!(parsed["has_profile"], false);
+    assert_eq!(parsed["latest_profile_incomplete"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("profiling is disabled in config"),
+        "expected disabled-profiling remediation; got:\n{text}"
+    );
+    assert!(
+        text.contains("latest retained profile is incomplete") && text.contains("--history"),
+        "expected incomplete-profile note; got:\n{text}"
+    );
+}
+
+#[test]
 fn probe_shell_init_history_renders_incomplete_rows_with_unknown_total() {
     let env = TempEnvironment::builder().build();
     let ctx = make_ctx(&env);

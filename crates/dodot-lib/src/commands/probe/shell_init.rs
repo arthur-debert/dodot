@@ -35,8 +35,8 @@ use crate::Result;
 /// When no complete profile has been written yet (fresh install,
 /// profiling disabled, no shell started since the last `up`, or only
 /// interrupted profiles exist), returns a "no data" view with
-/// `has_profile = false`. The template distinguishes the interrupted
-/// case from the ordinary empty state.
+/// `has_profile = false`. The template distinguishes profiling
+/// disabled, ordinary empty state, and retained incomplete profiles.
 ///
 /// `trace` is the caller's suppression switch (`--no-trace`, or a
 /// `<file>` argument having routed to the filter view instead): when
@@ -49,9 +49,10 @@ pub fn shell_init(ctx: &ExecutionContext, trace: bool) -> Result<ProbeResult> {
     let profiling_enabled = root_config.profiling.enabled;
 
     let profile_opt = read_latest_profile(ctx.fs.as_ref(), ctx.paths.as_ref())?;
-    let latest_profile_incomplete = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), 1)?
-        .first()
-        .is_some_and(|p| !p.complete);
+    let latest_profile_incomplete = profile_opt.is_none()
+        && read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), 1)?
+            .first()
+            .is_some_and(|p| !p.complete);
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
     let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
     let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
