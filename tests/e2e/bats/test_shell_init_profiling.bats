@@ -153,8 +153,7 @@ echo hi'
 
     run dodot --output json probe shell-init --history
     [ "$status" -eq 0 ]
-    assert_output_contains '"complete":false'
-    assert_output_contains '"total_us":null'
+    jq -e '.rows[0].complete == false and .rows[0].total_us == null' <<<"$output" >/dev/null
 }
 
 # ── Disabling profiling via config ────────────────────────────────
