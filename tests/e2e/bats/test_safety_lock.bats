@@ -326,6 +326,36 @@ pty_run() {
     assert_output_not_contains "?]"
 }
 
+# The revocation contract for a path Unicode cannot spell: `roots forget`
+# takes its argument as native bytes end to end — argv (this is why main
+# reads `args_os`), Clap's `OsString` parser, and the canonical matching
+# rules. Only a real process proves the argv leg; the in-process harness
+# never goes through `main`'s argument handling.
+@test "roots forget revokes a live non-UTF-8 root passed through native argv" {
+    local native hex
+    native="$SAFETY_ROOT/$(printf 'dots\x80')"
+    # Skipped rather than failed where the fixture cannot exist: APFS
+    # (macOS) refuses file names that are not valid UTF-8, so only a
+    # byte-transparent filesystem (Linux CI) can host this root.
+    if ! mkdir -p "$native" 2>/dev/null; then
+        skip "this filesystem refuses non-UTF-8 file names"
+    fi
+
+    # Approve it the way an earlier prompt would have recorded it: a
+    # non-Unicode root persists as the os-bytes hex spelling.
+    hex=$(printf '%s' "$native" | od -An -v -tx1 | tr -d ' \n')
+    mkdir -p "$(dirname "$SAFETY_STATE")"
+    printf '[roots]\napproved = ["os-bytes:%s"]\n' "$hex" >"$SAFETY_STATE"
+
+    run dodot roots forget "$native"
+    [ "$status" -eq 0 ]
+    assert_output_contains "Forgot"
+
+    run dodot roots list
+    [ "$status" -eq 0 ]
+    assert_output_contains "No root has been approved"
+}
+
 @test "roots forget reports an argument that matches no approval" {
     run dodot roots forget "$HOME/never-approved"
     [ "$status" -eq 0 ]

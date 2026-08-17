@@ -19,7 +19,15 @@ fn main() {
     // src/help/<cmd>.txt — see the `help` module docstring for why we
     // own the dispatch instead of plumbing through standout's data
     // extractor.
-    let raw_args: Vec<String> = std::env::args().collect();
+    //
+    // argv is read as `OsString`, never `String`: `roots forget` accepts
+    // a native non-Unicode path (its Clap parser is `OsString` for
+    // exactly that), and `std::env::args()` panics on any such argument
+    // before either the pre-scan or Clap could see it. The same applies
+    // to parsing below — `parse_with` iterates `std::env::args()`
+    // internally, so the collected `OsString` argv is handed to
+    // `parse_from` instead.
+    let raw_args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if let Some(path) = help::detect_help_request(&raw_args) {
         let text = help::lookup(&path);
         // Help text is for humans — render with Auto so it picks up
@@ -30,8 +38,8 @@ fn main() {
 
     let app = build_app();
 
-    // parse_with handles help rendering (with command groups) and exits if help requested
-    let matches = app.parse_with(build_clap_command());
+    // parse_from handles help rendering (with command groups) and exits if help requested
+    let matches = app.parse_from(build_clap_command(), raw_args);
 
     // Passthrough: plist clean/smudge (git filter binary stdin/stdout).
     // Dispatched BEFORE logging::init so git filters — which fire on
