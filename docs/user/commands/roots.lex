@@ -14,9 +14,9 @@ There is no `roots trust` — approval only happens at the point of use, where t
 2. Subcommands
 
     Subcommands:
-        | Subcommand        | Effect                                                                              |
-        | `list`            | Show every approved root, and whether it still exists on disk.                      |
-        | `forget <path>`   | Revoke one approval; the next mutating command from that root asks again.           |
+        | Subcommand      | Effect                                                                                         |
+        | `list`          | Show every approved root, and whether it still exists on disk.                                 |
+        | `forget <path>` | Revoke one approval; the next mutating command that implicitly discovers that root asks again. |
 
     :: table align=ll ::
 

@@ -26,8 +26,8 @@ around the prompt.[/desc]
   guess.[/desc]
 
 [header]FORGET[/header]
-  [desc]Removes one approval. The next root-sensitive mutation run from that root asks
-  again.
+  [desc]Removes one approval. The next root-sensitive mutation that implicitly
+  discovers that root asks again.
 
   A path that still exists is resolved first, so any alias of a live root
   selects its approval. A root you moved or deleted is matched by the exact

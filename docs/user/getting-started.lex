@@ -170,7 +170,7 @@ Getting started
 
     :: shell ::
 
-    Twelve steps, ten minutes, no toy examples. Nothing changes without an explicit yes.
+    Twelve steps, ten minutes, no toy examples. The walkthrough deploys nothing without an explicit yes.
 
     The doc library, in roughly the order you'll need them:
 
