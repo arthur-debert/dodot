@@ -66,6 +66,7 @@ nav:
       - Adopting: user/adopting.md
       - Handlers: user/handlers.md
       - Commands: user/commands.md
+      - Safety Lock: user/safety-lock.md
   - Reference:
       - Philosophy: reference/philosophy.md
       - Architecture: reference/architecture.md

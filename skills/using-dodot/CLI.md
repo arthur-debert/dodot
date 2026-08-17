@@ -30,7 +30,10 @@ it cannot report a measured verdict — `up` and `install --write` can.
 Deploy: materialize symlinks, register shell sources and `bin/` on `$PATH`, run
 provisioning when its content hash changed. Phases: plan → detect cross-pack
 conflicts (stops if any) → execute (wipe each pack's stored state, re-apply from
-source). Idempotent.
+source). Idempotent. Safety Lock-gated: on an implicit unapproved root it prompts
+(non-interactive: refuses, exit 1) — set `DOTFILES_ROOT` explicitly in automation.
+`down`, repo-writing helpers (`init`/`fill`/`adopt`/`addignore`), `config set`,
+and the repo-local installers share the gate; dry-runs and reads never do.
 
 - `--dry-run` — preview only.
 - `--no-provision` — skip install scripts and Brewfile.

@@ -38,7 +38,9 @@ The "show me / generate / edit configuration" command. dodot ships sensible defa
 
     :: table align=ll ::
 
-    The `--scope` flag picks which file `set` / `unset` write to. Two scopes today: `local` (the dotfiles-root `.dodot.toml`) and `global` (cross-machine config under XDG-data). Default scope is `local`.
+    The `--scope` flag picks which file `set` / `unset` write to. One scope today: `local`, the dotfiles-root `.dodot.toml` — which is also the default, so the flag is only ever future-proofing.
+
+    Because `set` and `unset` persist into the resolved dotfiles root, they are Safety Lock-gated: on an implicitly discovered root you haven't approved, they prompt (or, without a terminal, refuse) exactly like `dodot up`. Reads and generation — `list`, `get`, `gen`, `schema` — never prompt and never establish trust. See [./../safety-lock.lex].
 
 4. Key names
 

@@ -44,6 +44,7 @@ For terminology, see [./glossary/pack.lex] and [./glossary/handler.lex].
     - [./commands/tutorial.lex] — interactive 10-minute walkthrough using your real dotfiles.
     - [./commands/refresh.lex] — touch source mtimes when deployed bytes diverged. Almost always wrapped in the Tier-2 alias.
     - [./commands/secret.lex] — inspect secret providers and template references. Read-only.
+    - [./commands/roots.lex] — inspect and revoke the dotfiles roots Safety Lock has approved.
 
 6. Global flags
 
@@ -54,4 +55,4 @@ For terminology, see [./glossary/pack.lex] and [./glossary/handler.lex].
     - `--debug` — debug logging to stderr (implies `--verbose`).
     - `--help` (or `-h`, or `dodot help <command>`) — per-command help with usage, options, examples, cross-references.
 
-    The dotfiles root is not a flag. dodot resolves it by checking `$DOTFILES_ROOT` first, then `git rev-parse --show-toplevel`, then the current working directory. See [./glossary/dotfiles-root.lex].
+    The dotfiles root is not a flag. dodot resolves it by checking `$DOTFILES_ROOT` first, then `git rev-parse --show-toplevel`, then the current working directory. See [./glossary/dotfiles-root.lex]. The first mutating command on an implicitly discovered root asks you to approve it — see [./safety-lock.lex].
