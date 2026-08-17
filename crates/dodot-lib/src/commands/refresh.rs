@@ -26,12 +26,24 @@
 //!
 //! Exit code: 0 in all healthy cases. Errors (real I/O failures only)
 //! propagate as `DodotError::Fs`.
+//!
+//! # One cache, one root
+//!
+//! The baseline cache is shared across every dotfiles root that has ever
+//! run `dodot up` on this machine, and each baseline stores the absolute
+//! path of the source it was rendered from. Touching those paths blind
+//! would let a refresh run from one root write mtimes into another
+//! root's user-authored sources, so the mutation set is scoped to the
+//! root the invocation is authorized for: only sources that canonically
+//! lie inside it are touched, and every other baseline is reported
+//! (`docs/adr/0002-guard-root-derived-mutations.md`).
 
 use serde::Serialize;
 
 use crate::packs::orchestration::ExecutionContext;
 use crate::preprocessing::baseline::hex_sha256;
 use crate::preprocessing::divergence::collect_baselines;
+use crate::safety_lock::{scope_to_root, OsPathProbe, OutOfRootReason, RootIdentity, ScopeOutcome};
 use crate::Result;
 
 /// What `refresh` did to a single processed file.
@@ -46,8 +58,35 @@ pub enum RefreshAction {
     /// Deployed file is missing from the datastore (e.g. user removed
     /// it). Reported but not actioned.
     MissingDeployed,
+    /// The cached source belongs to a different dotfiles root. Reported;
+    /// this invocation is not authorized to touch it.
+    OutOfRoot,
     /// Cached source path no longer exists on disk. Reported.
     MissingSource,
+    /// The baseline records no absolute source path at all — an entry
+    /// written before the cache tracked source paths. Reported; the next
+    /// `dodot up` rewrites it.
+    StaleSource,
+    /// The cached source exists but could not be resolved, so it cannot
+    /// be placed inside the root. Reported, never touched.
+    UnresolvableSource,
+}
+
+impl RefreshAction {
+    /// Name the reason a baseline stayed out of the mutation set.
+    ///
+    /// One action per reason rather than a single "not mine" bucket: a
+    /// source under another root, a deleted source, a source path the
+    /// cache never recorded, and one Dodot cannot resolve are four
+    /// different states of the user's machine with four different fixes.
+    fn out_of_root(reason: OutOfRootReason) -> Self {
+        match reason {
+            OutOfRootReason::OutsideRoot => RefreshAction::OutOfRoot,
+            OutOfRootReason::Missing => RefreshAction::MissingSource,
+            OutOfRootReason::Stale => RefreshAction::StaleSource,
+            OutOfRootReason::Uncanonicalizable => RefreshAction::UnresolvableSource,
+        }
+    }
 }
 
 /// One row in the refresh report.
@@ -89,22 +128,50 @@ pub enum RefreshMode {
     ListPaths,
 }
 
-/// Run `dodot refresh` in the given mode.
+/// Run `dodot refresh` in the given mode, touching only sources under
+/// `authorized_root`.
 ///
-/// Walks every cached baseline. For each:
+/// Walks every cached baseline and scopes the walk to the authorized root
+/// first (see the module docs). For each baseline:
+///   - if its source is not inside the root → report why, touch nothing
 ///   - read the deployed bytes from `<data_dir>/packs/<pack>/<handler>/<filename>`
 ///   - hash them; compare to `baseline.rendered_hash`
 ///   - if equal → action `Clean`
 ///   - if differ AND mode != ListPaths → copy deployed mtime onto source, action `Touched`
 ///   - if differ AND mode == ListPaths → action `Touched` (no write; the source path will be printed)
 ///   - if deployed is missing → action `MissingDeployed`
-///   - if source path is empty or missing → action `MissingSource`
-pub fn refresh(ctx: &ExecutionContext, mode: RefreshMode) -> Result<RefreshResult> {
+///
+/// `authorized_root` is the canonical root this invocation may write
+/// under — the root the user selected, and (once WS07 wires the gate)
+/// approved. It is not re-derived here: the root that was authorized and
+/// the root that is mutated must be the same one (ADR-0001).
+///
+/// The mtime is written to the *canonical* source path rather than the
+/// spelling the cache stored, because that is the path containment was
+/// decided on; a source reached through an in-root symlink is touched at
+/// its resolved location. The report still names the stored path, which
+/// is what the user recognizes and what `--list-paths` consumers feed
+/// back to their watchers.
+pub fn refresh(
+    ctx: &ExecutionContext,
+    mode: RefreshMode,
+    authorized_root: &RootIdentity,
+) -> Result<RefreshResult> {
     let baselines = collect_baselines(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let sources: Vec<std::path::PathBuf> = baselines
+        .iter()
+        .map(|(_, _, _, baseline)| baseline.source_path.clone())
+        .collect();
+    // The command layer's filesystem is the real one (`OsFs`), so
+    // canonicalization asks the matching OS probe.
+    let scope = scope_to_root(authorized_root, &sources, &OsPathProbe);
+
     let mut entries = Vec::with_capacity(baselines.len());
     let mut touched_any = false;
 
-    for (pack, handler, filename, baseline) in baselines {
+    for ((pack, handler, filename, baseline), outcome) in
+        baselines.into_iter().zip(scope.outcomes())
+    {
         let source_path = baseline.source_path.clone();
         let deployed_path = ctx
             .paths
@@ -114,9 +181,23 @@ pub fn refresh(ctx: &ExecutionContext, mode: RefreshMode) -> Result<RefreshResul
             .join(&handler)
             .join(&filename);
 
-        let action = if source_path.as_os_str().is_empty() || !ctx.fs.exists(&source_path) {
-            RefreshAction::MissingSource
-        } else if !ctx.fs.exists(&deployed_path) {
+        // Only the authorized canonical path is ever written; everything
+        // else is a row in the report.
+        let authorized = match outcome {
+            ScopeOutcome::InRoot(canonical) => canonical,
+            ScopeOutcome::OutOfRoot(target) => {
+                entries.push(RefreshEntry {
+                    pack,
+                    handler,
+                    filename,
+                    source_path: source_path.display().to_string(),
+                    action: RefreshAction::out_of_root(target.reason),
+                });
+                continue;
+            }
+        };
+
+        let action = if !ctx.fs.exists(&deployed_path) {
             RefreshAction::MissingDeployed
         } else {
             // Hash the deployed bytes. A read error here surfaces as a
@@ -129,7 +210,7 @@ pub fn refresh(ctx: &ExecutionContext, mode: RefreshMode) -> Result<RefreshResul
             } else {
                 if mode != RefreshMode::ListPaths {
                     let deployed_mtime = ctx.fs.modified(&deployed_path)?;
-                    let source_mtime = ctx.fs.modified(&source_path)?;
+                    let source_mtime = ctx.fs.modified(authorized)?;
                     // The whole point of refresh is to invalidate
                     // git's stat-cache by changing the source mtime.
                     // If the deployed mtime happens to equal the
@@ -148,7 +229,7 @@ pub fn refresh(ctx: &ExecutionContext, mode: RefreshMode) -> Result<RefreshResul
                     } else {
                         deployed_mtime
                     };
-                    ctx.fs.set_modified(&source_path, target)?;
+                    ctx.fs.set_modified(authorized, target)?;
                 }
                 touched_any = true;
                 RefreshAction::Touched
@@ -230,6 +311,30 @@ mod tests {
         env.fs.write_file(path, body).unwrap();
     }
 
+    /// The root this invocation is authorized to touch: the
+    /// environment's dotfiles root, canonicalized.
+    ///
+    /// Canonicalized because the command canonicalizes every source
+    /// before placing it, and a root that is not itself canonical
+    /// contains none of them — `TempDir` hands back `/var/…` on macOS
+    /// while every resolved source under it comes back as `/private/var/…`.
+    fn root(env: &TempEnvironment) -> RootIdentity {
+        canonical_root(&env.dotfiles_root)
+    }
+
+    fn canonical_root(path: &std::path::Path) -> RootIdentity {
+        RootIdentity::new(std::fs::canonicalize(path).unwrap()).unwrap()
+    }
+
+    /// A second dotfiles root beside the first, sharing this
+    /// environment's one data and cache directory — the arrangement the
+    /// scoping exists for.
+    fn second_root_dir(env: &TempEnvironment) -> std::path::PathBuf {
+        let dir = env.home.join("other-dotfiles");
+        env.fs.mkdir_all(&dir).unwrap();
+        dir
+    }
+
     /// Stage a baseline + matching pack source + matching deployed
     /// file. Returns the absolute source and deployed paths so the
     /// test can edit either side.
@@ -240,7 +345,21 @@ mod tests {
         rendered: &[u8],
         source: &[u8],
     ) -> (std::path::PathBuf, std::path::PathBuf) {
-        let src = env.dotfiles_root.join(pack).join(template_name);
+        let root = env.dotfiles_root.clone();
+        stage_under(env, &root, pack, template_name, rendered, source)
+    }
+
+    /// [`stage_one`] for a source under an arbitrary root, so one cache
+    /// can hold baselines belonging to two different roots.
+    fn stage_under(
+        env: &TempEnvironment,
+        root: &std::path::Path,
+        pack: &str,
+        template_name: &str,
+        rendered: &[u8],
+        source: &[u8],
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
+        let src = root.join(pack).join(template_name);
         write_file(env, &src, source);
         let stripped = template_name.strip_suffix(".tmpl").unwrap_or(template_name);
         let deployed = env
@@ -268,7 +387,7 @@ mod tests {
     fn empty_cache_yields_empty_report() {
         let env = TempEnvironment::builder().build();
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
         assert!(r.entries.is_empty());
         assert!(!r.touched_any);
     }
@@ -282,7 +401,7 @@ mod tests {
         let before = env.fs.modified(&src).unwrap();
 
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
         assert_eq!(r.entries.len(), 1);
         assert!(matches!(r.entries[0].action, RefreshAction::Clean));
         assert!(!r.touched_any);
@@ -300,7 +419,7 @@ mod tests {
         let deployed_mtime = env.fs.modified(&deployed).unwrap();
 
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
         assert_eq!(r.entries.len(), 1);
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
         assert!(r.touched_any);
@@ -323,7 +442,7 @@ mod tests {
         env.fs.write_file(&deployed, b"rendered EDITED").unwrap();
 
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::ListPaths).unwrap();
+        let r = refresh(&ctx, RefreshMode::ListPaths, &root(&env)).unwrap();
         assert_eq!(r.entries.len(), 1);
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
         assert!(r.touched_any);
@@ -343,7 +462,7 @@ mod tests {
         let deployed_mtime = env.fs.modified(&deployed).unwrap();
 
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Quiet).unwrap();
+        let r = refresh(&ctx, RefreshMode::Quiet, &root(&env)).unwrap();
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
         assert_eq!(env.fs.modified(&src).unwrap(), deployed_mtime);
     }
@@ -377,7 +496,7 @@ mod tests {
         write_file(&env, &deployed, b"rendered");
 
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
         assert_eq!(r.entries.len(), 1);
         assert!(matches!(r.entries[0].action, RefreshAction::MissingSource));
         assert!(!r.touched_any);
@@ -402,7 +521,7 @@ mod tests {
             .unwrap();
 
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
         assert!(matches!(
             r.entries[0].action,
             RefreshAction::MissingDeployed
@@ -432,7 +551,7 @@ mod tests {
         env.fs.write_file(&deployed, b"hello Bob").unwrap();
 
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
         assert!(r.touched_any);
     }
@@ -453,7 +572,7 @@ mod tests {
         assert_eq!(env.fs.modified(&deployed).unwrap(), pinned);
 
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
 
         let after = env.fs.modified(&src).unwrap();
@@ -477,7 +596,7 @@ mod tests {
             stage_one(&env, pack, name, b"rendered", b"src");
         }
         let ctx = make_ctx(&env);
-        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
         let order: Vec<_> = r
             .entries
             .iter()
@@ -491,5 +610,202 @@ mod tests {
                 ("zebra".into(), "z".into()),
             ]
         );
+    }
+
+    // ── mutation scoping (ACC01-WS06) ────────────────────────────
+
+    /// Two roots, one shared cache: whichever root the invocation is
+    /// authorized for, the other root's sources keep their mtimes. This
+    /// is the property the scoping exists for — approval for one root
+    /// cannot reach into a second repository's working tree
+    /// (ADR-0002).
+    #[test]
+    fn authorizing_one_root_never_touches_the_other_roots_sources() {
+        let env = TempEnvironment::builder().build();
+        let other_root = second_root_dir(&env);
+
+        let (here, here_deployed) = stage_one(&env, "app", "cfg.toml.tmpl", b"rendered", b"src");
+        let (there, there_deployed) = stage_under(
+            &env,
+            &other_root,
+            "other",
+            "cfg.toml.tmpl",
+            b"rendered",
+            b"src",
+        );
+
+        // Both deployed files diverge, so both baselines *want* a touch.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        env.fs
+            .write_file(&here_deployed, b"rendered EDITED")
+            .unwrap();
+        env.fs
+            .write_file(&there_deployed, b"rendered EDITED")
+            .unwrap();
+        let here_before = env.fs.modified(&here).unwrap();
+        let there_before = env.fs.modified(&there).unwrap();
+
+        let ctx = make_ctx(&env);
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
+
+        let actions: Vec<(&str, &RefreshAction)> = r
+            .entries
+            .iter()
+            .map(|e| (e.pack.as_str(), &e.action))
+            .collect();
+        assert!(
+            matches!(
+                actions.as_slice(),
+                [
+                    ("app", RefreshAction::Touched),
+                    ("other", RefreshAction::OutOfRoot)
+                ]
+            ),
+            "unexpected actions: {actions:?}"
+        );
+        assert_ne!(
+            env.fs.modified(&here).unwrap(),
+            here_before,
+            "the authorized root's own source was not touched"
+        );
+        assert_eq!(
+            env.fs.modified(&there).unwrap(),
+            there_before,
+            "another root's source was touched"
+        );
+
+        // Authorize the other root instead: the mirror image, from the
+        // same cache.
+        let r = refresh(&ctx, RefreshMode::Report, &canonical_root(&other_root)).unwrap();
+        let actions: Vec<(&str, &RefreshAction)> = r
+            .entries
+            .iter()
+            .map(|e| (e.pack.as_str(), &e.action))
+            .collect();
+        assert!(
+            matches!(
+                actions.as_slice(),
+                [
+                    ("app", RefreshAction::OutOfRoot),
+                    ("other", RefreshAction::Touched)
+                ]
+            ),
+            "unexpected actions: {actions:?}"
+        );
+        assert_ne!(env.fs.modified(&there).unwrap(), there_before);
+    }
+
+    /// A source that *lives* under the authorized root but *resolves*
+    /// outside it: the cache stored an in-root spelling, and touching it
+    /// would write through the link into another tree.
+    #[test]
+    fn a_source_symlinked_out_of_the_root_is_reported_not_touched() {
+        let env = TempEnvironment::builder().build();
+        let other_root = second_root_dir(&env);
+        let outside = other_root.join("real.toml.tmpl");
+        write_file(&env, &outside, b"src");
+
+        // The pack entry is a symlink pointing out of the root; the
+        // deployed file diverges, so it would be touched if the escape
+        // went unnoticed.
+        let link = env.dotfiles_root.join("app/cfg.toml.tmpl");
+        env.fs.mkdir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let deployed = env.paths.data_dir().join("packs/app/preprocessed/cfg.toml");
+        write_file(&env, &deployed, b"rendered EDITED");
+        Baseline::build(&link, b"rendered", b"src", Some(""), None)
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "cfg.toml",
+            )
+            .unwrap();
+        let before = env.fs.modified(&outside).unwrap();
+
+        let ctx = make_ctx(&env);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
+
+        assert!(
+            matches!(r.entries[0].action, RefreshAction::OutOfRoot),
+            "unexpected action: {:?}",
+            r.entries[0].action
+        );
+        assert!(!r.touched_any);
+        assert_eq!(env.fs.modified(&outside).unwrap(), before);
+    }
+
+    /// A baseline written before the cache recorded source paths stores
+    /// an empty one. Nothing was looked for and nothing is missing — it
+    /// is a stale cache entry, reported apart from a source that was
+    /// deleted.
+    #[test]
+    fn a_baseline_without_a_source_path_is_reported_as_stale() {
+        let env = TempEnvironment::builder().build();
+        Baseline::build(
+            std::path::Path::new(""),
+            b"rendered",
+            b"src",
+            Some(""),
+            None,
+        )
+        .write(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "cfg.toml",
+        )
+        .unwrap();
+        let deployed = env.paths.data_dir().join("packs/app/preprocessed/cfg.toml");
+        write_file(&env, &deployed, b"rendered");
+
+        let ctx = make_ctx(&env);
+        let r = refresh(&ctx, RefreshMode::Report, &root(&env)).unwrap();
+
+        assert!(
+            matches!(r.entries[0].action, RefreshAction::StaleSource),
+            "unexpected action: {:?}",
+            r.entries[0].action
+        );
+        assert!(!r.touched_any);
+    }
+
+    /// `--list-paths` feeds watchers, so it must not hand out another
+    /// root's paths either: the scope is the mutation set, not a
+    /// rendering choice.
+    #[test]
+    fn list_paths_mode_reports_only_authorized_sources() {
+        let env = TempEnvironment::builder().build();
+        let other_root = second_root_dir(&env);
+        let (_here, here_deployed) = stage_one(&env, "app", "cfg.toml.tmpl", b"rendered", b"src");
+        let (_there, there_deployed) = stage_under(
+            &env,
+            &other_root,
+            "other",
+            "cfg.toml.tmpl",
+            b"rendered",
+            b"src",
+        );
+        env.fs
+            .write_file(&here_deployed, b"rendered EDITED")
+            .unwrap();
+        env.fs
+            .write_file(&there_deployed, b"rendered EDITED")
+            .unwrap();
+
+        let ctx = make_ctx(&env);
+        let r = refresh(&ctx, RefreshMode::ListPaths, &root(&env)).unwrap();
+
+        let touched: Vec<&str> = r
+            .entries
+            .iter()
+            .filter(|e| matches!(e.action, RefreshAction::Touched))
+            .map(|e| e.source_path.as_str())
+            .collect();
+        assert_eq!(touched.len(), 1, "unexpected touched set: {touched:?}");
+        assert!(touched[0].contains("/dotfiles/app/"), "{touched:?}");
     }
 }

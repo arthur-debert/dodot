@@ -11,6 +11,7 @@ use standout::cli::{CommandContext, HandlerResult, Output};
 
 use dodot_lib::commands::{self, GroupMode, ViewMode};
 use dodot_lib::packs::orchestration::ExecutionContext;
+use dodot_lib::safety_lock::{OsPathProbe, PathProbe, RootIdentity};
 
 /// Side-channel exit code set by handlers that succeeded in producing
 /// output but want the process to exit non-zero (e.g.
@@ -56,6 +57,31 @@ fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Err
     ctx.group_mode = group_mode_from(matches);
 
     Ok(ctx)
+}
+
+/// The one dotfiles root this invocation may write under.
+///
+/// `refresh` and `transform check` take their write targets from the
+/// shared preprocessor baseline cache, which can name sources under any
+/// root that has ever run `dodot up` on this machine, so they scope
+/// their mutation set to this root and report the rest
+/// (`docs/adr/0002-guard-root-derived-mutations.md`).
+///
+/// The root is canonicalized here the same way Safety Lock's selection
+/// canonicalizes a candidate, so a root reached through a symlink (a
+/// symlinked `$HOME`, macOS's `/var` → `/private/var`) still contains
+/// its own sources. This is interim wiring: ACC01-WS07 replaces it with
+/// the authorized `ResolvedRoot` the gate produces, which is resolved
+/// once at the process boundary instead of per command.
+fn authorized_root(ctx: &ExecutionContext) -> Result<RootIdentity, anyhow::Error> {
+    let root = ctx.paths.dotfiles_root();
+    let canonical = OsPathProbe.canonicalize(root).map_err(|e| {
+        anyhow::anyhow!(
+            "cannot resolve the dotfiles root at {}: {e}",
+            root.display()
+        )
+    })?;
+    Ok(RootIdentity::new(canonical)?)
 }
 
 /// Build a read-only context (no dry-run/provision flags).
@@ -330,7 +356,7 @@ pub fn transform_check_handler(
 ) -> HandlerResult<commands::transform::TransformCheckResult> {
     let ctx = build_ctx(matches)?;
     let strict = flag_or_false(matches, "strict");
-    let result = commands::transform::check(&ctx, strict)?;
+    let result = commands::transform::check(&ctx, strict, &authorized_root(&ctx)?)?;
     PENDING_EXIT_CODE.store(result.exit_code(), Ordering::Relaxed);
     Ok(Output::Render(result))
 }
@@ -501,7 +527,11 @@ pub fn refresh_handler(
     } else {
         commands::refresh::RefreshMode::Report
     };
-    Ok(Output::Render(commands::refresh::refresh(&ctx, mode)?))
+    Ok(Output::Render(commands::refresh::refresh(
+        &ctx,
+        mode,
+        &authorized_root(&ctx)?,
+    )?))
 }
 
 /// `dodot transform install-hook` — write `.git/hooks/pre-commit` with

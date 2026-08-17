@@ -8,7 +8,7 @@
 {%- if entries|length == 0 -%}
 [muted]No template baselines. Run [usage]dodot up[/usage] to deploy templates first.[/muted]
 {%- else -%}
-{%- set missing = entries|rejectattr("action", "equalto", "touched")|rejectattr("action", "equalto", "clean")|list -%}
+{%- set missing = entries|rejectattr("action", "equalto", "touched")|rejectattr("action", "equalto", "clean")|rejectattr("action", "equalto", "out_of_root")|list -%}
 {%- if touched_any -%}
 [message]Touched {{ entries|selectattr("action", "equalto", "touched")|list|length }} source file(s) — `git status` will now see deployed-side edits.[/message]
 {%- elif missing|length > 0 -%}
@@ -23,6 +23,12 @@
   [warn]? missing source[/warn] {{ e.source_path }} [muted](baseline stale; next [usage]dodot up[/usage] will refresh)[/muted]
 {% elif e.action == "missing_deployed" -%}
   [warn]? missing deployed[/warn] {{ e.source_path }} [muted](rendered file gone; next [usage]dodot up[/usage] will recreate)[/muted]
+{% elif e.action == "stale_source" -%}
+  [warn]? stale entry[/warn] {{ e.pack }}/{{ e.filename }} [muted](baseline records no source path; next [usage]dodot up[/usage] will refresh)[/muted]
+{% elif e.action == "unresolvable_source" -%}
+  [warn]? unresolvable source[/warn] {{ e.source_path }} [muted](cannot be resolved, so it cannot be placed in this dotfiles root)[/muted]
+{% elif e.action == "out_of_root" -%}
+  [muted]· other root[/muted] {{ e.source_path }} [muted](belongs to a different dotfiles root; not touched)[/muted]
 {% endif -%}
 {%- endfor -%}
 {%- endif -%}

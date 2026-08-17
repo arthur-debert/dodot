@@ -83,17 +83,21 @@
 //! fills in [`files`] and composes both into [`selection`]; ACC01-WS04 fills in
 //! the trust lifecycle over the loaded collection — [`check`], [`list`], and
 //! [`forget`]; ACC01-WS05 adds the [`operation`] policy and the bounded
-//! [`inventory`]. Only [`scope_to_root`] still carries a documented signature
-//! with a `todo!()` body, for WS06.
+//! [`inventory`]; ACC01-WS06 fills in [`scope_to_root`] and scopes the two
+//! cache-derived mutations — `refresh` and `transform check` — to the root
+//! they were authorized for. Every signature here now has a body.
 //!
 //! Dodot's pre-Safety-Lock root resolution still runs in
 //! [`crate::paths`](crate::paths) and in the CLI: replacing those callers with
 //! [`resolve_root`] is the process-boundary work of WS07, which is where the
 //! environment, cwd, and Git capture this module refuses to perform lands.
 //!
-//! Nothing in this module is wired into a command yet: the process boundary
-//! that captures the environment, the current directory, and Git — and the
-//! gate that consults all of this — arrives with WS07.
+//! [`scope_to_root`] is the one part already wired into commands, because it
+//! is not a gate: `refresh` and `transform check` take a root they are
+//! authorized for and scope their write targets to it whether or not anything
+//! asked for approval first. The gate itself — the process boundary that
+//! captures the environment, the current directory, and Git, and the
+//! [`authorize`] call that consults all of it — arrives with WS07.
 
 pub mod check;
 pub mod environment;
@@ -126,6 +130,6 @@ pub use roots::{ResolvedRoot, RootIdentity, RootSource};
 pub use schema::{
     SafetyLockConfig, TrustedRootsSection, SAFETY_LOCK_FILE_NAME, SAFETY_LOCK_PERSIST_SCOPE,
 };
-pub use scope::{scope_to_root, MutationScope, OutOfRootReason, OutOfRootTarget};
+pub use scope::{scope_to_root, MutationScope, OutOfRootReason, OutOfRootTarget, ScopeOutcome};
 pub use selection::{resolve_root, RootSelectionInput};
 pub use util::{decode_native_path, encode_native_path, OsPathProbe, PathProbe, NATIVE_BYTES_TAG};
