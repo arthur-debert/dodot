@@ -252,7 +252,7 @@ pub fn build_inventory(
                 &pack_config.mappings.gates,
             )
             .map_err(|error| {
-                let declared = broken_mapping_entry_owner(&root_config, &pack_config, &gates);
+                let declared = broken_mapping_entry_owner(&root_config, &pack_config);
                 unusable_scan(&pack.path, &owner(declared), error)
             })?;
 
@@ -402,20 +402,34 @@ fn broken_gate_entry_owner(
     })
 }
 
-/// The layer that declared the first unusable `[mappings.gates]` entry, if any.
+/// The layer that declared the `[mappings.gates]` glob the walk could not
+/// compile, if that is why it stopped.
 ///
-/// Exact, unlike the `[gates]` case needing a per-entry replay: this table is a
-/// flat glob-to-label map, so a resolved entry belongs to the pack precisely
-/// when the pack's value for that glob differs from the root's. An entry is
-/// unusable when its glob will not compile or when its label resolves nowhere
-/// in `gates` — the same merged table the walk uses, so a root entry whose
-/// label only a pack defines is correctly not a defect at all.
+/// Deliberately narrower than "any entry that looks unusable". Glob
+/// compilation is the one mapping check the walk runs *eagerly*, over the
+/// whole table, before it looks at a single file — so if a glob does not
+/// compile, that is necessarily what stopped the walk, and the entry naming it
+/// is exact: this table is a flat glob-to-label map, so an entry belongs to
+/// the pack precisely when the pack's value for that glob differs from the
+/// root's.
 ///
-/// Entries are visited in glob order for the same reason as above.
+/// Label resolution deliberately does *not* appear here, though an unresolved
+/// label reads like a defect. The walk resolves a mapping's label only when
+/// that mapping's glob matches an entry it actually met, so a mapping matching
+/// nothing is accepted with a label nothing defines. Treating one as a defect
+/// let it answer for a failure it had no part in — a filename gate token, say
+/// — and point at the file that declared the dormant mapping instead of the
+/// one the error is about. Which mapping, if any, participated in a given
+/// failure is knowable only from the failure itself, which arrives as prose;
+/// until it carries the entry, those failures take the scope fallback in
+/// [`gate_configuration_owner`] rather than a guess.
+///
+/// Entries are visited in glob order, matching the order
+/// [`compile_mapping_gates`](crate::gates::compile_mapping_gates) validates
+/// them in, so the entry chosen here is the entry that actually failed.
 fn broken_mapping_entry_owner(
     root_config: &crate::config::DodotConfig,
     pack_config: &crate::config::DodotConfig,
-    gates: &GateTable,
 ) -> Option<GateLayer> {
     let mut globs: Vec<&String> = pack_config.mappings.gates.keys().collect();
     globs.sort();
@@ -423,9 +437,7 @@ fn broken_mapping_entry_owner(
     globs.into_iter().find_map(|glob| {
         let label = pack_config.mappings.gates.get(glob)?;
         let one = HashMap::from([(glob.clone(), label.clone())]);
-        let compiles = crate::gates::compile_mapping_gates(&one, "<attribution>").is_ok();
-
-        if compiles && gates.lookup(label).is_some() {
+        if crate::gates::compile_mapping_gates(&one, "<attribution>").is_ok() {
             return None;
         }
 
@@ -1027,12 +1039,6 @@ mod tests {
                 "[mappings.gates]\n\"[unclosed\" = \"darwin\"\n",
                 "[mappings.gates]\n\"vimrc\" = \"darwin\"\n",
             ),
-            // Root mapping naming a label nothing defines, beside a pack that
-            // defines a different one.
-            (
-                "[mappings.gates]\n\"aliases.sh\" = \"no-such-label\"\n",
-                "[gates]\nlaptop = { os = \"darwin\" }\n",
-            ),
         ] {
             let env = TempEnvironment::builder()
                 .pack("vim")
@@ -1056,6 +1062,56 @@ mod tests {
                 "unexpected error for root {root_config:?} + pack {pack_config:?}: {error}"
             );
         }
+    }
+
+    /// A `[mappings.gates]` entry the walk never consults cannot answer for a
+    /// failure it had no part in.
+    ///
+    /// The walk resolves a mapping's label only when that mapping's glob
+    /// matches an entry it met, so `"*.txt" = "no-such-label"` beside no `.txt`
+    /// file is accepted — the first case here proves the inventory is built.
+    /// The second puts that same dormant mapping in the root and lets the walk
+    /// fail on a filename gate token instead: the diagnostic is about
+    /// `a._foo.sh`, so it must name the file that has something to say about
+    /// `foo` — the pack — not the one that happens to hold an unrelated
+    /// unresolved mapping.
+    #[test]
+    fn a_mapping_the_walk_never_consults_does_not_claim_another_failure() {
+        let dormant = "[mappings.gates]\n\"*.txt\" = \"no-such-label\"\n";
+
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .config(dormant)
+            .file("vimrc", "")
+            .done()
+            .build();
+
+        assert_eq!(
+            sample_of(&inventory_of(&env)),
+            [(InventoryCategory::Link, "vim/vimrc".into())],
+            "a mapping matching nothing was treated as a defect"
+        );
+
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .config("[gates]\nlaptop = { os = \"darwin\" }\n")
+            .file("a._foo.sh", "")
+            .done()
+            .build();
+        std::fs::write(env.dotfiles_root.join(DOTFILES_CONFIG_FILE), dormant).unwrap();
+
+        let error =
+            build_inventory(&resolved(&env), env.fs.as_ref(), &host()).expect_err("accepted");
+
+        assert!(
+            matches!(
+                &error,
+                SafetyLockError::DotfilesConfigUnusable { config_file, reason }
+                    if config_file == &canonical_root(&env).join("vim/.dodot.toml")
+                        && reason.contains("foo")
+            ),
+            "a dormant root mapping claimed a filename-gate failure: {error}"
+        );
     }
 
     /// The mirror of the case above, and the reason blame is read off the
@@ -1121,6 +1177,68 @@ mod tests {
                 case.root,
                 case.pack,
                 case.owner
+            );
+        }
+    }
+
+    /// Two broken entries owned by different files, and the one the user is
+    /// told about has to be the one the named file declares.
+    ///
+    /// The walk and the attribution replay both visit entries in key order —
+    /// `merge_user` and `compile_mapping_gates` sort, rather than taking
+    /// whatever order the hash gives — so the entry that fails is the entry
+    /// blame is read from. Without that, the message could quote one label
+    /// while the path pointed at the file holding the other.
+    #[test]
+    fn the_reported_defect_and_the_named_file_are_the_same_entry() {
+        for (root, pack, owner, quoted) in [
+            // Root owns the lexically first broken label, pack the later one.
+            (
+                "[gates]\naaa = { nonsense = \"x\" }\n",
+                "[gates]\nzzz = { nonsense = \"x\" }\n",
+                ".dodot.toml",
+                "aaa",
+            ),
+            // Reversed: the pack owns the lexically first one.
+            (
+                "[gates]\nzzz = { nonsense = \"x\" }\n",
+                "[gates]\naaa = { nonsense = \"x\" }\n",
+                "vim/.dodot.toml",
+                "aaa",
+            ),
+            // The same, for globs that will not compile.
+            (
+                "[mappings.gates]\n\"[a\" = \"darwin\"\n",
+                "[mappings.gates]\n\"[z\" = \"darwin\"\n",
+                ".dodot.toml",
+                "[a",
+            ),
+            (
+                "[mappings.gates]\n\"[z\" = \"darwin\"\n",
+                "[mappings.gates]\n\"[a\" = \"darwin\"\n",
+                "vim/.dodot.toml",
+                "[a",
+            ),
+        ] {
+            let env = TempEnvironment::builder()
+                .pack("vim")
+                .config(pack)
+                .file("vimrc", "")
+                .done()
+                .build();
+            std::fs::write(env.dotfiles_root.join(DOTFILES_CONFIG_FILE), root).unwrap();
+
+            let error =
+                build_inventory(&resolved(&env), env.fs.as_ref(), &host()).expect_err("accepted");
+
+            assert!(
+                matches!(
+                    &error,
+                    SafetyLockError::DotfilesConfigUnusable { config_file, reason }
+                        if config_file == &canonical_root(&env).join(owner)
+                            && reason.contains(quoted)
+                ),
+                "root {root:?} + pack {pack:?} should report {quoted:?} against {owner}: {error}"
             );
         }
     }
