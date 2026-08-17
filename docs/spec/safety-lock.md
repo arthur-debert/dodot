@@ -24,17 +24,17 @@ separation.
 
 The current behavior and vocabulary are governed by:
 
-- [Terms and Concepts](../reference/terms-and-concepts.md), especially
+- [Terms and Concepts](../reference/terms-and-concepts.lex), especially
   dotfiles root, pack, handler, intent, operation, datastore directory, and
   shell integration;
-- [Architecture](../reference/architecture.md), including the unified,
+- [Architecture](../reference/architecture.lex), including the unified,
   previewable pack pipeline;
-- [Storage](../dev/storage.md), including the datastore ownership invariants;
-- [CLI Output](../dev/cli-output.md), including structured stdout and
+- [Storage](../dev/storage.lex), including the datastore ownership invariants;
+- [CLI Output](../dev/cli-output.lex), including structured stdout and
   presentation-free command results; and
-- the command documentation for [`up`](../user/commands/up.md),
-  [`down`](../user/commands/down.md), and
-  [`status`](../user/commands/status.md).
+- the command documentation for [`up`](../user/commands/up.lex),
+  [`down`](../user/commands/down.lex), and
+  [`status`](../user/commands/status.lex).
 
 This Spec exists because an accidental `dodot up` from the Dodot source
 repository selected that repository's Git top-level as the dotfiles root. Its

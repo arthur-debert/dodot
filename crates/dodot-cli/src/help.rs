@@ -330,22 +330,40 @@ mod tests {
     /// read-only surface available to someone whose implicit root is not yet
     /// approved. Keep every mixed or mutating command family explicit about
     /// the gate instead of relying on the separate `roots` page being found.
+    ///
+    /// The roster is derived from the authoritative policy tables —
+    /// [`COMMAND_SENSITIVITY`]'s mutating rows plus [`PASSTHROUGH_POLICY`]'s
+    /// route-gated rows — so a newly classified mutating command fails here
+    /// until its help family names the gate, instead of staying green behind
+    /// a second hand-maintained list.
     #[test]
     fn root_sensitive_command_help_names_safety_lock() {
-        for path in [
-            "up",
-            "down",
-            "init",
-            "fill",
-            "adopt",
-            "addignore",
-            "config",
-            "refresh",
-            "transform",
-            "git-install-filters",
-            "template",
-            "tutorial",
-        ] {
+        use crate::safety::{
+            PassthroughPolicy, RootSensitivity, COMMAND_SENSITIVITY, PASSTHROUGH_POLICY,
+        };
+
+        let mut families: Vec<&str> = COMMAND_SENSITIVITY
+            .iter()
+            .filter(|(_, sensitivity)| matches!(sensitivity, RootSensitivity::Mutating { .. }))
+            .map(|(path, _)| *path)
+            .chain(
+                PASSTHROUGH_POLICY
+                    .iter()
+                    .filter(|(_, policy)| *policy == PassthroughPolicy::GatedInRoute)
+                    .map(|(path, _)| *path),
+            )
+            // Dotted paths (`template.install-filter`) document the gate on
+            // their registered parent help page.
+            .map(|path| path.split('.').next().unwrap_or(path))
+            .collect();
+        families.sort_unstable();
+        families.dedup();
+        assert!(
+            !families.is_empty(),
+            "the safety policy tables must yield at least one gated help family"
+        );
+
+        for path in families {
             let body = lookup(path);
             assert!(
                 body.contains("SAFETY LOCK") && body.contains("DOTFILES_ROOT"),
@@ -383,8 +401,28 @@ mod tests {
         }
     }
 
+    /// Every declared preview flag must appear in its family's help, derived
+    /// from [`COMMAND_SENSITIVITY`] so a new previewable command cannot ship
+    /// help that omits its bypass; the audited exact phrasings below then pin
+    /// how each bypass is worded, including the route-gated ones the table
+    /// carries no flag for.
     #[test]
     fn mixed_command_help_names_its_read_only_bypass() {
+        use crate::safety::{RootSensitivity, COMMAND_SENSITIVITY};
+
+        for (path, sensitivity) in COMMAND_SENSITIVITY {
+            if let RootSensitivity::Mutating {
+                preview_flag: Some(flag),
+            } = sensitivity
+            {
+                let family = path.split('.').next().unwrap_or(path);
+                assert!(
+                    lookup(family).contains(&format!("--{flag}")),
+                    "help/{family}.txt must name the declared preview flag --{flag}"
+                );
+            }
+        }
+
         for (path, bypass) in [
             ("up", "up --dry-run"),
             ("down", "down --dry-run"),
