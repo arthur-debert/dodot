@@ -1,7 +1,7 @@
 :: verified ::
 Dotfiles root:
     The top-level directory holding your packs, kept under git. dodot picks it in this order:
-    - `$DOTFILES_ROOT` if set and the path exists
+    - `$DOTFILES_ROOT` if set; an empty value, or a path that doesn't exist, isn't a directory, or can't be read, is an error, never a reason to choose another root;
     - The git top-level of your current directory (so `cd ~/dotfiles/nvim && dodot up` finds the repo root);
     - Current directory itself.
 

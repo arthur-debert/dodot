@@ -89,9 +89,7 @@ fn main() {
     } else {
         logging::Verbosity::Quiet
     };
-    let log_dir = dodot_lib::paths::XdgPather::from_env()
-        .map(|p| dodot_lib::paths::Pather::log_dir(&p))
-        .unwrap_or_else(|_| std::env::temp_dir().join("dodot-logs"));
+    let log_dir = dodot_lib::paths::XdgPather::log_dir_from_env();
     let _log_guard = logging::init(&log_dir, verbosity);
 
     // Passthrough: config (clapfig handles its own output)

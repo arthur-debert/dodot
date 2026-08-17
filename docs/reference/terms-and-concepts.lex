@@ -5,7 +5,7 @@ Terms and Concepts
 1. Foundational
 
     Dotfiles root:
-        The top-level directory containing your dotfile packs, under version control in git. Defaults to `~/dotfiles`; configurable via `$DOTFILES_ROOT`. The root IS the source of truth — dodot never stores user content outside it.
+        The top-level directory containing your dotfile packs. dodot selects it from `$DOTFILES_ROOT`, then the enclosing git repository's top level, then the current directory. A present but invalid `$DOTFILES_ROOT` is an error; there is no `~/dotfiles` fallback. The root IS the source of truth — dodot never stores user content outside it.
 
     Pack:
         A directory under the dotfiles root whose contents belong together — `vim/`, `git/`, `work/`. Packs are the unit dodot turns on and off. The organizing criterion is yours (by application, by role, by machine); dodot treats every top-level directory as a pack unless it contains a `.dodotignore` file.

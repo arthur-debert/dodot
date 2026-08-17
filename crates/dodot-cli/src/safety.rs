@@ -58,7 +58,7 @@ use standout::OutputMode;
 use dodot_lib::commands::safety::SafetyPromptView;
 use dodot_lib::fs::OsFs;
 use dodot_lib::gates::HostFacts;
-use dodot_lib::paths::{Pather, XdgPather};
+use dodot_lib::paths::XdgPather;
 use dodot_lib::render;
 use dodot_lib::safety_lock::{
     approve, authorize, resolve_root, GateOutcome, OsPathProbe, ResolvedRoot, RootIdentity,
@@ -261,17 +261,22 @@ impl ProcessFacts {
     /// or empty answer is `None` — "not inside a repository" — which is a
     /// selection input, not an error: the current directory is the next
     /// candidate.
+    ///
+    /// `HOME` is resolved exactly once; the data directory is derived from
+    /// that single reading, so the captured facts cannot disagree about which
+    /// home they came from.
     pub fn capture() -> Result<Self, anyhow::Error> {
-        let pather = XdgPather::from_env()?;
+        let home_dir = XdgPather::home_dir_from_env();
+        let data_dir = XdgPather::data_dir_for_home(&home_dir);
         let current_dir = std::env::current_dir()?;
 
-        let mut selection = RootSelectionInput::new(current_dir, pather.home_dir());
+        let mut selection = RootSelectionInput::new(current_dir, home_dir);
         selection.dotfiles_root = std::env::var_os("DOTFILES_ROOT");
         selection.git_top_level = git_top_level();
 
         Ok(Self {
             selection,
-            data_dir: pather.data_dir().to_path_buf(),
+            data_dir,
         })
     }
 
