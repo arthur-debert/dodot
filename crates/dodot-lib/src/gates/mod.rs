@@ -299,8 +299,18 @@ impl GateTable {
     /// User entries are accepted as `HashMap<String, HashMap<String, String>>`
     /// — the natural confique/serde shape for `[gates]` in TOML where
     /// each value is an inline table of `dimension = value` pairs.
+    ///
+    /// Entries are validated in label order, for the same reason the
+    /// dimensions inside one entry are: which defect a user is shown first
+    /// must not depend on hash iteration. A caller reasoning about *which*
+    /// entry failed — the Safety Lock inventory attributes the failure to the
+    /// `.dodot.toml` that declared it — can then replay the same order and
+    /// reach the same entry.
     pub fn merge_user(&mut self, user: &HashMap<String, HashMap<String, String>>) -> Result<()> {
-        for (label, dims) in user {
+        let mut entries: Vec<(&String, &HashMap<String, String>)> = user.iter().collect();
+        entries.sort_by_key(|(label, _)| *label);
+
+        for (label, dims) in entries {
             // Reject labels whose name can't be matched at runtime —
             // either bad characters (no `[A-Za-z0-9_-]+` shape) or a
             // reserved routing-prefix token (`home`/`xdg`/`app`/`lib`).
@@ -397,7 +407,10 @@ pub fn rel_path_for_glob(rel_path: &std::path::Path) -> String {
 /// - Invalid glob syntax — `glob::Pattern::new` failures bubble up as
 ///   `DodotError::Config`. Silent dropping turns a typo into "no gate
 ///   configured" with no diagnostic, which is exactly the trap the
-///   typo-guard pattern exists to prevent.
+///   typo-guard pattern exists to prevent. Patterns are *validated* in the
+///   same lexicographic order they are returned in, so which of several bad
+///   globs is reported does not depend on hash iteration, and a caller
+///   replaying the check reaches the same entry.
 ///
 /// Both `Scanner::match_entries` (for the status path and any
 /// post-preprocessing matching) and `filter_pre_preprocess_gates` (for
@@ -410,7 +423,11 @@ pub fn compile_mapping_gates<'a>(
 ) -> Result<Vec<(glob::Pattern, &'a str)>> {
     let mut compiled: Vec<(glob::Pattern, &'a str, &'a str)> =
         Vec::with_capacity(mappings_gates.len());
-    for (pat, label) in mappings_gates {
+
+    let mut entries: Vec<(&'a String, &'a String)> = mappings_gates.iter().collect();
+    entries.sort_by_key(|(pat, _)| *pat);
+
+    for (pat, label) in entries {
         let pattern = glob::Pattern::new(pat).map_err(|e| {
             DodotError::Config(format!(
                 "invalid `[mappings.gates]` glob `{pat}` in pack `{pack_name}`: {e}"

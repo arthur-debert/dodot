@@ -13,9 +13,10 @@
 //! deliberate selection, so it neither reads an approval nor writes one
 //! (ADR-0003).
 //!
-//! WS05 layers the operation policy — read-only, dry run, root-sensitive
-//! mutation — on top of what is decided here; this module answers only the
-//! question the trust collection can answer.
+//! This module answers only the question the trust collection can answer.
+//! Whether that answer *matters* to the command at hand is the operation
+//! policy's, and [`authorize`](super::operation::authorize) is the two
+//! composed: a read-only command and a dry run never reach [`decide`] at all.
 
 use super::error::{Result, SafetyLockError};
 use super::roots::{ResolvedRoot, RootIdentity};
