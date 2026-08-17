@@ -222,6 +222,11 @@ impl ProcessFacts {
 
 /// Ask Git for the top-level of the repository enclosing the current
 /// directory.
+///
+/// Kept byte-accurate, like every other path Safety Lock handles: on Unix the
+/// trimmed stdout bytes *are* the native path, so a non-UTF-8 repository path
+/// resolves, gates, and prints exactly as Git reported it — a lossy `String`
+/// hop here would canonicalize, approve, and diagnose a corrupted spelling.
 fn git_top_level() -> Option<PathBuf> {
     let output = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -230,8 +235,28 @@ fn git_top_level() -> Option<PathBuf> {
     if !output.status.success() {
         return None;
     }
-    let toplevel = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    (!toplevel.is_empty()).then(|| PathBuf::from(toplevel))
+    let toplevel = output.stdout.trim_ascii();
+    if toplevel.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(native_os_string(toplevel)?))
+}
+
+/// Reassemble Git's raw stdout bytes into a native `OsString`.
+///
+/// On Unix, `OsString` is bytes and the conversion is exact. Elsewhere the
+/// bytes must be valid UTF-8 to be representable; a non-UTF-8 answer yields
+/// `None` — "not inside a repository" — rather than a corrupted path, letting
+/// root selection fall through to the current directory.
+#[cfg(unix)]
+fn native_os_string(bytes: &[u8]) -> Option<std::ffi::OsString> {
+    use std::os::unix::ffi::OsStringExt;
+    Some(std::ffi::OsString::from_vec(bytes.to_vec()))
+}
+
+#[cfg(not(unix))]
+fn native_os_string(bytes: &[u8]) -> Option<std::ffi::OsString> {
+    Some(std::str::from_utf8(bytes).ok()?.into())
 }
 
 /// The authorized root and the facts it was resolved from, as handlers see it.
