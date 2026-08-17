@@ -4,6 +4,7 @@ Design Specification: Targeted Shell-Init Verification
         *Status: proposed.* Epic code unassigned. This is a focused successor to [./shipped/shell-hookup.lex] and [./shell-hookup-ergonomics.lex]. It retains their activation evidence, process-group timeout, and PATH-at-the-hook diagnosis. It replaces only the requirement that routine verification and a bare `dodot probe shell-init` run the user's complete rc file.
 
         Until this proposal ships, the code and current user documentation remain authoritative: `dodot up` and `dodot install --write` may run the full rc to verify activation, and a bare `dodot probe shell-init` runs the full rc under tracing by default.
+    ::
 
     dodot needs to answer one small question after creating or inspecting a shell hookup: *did a new interactive shell reach the dodot init script?* The current implementation answers a larger question. It waits for the entire rc file to finish, and `probe shell-init` additionally traces every command so it can reconstruct `PATH` at the hook line. That diagnosis is valuable when PATH resolution is broken, but it is unnecessary work for routine activation verification and can time out after dodot's hook has already run.
 
@@ -87,11 +88,11 @@ Design Specification: Targeted Shell-Init Verification
 
 3. The Targeted Verification Protocol
 
-    3.1. One-Use Challenge
+    3.1. Process-Bound Challenge
 
-        The parent creates an unpredictable nonce and passes it to the child shell in an internal environment variable. Working name: `DODOT_INTERNAL_SHELL_INIT_PROBE`.
+        The parent creates an unpredictable nonce and passes it to the child shell in an internal environment variable. Working name: `DODOT_INTERNAL_SHELL_INIT_PROBE`. A second internal variable carries the verifier process ID that the directly launched shell must see as its parent. The verifier records the spawned child's process ID from `Command::spawn`.
 
-        A fixed boolean such as `DODOT_VERIFY_SH_INIT_PROBE=1` would work mechanically, but an inherited or accidentally exported value could make a real user shell exit during startup. A fresh nonce narrows the special behavior to one child process and lets the parent reject unrelated output that happens to resemble a probe response.
+        A fixed boolean such as `DODOT_VERIFY_SH_INIT_PROBE=1` would work mechanically, but an inherited or accidentally exported value could make a real user shell exit during startup. A valid challenge requires both the fresh nonce and the expected parent identity. The init branch compares `$PPID` with that identity, unsets both internal variables before responding, and returns `$$` in the response. The verifier accepts the response only when that shell identity equals the child it spawned. A copied nonce by itself is inert, and a nested interactive shell cannot answer for the direct child because its parent identity differs.
 
         The child still starts through the existing defensive process runner:
 
@@ -99,27 +100,35 @@ Design Specification: Targeted Shell-Init Verification
         - stdin from `/dev/null`; stdout and stderr captured concurrently.
         - `DODOT_INIT_*` removed before launch so inherited evidence cannot pass the check.
         - A dedicated process group, killed on timeout.
+        - The nonce and expected verifier identity added only to the child command's environment; the verifier does not export them into its own environment.
         - The probe announced before the shell starts.
 
     3.2. Response at the Start of the Init Script
 
-        A generated file-source init script checks for the challenge before it writes the heartbeat, opens a profiling file, adds PATH entries, or sources a pack contribution. Generation and version values are literals already known when dodot writes the script.
+        A generated file-source init script advertises protocol capability with a stable comment and checks the challenge before it writes the heartbeat, opens a profiling file, adds PATH entries, or sources a pack contribution. Generation and version values are literals already known when dodot writes the script.
 
         Illustrative emitted branch:
 
-            if [ -n "${DODOT_INTERNAL_SHELL_INIT_PROBE-}" ]; then
-                printf 'dodot-shell-init-probe:%s|1786998535|5.7.0\n' \
-                    "$DODOT_INTERNAL_SHELL_INIT_PROBE"
+            # dodot shell-init-probe v1
+            if [ -n "${DODOT_INTERNAL_SHELL_INIT_PROBE-}" ] &&
+               [ "${DODOT_INTERNAL_SHELL_INIT_PROBE_PARENT-}" = "$PPID" ]; then
+                _dodot_probe_nonce=$DODOT_INTERNAL_SHELL_INIT_PROBE
+                unset DODOT_INTERNAL_SHELL_INIT_PROBE
+                unset DODOT_INTERNAL_SHELL_INIT_PROBE_PARENT
+                printf 'dodot-shell-init-probe:v1|%s|%s|%s|1786998535|5.7.0\n' \
+                    "$_dodot_probe_nonce" "$PPID" "$$"
+                unset _dodot_probe_nonce
                 exit 0
             fi
 
         :: sh ::
 
-        `exit`, rather than `return`, is deliberate. The verification child has answered the question, so it should not continue through the rest of the init script or the rest of the rc. This branch is safe in normal shells because only the child receives the nonce.
+        `exit`, rather than `return`, is deliberate. The verification child has answered the question, so it should not continue through the rest of the init script or the rest of the rc. The nonce, verifier identity, and spawned-shell identity together bind that exit to this invocation.
 
         The response contains:
 
-        - The nonce, proving the line belongs to this invocation.
+        - The protocol version and nonce, proving the line belongs to this invocation.
+        - The verifier and spawned-shell process IDs, proving that the direct child answered rather than an inherited descendant.
         - The init-script generation, compared with the generation on disk.
         - The dodot version that generated the script, compared with the running dodot.
 
@@ -127,9 +136,11 @@ Design Specification: Targeted Shell-Init Verification
 
     3.3. The Eval Hook
 
-        The hand-written `eval "$(dodot init-sh)"` form has to invoke a dodot binary before any generated shell code exists. When `dodot init-sh` sees the one-use challenge, it emits only the response-and-exit branch for its own generation and version. It does not load pack metadata, capture Homebrew state, or generate the ordinary init body.
+        The hand-written `eval "$(dodot init-sh)"` form has to invoke a dodot binary before any generated shell code exists. When `dodot init-sh` sees the process-bound challenge, it emits only the identity-check, response, and exit branch for its own generation and version. It does not load pack metadata, capture Homebrew state, or generate the ordinary init body. The branch runs after command substitution returns, in the directly launched shell, so its `$PPID` and `$$` values have the same meaning as the file-source branch.
 
         This preserves the important version-skew answer. If PATH at the hook line selects a current dodot that understands the protocol, that binary identifies itself in the response. If it selects an older dodot that does not understand the protocol, the old command emits its normal script; the existing post-rc stamp command remains as a compatibility fallback and reports any `DODOT_INIT_GEN` and `DODOT_INIT_VERSION` that script exported. A pre-version script reports no usable identity and is not certified as current.
+
+        Capability is known before launch only for a statically resolved file-source hook whose generated script carries the `shell-init-probe v1` comment. An eval hook is capability-unknown until it responds because PATH at the hook may select another dodot. That distinction limits what a timeout can prove.
 
     3.4. Outcomes
 
@@ -139,13 +150,15 @@ Design Specification: Targeted Shell-Init Verification
             | Outcome | Meaning | Next action |
             | Reached current init | Matching nonce, a generation current relative to the reference, and the running dodot version | Report success and elapsed time |
             | Reached different init | Matching nonce or fallback stamp, but generation or version differs | Report version or generation skew; offer full trace when PATH diagnosis can help |
-            | Shell completed without evidence | The rc finished without a matching response or usable fallback stamp | Static scan distinguishes a missing hook from a hook that did not run |
-            | Timed out before evidence | No matching response arrived before the timeout | Report that the hook was not reached within the limit; offer full trace |
+            | Known-capable shell completed before evidence | A statically resolved file-source target advertises this protocol, but the rc finished without a matching response | Report that the known hook did not run; static scan distinguishes a missing hookup from a hook that was bypassed |
+            | Shell completed without conclusive evidence | A legacy or capability-unknown rc finished without a matching response or usable fallback stamp | Report that verification was inconclusive; retain the separate static hookup result |
+            | Known-capable hook timed out | A statically resolved file-source target advertises this protocol, but no matching response arrived before the timeout | Report that the hook was not reached within the limit; offer full trace |
+            | Timed out without conclusive evidence | The target is legacy or capability-unknown and neither a response nor the post-rc stamp arrived before the timeout | Report that verification was inconclusive; the hook may have run before later rc work stalled; offer full trace |
             | Spawn failed | The shell could not start | Report the operating-system error and retain the passive evidence result |
 
             :: table align=lll header=1 ::
 
-        A matching response ends the child immediately, so there is no successful state in which dodot waits for shell completion after reaching the hook.
+        Success is marker-driven, not exit-driven. The process runner parses framed responses while stdout is still being drained. At the first matching nonce, verifier identity, and spawned-child identity, it records elapsed time, terminates the probe process group, and reaps the launched shell. Pipe drainage has its own short bound and cannot extend the verification timeout; a background process that inherited stdout or stderr cannot keep a successful verification open. `exit 0` remains in the emitted branch to stop the rc without depending on parent scheduling, but an EXIT trap or inherited pipe is never part of the success condition.
 
 
 4. Command Behavior
@@ -161,7 +174,7 @@ Design Specification: Targeted Shell-Init Verification
         - A current environment stamp or fresh heartbeat is sufficient; no shell starts.
         - Missing or stale evidence permits one targeted verification after the init script is written.
         - A successful response refreshes the same measured activation verdict `up` reports today.
-        - A timeout no longer means “the shell did not finish”; it means “the hook was not reached within the verification limit.”
+        - For a statically known protocol-capable file hook, a timeout means “the hook was not reached within the verification limit.” For a legacy or eval hook with unknown capability, it means only that verification produced no conclusive evidence before the limit.
 
         The probe-mode branch does not write the heartbeat. A verification process should not masquerade as an ordinary user shell activation; the measured result belongs to the command that requested it, while the heartbeat remains evidence from real shell use.
 
@@ -196,7 +209,11 @@ Design Specification: Targeted Shell-Init Verification
 
         `dodot probe shell-init --trace-hook` performs the existing PS4/PATH diagnosis. It replaces the targeted verification for that invocation rather than running both. It is the operation to run when targeted verification reports a different dodot, no evidence, or a timeout and the user needs to know what happened at the hook line.
 
-        The trace report includes its own wall-clock duration and whether it used the temporary-copy fallback. It does not present its cost as part of the recorded init profile. A fallback produces a second attempt and the report says so.
+        Every trace attempt carries a separate internal diagnostic mode. A current generated file and a current `dodot init-sh` suppress the heartbeat redirect and all profile creation in this mode, then continue through Homebrew, PATH additions, and pack contributions so the existing trace retains the commands it diagnoses. The primary and temporary-copy attempts use the same mode.
+
+        A legacy target does not understand diagnostic suppression. The trace must not execute such a target and then repair its writes: restoring a heartbeat or removing profile files would race with real shells. When suppression capability is not known, the temporary-copy reporter records PATH immediately before the hook and exits before executing it. If dodot cannot build a faithful copy, it reports that the hook could not be traced and leaves activation evidence and profile history untouched.
+
+        The trace report includes its own wall-clock duration and whether it used the temporary-copy fallback. It does not present its cost as part of the recorded init profile. A fallback produces a second attempt and the report says so. Both attempts leave the heartbeat contents and mtime, the set of profile files, and existing profile contents unchanged.
 
         Passive historical views remain passive: `<PACK[/FILE]>`, `--runs`, `--history`, and `--errors-only` never start a shell and reject `--trace-hook` when the combination would have no coherent meaning.
 
@@ -207,13 +224,13 @@ Design Specification: Targeted Shell-Init Verification
 
         Targeted verification runs only shell startup work that precedes the dodot hook. For an rc whose first executable line is the managed hook, no pack, prompt, completion, or command after the hook contributes to its duration.
 
-        A slow command before the hook still delays or times out verification. That is a correct result: the new shell did not reach dodot within the limit. Full hook tracing can then name the hook location and help the user inspect the preceding rc work.
+        A slow command before the hook still delays or times out verification. For a statically known protocol-capable file hook, that proves the new shell did not reach dodot within the limit. A legacy or capability-unknown hook produces an inconclusive timeout because it may have run before later rc work stalled. Full hook tracing can then name the hook location and help the user inspect the preceding rc work.
 
     5.2. Verification Does Not Create a Startup Profile
 
         The probe response occurs before profiling initialization, so targeted verification does not add a synthetic short run to shell-init history. Profiles remain observations of ordinary activation, not records of dodot's own checks.
 
-        Full tracing still runs the ordinary init path and may create one or two profiles. Those profiles remain ordinary startup observations, while the trace's separate elapsed field reports the diagnostic operation's actual wall time.
+        Full tracing can still run the init path for diagnosis, but internal diagnostic mode skips the heartbeat redirect and profiling preamble. The trace's separate elapsed field reports the diagnostic operation's wall time; no trace-created run can become the next default startup profile or change passive activation evidence.
 
     5.3. Incomplete Profiles Are Explicit
 
@@ -225,11 +242,11 @@ Design Specification: Targeted Shell-Init Verification
 6. Compatibility and Safety
 
     - Existing file-source and eval hooks remain valid; users do not edit their rc.
-    - The first verification against an older generated script may run the complete rc because that script does not recognize the challenge. Its exported generation/version still feeds the compatibility fallback. The next `up` writes the short response branch.
-    - The one-use nonce is internal, unguessable for practical purposes, and scoped to the child environment. User shells never retain it.
-    - Probe mode writes neither heartbeat nor profile, so a diagnostic process cannot become evidence of ordinary shell use.
+    - The first verification against an older generated script may run the complete rc because that script does not recognize the challenge. Its exported generation/version still feeds the compatibility fallback. If that rc times out after the hook, the result stays inconclusive rather than claiming the hook was missed. The next `up` writes the short response branch.
+    - The nonce and verifier identity are internal and added only to the spawned command's environment. The init branch consumes them before responding, and the parent validates the direct child's process ID before accepting the response.
+    - Targeted verification writes neither heartbeat nor profile. Explicit trace uses diagnostic suppression or stops before a legacy hook, so neither operation can become evidence of ordinary shell use.
     - The current timeout and process-group kill remain the upper bound for shells that never reach the hook.
-    - The response contains only a nonce, generation, and dodot version. It does not expose PATH, cwd, pack names, or user-authored shell output.
+    - The response contains only a nonce, verifier and child process IDs, generation, and dodot version. It does not expose PATH, cwd, pack names, or user-authored shell output.
     - The response branch uses POSIX-compatible syntax and is exercised under every shell supported by init generation.
 
 
@@ -239,17 +256,21 @@ Design Specification: Targeted Shell-Init Verification
 
         - Generated file-source scripts carry the response branch before heartbeat, profiling, PATH, Homebrew, and pack contributions.
         - `dodot init-sh` emits only the response-and-exit script when the challenge is present.
-        - A matching nonce is required; stale, missing, and malformed responses are rejected.
+        - A matching nonce, verifier parent ID, and spawned-shell ID are required; stale, missing, and malformed responses are rejected.
+        - An arbitrary pre-exported challenge does not exit an ordinary shell, and a nested interactive shell cannot answer for the direct child.
         - Generation and version skew produce distinct typed outcomes.
         - Probe mode writes no heartbeat or profile.
+        - A matching marker ends timing and process-group lifetime without waiting for shell exit or unbounded pipe drainage.
 
     7.2. Real-Shell Acceptance Tests
 
         - Bash and zsh rc files with the hook followed by `sleep 10` verify promptly; the sleep never runs.
         - A deployed pack contribution containing `sleep 10` never runs during targeted verification.
         - A `sleep 10` before the hook reaches the timeout and reports that the hook was not reached in time.
+        - A slow EXIT trap after the response and a background process retaining stdout or stderr do not delay successful verification.
         - File-source and eval hooks both return the current generation/version.
         - An eval hook resolving an older fabricated dodot reports version skew rather than success.
+        - A legacy file-source or eval hook that reaches dodot and then stalls reports an inconclusive timeout rather than claiming the hook was missed.
         - `status`, passive probe views, and `--no-verify` start no shell.
 
     7.3. Timing and Rendering Tests
@@ -257,6 +278,7 @@ Design Specification: Targeted Shell-Init Verification
         - Terminal output prints the targeted verification duration on success, timeout, and spawn failure.
         - Structured output carries numeric elapsed microseconds and a stable outcome discriminator.
         - `--trace-hook` reports trace duration and fallback use separately from startup-profile totals.
+        - Primary, temporary-copy, current-target, and legacy-target trace cases leave the heartbeat and profile directory byte-for-byte unchanged.
         - Incomplete profiles render as incomplete and are not selected as the default latest complete run.
         - E2E assertions cover real process behavior; Rust tests alone are insufficient for shell exit, timeout, and process-group behavior.
 
@@ -274,8 +296,8 @@ Design Specification: Targeted Shell-Init Verification
 
     Natural vertical slices for issue planning:
 
-    1. Targeted verification end to end: challenge/response emission for file-source and eval hooks, one shared typed verifier with elapsed time, adoption by `up`, `install --write`, and bare `probe shell-init`, plus real-shell acceptance coverage.
-    2. Explicit hook diagnosis: move the existing PS4/PATH trace behind `--trace-hook`, retain the passive compatibility flags, report trace duration and fallback attempts, and update the command documentation.
+    1. Targeted verification end to end: process-bound challenge/response emission for file-source and eval hooks, marker-driven process-group completion, one shared typed verifier with elapsed time, adoption by `up`, `install --write`, and bare `probe shell-init`, plus real-shell acceptance coverage.
+    2. Explicit hook diagnosis: move the existing PS4/PATH trace behind `--trace-hook`, add diagnostic suppression and the legacy stop-before-hook behavior, retain the passive compatibility flags, report trace duration and fallback attempts, and update the command documentation.
     3. Honest interrupted profiles: classify incomplete records, exclude them from the default latest-complete selection, render them accurately in history, and add parser/rendering regression coverage.
 
 
