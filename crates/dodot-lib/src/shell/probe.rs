@@ -99,6 +99,11 @@ const SCRUB_PREFIX: &str = "DODOT_INIT_";
 /// How long to wait between liveness checks on the spawned shell.
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
 
+/// Extra time after the direct child exits or is killed for the reader
+/// thread to deliver already-written output. This stays bounded because
+/// rc-started background jobs can inherit stdout.
+const POST_EXIT_DRAIN: Duration = Duration::from_millis(200);
+
 // ── Policy ──────────────────────────────────────────────────────
 
 /// Whether a command may spawn a shell while judging activation.
@@ -256,7 +261,7 @@ fn parse_targeted_response(line: &str) -> Option<TargetedResponse> {
     let verifier_pid = fields.next()?.parse::<u32>().ok()?;
     let shell_pid = fields.next()?.parse::<u32>().ok()?;
     let generation = activation::parse_generation(fields.next()?)?;
-    let version = EvidenceVersion::from_field(fields.next());
+    let version = EvidenceVersion::from_field(Some(fields.next()?));
     fields.next().is_none().then_some(TargetedResponse {
         nonce,
         verifier_pid,
@@ -471,7 +476,7 @@ fn spawn_until_targeted_marker(
         }
         match child.try_wait() {
             Ok(Some(_)) => {
-                drain_pending_lines(&rx, &mut stdout, POLL_INTERVAL);
+                drain_pending_lines(&rx, &mut stdout, POST_EXIT_DRAIN);
                 if let Some(stamp) =
                     matching_targeted_stamp_in_output(&stdout, nonce, verifier_pid, child_pid)
                 {
@@ -485,7 +490,7 @@ fn spawn_until_targeted_marker(
         if Instant::now() >= deadline {
             kill_process_group(child_pid);
             let _ = child.wait();
-            drain_pending_lines(&rx, &mut stdout, POLL_INTERVAL);
+            drain_pending_lines(&rx, &mut stdout, POST_EXIT_DRAIN);
             if let Some(stamp) =
                 matching_targeted_stamp_in_output(&stdout, nonce, verifier_pid, child_pid)
             {
@@ -493,7 +498,22 @@ fn spawn_until_targeted_marker(
             }
             return TargetedSpawnOutcome::TimedOut;
         }
-        std::thread::sleep(POLL_INTERVAL);
+        let wait = POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now()));
+        if wait.is_zero() {
+            continue;
+        }
+        match rx.recv_timeout(wait) {
+            Ok(line) => {
+                stdout.push_str(&line);
+                if let Some(stamp) = matching_targeted_stamp(&line, nonce, verifier_pid, child_pid)
+                {
+                    kill_process_group(child_pid);
+                    let _ = child.wait();
+                    return TargetedSpawnOutcome::TargetedStamp(stamp);
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected | mpsc::RecvTimeoutError::Timeout) => {}
+        }
     }
 }
 
@@ -533,7 +553,7 @@ fn drain_pending_lines(rx: &mpsc::Receiver<String>, stdout: &mut String, max_wai
         {
             Ok(line) => stdout.push_str(&line),
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
-            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
         }
     }
     while let Ok(line) = rx.try_recv() {
@@ -650,11 +670,18 @@ impl Verdict {
     /// for the same reason it does there: a current generation from
     /// the wrong dodot is not health, and a stale one from the wrong
     /// dodot is not fixed by opening a new shell.
+    ///
+    /// `known_capable` is the targeted-protocol capability of the hook the
+    /// rc file is expected to run. A capable hook that finishes or times
+    /// out without a marker is measured broken; an eval or legacy hook
+    /// without a marker is only inconclusive unless the static scan shows
+    /// the hook is absent.
     pub fn from_outcome(
         outcome: ProbeOutcome,
         reference: Option<u64>,
         running: &str,
         hook: Option<(HookPresence, String)>,
+        known_capable: bool,
     ) -> Verdict {
         match outcome {
             ProbeOutcome::Stamp(stamp) if activation::is_skewed(Some(&stamp.version), running) => {
@@ -678,17 +705,25 @@ impl Verdict {
                     },
                 }
             }
-            ProbeOutcome::NoStamp => Verdict::Broken {
+            ProbeOutcome::NoStamp => match hook {
+                Some((HookPresence::Absent, rc)) => Verdict::Broken {
+                    diagnosis: Diagnosis::HookAbsent { rc },
+                },
+                Some((_, rc)) if known_capable => Verdict::Broken {
+                    diagnosis: Diagnosis::HookNotReached { rc },
+                },
+                Some(_) | None => Verdict::Unverified {
+                    reason: "verification was inconclusive".into(),
+                },
+            },
+            ProbeOutcome::TimedOut if known_capable => Verdict::Broken {
                 diagnosis: match hook {
-                    Some((presence, rc)) if presence.is_present() => {
-                        Diagnosis::HookNotReached { rc }
-                    }
-                    Some((_, rc)) => Diagnosis::HookAbsent { rc },
+                    Some((_, rc)) => Diagnosis::HookNotReached { rc },
                     None => Diagnosis::Unknown,
                 },
             },
             ProbeOutcome::TimedOut => Verdict::Unverified {
-                reason: "your shell did not finish starting up in time".into(),
+                reason: "verification produced no conclusive evidence before the timeout".into(),
             },
             ProbeOutcome::SpawnFailed(e) => Verdict::Unverified {
                 reason: format!("could not run your shell ({e})"),
@@ -825,8 +860,10 @@ pub fn measure(
     };
 
     eprintln!("{}", announcement(shell));
-    let outcome = run(shell, timeout);
     let hook = rc::scan_expected_rc(fs, paths.home_dir(), shell_env, rc_override);
+    let known_capable =
+        hook_verification_capability(fs, paths, shell_env, rc_override, hook.as_ref());
+    let outcome = run(shell, timeout);
     // Current targeted verification does not write the heartbeat:
     // success is a measured event owned by this command, while the
     // heartbeat remains evidence from ordinary shell use. Legacy hooks
@@ -838,12 +875,65 @@ pub fn measure(
             .map(|e| e.evidence_line())
             .unwrap_or(stale_line);
     let measured_line = measured_evidence_line(&outcome).unwrap_or(evidence_line);
-    Verdict::from_outcome(outcome, reference, activation::running_version(), hook).notice(
-        evidence,
-        &measured_line,
-        &hook_line,
-        has_contributions,
+    Verdict::from_outcome(
+        outcome,
+        reference,
+        activation::running_version(),
+        hook,
+        known_capable,
     )
+    .notice(evidence, &measured_line, &hook_line, has_contributions)
+}
+
+fn hook_verification_capability(
+    fs: &dyn Fs,
+    paths: &dyn Pather,
+    shell_env: &ShellEnv,
+    rc_override: Option<&Path>,
+    hook: Option<&(HookPresence, String)>,
+) -> bool {
+    let Some((presence, _)) = hook else {
+        return false;
+    };
+    match presence {
+        HookPresence::ManagedBlock => activation::read_script(fs, paths)
+            .is_some_and(|script| crate::shell::script_supports_targeted_probe(&script)),
+        HookPresence::Manual => {
+            manual_hook_supports_targeted_probe(fs, paths.home_dir(), shell_env, rc_override)
+        }
+        HookPresence::Absent => false,
+    }
+}
+
+fn manual_hook_supports_targeted_probe(
+    fs: &dyn Fs,
+    home: &Path,
+    shell_env: &ShellEnv,
+    rc_override: Option<&Path>,
+) -> bool {
+    use crate::shell::trace::{self, HookForm, SourcedScript};
+
+    let path = match rc_override {
+        Some(path) => path.to_path_buf(),
+        None => {
+            let Some(shell) = shell_env.hookup_shell() else {
+                return false;
+            };
+            rc::resolve_rc(fs, home, Some(shell), shell_env, None).path
+        }
+    };
+    let Ok(rc_text) = fs.read_to_string(&path) else {
+        return false;
+    };
+    let Some(hook) = trace::find_hook(&rc_text, home) else {
+        return false;
+    };
+    match hook.form {
+        HookForm::FileSource(SourcedScript::Path(script)) => fs
+            .read_to_string(&script)
+            .is_ok_and(|text| crate::shell::script_supports_targeted_probe(&text)),
+        _ => false,
+    }
 }
 
 fn measured_evidence_line(outcome: &ProbeOutcome) -> Option<String> {
@@ -1014,6 +1104,10 @@ mod tests {
             )),
             None
         );
+        assert_eq!(
+            parse_targeted_response(&format!("{TARGET_PROBE_MARKER}abc|10|20|100")),
+            None
+        );
     }
 
     #[test]
@@ -1129,6 +1223,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
         let notice = v
@@ -1168,6 +1263,7 @@ mod tests {
                 Some(100),
                 RUNNING,
                 hook(HookPresence::Manual),
+                false,
             );
             assert_eq!(
                 v,
@@ -1212,6 +1308,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
 
@@ -1260,6 +1357,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(
             v,
@@ -1284,6 +1382,7 @@ mod tests {
             Some(100),
             activation::PRE_VERSION_RELEASE,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
     }
@@ -1295,6 +1394,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::Absent),
+            false,
         );
         assert_eq!(
             v,
@@ -1313,10 +1413,15 @@ mod tests {
     }
 
     #[test]
-    fn no_stamp_with_the_hook_present_blames_the_rc_file_instead() {
+    fn no_stamp_from_a_known_capable_hook_blames_the_rc_file() {
         for presence in [HookPresence::ManagedBlock, HookPresence::Manual] {
-            let v =
-                Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, hook(presence));
+            let v = Verdict::from_outcome(
+                ProbeOutcome::NoStamp,
+                Some(100),
+                RUNNING,
+                hook(presence),
+                true,
+            );
             let hint = v
                 .notice(None, "Never loaded.", "HOOK", DEPLOYED)
                 .unwrap()
@@ -1334,20 +1439,43 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_shell_falls_back_to_the_hook_line() {
-        let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, None);
+    fn no_stamp_from_an_unknown_capability_hook_is_inconclusive() {
+        let v = Verdict::from_outcome(
+            ProbeOutcome::NoStamp,
+            Some(100),
+            RUNNING,
+            hook(HookPresence::Manual),
+            false,
+        );
+
+        assert!(matches!(v, Verdict::Unverified { .. }), "{v:?}");
+    }
+
+    #[test]
+    fn timeout_from_a_known_capable_hook_is_broken() {
+        let v = Verdict::from_outcome(
+            ProbeOutcome::TimedOut,
+            Some(100),
+            RUNNING,
+            hook(HookPresence::ManagedBlock),
+            true,
+        );
+
         assert_eq!(
             v,
             Verdict::Broken {
-                diagnosis: Diagnosis::Unknown
+                diagnosis: Diagnosis::HookNotReached {
+                    rc: "~/.zshrc".into()
+                }
             }
         );
-        let hint = v
-            .notice(None, "Never loaded.", "THE-HOOK-LINE", DEPLOYED)
-            .unwrap()
-            .hint
-            .unwrap();
-        assert!(hint.contains("THE-HOOK-LINE"), "{hint}");
+    }
+
+    #[test]
+    fn no_stamp_without_static_hook_context_is_inconclusive() {
+        let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, None, true);
+
+        assert!(matches!(v, Verdict::Unverified { .. }), "{v:?}");
     }
 
     #[test]
@@ -1357,6 +1485,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(
             v,
@@ -1382,7 +1511,13 @@ mod tests {
             ProbeOutcome::TimedOut,
             ProbeOutcome::SpawnFailed("no such file".into()),
         ] {
-            let v = Verdict::from_outcome(outcome, Some(100), RUNNING, hook(HookPresence::Absent));
+            let v = Verdict::from_outcome(
+                outcome,
+                Some(100),
+                RUNNING,
+                hook(HookPresence::Absent),
+                false,
+            );
             let notice = v
                 .notice(Some(evidence.clone()), "Never loaded.", "HOOK", DEPLOYED)
                 .unwrap();
@@ -1483,6 +1618,7 @@ mod tests {
                 Some(1_755_200_000),
                 RUNNING,
                 hook(HookPresence::Manual),
+                false,
             );
             assert_eq!(
                 verdict,
