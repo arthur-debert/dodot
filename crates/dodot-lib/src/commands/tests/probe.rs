@@ -93,13 +93,30 @@ fn probe_deployment_map_json_mode_is_kind_tagged() {
 // ── probe shell-init (--runs / --history) ─────────────────────────
 
 fn write_fake_profile(env: &TempEnvironment, name: &str, lines: &[&str]) {
+    write_fake_profile_with_completion(env, name, lines, true);
+}
+
+fn write_incomplete_fake_profile(env: &TempEnvironment, name: &str, lines: &[&str]) {
+    write_fake_profile_with_completion(env, name, lines, false);
+}
+
+fn write_fake_profile_with_completion(
+    env: &TempEnvironment,
+    name: &str,
+    lines: &[&str],
+    complete: bool,
+) {
     let dir = env.paths.probes_shell_init_dir();
     env.fs.mkdir_all(&dir).unwrap();
-    let mut content =
-        String::from("# columns\tphase\tpack\thandler\ttarget\tstart_t\tend_t\texit_status\n");
+    let mut content = String::from(
+        "# dodot shell-init profile v1\n# shell\tbash 5.0\n# start_t\t1.000000\n# columns\tphase\tpack\thandler\ttarget\tstart_t\tend_t\texit_status\n",
+    );
     for l in lines {
         content.push_str(l);
         content.push('\n');
+    }
+    if complete {
+        content.push_str("# end_t\t1.010000\n");
     }
     env.fs
         .write_file(&dir.join(name), content.as_bytes())
@@ -207,6 +224,94 @@ fn probe_shell_init_history_renders_one_row_per_run_newest_first() {
     assert_eq!(rows[1]["failed_entries"].as_u64().unwrap(), 1);
     assert_eq!(rows[0]["failed_entries"].as_u64().unwrap(), 0);
     assert_eq!(rows[2]["failed_entries"].as_u64().unwrap(), 0);
+}
+
+#[test]
+fn probe_shell_init_default_uses_latest_complete_profile() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x/complete.sh\t1.000000\t1.000100\t0"],
+    );
+    write_incomplete_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/interrupted.sh\t1.000000\t1.000200\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["has_profile"], true);
+    assert_eq!(parsed["filename"], "profile-1714000000-1-1.tsv");
+    assert_eq!(parsed["latest_profile_incomplete"], false);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("complete.sh"),
+        "expected complete profile row; got:\n{text}"
+    );
+    assert!(
+        !text.contains("interrupted.sh"),
+        "default view must not render the newer incomplete profile; got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_default_explains_only_incomplete_profiles() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_incomplete_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/interrupted.sh\t1.000000\t1.000200\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["has_profile"], false);
+    assert_eq!(parsed["latest_profile_incomplete"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("no complete profile yet") && text.contains("latest profile is incomplete"),
+        "expected incomplete-profile hint; got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_history_renders_incomplete_rows_with_unknown_total() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_incomplete_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/interrupted.sh\t1.000000\t1.000200\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x/complete.sh\t1.000000\t1.000100\t0"],
+    );
+
+    let result = commands::probe::shell_init_history(&ctx, 50).unwrap();
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("incomplete") && text.contains("unknown"),
+        "history should mark interrupted totals unknown; got:\n{text}"
+    );
+
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let rows = parsed["rows"].as_array().unwrap();
+    assert_eq!(rows[0]["complete"], false);
+    assert!(rows[0]["total_us"].is_null());
+    assert_eq!(rows[0]["user_total_us"], 200);
+    assert_eq!(rows[1]["complete"], true);
+    assert_eq!(rows[1]["total_us"], 10_000);
 }
 
 #[test]

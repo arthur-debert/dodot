@@ -119,6 +119,44 @@ echo hi'
     assert_output_contains '"total_us"'
 }
 
+@test "probe shell-init reports incomplete profiles honestly" {
+    create_pack_file "vim" "aliases.sh" "alias vi=vim"
+    dodot up
+
+    local profiles_dir="$XDG_DATA_HOME/dodot/probes/shell-init"
+    mkdir -p "$profiles_dir"
+    printf '%s\n' \
+        '# dodot shell-init profile v1' \
+        '# shell	bash 5.0' \
+        '# start_t	1.000000' \
+        '# columns	phase	pack	handler	target	start_t	end_t	exit_status' \
+        'source	vim	shell	/x/complete.sh	1.000000	1.000100	0' \
+        '# end_t	1.010000' \
+        > "$profiles_dir/profile-1714000000-1-1.tsv"
+    printf '%s\n' \
+        '# dodot shell-init profile v1' \
+        '# shell	bash 5.0' \
+        '# start_t	1.000000' \
+        '# columns	phase	pack	handler	target	start_t	end_t	exit_status' \
+        'source	vim	shell	/x/interrupted.sh	1.000000	1.000200	0' \
+        > "$profiles_dir/profile-1714003600-1-1.tsv"
+
+    run dodot probe shell-init --no-trace
+    [ "$status" -eq 0 ]
+    assert_output_contains "complete.sh"
+    [[ "$output" != *"interrupted.sh"* ]]
+
+    run dodot probe shell-init --history
+    [ "$status" -eq 0 ]
+    assert_output_contains "incomplete"
+    assert_output_contains "unknown"
+
+    run dodot --output json probe shell-init --history
+    [ "$status" -eq 0 ]
+    assert_output_contains '"complete":false'
+    assert_output_contains '"total_us":null'
+}
+
 # ── Disabling profiling via config ────────────────────────────────
 
 @test "init script omits profiling wrapper when disabled in config" {

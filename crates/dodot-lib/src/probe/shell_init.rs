@@ -17,9 +17,10 @@
 //! # end_t\t1714000000.125100
 //! ```
 //!
-//! Both the reader and the rotator are tolerant of malformed input —
-//! a partial write from a crashed shell should leave the next `dodot
-//! probe shell-init` working, just with a short report.
+//! Both the reader and the rotator are tolerant of malformed input.
+//! A profile whose writer never reached the closing `# end_t` marker
+//! is incomplete: rows already written remain useful evidence, but the
+//! whole-run total is unknown and the default report skips that file.
 
 use serde::Serialize;
 use tracing::warn;
@@ -65,8 +66,11 @@ pub struct Profile {
     pub filename: String,
     /// `bash 5.3.9` etc; empty if the preamble was missing.
     pub shell: String,
+    /// Whether the writer reached the closing `# end_t` marker.
+    pub complete: bool,
     /// Whole-script wall time in microseconds, from `# start_t` to
-    /// `# end_t`. `0` if either marker is missing (e.g. crashed shell).
+    /// `# end_t`. `0` if the total cannot be computed; check
+    /// [`Profile::complete`] before presenting this as a known total.
     pub total_duration_us: u64,
     pub entries: Vec<ProfileEntry>,
     /// Stderr records loaded from the sibling `*.errors.log` file, if
@@ -94,11 +98,30 @@ impl Profile {
     }
 }
 
-/// Read the most recently written profile under `<data_dir>/probes/shell-init/`,
-/// or `None` if the directory is empty / missing.
+/// Read the most recently completed profile under
+/// `<data_dir>/probes/shell-init/`, or `None` if none exist.
+///
+/// Newer incomplete profiles are skipped because the default
+/// `probe shell-init` report is a completed-run view. Use
+/// [`read_recent_profiles`] for history-style views that should expose
+/// interrupted runs.
 pub fn read_latest_profile(fs: &dyn Fs, paths: &dyn Pather) -> Result<Option<Profile>> {
-    let mut profiles = read_recent_profiles(fs, paths, 1)?;
-    Ok(profiles.pop())
+    let dir = paths.probes_shell_init_dir();
+    if !fs.is_dir(&dir) {
+        return Ok(None);
+    }
+    for entry in fs
+        .read_dir(&dir)?
+        .into_iter()
+        .rev()
+        .filter(|e| e.is_file && e.name.starts_with("profile-") && e.name.ends_with(".tsv"))
+    {
+        let profile = read_profile_with_sidecar(fs, &entry)?;
+        if profile.complete {
+            return Ok(Some(profile));
+        }
+    }
+    Ok(None)
 }
 
 /// Read up to `limit` most recent profiles, newest first.
@@ -126,29 +149,33 @@ pub fn read_recent_profiles(fs: &dyn Fs, paths: &dyn Pather, limit: usize) -> Re
 
     let mut profiles = Vec::with_capacity(entries.len());
     for entry in entries {
-        let content = fs.read_to_string(&entry.path)?;
-        let mut profile = parse_profile(&entry.name, &content);
-        // Sibling errors log: same path with `.tsv` swapped for
-        // `.errors.log`. Missing file is normal (no errors captured)
-        // and is silently treated as empty. A read failure on a file
-        // that does exist is suspicious — likely permissions or
-        // corruption — so we log it instead of dropping silently. We
-        // still don't fail the whole call: callers want as much profile
-        // data as possible even with one bad sidecar.
-        let errors_path = errors_log_path_for(&entry.path);
-        if fs.exists(&errors_path) {
-            match fs.read_to_string(&errors_path) {
-                Ok(err_content) => profile.errors = parse_errors_log(&err_content),
-                Err(e) => warn!(
-                    path = %errors_path.display(),
-                    error = %e,
-                    "errors-log sidecar exists but could not be read; treating as empty"
-                ),
-            }
-        }
-        profiles.push(profile);
+        profiles.push(read_profile_with_sidecar(fs, &entry)?);
     }
     Ok(profiles)
+}
+
+fn read_profile_with_sidecar(fs: &dyn Fs, entry: &crate::fs::DirEntry) -> Result<Profile> {
+    let content = fs.read_to_string(&entry.path)?;
+    let mut profile = parse_profile(&entry.name, &content);
+    // Sibling errors log: same path with `.tsv` swapped for
+    // `.errors.log`. Missing file is normal (no errors captured)
+    // and is silently treated as empty. A read failure on a file
+    // that does exist is suspicious — likely permissions or
+    // corruption — so we log it instead of dropping silently. We
+    // still don't fail the whole call: callers want as much profile
+    // data as possible even with one bad sidecar.
+    let errors_path = errors_log_path_for(&entry.path);
+    if fs.exists(&errors_path) {
+        match fs.read_to_string(&errors_path) {
+            Ok(err_content) => profile.errors = parse_errors_log(&err_content),
+            Err(e) => warn!(
+                path = %errors_path.display(),
+                error = %e,
+                "errors-log sidecar exists but could not be read; treating as empty"
+            ),
+        }
+    }
+    Ok(profile)
 }
 
 /// Sibling errors-log path for a profile TSV.
@@ -231,8 +258,11 @@ pub fn parse_errors_log(content: &str) -> Vec<ProfileErrorRecord> {
     out
 }
 
-/// Parse the textual content of a profile file. Tolerates missing
-/// preamble lines, unknown comments, and malformed rows (skipped).
+/// Parse the textual content of a profile file.
+///
+/// Missing `# end_t` marks the profile incomplete. Rows that finished
+/// before interruption are still returned, while `total_duration_us`
+/// remains `0` because the whole-run total is unknown.
 pub fn parse_profile(filename: &str, content: &str) -> Profile {
     let mut shell = String::new();
     let mut start_t: Option<f64> = None;
@@ -264,6 +294,7 @@ pub fn parse_profile(filename: &str, content: &str) -> Profile {
         // Otherwise: malformed row, silently dropped.
     }
 
+    let complete = end_t.is_some();
     let total_duration_us = match (start_t, end_t) {
         (Some(s), Some(e)) if e >= s => seconds_to_micros(e - s),
         _ => 0,
@@ -272,6 +303,7 @@ pub fn parse_profile(filename: &str, content: &str) -> Profile {
     Profile {
         filename: filename.to_string(),
         shell,
+        complete,
         total_duration_us,
         entries,
         errors: Vec::new(),
@@ -504,7 +536,8 @@ pub struct HistoryEntry {
     /// filename doesn't match `profile-<unix_ts>-…`.
     pub unix_ts: u64,
     pub shell: String,
-    pub total_us: u64,
+    pub complete: bool,
+    pub total_us: Option<u64>,
     pub user_total_us: u64,
     /// Count of entries with non-zero exit_status — surfaces silent
     /// breakage at a glance.
@@ -523,7 +556,8 @@ fn history_entry_from(profile: &Profile) -> HistoryEntry {
         filename: profile.filename.clone(),
         unix_ts: parse_unix_ts_from_filename(&profile.filename),
         shell: profile.shell.clone(),
-        total_us: profile.total_duration_us,
+        complete: profile.complete,
+        total_us: profile.complete.then_some(profile.total_duration_us),
         user_total_us: profile.entries_duration_us(),
         failed_entries: profile
             .entries
@@ -570,6 +604,7 @@ source\tgit\tshell\t/x/aliases.sh\t1714000000.002000\t1714000000.005000\t0\n\
 # end_t\t1714000000.010000\n";
         let p = parse_profile("profile-1714000000-1-1.tsv", content);
         assert_eq!(p.shell, "bash 5.2");
+        assert!(p.complete);
         assert_eq!(p.entries.len(), 2);
         assert_eq!(p.entries[0].phase, "path");
         assert_eq!(p.entries[0].duration_us, 5);
@@ -589,12 +624,13 @@ weird\tphase\twrong\t/x\t1.0\t1.001\t0\n";
     }
 
     #[test]
-    fn parser_handles_missing_end_marker() {
+    fn parser_marks_missing_end_marker_incomplete() {
         // Crashed shell: writes start_t and rows, but never reaches the
         // epilogue. We still want a usable Profile.
         let content = "# start_t\t1714000000.000000\n\
 source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p = parse_profile("p.tsv", content);
+        assert!(!p.complete);
         assert_eq!(p.total_duration_us, 0); // no end_t → 0 total
         assert_eq!(p.entries.len(), 1);
         assert_eq!(p.entries[0].duration_us, 1000);
@@ -610,14 +646,35 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
     #[test]
     fn read_latest_picks_highest_filename_lexicographically() {
         let env = TempEnvironment::builder().build();
-        write_profile(&env, "profile-1000-1-1.tsv", "# shell\told\n");
-        write_profile(&env, "profile-2000-1-1.tsv", "# shell\tnew\n");
-        write_profile(&env, "profile-1500-1-1.tsv", "# shell\tmid\n");
+        write_profile(&env, "profile-1000-1-1.tsv", "# shell\told\n# end_t\t1\n");
+        write_profile(&env, "profile-2000-1-1.tsv", "# shell\tnew\n# end_t\t1\n");
+        write_profile(&env, "profile-1500-1-1.tsv", "# shell\tmid\n# end_t\t1\n");
         let p = read_latest_profile(env.fs.as_ref(), env.paths.as_ref())
             .unwrap()
             .unwrap();
         assert_eq!(p.shell, "new");
         assert_eq!(p.filename, "profile-2000-1-1.tsv");
+    }
+
+    #[test]
+    fn read_latest_skips_newer_incomplete_profiles() {
+        let env = TempEnvironment::builder().build();
+        write_profile(
+            &env,
+            "profile-1000-1-1.tsv",
+            "# shell\told-complete\n# start_t\t1.0\n# end_t\t1.1\n",
+        );
+        write_profile(
+            &env,
+            "profile-2000-1-1.tsv",
+            "# shell\tnew-incomplete\n# start_t\t2.0\n",
+        );
+
+        let p = read_latest_profile(env.fs.as_ref(), env.paths.as_ref())
+            .unwrap()
+            .unwrap();
+        assert_eq!(p.filename, "profile-1000-1-1.tsv");
+        assert_eq!(p.shell, "old-complete");
     }
 
     #[test]
@@ -706,6 +763,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p = Profile {
             filename: "x".into(),
             shell: "bash".into(),
+            complete: true,
             total_duration_us: 10_000,
             errors: Vec::new(),
             entries: vec![
@@ -754,6 +812,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p = Profile {
             filename: "x".into(),
             shell: "bash".into(),
+            complete: true,
             total_duration_us: 0,
             errors: Vec::new(),
             entries: vec![
@@ -798,6 +857,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p = Profile {
             filename: "x".into(),
             shell: "".into(),
+            complete: false,
             total_duration_us: 0,
             errors: Vec::new(),
             entries: vec![ProfileEntry {
@@ -874,6 +934,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p1 = Profile {
             filename: "profile-1-1-1.tsv".into(),
             shell: "bash".into(),
+            complete: true,
             total_duration_us: 0,
             errors: Vec::new(),
             entries: vec![
@@ -884,6 +945,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p2 = Profile {
             filename: "profile-2-1-1.tsv".into(),
             shell: "bash".into(),
+            complete: true,
             total_duration_us: 0,
             errors: Vec::new(),
             entries: vec![
@@ -894,6 +956,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p3 = Profile {
             filename: "profile-3-1-1.tsv".into(),
             shell: "bash".into(),
+            complete: true,
             total_duration_us: 0,
             errors: Vec::new(),
             entries: vec![entry("vim", "shell", "/a", 120)],
@@ -924,6 +987,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p = Profile {
             filename: "p".into(),
             shell: "".into(),
+            complete: true,
             total_duration_us: 0,
             errors: Vec::new(),
             entries: vec![
@@ -957,6 +1021,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let p1 = Profile {
             filename: "profile-1714000000-12-34.tsv".into(),
             shell: "bash 5.3".into(),
+            complete: true,
             total_duration_us: 500,
             errors: Vec::new(),
             entries: vec![
@@ -975,10 +1040,29 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         assert_eq!(h.len(), 1);
         assert_eq!(h[0].unix_ts, 1714000000);
         assert_eq!(h[0].shell, "bash 5.3");
-        assert_eq!(h[0].total_us, 500);
+        assert!(h[0].complete);
+        assert_eq!(h[0].total_us, Some(500));
         assert_eq!(h[0].user_total_us, 150);
         assert_eq!(h[0].failed_entries, 1);
         assert_eq!(h[0].entry_count, 2);
+    }
+
+    #[test]
+    fn summarize_history_marks_incomplete_totals_unknown() {
+        let p1 = Profile {
+            filename: "profile-1714000000-12-34.tsv".into(),
+            shell: "bash 5.3".into(),
+            complete: false,
+            total_duration_us: 0,
+            errors: Vec::new(),
+            entries: vec![entry("vim", "shell", "/a", 100)],
+        };
+        let h = summarize_history(&[p1]);
+        assert_eq!(h.len(), 1);
+        assert!(!h[0].complete);
+        assert_eq!(h[0].total_us, None);
+        assert_eq!(h[0].user_total_us, 100);
+        assert_eq!(h[0].entry_count, 1);
     }
 
     #[test]
