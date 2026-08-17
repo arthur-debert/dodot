@@ -143,7 +143,7 @@ pub fn read_recent_profiles(fs: &dyn Fs, paths: &dyn Pather, limit: usize) -> Re
     let mut entries = shell_init_profile_entries(fs, &dir)?;
     entries.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let mut profiles = Vec::with_capacity(entries.len());
+    let mut profiles = Vec::with_capacity(entries.len().min(limit));
     for entry in entries.into_iter().rev().take(limit) {
         profiles.push(read_profile_with_sidecar(fs, &entry)?);
     }
