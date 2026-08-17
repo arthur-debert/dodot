@@ -19,7 +19,11 @@
 //! confirmation.
 //!
 //! Like approval, revocation returns the trust state to persist rather than
-//! writing it.
+//! writing it. It is also the one operation here that may *start* from
+//! unusable state: the collection it produces is validated, the one it was
+//! given is not, so revoking a duplicated approval is the narrow recovery the
+//! Spec asks for rather than another way to be locked out (see
+//! [`forget_root`]).
 
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
@@ -76,20 +80,37 @@ impl ForgetChange {
 /// the returned state is the one passed in, so a caller can tell "no such
 /// approval" from "the trust file is broken" and say so.
 ///
-/// Fails when the collection is unusable, and when the argument cannot name a
-/// root at all: a malformed `os-bytes:` spelling, a relative path, or one
-/// carrying `..`. A relative argument is refused rather than resolved, because
-/// resolving it would mean reading the process working directory — the ambient
-/// state Safety Lock captures once at the boundary and never re-reads
-/// (ADR-0001). Callers anchor a relative argument to their captured invocation
-/// directory before asking.
+/// Fails when the argument cannot name a root at all: a malformed `os-bytes:`
+/// spelling, a relative path, or a `..` spelling that rule 2 has to read. A
+/// relative argument is refused rather than resolved, because resolving it
+/// would mean reading the process working directory — the ambient state Safety
+/// Lock captures once at the boundary and never re-reads (ADR-0001). Callers
+/// anchor a relative argument to their captured invocation directory before
+/// asking.
+///
+/// `..` is not refused up front, because rule 1 consults the filesystem first
+/// and the Spec has an existing path canonicalized before matching: a live
+/// `/srv/dots/../other` resolves like any other alias and revokes whatever
+/// approval it lands on. It is refused exactly where rule 1 comes up empty —
+/// the path does not resolve, or resolves to an identity the collection never
+/// held — because rule 2 would then have to read the unresolved spelling, and
+/// `..` cannot be folded away without knowing whether a component is a symlink
+/// ([`RootIdentity::new`]).
+///
+/// Fails, too, when the collection this *leaves behind* is unusable.
+/// Validation runs on the way out rather than the way in so that revocation
+/// stays the narrow recovery route for a broken trust file (Spec, "Proposed
+/// Shape"): the only state `validate` refuses in an already-parsed collection
+/// is a duplicated approval, and forgetting that root drops every copy of it,
+/// so the one operation that can repair the collection must not be the one
+/// locked out of it. An argument that leaves the duplicate standing still
+/// fails, so state derived from contents Dodot never understood is never
+/// handed back to be written.
 pub fn forget_root(
     config: &SafetyLockConfig,
     request: &ForgetRequest,
     probe: &dyn PathProbe,
 ) -> Result<ForgetChange> {
-    config.validate()?;
-
     let candidate = requested_path(&request.argument)?;
     if !candidate.is_absolute() {
         return Err(SafetyLockError::RelativeRootIdentity {
@@ -119,6 +140,14 @@ pub fn forget_root(
     } else {
         None
     };
+
+    // The outgoing state, not the incoming one: a duplicated approval is
+    // removable by forgetting its root — every copy goes — and refusing to
+    // start would leave factory reset as the only exit from a collection this
+    // very call repairs. Whatever the argument did not repair still fails
+    // here, so a caller is never handed state to write over contents Dodot
+    // could not read.
+    config.validate()?;
 
     Ok(ForgetChange { config, removed })
 }
@@ -315,9 +344,10 @@ mod tests {
     }
 
     /// An argument that cannot name a root is a mistake worth naming: a
-    /// relative path has no fixed meaning, a `..` spelling is an alias the
-    /// collection never stores, and a truncated tagged spelling is not a path
-    /// at all. None of them may silently read as "no such approval".
+    /// relative path has no fixed meaning, a `..` spelling the filesystem
+    /// cannot resolve is an alias the collection never stores, and a truncated
+    /// tagged spelling is not a path at all. None of them may silently read as
+    /// "no such approval".
     #[test]
     fn an_argument_that_cannot_name_a_root_says_so() {
         let config = approved([identity("/srv/dots")]);
@@ -346,24 +376,48 @@ mod tests {
         );
     }
 
-    /// Revocation rewrites the collection, so it must refuse to start from one
-    /// it does not understand: writing back a state derived from a file Dodot
-    /// could not read would drop approvals it never saw.
+    /// The narrow recovery the Spec asks of revocation: a duplicated approval
+    /// is unusable state, and forgetting that root is what repairs it —
+    /// validating the incoming collection instead would leave factory reset as
+    /// the only way out of a file this very call fixes.
     #[test]
-    fn an_unusable_collection_is_reported_rather_than_rewritten() {
-        let root = identity("/srv/dots");
-
-        let error = forget(
-            &approved([root.clone(), root]),
-            "/srv/dots",
-            &FakeProbe::default(),
-        )
-        .unwrap_err();
-
+    fn a_duplicated_approval_is_repairable_by_forgetting_its_root() {
+        let duplicated = identity("/srv/dots");
+        let intact = identity("/srv/other");
+        let config = approved([duplicated.clone(), intact.clone(), duplicated.clone()]);
         assert!(
-            matches!(error, SafetyLockError::DuplicateApprovedRoot { .. }),
-            "unexpected error: {error}"
+            config.validate().is_err(),
+            "test premise: this collection is unusable as given"
         );
+
+        let change = forget(&config, "/srv/dots", &FakeProbe::default()).unwrap();
+
+        assert_eq!(change.removed, Some(duplicated));
+        assert_eq!(
+            change.config.roots.approved,
+            vec![intact],
+            "every copy of the duplicated approval must go, not just the first"
+        );
+        assert!(change.config.validate().is_ok());
+    }
+
+    /// The other half of that: revocation rewrites the collection, so an
+    /// argument that leaves the unusable part standing is still refused.
+    /// Handing back state derived from contents Dodot could not read would
+    /// drop approvals it never saw.
+    #[test]
+    fn an_unusable_collection_the_argument_does_not_repair_is_reported() {
+        let duplicated = identity("/srv/dots");
+        let config = approved([duplicated.clone(), duplicated]);
+
+        for argument in ["/srv/unapproved", "/srv/other"] {
+            let error = forget(&config, argument, &FakeProbe::default()).unwrap_err();
+
+            assert!(
+                matches!(error, SafetyLockError::DuplicateApprovedRoot { .. }),
+                "`{argument}`: unexpected error: {error}"
+            );
+        }
     }
 
     /// A directory that exists but cannot be read is still a live root: rule 1
@@ -412,6 +466,45 @@ mod tests {
         assert_eq!(
             change.removed.map(|identity| identity.as_path().to_owned()),
             Some(root)
+        );
+    }
+
+    /// The `..` boundary as a real filesystem draws it, which no fake probe
+    /// can: rule 1 resolves the alias, so a `..` spelling of an approved root
+    /// revokes it — that is the Spec's "an existing path is canonicalized
+    /// before matching". Refusal is rule 2's, and fires only where rule 1 came
+    /// up empty: the same directory reached by a `..` spelling that resolves
+    /// somewhere the collection never held is not a record to match but an
+    /// alias to name, because folding `..` away needs to know whether a
+    /// component is a symlink.
+    #[test]
+    fn a_resolvable_parent_alias_revokes_what_it_resolves_to() {
+        let home = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(home.path()).unwrap();
+        let root = home.join("dotfiles");
+        let sibling = home.join("elsewhere");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&sibling).unwrap();
+
+        let config = approved([RootIdentity::new(&root).unwrap()]);
+
+        // Rule 1: the alias resolves onto the approved identity.
+        let alias = sibling.join("..").join("dotfiles");
+        let change = forget(&config, alias.clone(), &OsPathProbe).unwrap();
+        assert_eq!(
+            change.removed.as_ref().map(RootIdentity::as_path),
+            Some(root.as_path()),
+            "`{}` did not select the approval it resolves to",
+            alias.display()
+        );
+
+        // Rule 2: the same shape resolving onto an identity the collection
+        // never held is refused rather than read as an unresolved spelling.
+        let unapproved = root.join("..").join("elsewhere");
+        let error = forget(&config, unapproved, &OsPathProbe).unwrap_err();
+        assert!(
+            matches!(error, SafetyLockError::NonCanonicalRootIdentity { .. }),
+            "unexpected error: {error}"
         );
     }
 

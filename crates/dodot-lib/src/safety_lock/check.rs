@@ -82,11 +82,15 @@ pub struct ApprovalChange {
 /// than inheriting another root's approval (Spec, story 6).
 ///
 /// Fails when the collection itself is unusable — the same invariants
-/// [`SafetyLockConfig::validate`] enforces at load. Trust state Dodot does not
-/// fully understand must be reported, never read as "nothing approved", which
-/// would silently downgrade a decision to `ApprovalRequired` and, once the user
-/// confirmed, write approvals back over a file whose contents were never
-/// understood (ADR-0001).
+/// [`SafetyLockConfig::validate`] enforces at load. Only an implicit root
+/// reaches that check: an environment root returns on provenance before the
+/// collection is consulted at all, so it is decided whatever state the trust
+/// file is in, the mirror of [`approve`]'s refusal preceding every other
+/// check. For an implicit root — the only case the collection can answer —
+/// trust state Dodot does not fully understand must be reported, never read as
+/// "nothing approved", which would silently downgrade a decision to
+/// `ApprovalRequired` and, once the user confirmed, write approvals back over a
+/// file whose contents were never understood (ADR-0001).
 pub fn decide(root: &ResolvedRoot, config: &SafetyLockConfig) -> Result<TrustDecision> {
     if !root.requires_approval() {
         return Ok(TrustDecision::ExplicitlySelected);
@@ -361,6 +365,12 @@ mod tests {
     /// empty registry: reading it as empty would downgrade the decision to
     /// "ask the user" and then write approvals back over a file whose contents
     /// were never understood.
+    ///
+    /// Only an implicit root reaches that check, because it is the only case
+    /// that consults the collection. An environment root is answered from
+    /// provenance first and is decided whatever state the file is in — the
+    /// mirror of the refusal `approve` gives it, which likewise precedes every
+    /// other check.
     #[test]
     fn unusable_trust_state_is_reported_rather_than_read_as_empty() {
         let root = identity("/home/alice/dotfiles");
@@ -368,7 +378,7 @@ mod tests {
 
         for error in [
             decide(&implicit(root.clone()), &duplicated).unwrap_err(),
-            approve(&duplicated, &implicit(root)).unwrap_err(),
+            approve(&duplicated, &implicit(root.clone())).unwrap_err(),
         ] {
             assert!(
                 matches!(error, SafetyLockError::DuplicateApprovedRoot { ref spelling }
@@ -376,6 +386,19 @@ mod tests {
                 "unexpected error: {error}"
             );
         }
+
+        assert_eq!(
+            decide(&explicit(root.clone()), &duplicated).unwrap(),
+            TrustDecision::ExplicitlySelected,
+            "an environment root's standing was made to depend on the collection"
+        );
+        assert!(
+            matches!(
+                approve(&duplicated, &explicit(root)).unwrap_err(),
+                SafetyLockError::EnvironmentRootNotApprovable { .. }
+            ),
+            "the collection was consulted before refusing an environment root"
+        );
     }
 
     /// The whole lifecycle against the one thing it is for: state the caller
