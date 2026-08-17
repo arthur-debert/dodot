@@ -989,7 +989,7 @@ fn build_clap_command() -> ClapCommand {
                 .subcommand(
                     ClapCommand::new("shell-init")
                         .about(
-                            "Startup timings + live hook diagnosis (spawns your shell, running your whole rc file up to twice; --no-trace for timings only)",
+                            "Startup timings + fresh hook verification (--trace-hook for PATH diagnosis)",
                         )
                         .arg(
                             Arg::new("filter")
@@ -1002,12 +1002,30 @@ fn build_clap_command() -> ClapCommand {
                                 .conflicts_with("history"),
                         )
                         .arg(
+                            Arg::new("no-verify")
+                                .long("no-verify")
+                                .help(
+                                    "Skip fresh hook verification (no shell is spawned; report the recorded timings only)",
+                                )
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
                             Arg::new("no-trace")
                                 .long("no-trace")
                                 .help(
-                                    "Skip the live hook-line trace (no shell is spawned; report the recorded timings only). The filter/--runs/--history/--errors-only views never trace",
+                                    "Deprecated alias for --no-verify",
                                 )
                                 .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("trace-hook")
+                                .long("trace-hook")
+                                .help(
+                                    "Run the full hook-line PATH diagnosis instead of targeted verification (spawns your shell, running your whole rc file up to twice)",
+                                )
+                                .action(ArgAction::SetTrue)
+                                .conflicts_with("no-verify")
+                                .conflicts_with("no-trace"),
                         )
                         .arg(
                             Arg::new("runs")

@@ -1,12 +1,15 @@
-[header]dodot probe shell-init[/header] — Per-source timings for shell startup.
+[header]dodot probe shell-init[/header] — Shell startup timings + hook verification.
 
 [desc]The shell init script ([item]eval "$(dodot init-sh)"[/item]) records, for every
 file it sources, how long the source took and what exit code resulted.
-This subcommand surfaces those records.
+This subcommand surfaces those records and, in the default view, separately
+verifies that a fresh interactive shell reaches the dodot hook.
 
-Three views, by flag:
+Views, by flag:
 
-  [dim]•[/dim] [item]default[/item]               most recent run, sorted by time
+  [dim]•[/dim] [item]default[/item]               most recent run + fresh hook verification
+  [dim]•[/dim] [item]--no-verify[/item]           recorded timings only; no shell is spawned
+  [dim]•[/dim] [item]--trace-hook[/item]          full hook-line PATH diagnosis
   [dim]•[/dim] [item]--runs [N][/item]            aggregate the last [item]N[/item] runs into per-target [item]p50[/item] / [item]p95[/item] / [item]max[/item]
   [dim]•[/dim] [item]--history[/item]             one summary row per run, newest first
   [dim]•[/dim] [item]--errors-only[/item]         every target with a non-zero exit, sorted by failure count
@@ -30,9 +33,14 @@ actually does on login.[/desc]
   [item]--errors-only[/item]   [desc]List every target with a non-zero exit across recent runs,
                   sorted by failure count.
                   Conflicts with [item]--runs[/item], [item]--history[/item], and [item]<PACK[/FILE]>[/item].[/desc]
+  [item]--no-verify[/item]     [desc]Skip the fresh hook verification and report recorded timings only.[/desc]
+  [item]--no-trace[/item]      [desc]Deprecated alias for [item]--no-verify[/item].[/desc]
+  [item]--trace-hook[/item]    [desc]Run the full hook-line PATH diagnosis instead of targeted verification.[/desc]
 
 [header]EXAMPLES[/header]
-  [example]dodot probe shell-init                     [dim]# most recent run, sorted by time[/dim]
+  [example]dodot probe shell-init                     [dim]# most recent run + hook verification[/dim]
+  dodot probe shell-init --no-verify        [dim]# timings only, nothing spawned[/dim]
+  dodot probe shell-init --trace-hook       [dim]# full hook-line PATH diagnosis[/dim]
   dodot probe shell-init --runs              [dim]# last 10 runs, p50/p95/max per source[/dim]
   dodot probe shell-init --runs 50           [dim]# last 50 runs[/dim]
   dodot probe shell-init --history           [dim]# one row per run, newest first[/dim]

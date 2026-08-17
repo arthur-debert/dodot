@@ -40,7 +40,12 @@
   [dim] then re-run `dodot probe shell-init`)[/dim]
 {% else %}  [dim](profiling is disabled in config — set [profiling] enabled = true,[/dim]
   [dim] run `dodot up`, then start a new shell)[/dim]
-{% endif %}{% endif %}{% if trace %}
+{% endif %}{% endif %}{% if verification %}
+[header]Hook verification[/header]{% if verification.rc %} [dim]{{ verification.rc }}{% if verification.hook_line > 0 %}:{{ verification.hook_line }}{% endif %} ({{ verification.shell }})[/dim]{% endif %}
+  [{{ verification.status_class }}]{{ verification.headline }}[/{{ verification.status_class }}]
+{% for line in verification.detail_lines %}  [dim]{{ line }}[/dim]
+{% endfor %}  [dim]elapsed:[/dim] {{ verification.elapsed_us }} µs
+{% endif %}{% if trace %}
 [header]Hook resolution[/header]{% if trace.rc %} [dim]{{ trace.rc }}{% if trace.hook_line > 0 %}:{{ trace.hook_line }}{% endif %} ({{ trace.shell }})[/dim]{% endif %}
   [{{ trace.status_class }}]{{ trace.headline }}[/{{ trace.status_class }}]
 {% for line in trace.detail_lines %}  [dim]{{ line }}[/dim]
