@@ -249,6 +249,74 @@ fn reset_waits_for_an_active_transaction_and_clears_its_write() {
     );
 }
 
+/// "Data dir absent" is not a stable observation: a writer's `begin`
+/// can create the dir, lock file, and trust file at any moment, so a
+/// real-run reset must lock unconditionally. Starting from an ABSENT
+/// data dir, a writer that persisted while holding the lock either
+/// finishes before reset lists (and its write is swept) or begins
+/// after — its pre-reset approval can never survive into the cleared
+/// state. Sequenced by channels, not timing: the writer holds the
+/// lock continuously from `begin` through `persist`, and reset is
+/// only spawned once the approval is already persisted, so reset can
+/// list only after the drop — every interleaving must end swept.
+#[test]
+fn reset_from_absent_data_dir_locks_against_a_racing_writer() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    let data = env.paths.data_dir().to_path_buf();
+    // Start from a truly absent data dir (TempEnvironment pre-creates
+    // some entries).
+    env.fs.remove_dir_all(&data).unwrap();
+    assert!(!env.fs.is_dir(&data));
+
+    let (persisted_tx, persisted_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let writer_data = data.clone();
+    let writer = std::thread::spawn(move || {
+        // Creates the data dir + lock file, persists under the lock.
+        let transaction = TrustFileTransaction::begin(&writer_data).unwrap();
+        let mut config = transaction.load().unwrap();
+        config
+            .roots
+            .approved
+            .push(RootIdentity::new("/home/alice/dots").unwrap());
+        transaction.persist(&config).unwrap();
+        persisted_tx.send(()).unwrap();
+        // Keep holding the lock until the main thread has spawned reset.
+        release_rx.recv().unwrap();
+        drop(transaction);
+    });
+
+    // The approval exists on disk, lock still held by the writer.
+    persisted_rx.recv().unwrap();
+    let ctx = make_ctx(&env);
+    let reset_thread = std::thread::spawn(move || commands::reset::reset(&ctx));
+    release_tx.send(()).unwrap();
+    writer.join().unwrap();
+    let result = reset_thread.join().unwrap().unwrap();
+
+    assert!(
+        !env.fs.exists(&data.join(SAFETY_LOCK_FILE_NAME)),
+        "the writer's pre-reset approval must be swept: {:?}",
+        result.details
+    );
+    assert!(
+        result
+            .details
+            .iter()
+            .any(|d| d.contains(SAFETY_LOCK_FILE_NAME)),
+        "reset must have listed and removed the trust file: {:?}",
+        result.details
+    );
+    assert!(
+        env.fs.exists(&data.join(SAFETY_LOCK_LOCK_FILE_NAME)),
+        "the writer lock file must survive"
+    );
+}
+
 /// A top-level symlink in the data dir is removed as a link — reset
 /// must not follow it and delete the target's contents.
 #[test]

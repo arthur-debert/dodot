@@ -45,9 +45,11 @@ use crate::Result;
 
 /// Run the `reset` command: remove every top-level entry under the
 /// data dir except the trust-file writer lock (see the module doc).
-/// Honors `ctx.dry_run` (list, don't remove). Returns a
-/// `MessageResult` whose details name each removed entry (directories
-/// with a trailing `/`), sorted by name.
+/// A real run always holds that lock for the whole list-and-sweep,
+/// creating the data dir (which reset keeps anyway) and lock file if
+/// absent. Honors `ctx.dry_run` (list, don't remove — and take no
+/// lock). Returns a `MessageResult` whose details name each removed
+/// entry (directories with a trailing `/`), sorted by name.
 pub fn reset(ctx: &ExecutionContext) -> Result<MessageResult> {
     let data_dir = ctx.paths.data_dir().to_path_buf();
     let display_dir = shorten_path(&data_dir, ctx.paths.home_dir());
@@ -58,10 +60,13 @@ pub fn reset(ctx: &ExecutionContext) -> Result<MessageResult> {
     // is listed and wiped) or begins after the sweep (and applies to the
     // empty post-reset state) — it can never persist a pre-reset document
     // into the freshly cleared state, and no trust file can appear between
-    // listing and removal. Dry run previews without mutating, so it takes
-    // no lock; nor does an absent data dir, where there is no state a
-    // writer could be mid-update on.
-    let _trust_write_guard = if ctx.dry_run || !ctx.fs.is_dir(&data_dir) {
+    // listing and removal. Unconditional for a real run — even when the
+    // data dir looks absent, a writer's `begin` can create it and the
+    // trust file at any moment, so "absent" is not a stable observation
+    // to skip locking on; `begin` creates the (kept-anyway) data dir and
+    // the stable lock inode itself. Only dry run, which previews without
+    // mutating, takes no lock.
+    let _trust_write_guard = if ctx.dry_run {
         None
     } else {
         // SafetyLockError displays a complete, path-bearing message;
