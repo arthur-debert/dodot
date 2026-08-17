@@ -14,7 +14,6 @@
 #[cfg(test)]
 use std::collections::VecDeque;
 use std::io::Write;
-use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(test)]
 use std::sync::Mutex;
@@ -232,10 +231,15 @@ pub struct TutorialEnv {
     /// mutates anything — the tutorial's real `up` is in ADR-0002's
     /// protected set, and it goes through the same central gate every
     /// dispatched mutation does rather than a check of its own. Production
-    /// wires [`production_deployment_gate`]; tests stub it, the same seam
-    /// discipline as [`Prompts`]. The narrated read-only steps and the
-    /// dry-run preview never call it.
-    pub deployment_gate: fn() -> Result<()>,
+    /// ([`TutorialEnv::from_process_env`]) wires a closure over the
+    /// [`ProcessFacts`](crate::safety::ProcessFacts) and root captured when
+    /// this env was built, put to [`gate_captured`](crate::safety::gate_captured)
+    /// — never a fresh capture, so the root the gate authorizes is the root
+    /// every step of this env reads and deploys into (ADR-0001,
+    /// within-invocation stability). Tests stub it, the same seam discipline
+    /// as [`Prompts`]. The narrated read-only steps and the dry-run preview
+    /// never call it.
+    pub deployment_gate: Box<dyn Fn() -> Result<()>>,
 }
 
 impl TutorialEnv {
@@ -243,8 +247,26 @@ impl TutorialEnv {
     /// `ExecutionContext::production`, but the parts are kept so we
     /// can derive multiple ExecutionContexts with different
     /// `dry_run` flags without rebuilding everything.
+    ///
+    /// The process facts are captured and the root resolved exactly once,
+    /// here. The tutorial is a passthrough — it returns before
+    /// `app.dispatch`, so no pre-dispatch hook runs — but it goes through
+    /// the same capture and the same
+    /// [`resolve_root`](dodot_lib::safety_lock::resolve_root) as the gate,
+    /// so the root it shows in `check_root` is the root every other command
+    /// would pick and the provenance it names is the one Safety Lock's own
+    /// diagnostics use. That one captured selection then feeds everything:
+    /// the paths and config the steps read, the deployment the real `up`
+    /// step performs, and — via the [`deployment_gate`](Self::deployment_gate)
+    /// closure — the authorization itself, so what the user approves and
+    /// what the tutorial mutates cannot diverge even if the environment,
+    /// cwd, Git top-level, or a symlink target changes mid-walkthrough
+    /// (ADR-0001, within-invocation stability).
     pub fn from_process_env() -> Result<Self> {
-        let (root, origin) = discover_root_with_origin()?;
+        let facts = crate::safety::ProcessFacts::capture()?;
+        let resolved = facts.resolve_root()?;
+        let root = resolved.as_path().to_path_buf();
+        let origin = resolved.source().label().to_string();
         let paths = Arc::new(
             XdgPather::builder()
                 .dotfiles_root(&root)
@@ -272,7 +294,18 @@ impl TutorialEnv {
             shell_env: ShellEnv::from_process(),
             probe_policy: ProbePolicy::production(),
             root_origin: origin,
-            deployment_gate: production_deployment_gate,
+            // The same gate `config set` crosses (`gate_passthrough`), minus
+            // the re-capture: authorize the selection this env was built
+            // from. A refusal surfaces as the gate's own diagnostic, which
+            // `main` prints verbatim before exiting 1.
+            deployment_gate: Box::new(move || {
+                crate::safety::gate_captured(
+                    facts.clone(),
+                    resolved.clone(),
+                    dodot_lib::safety_lock::RootOperation::RootSensitiveMutation,
+                )?;
+                Ok(())
+            }),
         })
     }
 
@@ -752,38 +785,6 @@ fn build_initial_ctx(env: &TutorialEnv) -> Result<TutorialCtx> {
     })
 }
 
-/// The dotfiles root the tutorial walks the user through, and what selected
-/// it.
-///
-/// The tutorial is a passthrough — it returns before `app.dispatch`, so no
-/// pre-dispatch hook runs and there is no injected state to read — but it goes
-/// through the same capture and the same
-/// [`resolve_root`](dodot_lib::safety_lock::resolve_root) as the gate, so the
-/// root it shows in `check_root` is the root every other command would pick
-/// and the provenance it names is the one Safety Lock's own diagnostics use.
-/// The gate itself runs later, at the real deployment step
-/// ([`production_deployment_gate`]) — everything before it only reads.
-fn discover_root_with_origin() -> Result<(PathBuf, String)> {
-    let root = crate::safety::ProcessFacts::capture()
-        .and_then(|facts| facts.resolve_root())
-        .map_err(|e| anyhow!("{e}"))?;
-    Ok((
-        root.as_path().to_path_buf(),
-        root.source().label().to_string(),
-    ))
-}
-
-/// Cross Safety Lock's central gate for the tutorial's one real mutation.
-///
-/// The same [`gate_passthrough`](crate::safety::gate_passthrough) `config
-/// set` uses: capture, resolve, authorize, and — for an untrusted implicit
-/// root — the confirmation prompt on stderr. A refusal surfaces as the
-/// gate's own diagnostic, which `main` prints verbatim before exiting 1.
-fn production_deployment_gate() -> Result<()> {
-    crate::safety::gate_passthrough(dodot_lib::safety_lock::RootOperation::RootSensitiveMutation)?;
-    Ok(())
-}
-
 fn render_dodot_status(env: &TutorialEnv, pack: &str, mode: OutputMode) -> Result<String> {
     let exec_ctx = env.make_ctx(false);
     let result = commands::status::status(Some(&[pack.to_string()]), &exec_ctx)
@@ -892,7 +893,7 @@ mod tests {
             // process, terminal, and exit status exist (the Bats suite);
             // the refusal seam is exercised by
             // `a_refused_deployment_gate_aborts_before_anything_deploys`.
-            deployment_gate: || Ok(()),
+            deployment_gate: Box::new(|| Ok(())),
         }
     }
 
@@ -985,7 +986,8 @@ mod tests {
             .done()
             .build();
         let mut env = env_from(&temp);
-        env.deployment_gate = || Err(anyhow!("dodot has not been approved for this root"));
+        env.deployment_gate =
+            Box::new(|| Err(anyhow!("dodot has not been approved for this root")));
 
         let prompts = ScriptedPrompts::new([
             ScriptedAnswer::Confirm(true), // intro: ready?

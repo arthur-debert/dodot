@@ -207,9 +207,14 @@ fn main() {
 /// A Safety Lock [`safety::Refusal`] is printed exactly as the gate wrote it
 /// — its diagnostic is the whole message, the same shape a refusal has under
 /// Standout dispatch — while any other error keeps the conventional
-/// `error:` prefix.
+/// `error:` prefix. The whole error chain is scanned, not just the outermost
+/// error, so a `.context(...)` added somewhere along the bubble-up cannot
+/// silently demote the refusal to a prefixed error.
 fn exit_passthrough_failure(e: anyhow::Error) -> ! {
-    match e.downcast_ref::<safety::Refusal>() {
+    match e
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<safety::Refusal>())
+    {
         Some(refusal) => eprintln!("{refusal}"),
         None => eprintln!("error: {e}"),
     }

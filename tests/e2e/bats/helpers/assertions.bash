@@ -344,3 +344,20 @@ assert_env_var() {
 		return 1
 	fi
 }
+
+# Portable mtime reader, for assertions comparing modification times.
+# Different stat invocations on macOS (BSD) vs Linux (GNU coreutils):
+# `-c %Y` is GNU-only, `-f %m` is BSD-only, and `stat -f` on GNU
+# coreutils silently switches to filesystem-info mode (returning the
+# mount point) rather than failing — so a naive `stat -f %m || stat -c
+# %Y` chain works on macOS but produces a non-numeric result on Linux
+# that breaks `[ -gt ]` later. Detect the platform and pick the right
+# format.
+# Usage: before=$(mtime "$file")
+mtime() {
+	if [[ "$(uname)" == "Darwin" ]]; then
+		stat -f %m "$1"
+	else
+		stat -c %Y "$1"
+	fi
+}

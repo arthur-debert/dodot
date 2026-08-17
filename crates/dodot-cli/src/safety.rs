@@ -29,8 +29,12 @@
 //! `config`, `init-sh`, the tutorial — so no pre-dispatch hook can gate them.
 //! Each declares its policy in [`PASSTHROUGH_POLICY`], and the ones that do
 //! mutate root-selected state ([`PassthroughPolicy::GatedInRoute`]) cross the
-//! same gate through [`gate_passthrough`]: one policy, one door, whichever
-//! way a command entered the process (ADR-0002).
+//! same gate: one policy, one door, whichever way a command entered the
+//! process (ADR-0002). `config` crosses at [`gate_passthrough`] (capture,
+//! resolve, authorize, in one call); the tutorial resolved its root when its
+//! environment was built and crosses at [`gate_captured`], which authorizes
+//! that captured selection instead of re-reading the process (ADR-0001,
+//! within-invocation stability).
 //!
 //! # Refusal
 //!
@@ -194,11 +198,13 @@ pub enum PassthroughPolicy {
     Filter,
     /// Reads the root, writes nothing derived from it.
     ReadOnly,
-    /// The route runs [`gate_passthrough`] itself, choosing the operation
-    /// from the parsed invocation: `config` gates `set`/`unset` (the actions
-    /// that persist into the selected root) and leaves reads open; the
-    /// tutorial gates its real deployment step and leaves the narrated
-    /// read-only steps open.
+    /// The route runs the gate itself, choosing the operation from the
+    /// parsed invocation: `config` gates `set`/`unset` (the actions that
+    /// persist into the selected root) via [`gate_passthrough`] and leaves
+    /// reads open; the tutorial gates its real deployment step via
+    /// [`gate_captured`] — authorizing the selection captured when its
+    /// environment was built — and leaves the narrated read-only steps
+    /// open.
     GatedInRoute,
     /// Never touches a dotfiles root (help text).
     Rootless,
@@ -404,6 +410,28 @@ pub fn gate_passthrough(operation: RootOperation) -> Result<SafetyState, Refusal
     Ok(state)
 }
 
+/// Run the gate on a selection captured earlier in this process — no second
+/// capture, no second resolution.
+///
+/// The entry point for a route that resolved its root up front and worked
+/// against it before reaching its one mutation (the tutorial: the root it
+/// shows, previews, and deploys into is fixed when its environment is
+/// built). Re-capturing here would consult the environment, cwd, Git
+/// top-level, and symlink targets a second time, so the root put to the
+/// user for approval could differ from the root the mutation then runs
+/// against — exactly the divergence ADR-0001's within-invocation stability
+/// guarantee rules out. The caller hands over the facts and root it has
+/// been using; only the authorization itself happens here.
+pub fn gate_captured(
+    facts: ProcessFacts,
+    root: ResolvedRoot,
+    operation: RootOperation,
+) -> Result<SafetyState, Refusal> {
+    let state = authorize_resolved(facts, root, operation)?;
+    remember_authorized(&state);
+    Ok(state)
+}
+
 /// The state whose gate this process already ran, for the post-`up` prompts.
 ///
 /// The install ladder and the cfprefsd prompt fire in `main` after `up`'s
@@ -440,6 +468,16 @@ fn gate(sensitivity: RootSensitivity, matches: &clap::ArgMatches) -> Result<Safe
 /// [`gate`] and [`gate_passthrough`].
 fn gate_operation(facts: ProcessFacts, operation: RootOperation) -> Result<SafetyState, Refusal> {
     let root = facts.resolve_root().map_err(refuse)?;
+    authorize_resolved(facts, root, operation)
+}
+
+/// Authorize an already-resolved root — the gate minus capture and
+/// resolution, shared by [`gate_operation`] and [`gate_captured`].
+fn authorize_resolved(
+    facts: ProcessFacts,
+    root: ResolvedRoot,
+    operation: RootOperation,
+) -> Result<SafetyState, Refusal> {
     tracing::debug!(
         root = %root.identity().spelling(),
         selected_by = %root.source(),
@@ -643,6 +681,41 @@ mod tests {
                 "{sensitivity:?} was gated"
             );
         }
+    }
+
+    /// The changed-selection case (ADR-0001, within-invocation stability):
+    /// the captured gate authorizes exactly the selection it was handed,
+    /// never a fresh read of the process. The handed-in facts name an
+    /// explicitly selected tempdir root, while this very process (its cwd,
+    /// environment, and Git top-level) would resolve something else
+    /// entirely — so a re-capturing implementation either refuses (no
+    /// terminal to approve its untrusted root) or authorizes a root that
+    /// fails the identity assertion. The captured one authorizes the
+    /// tempdir root without any recorded trust, because deliberate
+    /// selection needs none.
+    #[test]
+    fn the_captured_gate_authorizes_the_selection_it_was_handed() {
+        let temp = tempfile::tempdir().unwrap();
+        let root_dir = temp.path().join("dots");
+        let home = temp.path().join("home");
+        std::fs::create_dir_all(&root_dir).unwrap();
+        std::fs::create_dir_all(&home).unwrap();
+
+        let mut selection = RootSelectionInput::new(&home, &home);
+        selection.dotfiles_root = Some(root_dir.clone().into_os_string());
+        let facts = ProcessFacts {
+            selection,
+            data_dir: temp.path().join("data"),
+        };
+        let root = facts.resolve_root().unwrap();
+
+        let state = gate_captured(facts, root.clone(), RootOperation::RootSensitiveMutation)
+            .expect("an explicitly selected root must authorize without recorded trust");
+        assert_eq!(
+            state.root().unwrap().identity().spelling(),
+            root.identity().spelling(),
+            "the authorized root is the captured selection, not a re-resolved one"
+        );
     }
 
     /// An implicit root at `dir`, the way the gate resolves one when neither

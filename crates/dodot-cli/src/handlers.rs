@@ -114,7 +114,9 @@ fn pack_filter(matches: &clap::ArgMatches) -> Option<Vec<String>> {
 /// [`safety::PASSTHROUGH_POLICY`] (`init-sh` reads the root; `template clean`
 /// is a stdin/stdout filter, ADR-0002's explicit exclusion). A passthrough
 /// that *does* mutate root-selected state must call
-/// [`safety::gate_passthrough`] instead, the way `config_passthrough` does.
+/// [`safety::gate_passthrough`] instead, the way `config_passthrough` does —
+/// or [`safety::gate_captured`] when the route resolved its root earlier and
+/// must authorize that same selection, the way the tutorial does.
 fn passthrough_root() -> Result<PathBuf, anyhow::Error> {
     Ok(safety::ProcessFacts::capture()?
         .resolve_root()?

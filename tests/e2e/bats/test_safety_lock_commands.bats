@@ -152,12 +152,18 @@ pty_run() {
 
 @test "the tutorial's real deployment step is gated on an untrusted implicit root" {
     # Enter accepts each tutorial prompt's default (intro, check_root,
-    # pick-pack select, two press-enters, targets, dry-run) until the real
-    # deployment step puts the root to Safety Lock's own prompt — where a
-    # bare Enter is a refusal, the destructive-action convention. The pack
-    # is config-only so the shell-integration step never fires, and the
-    # surplus keystrokes after the refusal are never read.
-    PTY_INPUT_DELAY=2 pty_run "$(printf '\n%.0s' {1..10})" "$DODOT_BIN" tutorial --reset
+    # pick-pack select, two press-enters, targets, dry-run — seven inquire
+    # prompts; the pack is config-only so the shell-integration step never
+    # fires) until the real deployment step puts the root to Safety Lock's
+    # own prompt — where a bare Enter is a refusal, the destructive-action
+    # convention. The seven tutorial Enters are CR: inquire runs the
+    # terminal raw, where the Enter key *is* CR and an LF is not Enter. The
+    # gate then reads one cooked line from stdin, and the trailing LF is
+    # that line — the bare-Enter refusal. (The LF is queued while the
+    # terminal is still raw, so icrnl never rewrites it; it must be a
+    # literal LF, not another CR.)
+    PTY_INPUT_DELAY=2 pty_run "$(printf '\r%.0s' {1..7})
+" "$DODOT_BIN" tutorial --reset
 
     [ "$status" -eq 1 ]
     assert_output_contains "Approve this root?"
@@ -208,10 +214,12 @@ pty_run() {
 # ── Cache-derived writers scope to the authorized root ──────────
 
 @test "two roots sharing one cache: refresh mutates only the authorized root's sources" {
-    # Root A: the sandbox's dotfiles repo, with a template pack.
-    create_pack "appa"
-    create_pack_file "appa" "cfg-a.toml.tmpl" 'name = {{ name }}'
-    create_pack_config "appa" '[preprocessor.template.vars]\nname = "Alice"'
+    # Root A: the sandbox's dotfiles repo, with a template pack. Written
+    # against $SAFETY_ROOT directly, like root B below: the create_pack_*
+    # helpers write through $DOTFILES_ROOT, which this file's setup unset.
+    mkdir -p "$SAFETY_ROOT/appa"
+    printf 'name = {{ name }}' > "$SAFETY_ROOT/appa/cfg-a.toml.tmpl"
+    printf '[preprocessor.template.vars]\nname = "Alice"\n' > "$SAFETY_ROOT/appa/.dodot.toml"
 
     # Root B: a second dotfiles root sharing the same XDG data dir (and so
     # the same preprocessor baseline cache).
