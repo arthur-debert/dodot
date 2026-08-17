@@ -222,11 +222,14 @@ pub fn build_inventory(
             continue;
         }
 
+        let gate_config_file =
+            gate_configuration_owner(root_path, pack, &pack_config, &root_config);
+
         let mut gates = GateTable::with_builtins();
         if !pack_config.gates.is_empty() {
             gates
                 .merge_user(&pack_config.gates)
-                .map_err(|error| unusable_config(pack.path.join(DOTFILES_CONFIG_FILE), error))?;
+                .map_err(|error| unusable_config(gate_config_file.clone(), error))?;
         }
 
         let rules = mappings_to_rules(&pack_config.mappings);
@@ -239,7 +242,7 @@ pub fn build_inventory(
                 host,
                 &pack_config.mappings.gates,
             )
-            .map_err(|error| unusable_scan(&pack.path, error))?;
+            .map_err(|error| unusable_scan(&pack.path, &gate_config_file, error))?;
 
         for matched in matches {
             let Some(category) = category_of(&matched.handler, &registry) else {
@@ -331,20 +334,56 @@ fn unusable_routing(
     }
 }
 
+/// The `.dodot.toml` to blame for gate configuration that fails during a walk.
+///
+/// A pack's configuration is the root's with the pack's merged over it, so a
+/// gate setting the scanner rejects may have been written in either file, and
+/// the module cannot see per-key provenance through the merge. What it can see
+/// is whether the pack contributed to gate configuration *at all*: if the
+/// pack's `[gates]` and `[mappings.gates]` are the ones it inherited, every
+/// value the scan used came from the root, and the root's file is the answer —
+/// not by preference but by elimination. Blaming the pack there would name a
+/// `.dodot.toml` the user never wrote, and for a pack that carries no
+/// configuration, one that is not on disk to open (story 14: the file named
+/// has to be the file the user can act on).
+///
+/// When the pack did contribute, its file is named: it is the nearest layer
+/// that demonstrably participated, and it exists.
+fn gate_configuration_owner(
+    root_path: &Path,
+    pack: &crate::packs::Pack,
+    pack_config: &crate::config::DodotConfig,
+    root_config: &crate::config::DodotConfig,
+) -> PathBuf {
+    let inherited = pack_config.gates == root_config.gates
+        && pack_config.mappings.gates == root_config.mappings.gates;
+
+    if inherited {
+        root_path.join(DOTFILES_CONFIG_FILE)
+    } else {
+        pack.path.join(DOTFILES_CONFIG_FILE)
+    }
+}
+
 /// A scan failure, classified by what the user can act on.
 ///
 /// The scanner does two jobs at once: it walks the pack, and it interprets the
 /// pack's configuration — `[mappings.gates]` globs, the gate labels those
 /// entries and filename tokens name, and the conflict between the two all come
 /// back as [`DodotError::Config`](crate::error::DodotError::Config). Reporting
-/// those as a routing failure would name the pack *directory* when the thing
-/// the user has to open is the pack's `.dodot.toml` (story 14: name the bad
-/// file, not the neighbourhood it is in). Everything else the walk can fail on
-/// — an unreadable directory, a layout Dodot refuses — is a routing failure and
+/// those as a routing failure would name a *directory* when the thing the user
+/// has to open is a `.dodot.toml` (story 14: name the bad file, not the
+/// neighbourhood it is in); `gate_config_file` is which one, resolved by
+/// [`gate_configuration_owner`]. Everything else the walk can fail on — an
+/// unreadable directory, a layout Dodot refuses — is a routing failure and
 /// names the directory.
-fn unusable_scan(pack_path: &Path, error: crate::error::DodotError) -> SafetyLockError {
+fn unusable_scan(
+    pack_path: &Path,
+    gate_config_file: &Path,
+    error: crate::error::DodotError,
+) -> SafetyLockError {
     if matches!(error, crate::error::DodotError::Config(_)) {
-        unusable_config(pack_path.join(DOTFILES_CONFIG_FILE), error)
+        unusable_config(gate_config_file.to_path_buf(), error)
     } else {
         unusable_routing(pack_path, error)
     }
@@ -777,6 +816,10 @@ mod tests {
     /// gated two ways at once all surface from the walk — and naming the pack
     /// directory for them would point the user at a place instead of at the
     /// file they have to edit.
+    ///
+    /// Every case here declares gate configuration in the pack, which is what
+    /// makes the pack's file the one to name; the root-owned half is
+    /// `configuration_inherited_from_the_root_names_the_root_config_file`.
     #[test]
     fn configuration_the_walk_rejects_names_the_pack_config_file() {
         for pack_config in [
@@ -784,8 +827,9 @@ mod tests {
             "[mappings.gates]\n\"[unclosed\" = \"darwin\"\n",
             // A label nothing defines, reached through `[mappings.gates]`.
             "[mappings.gates]\n\"aliases.sh\" = \"no-such-label\"\n",
-            // A label nothing defines, reached through the filename grammar.
-            "",
+            // A label nothing defines, reached through the filename grammar,
+            // in a pack whose own `[gates]` could have defined it.
+            "[gates]\nsomething-else = { os = \"darwin\" }\n",
             // One file gated two ways at once.
             "[mappings.gates]\n\"*.sh\" = \"darwin\"\n",
         ] {
@@ -808,6 +852,42 @@ mod tests {
                             && !reason.is_empty()
                 ),
                 "unexpected error for config {pack_config:?}: {error}"
+            );
+        }
+    }
+
+    /// The same walk-time failures, declared one layer up. Pack configuration
+    /// is the root's merged with the pack's, so gate settings the root owns
+    /// reach every pack's scan — and blaming the pack for them would name a
+    /// `.dodot.toml` the user never wrote and, for a pack with no
+    /// configuration of its own, one that is not on disk to open.
+    #[test]
+    fn configuration_inherited_from_the_root_names_the_root_config_file() {
+        for root_config in [
+            "[mappings.gates]\n\"[unclosed\" = \"darwin\"\n",
+            "[mappings.gates]\n\"aliases.sh\" = \"no-such-label\"\n",
+            "",
+            "[mappings.gates]\n\"*.sh\" = \"darwin\"\n",
+        ] {
+            let env = TempEnvironment::builder()
+                .pack("vim")
+                .file("aliases.sh", "")
+                .file("profile._no-such-label.sh", "")
+                .done()
+                .build();
+            std::fs::write(env.dotfiles_root.join(".dodot.toml"), root_config).unwrap();
+
+            let error =
+                build_inventory(&resolved(&env), env.fs.as_ref(), &host()).expect_err("accepted");
+
+            assert!(
+                matches!(
+                    &error,
+                    SafetyLockError::DotfilesConfigUnusable { config_file, reason }
+                        if config_file == &canonical_root(&env).join(DOTFILES_CONFIG_FILE)
+                            && !reason.is_empty()
+                ),
+                "unexpected error for root config {root_config:?}: {error}"
             );
         }
     }
