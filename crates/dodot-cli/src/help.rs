@@ -457,6 +457,19 @@ mod tests {
         let reset = lookup("reset");
         assert!(reset.contains("safety-lock.toml"));
         assert!(reset.contains("asks again"));
+
+        let roots = lookup("roots");
+        assert!(roots.contains("next root-sensitive mutation that implicitly"));
+        assert!(roots.contains("discovers that root asks again"));
+        assert!(
+            !roots.contains("next deploying command"),
+            "roots help must cover every gated mutation after forget, not only deployment"
+        );
+        assert!(
+            !roots.contains("mutation run from that root"),
+            "forget's promise is scoped to implicit discovery: explicit \
+             DOTFILES_ROOT selection never asks"
+        );
     }
 
     /// Every subcommand clap knows about must have its own help text —

@@ -212,7 +212,7 @@ Troubleshooting
 
     10.3. "dodot has not been approved for …" — a mutating command refuses
 
-        Safety Lock stopped a mutating command on an implicitly discovered root you haven't approved (see [./safety-lock.lex]). Three ways forward:
+        Safety Lock stopped a mutating command on an implicitly discovered root you haven't approved (see [./safety-lock.md]). Three ways forward:
 
         - You're in the right repo, interactively: re-run from a terminal and answer `y` at the prompt. Approval is remembered per root.
         - You're in a script or pipe: set the root explicitly — `DOTFILES_ROOT=~/dotfiles dodot up`. A valid explicit root never prompts.
@@ -241,7 +241,7 @@ Troubleshooting
     - [./paths.lex] — where files end up at deploy time.
     - [./filters.lex] — the five mechanisms for keeping files out of dispatch.
     - [./shell-integration.lex] — the eval line and what runs from it.
-    - [./safety-lock.lex] — root approval: when the prompt fires, automation, recovery.
+    - [./safety-lock.md] — root approval: when the prompt fires, automation, recovery.
     - [./templates.lex], [./secrets.lex] — preprocessing-pipeline issues.
     - [./plists.lex] — macOS plist filter setup.
     - [./glossary/] — terminology.

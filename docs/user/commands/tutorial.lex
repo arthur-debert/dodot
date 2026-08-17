@@ -1,7 +1,7 @@
 :: verified ::
 dodot tutorial
 
-The "guide me through using dodot on my real dotfiles" command. An interactive walkthrough that takes one of your packs from "discovered" to "live on this machine," explaining what dodot is doing as it goes. About ten minutes, no toy examples — uses your actual repo, and changes nothing without your explicit yes at every step.
+The "guide me through using dodot on my real dotfiles" command. An interactive walkthrough that takes one of your packs from "discovered" to "live on this machine," explaining what dodot is doing as it goes. About ten minutes, no toy examples — uses your actual repo, and the step-by-step walkthrough performs no root-sensitive deployment mutation without your explicit yes (jumping straight to the deploy step is different — see §5).
 
 The recommended starting point if you've never run `dodot up` on this repo before.
 
@@ -46,8 +46,8 @@ The recommended starting point if you've never run `dodot up` on this repo befor
 
 5. Watch out for
 
-    - *No silent changes.* The tutorial pauses for an explicit `y/n` before the first filesystem-changing step (`dodot up`). Cancelling at that point exits cleanly with no deployment.
-    - *The real deployment step is Safety Lock-gated.* The tutorial may save its position and may offer `install --write` before deployment; those changes do not derive their targets from the dotfiles root. Immediately before the first root-sensitive mutation — the real `up` — an implicitly discovered, unapproved root gets the same approval prompt as standalone `dodot up`. Refusing it leaves deployment untouched. See [./../safety-lock.lex].
-    - *`--from real_up` skips the dry-run step.* Useful when resuming or when scripted, but it means you don't get the preview pass — the next prompt is the real `up`. Use `--from dry_run` if you want both.
+    - *No silent deployment in the walkthrough.* The step-by-step flow pauses for an explicit `y/n` — the dry-run step's "Apply for real?" — before the real `up`. Cancelling at that point exits cleanly with no deployment. Earlier steps may save tutorial position and, with separate consent, apply `install --write`; those changes are not root-sensitive deployment mutations.
+    - *The real deployment step is Safety Lock-gated.* The tutorial may save its position and may offer `install --write` before deployment; those changes do not derive their targets from the dotfiles root. Immediately before the first root-sensitive mutation — the real `up` — an implicitly discovered, unapproved root gets the same approval prompt as standalone `dodot up`. Refusing it leaves deployment untouched. See [./../safety-lock.md].
+    - *`--from real_up` deploys without another prompt.* Jumping straight to the deploy step — or resuming a run whose saved position is `real_up` — skips the dry-run preview and its `y/n`: entering the step is the consent, and on an explicitly selected or already-approved root the real `up` runs immediately. Only an implicitly discovered, unapproved root still gets the Safety Lock approval prompt. Use `--from dry_run` if you want the preview and the confirmation.
     - *Tutorial uses one of YOUR packs.* It doesn't create scratch directories or fake examples. If the pack you pick has a dodgy `install.sh`, the tutorial will run it (with your consent). Pick a config-only pack for the first time through if you want minimum risk.
     - *Resume requires the same dotfiles root.* Saved tutorial state is keyed to where it ran. Switching to a different repo or rebuilding it means a fresh start.
