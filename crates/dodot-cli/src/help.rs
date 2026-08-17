@@ -48,6 +48,7 @@ const HELP_TEXTS: &[(&str, &str)] = &[
         include_str!("help/git-show-filters.txt"),
     ),
     ("prompts", include_str!("help/prompts.txt")),
+    ("roots", include_str!("help/roots.txt")),
     ("reset", include_str!("help/reset.txt")),
     ("config", include_str!("help/config.txt")),
     ("refresh", include_str!("help/refresh.txt")),

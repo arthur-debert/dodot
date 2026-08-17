@@ -5,7 +5,7 @@
 //! the resolved root and the loaded trust state; [`approve`] returns the trust
 //! state as it would be after approval, leaving the write to the caller. That
 //! split is what keeps this API free of persistence I/O and lets the CLI gate
-//! (WS07) order the write before the mutation it authorizes — approval records
+//! order the write before the mutation it authorizes — approval records
 //! the user's path decision, not the mutation's outcome (Spec, "Risks").
 //!
 //! Both operations consult the collection only for an *implicit* root.

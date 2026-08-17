@@ -236,7 +236,7 @@ impl TutorialEnv {
     /// can derive multiple ExecutionContexts with different
     /// `dry_run` flags without rebuilding everything.
     pub fn from_process_env() -> Result<Self> {
-        let (root, origin) = discover_root_with_origin();
+        let (root, origin) = discover_root_with_origin()?;
         let paths = Arc::new(
             XdgPather::builder()
                 .dotfiles_root(&root)
@@ -739,26 +739,25 @@ fn build_initial_ctx(env: &TutorialEnv) -> Result<TutorialCtx> {
     })
 }
 
-fn discover_root_with_origin() -> (PathBuf, String) {
-    if let Ok(s) = std::env::var("DOTFILES_ROOT") {
-        let p = PathBuf::from(&s);
-        if p.exists() {
-            return (p, "DOTFILES_ROOT env var".into());
-        }
-    }
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if output.status.success() {
-            let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !s.is_empty() {
-                return (PathBuf::from(s), "git toplevel".into());
-            }
-        }
-    }
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    (cwd, "current directory".into())
+/// The dotfiles root the tutorial walks the user through, and what selected
+/// it.
+///
+/// The tutorial is a passthrough — it returns before `app.dispatch`, so no
+/// pre-dispatch hook runs and there is no injected state to read — but it goes
+/// through the same capture and the same
+/// [`resolve_root`](dodot_lib::safety_lock::resolve_root) as the gate, so the
+/// root it shows in `check_root` is the root every other command would pick
+/// and the provenance it names is the one Safety Lock's own diagnostics use.
+///
+/// The tutorial's real deployment step is not yet gated; ACC01-WS08 owns that.
+fn discover_root_with_origin() -> Result<(PathBuf, String)> {
+    let root = crate::safety::ProcessFacts::capture()
+        .and_then(|facts| facts.resolve_root())
+        .map_err(|e| anyhow!("{e}"))?;
+    Ok((
+        root.as_path().to_path_buf(),
+        root.source().label().to_string(),
+    ))
 }
 
 fn render_dodot_status(env: &TutorialEnv, pack: &str, mode: OutputMode) -> Result<String> {

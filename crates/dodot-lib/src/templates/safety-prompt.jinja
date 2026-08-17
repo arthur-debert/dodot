@@ -1,0 +1,28 @@
+[warning]dodot has not been approved for this dotfiles root.[/warning]
+
+  [pack-name]{{ root }}[/pack-name]
+  [dim]selected by {{ provenance }}[/dim]
+{%- if total %}
+
+[header]What dodot recognizes there[/header]
+{%- for count in counts %}
+  [handler-symbol]{{ count.files }}[/handler-symbol] [description]{{ count.category }}[/description]
+{%- endfor %}
+{%- if paths %}
+
+[header]For example[/header]
+{%- for path in paths %}
+  [filename]{{ path }}[/filename]
+{%- endfor %}
+{%- if omitted %}
+  [dim]... and {{ omitted }} more[/dim]
+{%- endif %}
+{%- endif %}
+{%- else %}
+
+  [dim]dodot recognizes no files under that root.[/dim]
+{%- endif %}
+
+[dim]This lists what dodot recognizes, not what deploying would do. Approving
+records the path, not the contents — see it later with [example]dodot roots list[/example],
+take it back with [example]dodot roots forget[/example].[/dim]

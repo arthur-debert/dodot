@@ -1,0 +1,49 @@
+[header]dodot roots[/header] — Inspect and revoke the dotfiles roots you have approved.
+
+[desc]dodot infers a dotfiles root from the enclosing git repository, then from
+the current directory. That convenience is also a hazard: an unrelated
+repository looks enough like a dotfiles repo to deploy from. So before a
+command can deploy, adopt, or otherwise write to targets an inferred root
+chose, dodot shows you the root it picked and asks you to approve it.
+
+Approval is per canonical path and does not expire. A root you approved is
+one you can see here and take back. There is deliberately no
+[item]dodot roots trust[/item]: roots are approved at that prompt, or selected
+outright with [item]DOTFILES_ROOT[/item], and adding a third way in would be a way
+around the prompt.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot roots list[/usage]
+  [usage]dodot roots forget <path>[/usage]
+
+[header]LIST[/header]
+  [desc]Every approved root, in the exact spelling [item]forget[/item] accepts back, marked
+  [item](missing)[/item] when the path is no longer a readable directory. A missing root
+  keeps its approval — only you remove it.
+
+  An approvals file dodot cannot read fails this command rather than showing
+  as empty: "nothing approved" is the one answer that would be unsafe to
+  guess.[/desc]
+
+[header]FORGET[/header]
+  [desc]Removes one approval. The next deploying command run from that root asks
+  again.
+
+  A path that still exists is resolved first, so any alias of a live root
+  selects its approval. A root you moved or deleted is matched by the exact
+  spelling [item]list[/item] printed — copy it back and the approval goes away.[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot roots list                        [dim]# what have I approved?[/dim]
+  dodot roots forget ~/old-dotfiles        [dim]# revoke one[/dim]
+  DOTFILES_ROOT=~/dotfiles dodot up        [dim]# deliberate selection, no prompt[/dim][/example]
+
+[header]RELATED[/header]
+  [desc][item]dodot reset[/item] clears every dodot-owned file, approvals included — the
+  recovery route when the approvals file is too damaged to repair here.
+  [item]dodot prompts reset[/item] is unrelated: that clears one-time nudges, not root
+  approvals.[/desc]
+
+[header]STATE LOCATION[/header]
+  [desc][item]<XDG_DATA_HOME>/dodot/safety-lock.toml[/item] (defaults to
+  [item]~/.local/share/dodot/[/item]) — outside your dotfiles repo, never committed.[/desc]

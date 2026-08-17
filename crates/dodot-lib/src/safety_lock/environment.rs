@@ -11,7 +11,7 @@
 //! root or an error.
 //!
 //! The variable is *injected*, not read here. The capture belongs to the
-//! process boundary (WS07); this module is a pure function of its input so
+//! process boundary; this module is a pure function of its input so
 //! every explicit-value case — empty, relative, non-Unicode, missing,
 //! non-directory, unreadable — is testable without mutating a shared
 //! environment. The invocation directory is injected for the same reason: a

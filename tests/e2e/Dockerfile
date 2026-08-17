@@ -22,8 +22,11 @@ RUN cargo build --release -p dodot && \
 # ── Stage 2: Runtime ────────────────────────────────────────────
 FROM ubuntu:24.04
 
+# `bsdextrautils` carries script(1) — the Safety Lock suite's pseudo-terminal
+# lane needs a real one, and without it those tests skip rather than run.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
+    bsdextrautils \
     git \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*

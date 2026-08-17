@@ -17,8 +17,8 @@
 //!
 //! No Clap type appears here, and no command name either. The taxonomy is a
 //! property of what an operation does to the root, which is why it can be
-//! tested exhaustively without a CLI: WS07 maps commands onto these variants
-//! at the process boundary.
+//! tested exhaustively without a CLI. The CLI names each command's variant in
+//! one table at the process boundary (its `safety::COMMAND_SENSITIVITY`).
 
 use crate::fs::Fs;
 use crate::gates::HostFacts;

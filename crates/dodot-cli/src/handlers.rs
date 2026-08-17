@@ -3,6 +3,13 @@
 //! Each handler extracts args from clap, builds an ExecutionContext,
 //! calls the corresponding dodot-lib function, and returns the result
 //! for standout to render.
+//!
+//! Handlers do not decide which dotfiles root they operate on. Safety Lock's
+//! pre-dispatch hook resolves it once at the process boundary, gates it, and
+//! leaves it in the command context ([`crate::safety`]); [`build_ctx`] and
+//! [`build_readonly_ctx`] read it from there. Nothing here consults
+//! `std::env`, Git, or the current directory, which is what keeps the root a
+//! user approved and the root Dodot mutates the same one.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -11,7 +18,9 @@ use standout::cli::{CommandContext, HandlerResult, Output};
 
 use dodot_lib::commands::{self, GroupMode, ViewMode};
 use dodot_lib::packs::orchestration::ExecutionContext;
-use dodot_lib::safety_lock::{OsPathProbe, PathProbe, RootIdentity};
+use dodot_lib::safety_lock::OsPathProbe;
+
+use crate::safety;
 
 /// Side-channel exit code set by handlers that succeeded in producing
 /// output but want the process to exit non-zero (e.g.
@@ -44,50 +53,28 @@ fn verbose_from(matches: &clap::ArgMatches) -> bool {
     flag_or_false(matches, "verbose") || flag_or_false(matches, "debug")
 }
 
-/// Build an ExecutionContext from the current environment.
-fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Error> {
-    let dotfiles_root = discover_dotfiles_root()?;
-    let mut ctx = ExecutionContext::production(&dotfiles_root, verbose_from(matches))?;
+/// Build an ExecutionContext for the root the safety gate authorized.
+fn build_ctx(
+    matches: &clap::ArgMatches,
+    cmd: &CommandContext,
+) -> Result<ExecutionContext, anyhow::Error> {
+    let mut ctx = build_readonly_ctx(matches, cmd)?;
 
     ctx.dry_run = flag_or_false(matches, "dry-run");
     ctx.no_provision = flag_or_false(matches, "no-provision");
     ctx.provision_rerun = flag_or_false(matches, "provision-rerun");
     ctx.force = flag_or_false(matches, "force");
-    ctx.view_mode = view_mode_from(matches);
-    ctx.group_mode = group_mode_from(matches);
 
     Ok(ctx)
 }
 
-/// The one dotfiles root this invocation may write under.
-///
-/// `refresh` and `transform check` take their write targets from the
-/// shared preprocessor baseline cache, which can name sources under any
-/// root that has ever run `dodot up` on this machine, so they scope
-/// their mutation set to this root and report the rest
-/// (`docs/adr/0002-guard-root-derived-mutations.md`).
-///
-/// The root is canonicalized here the same way Safety Lock's selection
-/// canonicalizes a candidate, so a root reached through a symlink (a
-/// symlinked `$HOME`, macOS's `/var` → `/private/var`) still contains
-/// its own sources. This is interim wiring: ACC01-WS07 replaces it with
-/// the authorized `ResolvedRoot` the gate produces, which is resolved
-/// once at the process boundary instead of per command.
-fn authorized_root(ctx: &ExecutionContext) -> Result<RootIdentity, anyhow::Error> {
-    let root = ctx.paths.dotfiles_root();
-    let canonical = OsPathProbe.canonicalize(root).map_err(|e| {
-        anyhow::anyhow!(
-            "cannot resolve the dotfiles root at {}: {e}",
-            root.display()
-        )
-    })?;
-    Ok(RootIdentity::new(canonical)?)
-}
-
 /// Build a read-only context (no dry-run/provision flags).
-fn build_readonly_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Error> {
-    let dotfiles_root = discover_dotfiles_root()?;
-    let mut ctx = ExecutionContext::production(&dotfiles_root, verbose_from(matches))?;
+fn build_readonly_ctx(
+    matches: &clap::ArgMatches,
+    cmd: &CommandContext,
+) -> Result<ExecutionContext, anyhow::Error> {
+    let root = safety::state(cmd)?.root()?.as_path().to_path_buf();
+    let mut ctx = ExecutionContext::production(&root, verbose_from(matches))?;
     ctx.view_mode = view_mode_from(matches);
     ctx.group_mode = group_mode_from(matches);
     Ok(ctx)
@@ -116,38 +103,31 @@ fn pack_filter(matches: &clap::ArgMatches) -> Option<Vec<String>> {
         .map(|vals| vals.cloned().collect())
 }
 
-/// Discover the dotfiles root directory.
-fn discover_dotfiles_root() -> Result<PathBuf, anyhow::Error> {
-    if let Ok(root) = std::env::var("DOTFILES_ROOT") {
-        let path = PathBuf::from(root);
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if output.status.success() {
-            let toplevel = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !toplevel.is_empty() {
-                return Ok(PathBuf::from(toplevel));
-            }
-        }
-    }
-
-    let cwd = std::env::current_dir()?;
-    Ok(cwd)
+/// Resolve the dotfiles root for a surface Standout does not dispatch.
+///
+/// The passthrough commands (`config`, `init-sh`, `template clean`) and the
+/// post-`up` prompts return before or after `app.dispatch`, so no
+/// pre-dispatch hook ever runs for them and there is no injected
+/// [`safety::SafetyState`] to read. They go through the same capture and the
+/// same [`resolve_root`](dodot_lib::safety_lock::resolve_root) as the gate so
+/// there is still exactly one root-selection policy — what they do not get is
+/// the gate itself. That is deliberate for `config` and `init-sh`, which are
+/// read-only, and is the remaining hole ACC01-WS08 closes for the config
+/// actions that persist into the selected root.
+fn passthrough_root() -> Result<PathBuf, anyhow::Error> {
+    Ok(safety::ProcessFacts::capture()?
+        .resolve_root()?
+        .as_path()
+        .to_path_buf())
 }
 
 // ── Command handlers ────────────────────────────────────────────
 
 pub fn status_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let mut ctx = build_readonly_ctx(matches)?;
+    let mut ctx = build_readonly_ctx(matches, cmd)?;
     ctx.check_drift = matches.get_flag("check-drift");
     ctx.show_diff = matches.get_flag("diff");
     let filter = pack_filter(matches);
@@ -158,9 +138,9 @@ pub fn status_handler(
 
 pub fn up_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let ctx = build_ctx(matches)?;
+    let ctx = build_ctx(matches, cmd)?;
     let filter = pack_filter(matches);
     // Use the status-fallback variant so cross-pack conflicts still
     // render the full per-pack listing instead of a bare conflicts dump
@@ -172,9 +152,9 @@ pub fn up_handler(
 
 pub fn down_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let ctx = build_ctx(matches)?;
+    let ctx = build_ctx(matches, cmd)?;
     let filter = pack_filter(matches);
     let result = commands::down::down(filter.as_deref(), &ctx)?;
     print_warnings(&result.warnings);
@@ -197,9 +177,9 @@ fn print_warnings(warnings: &[String]) {
 /// silently with a stderr note; nothing is removed.
 pub fn reset_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::MessageResult> {
-    let ctx = build_ctx(matches)?;
+    let ctx = build_ctx(matches, cmd)?;
     let force = flag_or_false(matches, "force");
 
     if !ctx.dry_run && !force {
@@ -228,18 +208,18 @@ pub fn reset_handler(
 
 pub fn list_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::list::ListResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let result = commands::list::list(&ctx)?;
     Ok(Output::Render(result))
 }
 
 pub fn init_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::init::InitResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let result = commands::init::init(pack_name, &ctx)?;
     Ok(Output::Render(result))
@@ -247,9 +227,9 @@ pub fn init_handler(
 
 pub fn fill_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::fill::FillResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let result = commands::fill::fill(pack_name, &ctx)?;
     Ok(Output::Render(result))
@@ -257,9 +237,9 @@ pub fn fill_handler(
 
 pub fn adopt_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     // `--into` is optional. When absent, adopt infers the pack name
     // from each source's deployed path (XDG layout) or requires the
     // user to supply --into (HOME-direct dotfiles).
@@ -289,9 +269,9 @@ pub fn adopt_handler(
 
 pub fn addignore_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::addignore::AddIgnoreResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let result = commands::addignore::addignore(pack_name, &ctx)?;
     Ok(Output::Render(result))
@@ -300,27 +280,27 @@ pub fn addignore_handler(
 /// `dodot probe` — bare summary of probe subcommands.
 pub fn probe_summary_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::probe::ProbeResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     Ok(Output::Render(commands::probe::summary(&ctx)?))
 }
 
 /// `dodot probe deployment-map` — source↔deployed map view.
 pub fn probe_deployment_map_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::probe::ProbeResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     Ok(Output::Render(commands::probe::deployment_map(&ctx)?))
 }
 
 /// `dodot probe show-data-dir [--depth N]` — data-dir tree view.
 pub fn probe_show_data_dir_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::probe::ProbeResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let depth = matches
         .get_one::<usize>("depth")
         .copied()
@@ -333,9 +313,9 @@ pub fn probe_show_data_dir_handler(
 /// `docs/proposals/macos-paths.lex` §8.4.
 pub fn probe_app_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::probe::ProbeResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let pack = matches
         .get_one::<String>("pack")
         .cloned()
@@ -352,11 +332,11 @@ pub fn probe_app_handler(
 /// The non-zero code is threaded out through [`PENDING_EXIT_CODE`].
 pub fn transform_check_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::transform::TransformCheckResult> {
-    let ctx = build_ctx(matches)?;
+    let ctx = build_ctx(matches, cmd)?;
     let strict = flag_or_false(matches, "strict");
-    let result = commands::transform::check(&ctx, strict, &authorized_root(&ctx)?)?;
+    let result = commands::transform::check(&ctx, strict, &safety::state(cmd)?.root_identity()?)?;
     PENDING_EXIT_CODE.store(result.exit_code(), Ordering::Relaxed);
     Ok(Output::Render(result))
 }
@@ -365,9 +345,9 @@ pub fn transform_check_handler(
 /// preprocessed file with its current state. Always exits 0.
 pub fn transform_status_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::transform::TransformStatusResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     Ok(Output::Render(commands::transform::status(&ctx)?))
 }
 
@@ -377,9 +357,9 @@ pub fn transform_status_handler(
 /// failure (the gating happens in `dodot up`'s preflight).
 pub fn secret_probe_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::secret::ProbeResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     Ok(Output::Render(commands::secret::probe(&ctx)?))
 }
 
@@ -388,9 +368,9 @@ pub fn secret_probe_handler(
 /// exits 0; this is an inventory command, not a gate.
 pub fn secret_list_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::secret::ListResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     Ok(Output::Render(commands::secret::list(&ctx)?))
 }
 
@@ -398,9 +378,9 @@ pub fn secret_list_handler(
 /// shell alias for copy-paste. No filesystem mutation.
 pub fn git_show_alias_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::git_alias::ShowAliasResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let shell_arg = matches.get_one::<String>("shell").map(String::as_str);
     let shell = commands::git_alias::resolve_shell(shell_arg)?;
     Ok(Output::Render(commands::git_alias::show_alias(
@@ -412,9 +392,9 @@ pub fn git_show_alias_handler(
 /// alias to the user's shell rc file. Idempotent and additive.
 pub fn git_install_alias_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::git_alias::InstallAliasResult> {
-    let ctx = build_ctx(matches)?;
+    let ctx = build_ctx(matches, cmd)?;
     let shell_arg = matches.get_one::<String>("shell").map(String::as_str);
     let shell = commands::git_alias::resolve_shell(shell_arg)?;
     Ok(Output::Render(commands::git_alias::install_alias(
@@ -431,9 +411,9 @@ pub fn git_install_alias_handler(
 /// than a promise (`docs/proposals/shipped/shell-hookup.lex` §4).
 pub fn install_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::install::InstallResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let opts = commands::install::InstallOptions {
         write: matches.get_flag("write"),
         rc: matches
@@ -452,7 +432,7 @@ pub fn install_handler(
 /// just stdin → stdout.
 pub fn template_clean_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Error> {
     use dodot_lib::commands::template_clean;
-    let dotfiles_root = discover_dotfiles_root()?;
+    let dotfiles_root = passthrough_root()?;
     let ctx = ExecutionContext::production(&dotfiles_root, false)?;
 
     let path = matches
@@ -503,9 +483,9 @@ pub fn template_clean_passthrough(matches: &clap::ArgMatches) -> Result<(), anyh
 /// clean filter in `.git/config`. Idempotent.
 pub fn template_install_filter_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::template_install_filter::InstallFilterResult> {
-    let ctx = build_ctx(matches)?;
+    let ctx = build_ctx(matches, cmd)?;
     Ok(Output::Render(
         commands::template_install_filter::install_filter(&ctx)?,
     ))
@@ -517,9 +497,9 @@ pub fn template_install_filter_handler(
 /// flow so `git status` / `git diff` reflect deployed-side edits.
 pub fn refresh_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::refresh::RefreshResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let mode = if flag_or_false(matches, "list-paths") {
         commands::refresh::RefreshMode::ListPaths
     } else if flag_or_false(matches, "quiet") {
@@ -530,7 +510,7 @@ pub fn refresh_handler(
     Ok(Output::Render(commands::refresh::refresh(
         &ctx,
         mode,
-        &authorized_root(&ctx)?,
+        &safety::state(cmd)?.root_identity()?,
     )?))
 }
 
@@ -540,9 +520,9 @@ pub fn refresh_handler(
 /// install_hook` for behavior detail.
 pub fn transform_install_hook_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::transform::InstallHookResult> {
-    let ctx = build_ctx(matches)?;
+    let ctx = build_ctx(matches, cmd)?;
     Ok(Output::Render(commands::transform::install_hook(&ctx)?))
 }
 
@@ -563,9 +543,9 @@ pub fn transform_install_hook_handler(
 ///   recorded half; only this default view ever spawns a shell.
 pub fn probe_shell_init_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::probe::ProbeResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let filter = matches.get_one::<String>("filter").cloned();
     let runs = matches.get_one::<usize>("runs").copied();
     let history = flag_or_false(matches, "history");
@@ -601,7 +581,7 @@ pub(crate) fn config_command() -> clapfig::ConfigCommand {
 /// `dodot config` — delegates to clapfig's config subcommands.
 /// Uses `handle_to_string` (clapfig 0.16) for programmatic output.
 pub fn config_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Error> {
-    let dotfiles_root = discover_dotfiles_root()?;
+    let dotfiles_root = passthrough_root()?;
     let action = config_command().parse(matches)?;
 
     let output = clapfig::Clapfig::builder::<dodot_lib::config::DodotConfig>()
@@ -637,7 +617,7 @@ fn clean_debug_format(input: &str) -> String {
 
 /// `dodot init-sh` — prints shell init script for `eval "$(dodot init-sh)"`.
 pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
-    let dotfiles_root = discover_dotfiles_root()?;
+    let dotfiles_root = passthrough_root()?;
     let ctx = ExecutionContext::production(&dotfiles_root, false)?;
     let root_config = ctx.config_manager.root_config()?;
     // Stamped now, not read off the written script: this script is
@@ -673,18 +653,18 @@ pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
 
 pub fn prompts_list_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::prompts::PromptsListResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let result = commands::prompts::list(&ctx)?;
     Ok(Output::Render(result))
 }
 
 pub fn prompts_reset_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::MessageResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let key = matches.get_one::<String>("key").map(String::as_str);
     let all = matches.get_flag("all");
     if all && key.is_some() {
@@ -701,22 +681,63 @@ pub fn prompts_reset_handler(
     Ok(Output::Render(result))
 }
 
+// ── Approved roots (Safety Lock's management surface) ───────────
+
+/// `dodot roots list` — show every approved dotfiles root.
+///
+/// Takes no root of its own: this is the surface that inspects the trust
+/// collection, so an unusable `DOTFILES_ROOT` must not be able to lock a user
+/// out of it (`safety::RootSensitivity::Rootless`). An unusable *trust file*
+/// does fail here — surfacing that is the command's job, and reporting it as
+/// "nothing approved" would be the one answer that is never safe.
+pub fn roots_list_handler(
+    _matches: &clap::ArgMatches,
+    cmd: &CommandContext,
+) -> HandlerResult<commands::roots::RootsListResult> {
+    let facts = safety::state(cmd)?.facts();
+    Ok(Output::Render(commands::roots::list(
+        facts.data_dir(),
+        &OsPathProbe,
+    )?))
+}
+
+/// `dodot roots forget <path>` — revoke one approval.
+///
+/// The argument arrives as an `OsString` and stays one: `roots list` prints a
+/// non-Unicode root in a reversible spelling precisely so it can be passed
+/// back, and a lossy conversion here would break that round trip.
+pub fn roots_forget_handler(
+    matches: &clap::ArgMatches,
+    cmd: &CommandContext,
+) -> HandlerResult<commands::MessageResult> {
+    let facts = safety::state(cmd)?.facts();
+    let path = matches
+        .get_one::<std::ffi::OsString>("path")
+        .expect("path is required");
+    Ok(Output::Render(commands::roots::forget(
+        facts.data_dir(),
+        facts.current_dir(),
+        path,
+        &OsPathProbe,
+    )?))
+}
+
 // ── Git filters ─────────────────────────────────────────────────
 
 pub fn git_install_filters_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::MessageResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let result = commands::git_filters::install_filters(&ctx)?;
     Ok(Output::Render(result))
 }
 
 pub fn git_show_filters_handler(
     matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
+    cmd: &CommandContext,
 ) -> HandlerResult<commands::git_filters::ShowFiltersResult> {
-    let ctx = build_readonly_ctx(matches)?;
+    let ctx = build_readonly_ctx(matches, cmd)?;
     let result = commands::git_filters::show_filters(&ctx)?;
     Ok(Output::Render(result))
 }
@@ -793,7 +814,7 @@ fn try_prompt_install_ladder() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    let dotfiles_root = discover_dotfiles_root()?;
+    let dotfiles_root = passthrough_root()?;
     let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
 
     // Determine applicability per rung. Each rung is considered iff
@@ -1043,7 +1064,7 @@ fn try_prompt_invalidate_cfprefsd() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    let dotfiles_root = discover_dotfiles_root()?;
+    let dotfiles_root = passthrough_root()?;
     let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
 
     if !dodot_lib::probe::cfprefsd_marker_exists(ctx.fs.as_ref(), ctx.paths.as_ref()) {

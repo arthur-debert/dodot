@@ -28,14 +28,17 @@
 //! Environment-selected roots never appear here: `DOTFILES_ROOT` *is* the
 //! deliberate selection, so it is authorized without a record (ADR-0003).
 //!
-//! This module owns the schema, the store's coordinates, and the two ways to
-//! load it: [`SafetyLockConfig::load_from`], which every consumer uses and
-//! which fails closed, and
+//! This module owns the schema, the store's coordinates, and the three ways
+//! to reach the document at them: [`SafetyLockConfig::load_from`], which every
+//! consumer uses and which fails closed;
 //! [`SafetyLockConfig::load_for_revocation`], which drops the duplicate check
 //! alone so `roots forget` can repair the one violation a readable file can
-//! carry. *Writing* belongs to the caller: the checking, listing, and
-//! forgetting APIs take an already-loaded [`SafetyLockConfig`] and return
-//! typed state changes.
+//! carry; and [`SafetyLockConfig::persist_to`], the write.
+//!
+//! Deciding *whether* to write stays outside: the checking, listing, and
+//! forgetting APIs take an already-loaded [`SafetyLockConfig`] and hand back a
+//! typed state change rather than committing it, so the CLI can record an
+//! approval before starting the mutation it authorizes.
 
 use std::path::{Path, PathBuf};
 
@@ -174,6 +177,51 @@ impl SafetyLockConfig {
                 path: Self::path_in(data_dir),
                 reason: err.to_string(),
             })
+    }
+
+    /// Write this collection to the trust file in `data_dir`.
+    ///
+    /// The write half of the coordinates this module states once: the two
+    /// load routes read that one document, and this puts it back. What stays
+    /// the caller's is the *decision* to write — [`approve`](super::check::approve)
+    /// and [`forget_root`](super::forget::forget_root) hand back a state
+    /// rather than committing it, which is what lets the CLI record an
+    /// approval **before** starting the mutation it authorizes (Spec,
+    /// "Risks").
+    ///
+    /// Written whole rather than through clapfig's per-key persist action:
+    /// the document *is* one collection, and clapfig's `Set` carries a string
+    /// value per dotted key, so routing an array of identities through it
+    /// would mean hand-building the TOML anyway.
+    ///
+    /// The replacement is atomic — a sibling temporary file renamed over the
+    /// destination — so an interrupted or failing write leaves the previous
+    /// approvals intact rather than truncating them into a file every later
+    /// load then fails closed on.
+    ///
+    /// Fails when the state cannot be serialized, the data directory cannot
+    /// be created, or the write or rename cannot complete. Every failure
+    /// names the trust file, because that path is what the user can act on.
+    pub fn persist_to(&self, data_dir: &Path) -> Result<()> {
+        let path = Self::path_in(data_dir);
+        let not_writable = |reason: String| SafetyLockError::TrustStateNotWritable {
+            path: path.clone(),
+            reason,
+        };
+
+        let document = toml::to_string(self).map_err(|err| not_writable(err.to_string()))?;
+
+        std::fs::create_dir_all(data_dir).map_err(|err| not_writable(err.to_string()))?;
+
+        // Same directory as the destination so the rename stays within one
+        // filesystem, which is what makes it a replacement rather than a
+        // copy that can fail halfway.
+        let scratch = path.with_extension("toml.new");
+        std::fs::write(&scratch, document).map_err(|err| not_writable(err.to_string()))?;
+        std::fs::rename(&scratch, &path).map_err(|err| {
+            let _ = std::fs::remove_file(&scratch);
+            not_writable(err.to_string())
+        })
     }
 
     /// Whether `identity` is approved.
@@ -469,6 +517,69 @@ mod tests {
         );
 
         assert!(SafetyLockConfig::load_from(data_dir.path()).is_err());
+    }
+
+    /// The write and the loads have to agree on the coordinates *and* the
+    /// spelling, or an approval recorded now would not be found later.
+    #[test]
+    fn persisted_state_loads_back_byte_for_byte() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let approved = vec![
+            identity("/home/alice/dotfiles"),
+            non_unicode_identity(b"\x80dots"),
+        ];
+
+        SafetyLockConfig {
+            roots: TrustedRootsSection {
+                approved: approved.clone(),
+            },
+        }
+        .persist_to(data_dir.path())
+        .unwrap();
+
+        assert_eq!(load(data_dir.path()).roots.approved, approved);
+    }
+
+    /// The data directory may not exist on a first-ever approval, and a
+    /// missing parent must not be the reason a user's answer is lost.
+    #[test]
+    fn persisting_creates_the_data_directory() {
+        let parent = tempfile::tempdir().unwrap();
+        let data_dir = parent.path().join("share").join("dodot");
+
+        SafetyLockConfig::default().persist_to(&data_dir).unwrap();
+
+        assert!(SafetyLockConfig::path_in(&data_dir).is_file());
+    }
+
+    /// The atomic replacement's point: the previous approvals survive a write
+    /// that cannot complete, instead of being truncated into a file every
+    /// later load fails closed on.
+    #[test]
+    fn a_failed_write_leaves_the_previous_approvals_intact() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let approved = vec![identity("/home/alice/dotfiles")];
+        SafetyLockConfig {
+            roots: TrustedRootsSection {
+                approved: approved.clone(),
+            },
+        }
+        .persist_to(data_dir.path())
+        .unwrap();
+
+        // A directory at the scratch path makes the write fail without ever
+        // touching the destination.
+        std::fs::create_dir(SafetyLockConfig::path_in(data_dir.path()).with_extension("toml.new"))
+            .unwrap();
+
+        let err = SafetyLockConfig::default()
+            .persist_to(data_dir.path())
+            .unwrap_err();
+        assert!(
+            matches!(err, SafetyLockError::TrustStateNotWritable { .. }),
+            "unexpected error: {err}"
+        );
+        assert_eq!(load(data_dir.path()).roots.approved, approved);
     }
 
     /// The file is self-documenting: clapfig generates its template from the
