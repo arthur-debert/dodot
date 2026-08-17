@@ -436,6 +436,15 @@ fn broken_mapping_entry_owner(
 
     globs.into_iter().find_map(|glob| {
         let label = pack_config.mappings.gates.get(glob)?;
+
+        // One entry at a time through the shared compiler rather than
+        // `glob::Pattern::new` directly. `compile_mapping_gates` exists so
+        // that no two callers "disagree about which globs compile, in what
+        // order, or with what failure mode" (its words), and this is a third
+        // caller: the whole point of asking is to reach the same verdict the
+        // walk reached. Calling the pattern API directly would be the cheaper
+        // spelling of a check that is only useful while it stays identical.
+        // Same reason `gate_entry_is_valid` goes through `merge_user`.
         let one = HashMap::from([(glob.clone(), label.clone())]);
         if crate::gates::compile_mapping_gates(&one, "<attribution>").is_ok() {
             return None;
