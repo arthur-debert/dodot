@@ -23,6 +23,15 @@
 {% elif e.action == "missing_deployed" -%}
   [warn]? missing deployed[/warn] {{ e.deployed_path }}
     [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — rendered file is gone; next [usage]dodot up[/usage] will recreate[/muted]
+{% elif e.action == "stale_source" -%}
+  [warn]? stale entry[/warn] {{ e.pack }}/{{ e.handler }}/{{ e.filename }}
+    [muted]baseline records no absolute source path; next [usage]dodot up[/usage] will refresh[/muted]
+{% elif e.action == "unresolvable_source" -%}
+  [warn]? unresolvable source[/warn] {{ e.source_path }}
+    [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — cannot be resolved, so it cannot be placed in this dotfiles root[/muted]
+{% elif e.action == "out_of_root" -%}
+  [muted]· other root[/muted] {{ e.source_path }}
+    [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — belongs to a different dotfiles root; not patched[/muted]
 {% elif e.action == "needs_rebaseline" -%}
   [warn]? needs rebaseline[/warn] {{ e.source_path }}
     [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — baseline cache predates tracked-render support; run [usage]dodot up[/usage] to refresh[/muted]

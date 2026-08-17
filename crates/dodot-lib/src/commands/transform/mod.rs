@@ -15,6 +15,9 @@
 //! | `MissingSource`  | report only (cache stale; next `up` will refresh)   |
 //! | `MissingDeployed`| report only (deployed file gone; manual recovery)   |
 //!
+//! A baseline whose source does not lie inside the authorized root never
+//! reaches that matrix — see "One cache, one root" below.
+//!
 //! For `OutputChanged` and `BothChanged`, the call into burgertocow
 //! returns either a clean unified diff (which is applied to the source
 //! file via `diffy`) or a conflict block (which is *not* written —
@@ -26,10 +29,24 @@
 //! # Strict mode
 //!
 //! `check(ctx, strict=true)` is the form used by the pre-commit hook.
-//! On top of the matrix work above, it scans every source file
-//! for unresolved [`crate::preprocessing::conflict`] markers — if any
-//! are found, the result reports them and the command exits non-zero
+//! On top of the matrix work above, it scans every authorized source
+//! file for unresolved [`crate::preprocessing::conflict`] markers — if
+//! any are found, the result reports them and the command exits non-zero
 //! so a commit is blocked until the user resolves them.
+//!
+//! # One cache, one root
+//!
+//! The baseline cache is shared across every dotfiles root on the
+//! machine, and reverse-merge writes each baseline's stored source path.
+//! Approval for one root must not authorize a patch into another root's
+//! user-authored source, so the mutation set is scoped to the root this
+//! invocation is authorized for: only sources that canonically lie
+//! inside it are classified, patched, or scanned, and every other
+//! baseline is reported
+//! (`docs/adr/0002-guard-root-derived-mutations.md`). Strict mode reuses
+//! that same authorized set rather than re-walking the cache, so the
+//! marker scan cannot reach a file the patching pass was not allowed to
+//! touch.
 
 use serde::Serialize;
 
@@ -40,6 +57,7 @@ use crate::preprocessing::divergence::{
 };
 use crate::preprocessing::no_reverse::is_no_reverse;
 use crate::preprocessing::reverse_merge::{reverse_merge, ReverseMergeOutcome};
+use crate::safety_lock::{scope_to_root, OsPathProbe, OutOfRootReason, RootIdentity, ScopeOutcome};
 use crate::Result;
 
 /// What `transform check` did to a single processed file.
@@ -64,6 +82,44 @@ pub enum TransformAction {
     MissingSource,
     /// The deployed file is gone from the datastore.
     MissingDeployed,
+    /// The cached source belongs to a different dotfiles root. Reported;
+    /// this invocation is not authorized to patch it.
+    OutOfRoot,
+    /// The baseline records no absolute source path at all — the stored
+    /// path is empty (an entry written before the cache tracked source
+    /// paths) or relative (meaningless without the process working
+    /// directory, which Safety Lock does not read). Reported; the next
+    /// `dodot up` rewrites it.
+    StaleSource,
+    /// The cached source exists but could not be resolved, so it cannot
+    /// be placed inside the root. Reported, never patched.
+    UnresolvableSource,
+}
+
+impl TransformAction {
+    /// Name the outcome for a baseline that stayed out of the mutation
+    /// set, and say whether it is a finding (i.e. a non-zero exit).
+    ///
+    /// One action per reason rather than a single "not mine" bucket: a
+    /// source under another root, a deleted source, a source path the
+    /// cache never recorded, and one Dodot cannot resolve are four
+    /// different states of the user's machine with four different fixes
+    /// — and only three of them are this repository's problem.
+    fn out_of_root(reason: OutOfRootReason) -> (Self, bool) {
+        match reason {
+            // A baseline belonging to *another* root is deliberately not
+            // a finding: two roots sharing one cache is a supported
+            // arrangement, and the pre-commit hook installed in one
+            // repository must not start refusing commits because a
+            // sibling repository also uses Dodot.
+            OutOfRootReason::OutsideRoot => (TransformAction::OutOfRoot, false),
+            // The rest are cache health, and stay findings exactly as a
+            // missing source always has.
+            OutOfRootReason::Missing => (TransformAction::MissingSource, true),
+            OutOfRootReason::Stale => (TransformAction::StaleSource, true),
+            OutOfRootReason::Uncanonicalizable => (TransformAction::UnresolvableSource, true),
+        }
+    }
 }
 
 /// One row in the transform-check report.
@@ -98,8 +154,17 @@ pub struct TransformCheckResult {
     pub unresolved_markers: Vec<UnresolvedMarkerEntry>,
     /// True iff at least one entry has a non-clean state that should
     /// make the command exit non-zero (Conflict, NeedsRebaseline,
-    /// MissingSource, MissingDeployed) or `--strict` found unresolved
-    /// markers. CLI uses this to decide the process exit code.
+    /// MissingSource, MissingDeployed, StaleSource, UnresolvableSource)
+    /// or `--strict` found unresolved markers. CLI uses this to decide
+    /// the process exit code.
+    ///
+    /// `OutOfRoot` does *not* set this, and is the one out-of-mutation-set
+    /// action that does not: a baseline belonging to another root is a
+    /// supported arrangement of two roots sharing one cache, so it is
+    /// reported and nothing more. The other three — `MissingSource`,
+    /// `StaleSource`, `UnresolvableSource` — are this cache's health and
+    /// stay findings. [`TransformAction::out_of_root`] is where that split
+    /// is decided.
     ///
     /// `Patched` does *not* set this — an unambiguous reverse-merge is
     /// the auto-merge happy path: burgertocow + diffy produced a clean
@@ -247,9 +312,30 @@ pub fn status(ctx: &ExecutionContext) -> Result<TransformStatusResult> {
     })
 }
 
-/// Run `dodot transform check`. See module docs for the matrix.
-pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResult> {
+/// Run `dodot transform check`, patching only sources under
+/// `authorized_root`. See module docs for the matrix and for the
+/// scoping.
+///
+/// `authorized_root` is the canonical root this invocation may write
+/// under — the root the user selected, and (once WS07 wires the gate)
+/// approved. It is not re-derived here: the root that was authorized and
+/// the root that is mutated must be the same one (ADR-0001).
+pub fn check(
+    ctx: &ExecutionContext,
+    strict: bool,
+    authorized_root: &RootIdentity,
+) -> Result<TransformCheckResult> {
     let baselines = collect_baselines(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let sources: Vec<std::path::PathBuf> = baselines
+        .iter()
+        .map(|(_, _, _, baseline)| baseline.source_path.clone())
+        .collect();
+    // The command layer's filesystem is the real one (`OsFs`), so
+    // canonicalization asks the matching OS probe. Scoping happens once
+    // for the whole invocation; the strict pass below reuses this same
+    // authorized set.
+    let scope = scope_to_root(authorized_root, &sources, &OsPathProbe);
+
     let mut entries: Vec<TransformCheckEntry> = Vec::with_capacity(baselines.len());
     let mut has_findings = false;
     // Memoise no_reverse patterns by pack within this check
@@ -260,14 +346,37 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
     let mut no_reverse_cache: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
 
-    for (pack, handler, filename, baseline) in baselines {
+    for ((pack, handler, filename, baseline), outcome) in baselines.iter().zip(scope.outcomes()) {
+        // Only the authorized canonical path is ever written; everything
+        // else is a row in the report and nothing more.
+        let authorized = match outcome {
+            ScopeOutcome::InRoot(canonical) => canonical,
+            ScopeOutcome::OutOfRoot(target) => {
+                let (action, is_finding) = TransformAction::out_of_root(target.reason);
+                has_findings |= is_finding;
+                entries.push(TransformCheckEntry {
+                    pack: pack.clone(),
+                    handler: handler.clone(),
+                    filename: filename.clone(),
+                    source_path: render_path(&baseline.source_path, ctx.paths.home_dir()),
+                    deployed_path: render_path(
+                        &ctx.paths.handler_data_dir(pack, handler).join(filename),
+                        ctx.paths.home_dir(),
+                    ),
+                    action,
+                    conflict_block: String::new(),
+                });
+                continue;
+            }
+        };
+
         let report = classify_one(
             ctx.fs.as_ref(),
             ctx.paths.as_ref(),
-            &pack,
-            &handler,
-            &filename,
-            &baseline,
+            pack,
+            handler,
+            filename,
+            baseline,
         );
         // Per-pack [preprocessor.template] no_reverse opt-out: when a
         // file matches, we treat it as Synced regardless of which
@@ -278,7 +387,7 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
         // status still surfaces the underlying state for visibility.
         let no_reverse_patterns = no_reverse_cache
             .entry(pack.clone())
-            .or_insert_with(|| pack_no_reverse_patterns(ctx, &pack));
+            .or_insert_with(|| pack_no_reverse_patterns(ctx, pack));
         let no_reverse = is_no_reverse(&report.source_path, no_reverse_patterns);
         let action = match report.state {
             DivergenceState::Synced => TransformAction::Synced,
@@ -313,8 +422,12 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                 } else {
                     // Run the reverse-merge engine. `Unchanged` means the
                     // deployed edit touched only variable values, so the
-                    // template source needs no change.
-                    let template_src = ctx.fs.read_to_string(&report.source_path)?;
+                    // template source needs no change. Both the read and
+                    // the write below go through the authorized canonical
+                    // path — the one containment was decided on — so a
+                    // source reached through an in-root symlink is merged
+                    // at its resolved location.
+                    let template_src = ctx.fs.read_to_string(authorized)?;
                     let deployed = ctx.fs.read_to_string(&report.deployed_path)?;
                     // Load the per-render secrets sidecar so the
                     // reverse-merge masks lines whose source-of-truth
@@ -324,9 +437,9 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                     let secret_ranges = crate::preprocessing::baseline::SecretsSidecar::load(
                         ctx.fs.as_ref(),
                         ctx.paths.as_ref(),
-                        &pack,
-                        &handler,
-                        &filename,
+                        pack,
+                        handler,
+                        filename,
                     )?
                     .map(|s| s.secret_line_ranges)
                     .unwrap_or_default();
@@ -339,7 +452,7 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                         ReverseMergeOutcome::Unchanged => TransformAction::Synced,
                         ReverseMergeOutcome::Patched(patched) => {
                             if !ctx.dry_run {
-                                ctx.fs.write_file(&report.source_path, patched.as_bytes())?;
+                                ctx.fs.write_file(authorized, patched.as_bytes())?;
                             }
                             // The auto-merge happy path: `has_findings`
                             // deliberately stays false (see
@@ -366,18 +479,23 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
 
     let mut unresolved_markers = Vec::new();
     if strict {
-        // Re-walk the cache, scanning each source for dodot-conflict
-        // markers. Any hit blocks a commit (when this is run from the
-        // pre-commit hook). We re-walk rather than reusing the loop
-        // above because the loop may have skipped entries via
-        // MissingSource / continue paths.
-        let baselines = collect_baselines(ctx.fs.as_ref(), ctx.paths.as_ref())?;
-        for (_pack, _handler, _filename, baseline) in baselines {
-            if baseline.source_path.as_os_str().is_empty() || !ctx.fs.exists(&baseline.source_path)
-            {
+        // Scan each source for dodot-conflict markers. Any hit blocks a
+        // commit (when this is run from the pre-commit hook).
+        //
+        // This walks the *same* authorized set as the loop above rather
+        // than re-collecting the cache: a second unscoped walk would
+        // read — and fail a commit over — sources under a root this
+        // invocation was never authorized for, and the caches are
+        // shared. Entries the loop above skipped via `continue` are
+        // still covered, because the set comes from the scoping pass and
+        // not from how far that loop got.
+        for ((_pack, _handler, _filename, baseline), outcome) in
+            baselines.iter().zip(scope.outcomes())
+        {
+            let ScopeOutcome::InRoot(authorized) = outcome else {
                 continue;
-            }
-            let bytes = ctx.fs.read_file(&baseline.source_path)?;
+            };
+            let bytes = ctx.fs.read_file(authorized)?;
             let content = String::from_utf8_lossy(&bytes);
             let lines = find_unresolved_marker_lines(&content);
             if !lines.is_empty() {
@@ -511,11 +629,77 @@ mod tests {
             .join(filename)
     }
 
+    /// The root this invocation is authorized to patch: the
+    /// environment's dotfiles root, canonicalized.
+    ///
+    /// Canonicalized because the command canonicalizes every source
+    /// before placing it, and a root that is not itself canonical
+    /// contains none of them — `TempDir` hands back `/var/…` on macOS
+    /// while every resolved source under it comes back as `/private/var/…`.
+    fn root(env: &TempEnvironment) -> RootIdentity {
+        canonical_root(&env.dotfiles_root)
+    }
+
+    fn canonical_root(path: &std::path::Path) -> RootIdentity {
+        RootIdentity::new(std::fs::canonicalize(path).unwrap()).unwrap()
+    }
+
+    /// A second dotfiles root beside the first, sharing this
+    /// environment's one data and cache directory — the arrangement the
+    /// scoping exists for.
+    fn second_root_dir(env: &TempEnvironment) -> std::path::PathBuf {
+        let dir = env.home.join("other-dotfiles");
+        env.fs.mkdir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Stage a baseline whose source lives at `source` and whose
+    /// deployed file was edited afterwards, i.e. an `OutputChanged`
+    /// entry the reverse-merge would patch if it were allowed to.
+    ///
+    /// Written by hand rather than through `dodot up` because a second
+    /// root's baselines cannot be produced by an `up` run against the
+    /// first one.
+    fn stage_edited(
+        env: &TempEnvironment,
+        pack: &str,
+        filename: &str,
+        source: &std::path::Path,
+        template_body: &str,
+        rendered: &str,
+        deployed_body: &str,
+    ) {
+        env.fs.mkdir_all(source.parent().unwrap()).unwrap();
+        env.fs.write_file(source, template_body.as_bytes()).unwrap();
+
+        let deployed = deployed_path(env, pack, filename);
+        env.fs.mkdir_all(deployed.parent().unwrap()).unwrap();
+        env.fs
+            .write_file(&deployed, deployed_body.as_bytes())
+            .unwrap();
+
+        crate::preprocessing::baseline::Baseline::build(
+            source,
+            rendered.as_bytes(),
+            template_body.as_bytes(),
+            Some(rendered),
+            None,
+        )
+        .write(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            pack,
+            "preprocessed",
+            filename,
+        )
+        .unwrap();
+    }
+
     #[test]
     fn empty_cache_yields_clean_no_findings() {
         let env = TempEnvironment::builder().build();
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert!(result.entries.is_empty());
         assert!(!result.has_findings);
         assert_eq!(result.exit_code(), 0);
@@ -532,7 +716,7 @@ mod tests {
             "[preprocessor.template.vars]\nname = \"Alice\"\n",
         );
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert_eq!(result.entries.len(), 1);
         assert!(matches!(result.entries[0].action, TransformAction::Synced));
         assert!(!result.has_findings);
@@ -554,7 +738,7 @@ mod tests {
             .unwrap();
 
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert_eq!(result.entries.len(), 1);
         assert!(
             matches!(result.entries[0].action, TransformAction::Patched),
@@ -588,7 +772,7 @@ mod tests {
         env.fs.write_file(&deployed, b"name = Bob\n").unwrap();
 
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert_eq!(result.entries.len(), 1);
         assert!(matches!(result.entries[0].action, TransformAction::Synced));
         assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
@@ -621,7 +805,7 @@ mod tests {
             .unwrap();
 
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert_eq!(result.entries.len(), 1);
         assert!(
             matches!(result.entries[0].action, TransformAction::Synced),
@@ -655,7 +839,7 @@ mod tests {
             .unwrap();
 
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert_eq!(result.entries.len(), 1);
         assert!(matches!(result.entries[0].action, TransformAction::Synced));
         assert!(!result.has_findings);
@@ -684,7 +868,7 @@ mod tests {
 
         let mut ctx = make_ctx(&env);
         ctx.dry_run = true;
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert!(matches!(result.entries[0].action, TransformAction::Patched));
         assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
     }
@@ -721,7 +905,7 @@ mod tests {
             .unwrap();
 
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert_eq!(result.entries.len(), 1);
         assert!(
             matches!(result.entries[0].action, TransformAction::NeedsRebaseline),
@@ -765,7 +949,7 @@ mod tests {
         env.fs.write_file(&deployed, b"rendered").unwrap();
 
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         assert!(matches!(
             result.entries[0].action,
             TransformAction::MissingSource
@@ -792,10 +976,10 @@ mod tests {
         env.fs.write_file(&src_path, dirty.as_bytes()).unwrap();
 
         let ctx = make_ctx(&env);
-        let lax = check(&ctx, false).unwrap();
+        let lax = check(&ctx, false, &root(&env)).unwrap();
         assert!(lax.unresolved_markers.is_empty());
 
-        let strict = check(&ctx, true).unwrap();
+        let strict = check(&ctx, true, &root(&env)).unwrap();
         assert_eq!(strict.unresolved_markers.len(), 1);
         assert_eq!(strict.unresolved_markers[0].line_numbers, vec![2, 4]);
         assert!(strict.has_findings);
@@ -813,7 +997,7 @@ mod tests {
             "[preprocessor.template.vars]\nname = \"Alice\"\n",
         );
         let ctx = make_ctx(&env);
-        let result = check(&ctx, true).unwrap();
+        let result = check(&ctx, true, &root(&env)).unwrap();
         assert!(result.unresolved_markers.is_empty());
         assert!(!result.has_findings);
         assert_eq!(result.exit_code(), 0);
@@ -834,7 +1018,7 @@ mod tests {
             "[preprocessor.template.vars]\nname = \"Alice\"\n",
         );
         let ctx = make_ctx(&env);
-        let result = check(&ctx, false).unwrap();
+        let result = check(&ctx, false, &root(&env)).unwrap();
         let entry = &result.entries[0];
         assert!(
             entry.source_path.starts_with("~/") || entry.deployed_path.starts_with("~/"),
@@ -842,6 +1026,222 @@ mod tests {
             entry.source_path,
             entry.deployed_path
         );
+    }
+
+    // ── mutation scoping (ACC01-WS06) ────────────────────────────
+
+    /// Two roots, one shared cache: whichever root the invocation is
+    /// authorized for, only that root's sources are patched. This is the
+    /// property the scoping exists for — approval for one root cannot
+    /// rewrite a second repository's user-authored template (ADR-0002).
+    #[test]
+    fn authorizing_one_root_never_patches_the_other_roots_sources() {
+        let env = TempEnvironment::builder().build();
+        let here = deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\nport = 5432\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+        env.fs
+            .write_file(
+                &deployed_path(&env, "app", "config.toml"),
+                b"name = Alice\nport = 9999\n",
+            )
+            .unwrap();
+
+        // A second root's baseline in the same cache, equally ready to
+        // be reverse-merged.
+        let other_root = second_root_dir(&env);
+        let there = other_root.join("other/config.toml.tmpl");
+        stage_edited(
+            &env,
+            "other",
+            "config.toml",
+            &there,
+            "port = 5432\n",
+            "port = 5432\n",
+            "port = 9999\n",
+        );
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, false, &root(&env)).unwrap();
+
+        let actions: Vec<(&str, &TransformAction)> = result
+            .entries
+            .iter()
+            .map(|e| (e.pack.as_str(), &e.action))
+            .collect();
+        assert!(
+            matches!(
+                actions.as_slice(),
+                [
+                    ("app", TransformAction::Patched),
+                    ("other", TransformAction::OutOfRoot)
+                ]
+            ),
+            "unexpected actions: {actions:?}"
+        );
+        assert!(env.fs.read_to_string(&here).unwrap().contains("9999"));
+        assert_eq!(
+            env.fs.read_to_string(&there).unwrap(),
+            "port = 5432\n",
+            "another root's source was patched"
+        );
+        // A sibling root's baseline is not a finding: it must not make
+        // this repository's pre-commit hook refuse the commit.
+        assert!(!result.has_findings);
+        assert_eq!(result.exit_code(), 0);
+
+        // Authorize the other root instead: the mirror image, from the
+        // same cache.
+        let mirrored = check(&ctx, false, &canonical_root(&other_root)).unwrap();
+        let actions: Vec<(&str, &TransformAction)> = mirrored
+            .entries
+            .iter()
+            .map(|e| (e.pack.as_str(), &e.action))
+            .collect();
+        assert!(
+            matches!(
+                actions.as_slice(),
+                [
+                    ("app", TransformAction::OutOfRoot),
+                    ("other", TransformAction::Patched)
+                ]
+            ),
+            "unexpected actions: {actions:?}"
+        );
+        assert!(env.fs.read_to_string(&there).unwrap().contains("9999"));
+    }
+
+    /// Strict mode walks the authorized set, not the cache: an
+    /// unresolved conflict marker in *another* root's source must not
+    /// block a commit here, and must still block one there.
+    #[test]
+    fn strict_mode_scans_only_the_authorized_roots_sources() {
+        let env = TempEnvironment::builder().build();
+        deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+
+        let other_root = second_root_dir(&env);
+        let there = other_root.join("other/config.toml.tmpl");
+        let dirty = format!(
+            "first\n{}\nbody\n{}\n",
+            crate::preprocessing::conflict::MARKER_START,
+            crate::preprocessing::conflict::MARKER_END,
+        );
+        stage_edited(
+            &env,
+            "other",
+            "config.toml",
+            &there,
+            &dirty,
+            "rendered\n",
+            "rendered\n",
+        );
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, true, &root(&env)).unwrap();
+        assert!(
+            result.unresolved_markers.is_empty(),
+            "scanned a source under another root: {:?}",
+            result.unresolved_markers
+        );
+        assert!(!result.has_findings);
+        assert_eq!(result.exit_code(), 0);
+
+        let mirrored = check(&ctx, true, &canonical_root(&other_root)).unwrap();
+        assert_eq!(mirrored.unresolved_markers.len(), 1);
+        assert_eq!(mirrored.unresolved_markers[0].line_numbers, vec![2, 4]);
+        assert_eq!(mirrored.exit_code(), 1);
+    }
+
+    /// A source that *lives* under the authorized root but *resolves*
+    /// outside it: patching the stored spelling would write through the
+    /// link into another tree.
+    #[test]
+    fn a_source_symlinked_out_of_the_root_is_reported_not_patched() {
+        let env = TempEnvironment::builder().build();
+        let other_root = second_root_dir(&env);
+        let outside = other_root.join("real.toml.tmpl");
+        env.fs.mkdir_all(outside.parent().unwrap()).unwrap();
+        env.fs.write_file(&outside, b"port = 5432\n").unwrap();
+
+        let link = env.dotfiles_root.join("app/config.toml.tmpl");
+        env.fs.mkdir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let deployed = deployed_path(&env, "app", "config.toml");
+        env.fs.mkdir_all(deployed.parent().unwrap()).unwrap();
+        env.fs.write_file(&deployed, b"port = 9999\n").unwrap();
+        crate::preprocessing::baseline::Baseline::build(
+            &link,
+            b"port = 5432\n",
+            b"port = 5432\n",
+            Some("port = 5432\n"),
+            None,
+        )
+        .write(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, false, &root(&env)).unwrap();
+
+        assert!(
+            matches!(result.entries[0].action, TransformAction::OutOfRoot),
+            "unexpected action: {:?}",
+            result.entries[0].action
+        );
+        assert_eq!(env.fs.read_to_string(&outside).unwrap(), "port = 5432\n");
+    }
+
+    /// A baseline written before the cache recorded source paths stores
+    /// an empty one. Nothing was looked for and nothing is missing — it
+    /// is a stale cache entry, reported apart from a deleted source, and
+    /// still a finding because the cache needs rebuilding.
+    #[test]
+    fn a_baseline_without_a_source_path_is_reported_as_stale() {
+        let env = TempEnvironment::builder().build();
+        crate::preprocessing::baseline::Baseline::build(
+            std::path::Path::new(""),
+            b"rendered",
+            b"src",
+            Some(""),
+            None,
+        )
+        .write(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap();
+        let deployed = deployed_path(&env, "app", "config.toml");
+        env.fs.mkdir_all(deployed.parent().unwrap()).unwrap();
+        env.fs.write_file(&deployed, b"rendered").unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, true, &root(&env)).unwrap();
+
+        assert!(
+            matches!(result.entries[0].action, TransformAction::StaleSource),
+            "unexpected action: {:?}",
+            result.entries[0].action
+        );
+        assert!(result.has_findings);
+        assert!(result.unresolved_markers.is_empty());
     }
 
     // ── status ──────────────────────────────────────────────────
