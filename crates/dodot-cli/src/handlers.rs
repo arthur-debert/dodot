@@ -649,22 +649,13 @@ fn clean_debug_format(input: &str) -> String {
     result
 }
 
-/// `dodot init-sh` — prints shell init script for `eval "$(dodot init-sh)"`.
+/// `dodot init-sh` — prints the full shell init script for
+/// `eval "$(dodot init-sh)"`, including the guarded targeted-verification
+/// response branch.
 pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     let dotfiles_root = passthrough_root()?;
     let ctx = ExecutionContext::production(&dotfiles_root, false)?;
     let root_config = ctx.config_manager.root_config()?;
-    if std::env::var_os(dodot_lib::shell::probe::TARGET_PROBE_ENV).is_some()
-        && std::env::var_os(dodot_lib::shell::probe::TARGET_PROBE_PARENT_ENV).is_some()
-    {
-        print!(
-            "{}",
-            dodot_lib::shell::generate_init_probe_response(
-                dodot_lib::shell::activation::current_generation()
-            )
-        );
-        return Ok(());
-    }
     // Stamped now, not read off the written script: this script is
     // about to be sourced by the shell running the `eval`, so "now" is
     // exactly when this activation happens. A later `up` bumps the

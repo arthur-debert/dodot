@@ -28,6 +28,19 @@ teardown() {
     assert_output_contains ". \""
 }
 
+@test "init-sh falls through to normal initialization when verifier vars leak" {
+    instrumented_shell "zsh" "aliases.sh"
+    dodot up
+
+    run bash -c "export DODOT_INTERNAL_SHELL_INIT_PROBE=stale
+export DODOT_INTERNAL_SHELL_INIT_PROBE_PARENT=0
+eval \"\$('$DODOT_BIN' init-sh)\"
+printf '%s\n' \"\${DODOT_LOADED_ZSH_ALIASES_SH:-}\""
+
+    [ "$status" -eq 0 ]
+    assert_output_contains "1"
+}
+
 @test "init-sh includes PATH additions after up" {
     create_pack "tools"
     create_pack_bin "tools" "mytool" '#!/bin/sh\necho hello'

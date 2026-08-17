@@ -472,6 +472,11 @@ fn spawn_until_targeted_marker(
         match child.try_wait() {
             Ok(Some(_)) => {
                 drain_pending_lines(&rx, &mut stdout, POLL_INTERVAL);
+                if let Some(stamp) =
+                    matching_targeted_stamp_in_output(&stdout, nonce, verifier_pid, child_pid)
+                {
+                    return TargetedSpawnOutcome::TargetedStamp(stamp);
+                }
                 return TargetedSpawnOutcome::Finished(stdout);
             }
             Ok(None) => {}
@@ -481,11 +486,10 @@ fn spawn_until_targeted_marker(
             kill_process_group(child_pid);
             let _ = child.wait();
             drain_pending_lines(&rx, &mut stdout, POLL_INTERVAL);
-            while let Ok(line) = rx.try_recv() {
-                if let Some(stamp) = matching_targeted_stamp(&line, nonce, verifier_pid, child_pid)
-                {
-                    return TargetedSpawnOutcome::TargetedStamp(stamp);
-                }
+            if let Some(stamp) =
+                matching_targeted_stamp_in_output(&stdout, nonce, verifier_pid, child_pid)
+            {
+                return TargetedSpawnOutcome::TargetedStamp(stamp);
             }
             return TargetedSpawnOutcome::TimedOut;
         }
@@ -509,6 +513,17 @@ fn read_lines<R: Read + Send + 'static>(pipe: R, tx: mpsc::Sender<String>) {
             }
         }
     });
+}
+
+fn matching_targeted_stamp_in_output(
+    stdout: &str,
+    nonce: &str,
+    verifier_pid: u32,
+    child_pid: u32,
+) -> Option<ProbeStamp> {
+    stdout
+        .lines()
+        .find_map(|line| matching_targeted_stamp(line, nonce, verifier_pid, child_pid))
 }
 
 fn drain_pending_lines(rx: &mpsc::Receiver<String>, stdout: &mut String, max_wait: Duration) {
@@ -997,6 +1012,21 @@ mod tests {
             parse_targeted_response(&format!(
                 "{TARGET_PROBE_MARKER}abc|10|20|not-a-generation|5.7.0"
             )),
+            None
+        );
+    }
+
+    #[test]
+    fn targeted_response_is_found_after_trailing_output_is_drained() {
+        let stdout =
+            format!("unterminated rc output\n{TARGET_PROBE_MARKER}abc|10|20|100|5.7.0\nignored\n");
+
+        assert_eq!(
+            matching_targeted_stamp_in_output(&stdout, "abc", 10, 20),
+            Some(stamp(100, "5.7.0"))
+        );
+        assert_eq!(
+            matching_targeted_stamp_in_output(&stdout, "abc", 10, 21),
             None
         );
     }
