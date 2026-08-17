@@ -19,13 +19,19 @@
 //!
 //! ```text
 //! DOTFILES_ROOT ──► environment ─┐
-//!                                ├─► ResolvedRoot ──► check ──► TrustDecision
-//! git top-level / cwd ──► files ─┘        │                          │
-//!                                         │                          ├─ ExplicitlySelected
-//!                       schema (approved roots, one file)            ├─ AlreadyApproved
-//!                                         │                          └─ ApprovalRequired ──► inventory
-//!                                    list / forget                                              (prompt)
+//!                                ├─► selection ─► ResolvedRoot ─► check ─► TrustDecision
+//! git top-level / cwd ──► files ─┘                     │                        │
+//!                                                      │                        ├─ ExplicitlySelected
+//!                            schema (approved roots, one file)                  ├─ AlreadyApproved
+//!                                                      │                        └─ ApprovalRequired ─► inventory
+//!                                                 list / forget                                          (prompt)
 //! ```
+//!
+//! [`resolve_root`] is the invocation's one act of selection: `DOTFILES_ROOT`,
+//! then the Git top-level, then the current directory — and nothing after
+//! that. Every consumer carries the [`ResolvedRoot`] it returns rather than
+//! resolving again, which is what keeps the root the user approved and the
+//! root Dodot mutates the same one (ADR-0001).
 //!
 //! Both selection paths return the same [`ResolvedRoot`]: one canonical
 //! [`RootIdentity`] plus the [`RootSource`] that chose it. Provenance changes
@@ -43,19 +49,25 @@
 //! This module is CLI-free by construction: no Clap and no Standout types
 //! appear in any signature, and nothing here reads the process environment,
 //! the current directory, or Git. Those are captured at the process boundary
-//! and injected ([`EnvironmentRootInput`], [`FileRootInput`],
-//! [`PathProbe`]). Likewise, persistence is the caller's: the checking,
-//! listing, and forgetting APIs take an already-loaded [`SafetyLockConfig`]
-//! and return typed state changes to write.
+//! and injected ([`RootSelectionInput`], [`PathProbe`]). Likewise, persistence
+//! is the caller's: the checking, listing, and forgetting APIs take an
+//! already-loaded [`SafetyLockConfig`] and return typed state changes to
+//! write.
 //!
 //! # Work Stream status
 //!
 //! ACC01-WS01 establishes this vocabulary and the persisted schema; ACC01-WS02
-//! fills in [`environment`], the authoritative `DOTFILES_ROOT` path. The
-//! remaining trust-lifecycle, decision, inventory, and scoping entry points
-//! carry documented signatures with `todo!()` bodies; each names the Work
-//! Stream that fills it in. The data model, the schema, and environment
-//! selection are complete and tested.
+//! fills in [`environment`], the authoritative `DOTFILES_ROOT` path; ACC01-WS03
+//! fills in [`files`] and composes both into [`selection`]. The remaining
+//! trust-lifecycle, decision, inventory, and scoping entry points carry
+//! documented signatures with `todo!()` bodies; each names the Work Stream
+//! that fills it in. The data model, the schema, and root selection are
+//! complete and tested.
+//!
+//! Dodot's pre-Safety-Lock root resolution still runs in
+//! [`crate::paths`](crate::paths) and in the CLI: replacing those callers with
+//! [`resolve_root`] is the process-boundary work of WS07, which is where the
+//! environment, cwd, and Git capture this module refuses to perform lands.
 //!
 //! Nothing in this module is wired into a command yet: the process boundary
 //! that captures the environment, the current directory, and Git — and the
@@ -71,6 +83,9 @@ pub mod list;
 pub mod roots;
 pub mod schema;
 pub mod scope;
+pub mod selection;
+#[cfg(test)]
+mod test_probe;
 pub mod util;
 
 pub use check::{approve, decide, ApprovalChange, TrustDecision};
@@ -88,4 +103,5 @@ pub use schema::{
     SafetyLockConfig, TrustedRootsSection, SAFETY_LOCK_FILE_NAME, SAFETY_LOCK_PERSIST_SCOPE,
 };
 pub use scope::{scope_to_root, MutationScope, OutOfRootReason, OutOfRootTarget};
+pub use selection::{resolve_root, RootSelectionInput};
 pub use util::{decode_native_path, encode_native_path, OsPathProbe, PathProbe, NATIVE_BYTES_TAG};

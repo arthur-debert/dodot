@@ -20,6 +20,17 @@
 //! `os-bytes:`. [`encode_native_path`] resolves that by hex-encoding such a
 //! path too, so decoding a spelling always reproduces the exact input bytes —
 //! no escape grammar, no unrepresentable path.
+//!
+//! ## Candidate validation
+//!
+//! [`canonical_root_identity`] is the one place a candidate path becomes a
+//! root identity, shared by both selection paths so an environment root and an
+//! implicit one are held to the same standard — including the requirement that
+//! the candidate be absolute, which it enforces in every build rather than
+//! trusting its callers to have checked. It reports *which* requirement failed
+//! rather than a bare boolean, because each caller phrases the refusal in its
+//! own vocabulary — `DOTFILES_ROOT` names the variable, implicit selection
+//! names the mechanism that chose the path.
 
 use std::ffi::OsString;
 use std::fmt::Write as _;
@@ -27,6 +38,7 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 
 use super::error::{Result, SafetyLockError};
+use super::roots::RootIdentity;
 
 /// Prefix marking a spelling that carries hex-encoded native path bytes
 /// rather than the path's plain text.
@@ -126,6 +138,76 @@ pub trait PathProbe: Send + Sync {
     fn is_readable_dir(&self, path: &Path) -> bool;
 }
 
+/// Why a candidate path cannot become a root identity.
+///
+/// One variant per requirement [`canonical_root_identity`] checks, so a caller
+/// can say what the user has to fix: a typo, a file where a directory was
+/// meant, and a permission problem have three different next actions.
+#[derive(Debug)]
+pub(super) enum UnusableRoot {
+    /// The candidate is relative, so it has no meaning independent of the
+    /// process working directory.
+    Relative,
+    /// Nothing exists at the candidate path.
+    Missing,
+    /// Something is there, but it could not be resolved.
+    Unresolvable(std::io::Error),
+    /// The canonical path is not a directory.
+    NotADirectory,
+    /// The canonical path is a directory whose contents cannot be read.
+    Unreadable,
+    /// The canonical path is not a usable identity — only reachable through a
+    /// [`PathProbe`] that returns something non-canonical.
+    NotAnIdentity(SafetyLockError),
+}
+
+/// Canonicalize `candidate` once and check it is a directory Dodot can walk,
+/// yielding the root identity built from that canonical path.
+///
+/// This is the whole of what "usable root" means, and both selection paths ask
+/// it here rather than each spelling out the sequence: require an absolute
+/// path, canonicalize it (which is also what resolves aliases and symlinks
+/// into one identity, ADR-0001), then require a directory, then require one
+/// whose entries discovery could actually walk.
+///
+/// Absoluteness is the first requirement rather than a caller precondition,
+/// and it is checked in every build rather than asserted: a relative path
+/// would be resolved by the operating system against the process working
+/// directory — the state Safety Lock resolves once per invocation and never
+/// re-reads — so a release build that let one through would silently reopen
+/// the very ambiguity this module exists to close. Callers still anchor a
+/// relative value to their injected invocation directory before asking; what
+/// they get back for one that could not be anchored is
+/// [`UnusableRoot::Relative`], phrased in their own vocabulary like every
+/// other failure. The check precedes the probe, so a relative candidate never
+/// reaches the filesystem.
+pub(super) fn canonical_root_identity(
+    candidate: &Path,
+    probe: &dyn PathProbe,
+) -> std::result::Result<RootIdentity, UnusableRoot> {
+    if !candidate.is_absolute() {
+        return Err(UnusableRoot::Relative);
+    }
+
+    let canonical = probe.canonicalize(candidate).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            UnusableRoot::Missing
+        } else {
+            UnusableRoot::Unresolvable(err)
+        }
+    })?;
+
+    if !probe.is_directory(&canonical) {
+        return Err(UnusableRoot::NotADirectory);
+    }
+
+    if !probe.is_readable_dir(&canonical) {
+        return Err(UnusableRoot::Unreadable);
+    }
+
+    RootIdentity::new(canonical).map_err(UnusableRoot::NotAnIdentity)
+}
+
 /// [`PathProbe`] backed by the real filesystem.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OsPathProbe;
@@ -166,7 +248,30 @@ impl PathProbe for OsPathProbe {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_probe::FakeProbe;
     use super::*;
+
+    /// Absoluteness is a real requirement of the shared helper, not a
+    /// developer-only assumption: an assertion compiled out of release builds
+    /// would leave a relative candidate to be resolved against the process
+    /// working directory — exactly the ambient state this module refuses to
+    /// read — so it is checked in every build, and checked before the probe,
+    /// so the filesystem is never asked about a path with no fixed meaning.
+    #[test]
+    fn a_relative_candidate_is_refused_without_touching_the_filesystem() {
+        let probe = FakeProbe::dir("dots");
+
+        let failure = canonical_root_identity(Path::new("dots"), &probe).unwrap_err();
+
+        assert!(
+            matches!(failure, UnusableRoot::Relative),
+            "unexpected failure: {failure:?}"
+        );
+        assert!(
+            probe.canonicalized().is_empty(),
+            "a relative candidate reached the filesystem probe"
+        );
+    }
 
     /// A non-Unicode path, built from bytes std will never hand back as
     /// UTF-8. `0x80` is a continuation byte with no lead byte.
