@@ -3,8 +3,8 @@
 [desc]dodot infers a dotfiles root from the enclosing git repository, then from
 the current directory. That convenience is also a hazard: an unrelated
 repository looks enough like a dotfiles repo to deploy from. So before a
-command can deploy, adopt, or otherwise write to targets an inferred root
-chose, dodot shows you the root it picked and asks you to approve it.
+command can deploy, adopt, or otherwise write to targets that an inferred
+root chose, dodot shows you the root it picked and asks you to approve it.
 
 Approval is per canonical path and does not expire. A root you approved is
 one you can see here and take back. There is deliberately no

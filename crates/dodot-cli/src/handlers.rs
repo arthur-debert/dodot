@@ -717,16 +717,17 @@ pub fn prompts_reset_handler(
 ///
 /// Takes no root of its own: this is the surface that inspects the trust
 /// collection, so an unusable `DOTFILES_ROOT` must not be able to lock a user
-/// out of it (`safety::RootSensitivity::Rootless`). An unusable *trust file*
-/// does fail here — surfacing that is the command's job, and reporting it as
-/// "nothing approved" would be the one answer that is never safe.
+/// out of it (`safety::RootSensitivity::Rootless`) — and neither must a
+/// working directory that no longer exists, which is why listing consumes
+/// only the data directory. An unusable *trust file* does fail here —
+/// surfacing that is the command's job, and reporting it as "nothing
+/// approved" would be the one answer that is never safe.
 pub fn roots_list_handler(
     _matches: &clap::ArgMatches,
     cmd: &CommandContext,
 ) -> HandlerResult<commands::roots::RootsListResult> {
-    let facts = safety::state(cmd)?.facts();
     Ok(Output::Render(commands::roots::list(
-        facts.data_dir(),
+        safety::state(cmd)?.data_dir(),
         &OsPathProbe,
     )?))
 }
@@ -736,17 +737,21 @@ pub fn roots_list_handler(
 /// The argument arrives as an `OsString` and stays one: `roots list` prints a
 /// non-Unicode root in a reversible spelling precisely so it can be passed
 /// back, and a lossy conversion here would break that round trip.
+///
+/// The invocation directory is optional: it anchors a *relative* argument,
+/// and an absolute or `os-bytes:` spelling still revokes from a working
+/// directory that was deleted underneath the shell.
 pub fn roots_forget_handler(
     matches: &clap::ArgMatches,
     cmd: &CommandContext,
 ) -> HandlerResult<commands::MessageResult> {
-    let facts = safety::state(cmd)?.facts();
+    let state = safety::state(cmd)?;
     let path = matches
         .get_one::<std::ffi::OsString>("path")
         .expect("path is required");
     Ok(Output::Render(commands::roots::forget(
-        facts.data_dir(),
-        facts.current_dir(),
+        state.data_dir(),
+        state.invocation_dir(),
         path,
         &OsPathProbe,
     )?))

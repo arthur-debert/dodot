@@ -1,7 +1,7 @@
 :: verified ::
 dodot roots
 
-The "which directories have I told dodot are mine?" command pair. Safety Lock records an approval the first time you confirm a mutating command on an implicitly discovered dotfiles root ([./../safety-lock.md]); `roots` is where you inspect and revoke those approvals.
+The "which directories have I told dodot are mine?" command pair. Safety Lock records an approval the first time you confirm a mutating command on an implicitly discovered dotfiles root ([./../safety-lock.lex]); `roots` is where you inspect and revoke those approvals.
 
 There is no `roots trust` — approval only happens at the point of use, where the prompt can show you what dodot found there.
 

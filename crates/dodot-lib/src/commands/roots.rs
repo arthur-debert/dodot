@@ -23,8 +23,8 @@ use serde::Serialize;
 
 use crate::commands::MessageResult;
 use crate::safety_lock::{
-    forget_root, list_roots, ForgetRequest, PathProbe, SafetyLockConfig, SafetyLockResult,
-    TrustFileTransaction, NATIVE_BYTES_TAG,
+    encode_native_path, forget_root, list_roots, ForgetRequest, PathProbe, SafetyLockConfig,
+    SafetyLockError, SafetyLockResult, TrustFileTransaction, NATIVE_BYTES_TAG,
 };
 
 /// One approved root as `dodot roots list` presents it.
@@ -80,9 +80,12 @@ pub fn list(data_dir: &Path, probe: &dyn PathProbe) -> SafetyLockResult<RootsLis
 ///
 /// `argument` is taken as the user spelled it, so a non-Unicode path and the
 /// `os-bytes:` spelling `roots list` prints both survive to the matching
-/// rules. A relative argument is anchored to `current_dir` here — the
+/// rules. A relative argument is anchored to `invocation_dir` here — the
 /// invocation directory captured once at the process boundary — because
-/// [`forget_root`] refuses to read ambient process state of its own.
+/// [`forget_root`] refuses to read ambient process state of its own. The
+/// directory is optional because the process may no longer have one (deleted
+/// underneath the shell); only a relative argument needs it, so absolute and
+/// tagged spellings keep working from exactly that broken state.
 ///
 /// An argument that matches no approval is reported, not failed: "no such
 /// approval" and "the trust file is broken" are different answers and the
@@ -98,11 +101,11 @@ pub fn list(data_dir: &Path, probe: &dyn PathProbe) -> SafetyLockResult<RootsLis
 /// composes with it instead of overwriting it.
 pub fn forget(
     data_dir: &Path,
-    current_dir: &Path,
+    invocation_dir: Option<&Path>,
     argument: &OsStr,
     probe: &dyn PathProbe,
 ) -> SafetyLockResult<MessageResult> {
-    let anchored = anchor(current_dir, argument);
+    let anchored = anchor(invocation_dir, argument)?;
     let transaction = TrustFileTransaction::begin(data_dir)?;
     let config = transaction.load_for_revocation()?;
     let change = forget_root(&config, &ForgetRequest::new(anchored), probe)?;
@@ -133,25 +136,31 @@ pub fn forget(
 /// tagged `os-bytes:` spelling is not a path at all — it is the encoding
 /// `roots list` prints for a non-Unicode root, and joining it onto a directory
 /// would turn the one string a user can copy back into a name matching
-/// nothing.
+/// nothing. Neither consults `invocation_dir`, so `None` — a working
+/// directory that no longer exists — fails only the one spelling that
+/// genuinely cannot be resolved without it.
 ///
 /// Joining is all that happens to what remains — no canonicalization, no
 /// symlink resolution. Those belong to [`forget_root`]'s first matching rule,
 /// which consults the filesystem itself; doing them here would decide the
 /// match before the rules that own it ran.
-fn anchor(current_dir: &Path, argument: &OsStr) -> OsString {
+fn anchor(invocation_dir: Option<&Path>, argument: &OsStr) -> SafetyLockResult<OsString> {
     if argument
         .as_encoded_bytes()
         .starts_with(NATIVE_BYTES_TAG.as_bytes())
     {
-        return argument.to_os_string();
+        return Ok(argument.to_os_string());
     }
 
     let candidate = PathBuf::from(argument);
     if candidate.is_absolute() {
-        candidate.into_os_string()
+        Ok(candidate.into_os_string())
     } else {
-        current_dir.join(candidate).into_os_string()
+        let anchor_dir =
+            invocation_dir.ok_or_else(|| SafetyLockError::RelativeArgumentUnanchorable {
+                spelling: encode_native_path(&candidate),
+            })?;
+        Ok(anchor_dir.join(candidate).into_os_string())
     }
 }
 
@@ -243,7 +252,7 @@ mod tests {
 
         let result = forget(
             data_dir.path(),
-            Path::new("/"),
+            Some(Path::new("/")),
             one_path.as_os_str(),
             &OsPathProbe,
         )
@@ -272,7 +281,7 @@ mod tests {
 
         forget(
             data_dir.path(),
-            Path::new("/"),
+            Some(Path::new("/")),
             OsStr::new(&printed),
             &OsPathProbe,
         )
@@ -295,9 +304,10 @@ mod tests {
         std::fs::create_dir(&root).unwrap();
         approved(data_dir.path(), &[&root]);
 
+        let invoked_from = std::fs::canonicalize(home.path()).unwrap();
         forget(
             data_dir.path(),
-            &std::fs::canonicalize(home.path()).unwrap(),
+            Some(invoked_from.as_path()),
             OsStr::new("dotfiles"),
             &OsPathProbe,
         )
@@ -309,6 +319,39 @@ mod tests {
             .is_empty());
     }
 
+    /// The recovery surface must survive the broken state it exists for: a
+    /// working directory deleted underneath the shell yields no invocation
+    /// directory, and an absolute argument never needs one.
+    #[test]
+    fn an_absolute_argument_revokes_without_an_invocation_directory() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root_path = std::fs::canonicalize(root.path()).unwrap();
+        approved(data_dir.path(), &[&root_path]);
+
+        forget(data_dir.path(), None, root_path.as_os_str(), &OsPathProbe).unwrap();
+
+        assert!(list(data_dir.path(), &OsPathProbe)
+            .unwrap()
+            .roots
+            .is_empty());
+    }
+
+    /// A relative argument is the one spelling that genuinely cannot be
+    /// resolved without an invocation directory; the error must say so and
+    /// name the spellings that still work.
+    #[test]
+    fn a_relative_argument_without_an_invocation_directory_fails_with_the_recovery_route() {
+        let data_dir = tempfile::tempdir().unwrap();
+
+        let err = forget(data_dir.path(), None, OsStr::new("dotfiles"), &OsPathProbe).unwrap_err();
+
+        assert!(
+            matches!(err, SafetyLockError::RelativeArgumentUnanchorable { .. }),
+            "unexpected error: {err}"
+        );
+    }
+
     #[test]
     fn an_argument_matching_nothing_is_reported_rather_than_failed() {
         let data_dir = tempfile::tempdir().unwrap();
@@ -318,7 +361,7 @@ mod tests {
 
         let result = forget(
             data_dir.path(),
-            Path::new("/"),
+            Some(Path::new("/")),
             OsStr::new("/nowhere/at/all"),
             &OsPathProbe,
         )
@@ -348,7 +391,7 @@ mod tests {
 
         forget(
             data_dir.path(),
-            Path::new("/"),
+            Some(Path::new("/")),
             root_path.as_os_str(),
             &OsPathProbe,
         )
@@ -376,7 +419,7 @@ mod tests {
 
         forget(
             data_dir.path(),
-            Path::new("/"),
+            Some(Path::new("/")),
             OsStr::new(&listed[0].path),
             &OsPathProbe,
         )

@@ -1,7 +1,7 @@
 :: verified ::
 Safety Lock — approving dotfiles roots
 
-dodot resolves which directory is your dotfiles root by checking `$DOTFILES_ROOT`, then the enclosing git repository's top level, then the current directory (see [./glossary/dotfiles-root.md]). Convenient — and one `cd` away from pointing a mutating command at a repository you never meant as dotfiles. Safety Lock is the guard on that mistake: the first time a mutating command would run against an *implicitly discovered* root you haven't approved, dodot stops, shows you the root and what it recognizes there, and asks.
+dodot resolves which directory is your dotfiles root by checking `$DOTFILES_ROOT`, then the enclosing git repository's top level, then the current directory (see [./glossary/dotfiles-root.lex]). Convenient — and one `cd` away from pointing a mutating command at a repository you never meant as dotfiles. Safety Lock is the guard on that mistake: the first time a mutating command would run against an *implicitly discovered* root you haven't approved, dodot stops, shows you the root and what it recognizes there, and asks.
 
 1. When you'll see the prompt
 
@@ -44,7 +44,7 @@ dodot resolves which directory is your dotfiles root by checking `$DOTFILES_ROOT
     - `dodot roots list` — every approved root and whether it still exists.
     - `dodot roots forget <path>` — revoke one; the next mutating command that implicitly discovers that root asks again.
 
-    See [./commands/roots.md]. Approvals are keyed to the canonical path: moving a root means the new location is unapproved (and the old approval is inert — forget it at your leisure). Factory `dodot reset` removes the approvals file along with the rest of dodot's state, even when the file is damaged beyond parsing. After reset, the next root-sensitive mutation on each implicitly discovered root asks again.
+    See [./commands/roots.lex]. Approvals are keyed to the canonical path: moving a root means the new location is unapproved (and the old approval is inert — forget it at your leisure). Factory `dodot reset` removes the approvals file along with the rest of dodot's state, even when the file is damaged beyond parsing. After reset, the next root-sensitive mutation on each implicitly discovered root asks again.
 
 5. Two roots, one machine
 
@@ -52,6 +52,6 @@ dodot resolves which directory is your dotfiles root by checking `$DOTFILES_ROOT
 
 6. See also
 
-    - [./commands/roots.md] — the management commands.
-    - [./glossary/dotfiles-root.md] — how the root is resolved.
-    - [./troubleshooting.md] §10 — recovery patterns, including refusals.
+    - [./commands/roots.lex] — the management commands.
+    - [./glossary/dotfiles-root.lex] — how the root is resolved.
+    - [./troubleshooting.lex] §10 — recovery patterns, including refusals.

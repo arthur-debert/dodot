@@ -91,6 +91,17 @@ pub enum SafetyLockError {
     #[error("`{spelling}` is not a valid dotfiles-root spelling: {reason}")]
     UnreadableSpelling { spelling: String, reason: String },
 
+    /// A relative `roots forget` argument arrived while the process has no
+    /// working directory to anchor it to — it was deleted underneath the
+    /// shell. Absolute and `os-bytes:` spellings still revoke from that
+    /// state, which is the recovery route the message names.
+    #[error(
+        "cannot anchor the relative path `{spelling}`: the current directory no \
+         longer exists — pass an absolute path, or the exact spelling `dodot \
+         roots list` prints"
+    )]
+    RelativeArgumentUnanchorable { spelling: String },
+
     /// The trust file exists but cannot be used. Fails closed: an unreadable
     /// or invalid trust file never reads as "no roots approved".
     #[error("cannot read the trusted-roots file at {}: {reason}", path.display())]

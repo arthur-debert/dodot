@@ -124,6 +124,17 @@ impl Sandbox {
     }
 
     fn run_as(&self, mode: OutputMode, args: &[&str]) -> Outcome {
+        self.run_from_as(&self.temp.path().join("dots"), mode, args)
+    }
+
+    /// Run with the working directory somewhere other than the sandbox's
+    /// pack root — for invocations whose implicit selection must start from
+    /// a different directory.
+    fn run_from(&self, cwd: &Path, args: &[&str]) -> Outcome {
+        self.run_from_as(cwd, OutputMode::Text, args)
+    }
+
+    fn run_from_as(&self, cwd: &Path, mode: OutputMode, args: &[&str]) -> Outcome {
         let home = self.home();
         let mut harness = TestHarness::new()
             .env("HOME", home.display().to_string())
@@ -139,7 +150,7 @@ impl Sandbox {
             .no_color()
             .terminal_width(100)
             .output_mode(mode)
-            .cwd(self.temp.path().join("dots"));
+            .cwd(cwd);
 
         harness = match &self.explicit_root {
             Some(value) => harness.env("DOTFILES_ROOT", value.display().to_string()),
@@ -196,6 +207,36 @@ impl Outcome {
 }
 
 // ── The gate ────────────────────────────────────────────────────
+
+/// Regression for the Git top-level capture: only Git's terminating newline
+/// comes off its stdout, never path bytes. A repository whose name ends in
+/// whitespace must stay distinct from its trimmed sibling — a whitespace
+/// trim would resolve `dots ` as `dots`, and the sibling's approval would
+/// let a mutation proceed in a root the user never approved.
+#[test]
+#[serial]
+fn a_repository_named_with_trailing_whitespace_is_not_its_trimmed_sibling() {
+    let sandbox = Sandbox::new();
+    let padded = sandbox.temp.path().join("dots ");
+    std::fs::create_dir(&padded).unwrap();
+    let init = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&padded)
+        .status()
+        .unwrap();
+    assert!(init.success(), "git init in the padded root failed");
+    // Approve the sibling *without* the trailing space; the padded root —
+    // the one Git will report as the enclosing top-level — stays unapproved.
+    sandbox.approve(&sandbox.root());
+
+    let outcome = sandbox.run_from(&padded, &["up"]);
+
+    let diagnostic = outcome.assert_refused();
+    assert!(
+        diagnostic.contains("dots "),
+        "the refusal must name the padded root, not its trimmed sibling: {diagnostic}"
+    );
+}
 
 /// The headline: a mutating command on an implicitly discovered, unapproved
 /// root does not run, does not approve, and does not deploy.

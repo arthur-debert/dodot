@@ -85,12 +85,13 @@
 //! an immutable value. Handlers consume that value; nothing downstream reads
 //! process state again.
 //!
-//! Two surfaces are still outside the gate: the CLI's passthrough commands,
-//! which return before Standout dispatches and so have no hook (`config`'s
-//! root-persisting actions are the one that matters), and the tutorial's real
-//! deployment step. Both resolve their root through [`resolve_root`] like
-//! everything else — what they lack is the [`authorize`] call. ACC01-WS08
-//! closes that.
+//! The routes Standout never dispatches cross the same boundary through
+//! their own doors: each declares its policy in the CLI's
+//! `PASSTHROUGH_POLICY` table, `config`'s root-persisting actions run the
+//! full capture-resolve-authorize sequence via the CLI's `gate_passthrough`,
+//! and the tutorial's real deployment step runs `gate_captured` on the facts
+//! and root captured when its environment was built — so the root it
+//! authorizes is the root it has been showing all along.
 
 pub mod check;
 pub mod environment;

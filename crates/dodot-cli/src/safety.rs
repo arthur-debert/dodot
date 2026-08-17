@@ -7,6 +7,10 @@
 //! ([`ProcessFacts::capture`]), resolves the invocation's one dotfiles root,
 //! puts the command's declared [`RootOperation`] to the gate, and leaves the
 //! result in the command context's extensions as an immutable [`SafetyState`].
+//! The one carve-out is a [`Rootless`](RootSensitivity::Rootless) command,
+//! which gets only the facts it uses — no Git, no root resolution — so the
+//! trust collection's own management surface stays reachable from the broken
+//! states it exists to repair.
 //!
 //! Handlers read that value. They do not call `std::env`, do not shell out to
 //! `git`, and do not canonicalize a root of their own — which is what makes
@@ -301,9 +305,10 @@ impl ProcessFacts {
 /// directory.
 ///
 /// Kept byte-accurate, like every other path Safety Lock handles: on Unix the
-/// trimmed stdout bytes *are* the native path, so a non-UTF-8 repository path
-/// resolves, gates, and prints exactly as Git reported it — a lossy `String`
-/// hop here would canonicalize, approve, and diagnose a corrupted spelling.
+/// stdout bytes, minus Git's record terminator, *are* the native path, so a
+/// non-UTF-8 repository path resolves, gates, and prints exactly as Git
+/// reported it — a lossy `String` hop here would canonicalize, approve, and
+/// diagnose a corrupted spelling.
 fn git_top_level() -> Option<PathBuf> {
     let output = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -312,11 +317,29 @@ fn git_top_level() -> Option<PathBuf> {
     if !output.status.success() {
         return None;
     }
-    let toplevel = output.stdout.trim_ascii();
+    let toplevel = strip_git_terminator(&output.stdout);
     if toplevel.is_empty() {
         return None;
     }
     Some(PathBuf::from(native_os_string(toplevel)?))
+}
+
+/// Strip exactly the record terminator Git appends to its stdout — one
+/// trailing newline — and nothing else.
+///
+/// A `trim`-style whitespace strip would eat bytes that belong to the path: a
+/// repository at `…/dots ` (trailing space) would resolve as its sibling
+/// `…/dots`, so an approval of the sibling would let a mutation proceed in a
+/// root the user never approved — breaking Safety Lock's displayed-root =
+/// authorized-root = mutated-root invariant.
+fn strip_git_terminator(stdout: &[u8]) -> &[u8] {
+    let stdout = stdout.strip_suffix(b"\n").unwrap_or(stdout);
+    // Off Unix only: there `\r` cannot legally end a path, and toolchains
+    // that emit CRLF exist. On Unix a `\r` before the terminator is a path
+    // byte and must survive.
+    #[cfg(not(unix))]
+    let stdout = stdout.strip_suffix(b"\r").unwrap_or(stdout);
+    stdout
 }
 
 /// Reassemble Git's raw stdout bytes into a native `OsString`.
@@ -343,14 +366,39 @@ fn native_os_string(bytes: &[u8]) -> Option<std::ffi::OsString> {
 /// gate is the value the command runs against.
 #[derive(Debug, Clone)]
 pub struct SafetyState {
-    facts: ProcessFacts,
+    data_dir: PathBuf,
+    invocation_dir: Option<PathBuf>,
     root: Option<ResolvedRoot>,
 }
 
 impl SafetyState {
-    /// The captured process facts.
-    pub fn facts(&self) -> &ProcessFacts {
-        &self.facts
+    /// The state for a command that takes no dotfiles root.
+    ///
+    /// Deliberately less than a full capture: no Git subprocess, no root
+    /// resolution, and a current directory deleted underneath the shell is
+    /// tolerated rather than fatal — the management surface is exactly what
+    /// a user in a broken state needs, and only anchoring a relative
+    /// `roots forget` argument ever consults the invocation directory.
+    fn rootless() -> Self {
+        Self {
+            data_dir: XdgPather::data_dir_for_home(&XdgPather::home_dir_from_env()),
+            invocation_dir: std::env::current_dir().ok(),
+            root: None,
+        }
+    }
+
+    /// Dodot's data directory — where the trust file lives.
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
+    /// The directory Dodot was invoked from, when the process still has
+    /// one. `None` only for a [`Rootless`] command whose working directory
+    /// no longer exists — every gated command captured it as a hard fact.
+    ///
+    /// [`Rootless`]: RootSensitivity::Rootless
+    pub fn invocation_dir(&self) -> Option<&Path> {
+        self.invocation_dir.as_deref()
     }
 
     /// The one dotfiles root this invocation may work under.
@@ -459,13 +507,17 @@ fn remember_authorized(state: &SafetyState) {
 }
 
 /// Capture, resolve, and authorize — the whole boundary, in order.
+///
+/// A [`Rootless`](RootSensitivity::Rootless) command branches before the
+/// full capture: it manages the trust collection itself, so it must stay
+/// reachable when capture would fail — a deleted working directory, a Git
+/// that hangs — and it gets only the facts it actually uses.
 fn gate(sensitivity: RootSensitivity, matches: &clap::ArgMatches) -> Result<SafetyState, Refusal> {
-    let facts = ProcessFacts::capture().map_err(refuse)?;
-
     if sensitivity == RootSensitivity::Rootless {
-        return Ok(SafetyState { facts, root: None });
+        return Ok(SafetyState::rootless());
     }
 
+    let facts = ProcessFacts::capture().map_err(refuse)?;
     gate_operation(facts, sensitivity.operation(matches))
 }
 
@@ -504,7 +556,8 @@ fn authorize_resolved(
     }
 
     let state = SafetyState {
-        facts,
+        data_dir: facts.data_dir().to_path_buf(),
+        invocation_dir: Some(facts.current_dir().to_path_buf()),
         root: Some(root),
     };
     // Parked only when the operation actually put trust to the test: the
@@ -657,6 +710,18 @@ mod tests {
         command.get_matches_from(argv)
     }
 
+    /// Only Git's own terminator comes off; trailing whitespace that is part
+    /// of the repository path stays, so `dots ` can never collapse into a
+    /// sibling `dots` whose approval it would then inherit.
+    #[test]
+    fn stripping_gits_terminator_preserves_trailing_whitespace_path_bytes() {
+        assert_eq!(strip_git_terminator(b"/srv/dots \n"), b"/srv/dots ");
+        assert_eq!(strip_git_terminator(b"/srv/dots\t\n"), b"/srv/dots\t");
+        assert_eq!(strip_git_terminator(b"/srv/dots\n"), b"/srv/dots");
+        assert_eq!(strip_git_terminator(b"/srv/dots"), b"/srv/dots");
+        assert_eq!(strip_git_terminator(b"\n"), b"");
+    }
+
     #[test]
     fn a_mutating_command_is_gated() {
         assert_eq!(
@@ -772,7 +837,7 @@ mod tests {
         // process revokes one of them before the user answers.
         dodot_lib::commands::roots::forget(
             data.path(),
-            Path::new("/"),
+            Some(Path::new("/")),
             forgotten_root.identity().as_path().as_os_str(),
             &OsPathProbe,
         )
