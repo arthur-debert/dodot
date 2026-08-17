@@ -371,6 +371,13 @@ mod tests {
     /// provenance first and is decided whatever state the file is in — the
     /// mirror of the refusal `approve` gives it, which likewise precedes every
     /// other check.
+    ///
+    /// Not a hypothetical value either: since
+    /// [`SafetyLockConfig::load_for_revocation`] exists so `roots forget` can
+    /// reach a duplicated file, a caller that routed *this* decision through
+    /// it would arrive here with exactly this collection. Validating what it
+    /// is given is what makes that a reported error rather than an
+    /// authorization answered off unusable state.
     #[test]
     fn unusable_trust_state_is_reported_rather_than_read_as_empty() {
         let root = identity("/home/alice/dotfiles");

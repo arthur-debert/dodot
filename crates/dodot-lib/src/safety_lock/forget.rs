@@ -22,8 +22,11 @@
 //! writing it. It is also the one operation here that may *start* from
 //! unusable state: the collection it produces is validated, the one it was
 //! given is not, so revoking a duplicated approval is the narrow recovery the
-//! Spec asks for rather than another way to be locked out (see
-//! [`forget_root`]).
+//! Spec asks for rather than another way to be locked out. That takes both
+//! ends of the path — a caller that loads through
+//! [`SafetyLockConfig::load_for_revocation`](super::schema::SafetyLockConfig::load_for_revocation)
+//! so the duplicated file reaches [`forget_root`] at all, and the outgoing
+//! validation here so the repair is checked before it is written back.
 
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
@@ -106,6 +109,15 @@ impl ForgetChange {
 /// locked out of it. An argument that leaves the duplicate standing still
 /// fails, so state derived from contents Dodot never understood is never
 /// handed back to be written.
+///
+/// **Load through
+/// [`SafetyLockConfig::load_for_revocation`](super::schema::SafetyLockConfig::load_for_revocation),
+/// not [`load_from`](super::schema::SafetyLockConfig::load_from).** That is
+/// what makes the paragraph above reachable from a real trust file rather than
+/// only from a constructed value: `load_from` post-validates, so it refuses a
+/// duplicated file before revocation ever sees it, and the user's only exit
+/// would be factory `reset`. Every *other* consumer keeps `load_from` — `roots
+/// list` surfacing the problem is the Spec's other half of this same sentence.
 pub fn forget_root(
     config: &SafetyLockConfig,
     request: &ForgetRequest,
@@ -399,6 +411,54 @@ mod tests {
             "every copy of the duplicated approval must go, not just the first"
         );
         assert!(change.config.validate().is_ok());
+    }
+
+    /// The recovery the Spec describes, end to end through the production
+    /// routes rather than a constructed value: a duplicated trust file on
+    /// disk, loaded through the revocation route, repaired by forgetting the
+    /// affected root, written back, and read again through the validated load
+    /// every other consumer uses.
+    ///
+    /// The load step is the half a constructed collection cannot prove:
+    /// `load_from` post-validates, so without a revocation-specific route the
+    /// duplicated file never reaches `forget_root` and the user's only exit is
+    /// factory `reset`.
+    #[test]
+    fn a_duplicated_trust_file_is_repaired_through_the_production_routes() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let path = SafetyLockConfig::path_in(data_dir.path());
+        let duplicated = identity("/srv/dots");
+        let intact = identity("/srv/other");
+        std::fs::write(
+            &path,
+            "[roots]\napproved = [\"/srv/dots\", \"/srv/other\", \"/srv/dots\"]\n",
+        )
+        .unwrap();
+
+        // The validated route refuses it — which is the whole problem.
+        assert!(
+            SafetyLockConfig::load_from(data_dir.path()).is_err(),
+            "the validated load accepted a duplicated trust file"
+        );
+
+        let config = SafetyLockConfig::load_for_revocation(data_dir.path()).unwrap();
+        assert_eq!(
+            config.roots.approved,
+            vec![duplicated.clone(), intact.clone(), duplicated.clone()],
+            "the revocation route did not read the file as written"
+        );
+
+        let change = forget(&config, duplicated.spelling(), &FakeProbe::default()).unwrap();
+        assert_eq!(change.removed, Some(duplicated));
+
+        std::fs::write(&path, toml::to_string(&change.config).unwrap()).unwrap();
+
+        let reloaded = SafetyLockConfig::load_from(data_dir.path()).unwrap();
+        assert_eq!(
+            reloaded.roots.approved,
+            vec![intact],
+            "the repaired file did not keep the untouched approval"
+        );
     }
 
     /// The other half of that: revocation rewrites the collection, so an

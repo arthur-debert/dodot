@@ -28,10 +28,14 @@
 //! Environment-selected roots never appear here: `DOTFILES_ROOT` *is* the
 //! deliberate selection, so it is authorized without a record (ADR-0003).
 //!
-//! This module owns the schema, the store's coordinates, and the one
-//! validated way to load it ([`SafetyLockConfig::load_from`]). *Writing*
-//! belongs to the caller: the checking, listing, and forgetting APIs take an
-//! already-loaded [`SafetyLockConfig`] and return typed state changes.
+//! This module owns the schema, the store's coordinates, and the two ways to
+//! load it: [`SafetyLockConfig::load_from`], which every consumer uses and
+//! which fails closed, and
+//! [`SafetyLockConfig::load_for_revocation`], which drops the duplicate check
+//! alone so `roots forget` can repair the one violation a readable file can
+//! carry. *Writing* belongs to the caller: the checking, listing, and
+//! forgetting APIs take an already-loaded [`SafetyLockConfig`] and return
+//! typed state changes.
 
 use std::path::{Path, PathBuf};
 
@@ -91,7 +95,24 @@ impl SafetyLockConfig {
     /// Validation is not a step a caller can forget: an invariant checked
     /// only by convention is one [`is_approved`](Self::is_approved) would
     /// eventually answer from unvalidated state.
+    ///
+    /// The one route that deliberately does not come through here is
+    /// [`load_for_revocation`](Self::load_for_revocation), which has to read
+    /// the state this hook refuses in order to repair it.
     pub fn store_in(data_dir: &Path) -> ClapfigBuilder<Self> {
+        Self::coordinates(data_dir)
+            .post_validate(|config: &Self| config.validate().map_err(|err| err.to_string()))
+    }
+
+    /// Where the trust file is and how it is layered — the store without the
+    /// invariant hook.
+    ///
+    /// Private, and the only statement of the file's coordinates:
+    /// [`store_in`](Self::store_in) is this plus post-validation, and
+    /// [`load_for_revocation`](Self::load_for_revocation) is this alone.
+    /// Saying it once is what keeps the validated and recovery routes reading
+    /// the same file.
+    fn coordinates(data_dir: &Path) -> ClapfigBuilder<Self> {
         Clapfig::builder::<Self>()
             .app_name("dodot")
             .file_name(SAFETY_LOCK_FILE_NAME)
@@ -101,7 +122,6 @@ impl SafetyLockConfig {
                 SearchPath::Path(data_dir.to_path_buf()),
             )
             .no_env()
-            .post_validate(|config: &Self| config.validate().map_err(|err| err.to_string()))
     }
 
     /// Load the trust file from `data_dir`, or the empty default when it is
@@ -112,7 +132,43 @@ impl SafetyLockConfig {
     /// trust file Dodot cannot fully read never resolves to a smaller, or
     /// empty, set of approvals (ADR-0001).
     pub fn load_from(data_dir: &Path) -> Result<Self> {
-        Self::store_in(data_dir)
+        Self::load_through(Self::store_in(data_dir), data_dir)
+    }
+
+    /// Load the trust file for **revocation only**, without the duplicate
+    /// check.
+    ///
+    /// `roots forget` is the Spec's narrow recovery from a trust file Dodot
+    /// refuses: "`roots list` surfaces the problem, `roots forget` removes an
+    /// identifiable affected record, and factory `reset` remains the recovery
+    /// route when narrower revocation is not possible." A duplicated approval
+    /// is the only invariant a syntactically valid file can violate, so
+    /// loading through [`load_from`](Self::load_from) would refuse the very
+    /// state revocation exists to repair, and the user's only exit from one
+    /// bad record would be the factory reset that drops every *other* approval
+    /// with it.
+    ///
+    /// Relaxed by that one invariant and nothing else. An unreadable file, a
+    /// malformed document, and an entry that is not a representable
+    /// [`RootIdentity`] all still fail, because those are refused while
+    /// deserializing rather than by the hook this route drops.
+    ///
+    /// What comes back belongs to
+    /// [`forget_root`](super::forget::forget_root) and to nothing else — it
+    /// validates the collection it *leaves*, so the repair is checked before
+    /// the caller writes it. Routing [`decide`](super::check::decide),
+    /// [`approve`](super::check::approve), or
+    /// [`list_roots`](super::list::list_roots) through here would change
+    /// nothing but which call reports the problem: each validates what it is
+    /// given.
+    pub fn load_for_revocation(data_dir: &Path) -> Result<Self> {
+        Self::load_through(Self::coordinates(data_dir), data_dir)
+    }
+
+    /// Run a load and name the trust file in whatever goes wrong, so both
+    /// routes report a failure the same way.
+    fn load_through(store: ClapfigBuilder<Self>, data_dir: &Path) -> Result<Self> {
+        store
             .load()
             .map_err(|err| SafetyLockError::TrustStateUnusable {
                 path: Self::path_in(data_dir),
@@ -347,6 +403,59 @@ mod tests {
 
         // Not merely the wrapper's doing: the builder itself refuses.
         assert!(SafetyLockConfig::store_in(data_dir.path()).load().is_err());
+    }
+
+    /// The revocation route relaxes the duplicate invariant and *only* that
+    /// one, so `roots forget` can reach the state it exists to repair without
+    /// becoming a way to read any other broken file as approval.
+    #[test]
+    fn the_revocation_route_relaxes_the_duplicate_invariant_and_nothing_else() {
+        let data_dir = tempfile::tempdir().unwrap();
+        write_trust_file(
+            data_dir.path(),
+            "[roots]\napproved = [\"/home/alice/dotfiles\", \"/home/alice//dotfiles/\"]\n",
+        );
+
+        // The duplicate — including one reached through a spelling variant —
+        // loads, byte-exact and un-de-duplicated, so revocation can see which
+        // record to remove.
+        let recoverable = SafetyLockConfig::load_for_revocation(data_dir.path()).unwrap();
+        assert_eq!(
+            recoverable.roots.approved,
+            vec![
+                identity("/home/alice/dotfiles"),
+                identity("/home/alice/dotfiles")
+            ]
+        );
+        assert!(
+            recoverable.validate().is_err(),
+            "the route must hand back the unusable state, not quietly repair it"
+        );
+
+        // Everything else still fails: a malformed document, and an entry
+        // that is not a representable identity.
+        for content in [
+            "[roots]\napproved = [\"/home/alice/dotfiles\"",
+            "[roots]\napproved = [\"relative/dotfiles\"]\n",
+            "[roots]\napproved = [\"/home/alice/dotfiles/../other\"]\n",
+            "[roots]\napproved = \"not-a-list\"\n",
+        ] {
+            let data_dir = tempfile::tempdir().unwrap();
+            write_trust_file(data_dir.path(), content);
+
+            assert!(
+                SafetyLockConfig::load_for_revocation(data_dir.path()).is_err(),
+                "the revocation route accepted `{content}`"
+            );
+        }
+
+        // And an absent file is still the empty default, not an error.
+        let empty = tempfile::tempdir().unwrap();
+        assert!(SafetyLockConfig::load_for_revocation(empty.path())
+            .unwrap()
+            .roots
+            .approved
+            .is_empty());
     }
 
     /// Two spellings of one root are a duplicate too — identity
