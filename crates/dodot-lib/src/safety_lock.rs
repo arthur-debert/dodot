@@ -21,10 +21,12 @@
 //! DOTFILES_ROOT ──► environment ─┐
 //!                                ├─► selection ─► ResolvedRoot ─► check ─► TrustDecision
 //! git top-level / cwd ──► files ─┘                     │                        │
-//!                                                      │                        ├─ ExplicitlySelected
-//!                            schema (approved roots, one file)                  ├─ AlreadyApproved
-//!                                                      │                        └─ ApprovalRequired ─► inventory
-//!                                                 list / forget                                          (prompt)
+//!                                                      │           operation ─► authorize ─► GateOutcome
+//!                            schema (approved roots, one file)                       │
+//!                                                      │                             ├─ NotRootSensitive
+//!                                                 list / forget                      ├─ Permitted
+//!                                                                                    └─ ConfirmationRequired
+//!                                                                                         └─ inventory (prompt)
 //! ```
 //!
 //! [`resolve_root`] is the invocation's one act of selection: `DOTFILES_ROOT`,
@@ -44,15 +46,32 @@
 //! Dodot's data directory ([`schema`]), never in the dotfiles repository.
 //! Environment roots are never written there.
 //!
+//! [`authorize`] is the seam a command crosses. [`decide`] answers only what
+//! the trust collection can answer — what standing a root has — and a root's
+//! standing only matters once you know what the command is about to do:
+//! `status` and `up --dry-run` read the same untrusted root that `up` may not
+//! write to. [`RootOperation`] carries that half, declared per command rather
+//! than inferred from which context builder it used (ADR-0002), and the two
+//! compose into one [`GateOutcome`]. An unapproved implicit root gets the
+//! orientation [`inventory`] built and carried out with the answer, so no
+//! approvable outcome can exist for a root Dodot could not describe.
+//!
 //! # Boundaries
 //!
 //! This module is CLI-free by construction: no Clap and no Standout types
 //! appear in any signature, and nothing here reads the process environment,
 //! the current directory, or Git. Those are captured at the process boundary
-//! and injected ([`RootSelectionInput`], [`PathProbe`]). Likewise, persistence
-//! is the caller's: the checking, listing, and forgetting APIs take an
-//! already-loaded [`SafetyLockConfig`] and return typed state changes to
-//! write.
+//! and injected ([`RootSelectionInput`], [`PathProbe`],
+//! [`HostFacts`](crate::gates::HostFacts), [`Fs`](crate::fs::Fs)). Likewise,
+//! persistence is the caller's: the checking, listing, and forgetting APIs
+//! take an already-loaded [`SafetyLockConfig`] and return typed state changes
+//! to write.
+//!
+//! Reading the *root* is different from reading process state, and the
+//! inventory does it: pack discovery and rule matching need the directory. It
+//! stops at routing metadata — configuration and which handler claims which
+//! entry — and never renders, resolves, or reads a candidate file's contents
+//! (Spec, "Non-Goals").
 //!
 //! # Work Stream status
 //!
@@ -60,15 +79,9 @@
 //! fills in [`environment`], the authoritative `DOTFILES_ROOT` path; ACC01-WS03
 //! fills in [`files`] and composes both into [`selection`]; ACC01-WS04 fills in
 //! the trust lifecycle over the loaded collection — [`check`], [`list`], and
-//! [`forget`]. The remaining inventory and scoping entry points carry
-//! documented signatures with `todo!()` bodies; each names the Work Stream
-//! that fills it in. The data model, the schema, root selection, and the
-//! registry lifecycle are complete and tested.
-//!
-//! What WS05 adds on top of [`check`] is the operation policy — which commands
-//! are root-sensitive, and how a read-only or dry-run invocation passes without
-//! establishing trust; [`decide`] answers only the part the collection can
-//! answer.
+//! [`forget`]; ACC01-WS05 adds the [`operation`] policy and the bounded
+//! [`inventory`]. Only [`scope_to_root`] still carries a documented signature
+//! with a `todo!()` body, for WS06.
 //!
 //! Dodot's pre-Safety-Lock root resolution still runs in
 //! [`crate::paths`](crate::paths) and in the CLI: replacing those callers with
@@ -86,6 +99,7 @@ pub mod files;
 pub mod forget;
 pub mod inventory;
 pub mod list;
+pub mod operation;
 pub mod roots;
 pub mod schema;
 pub mod scope;
@@ -104,6 +118,7 @@ pub use inventory::{
     MAX_INVENTORY_PATHS,
 };
 pub use list::{list_roots, TrustedRootEntry, TrustedRootListing};
+pub use operation::{authorize, GateOutcome, RootOperation};
 pub use roots::{ResolvedRoot, RootIdentity, RootSource};
 pub use schema::{
     SafetyLockConfig, TrustedRootsSection, SAFETY_LOCK_FILE_NAME, SAFETY_LOCK_PERSIST_SCOPE,

@@ -109,6 +109,40 @@ pub enum SafetyLockError {
          selection — environment roots are never added to the approved roots"
     )]
     EnvironmentRootNotApprovable { spelling: String },
+
+    /// A `.dodot.toml` under the root could not be loaded or is not valid.
+    ///
+    /// Raised while building the orientation inventory, which is the only
+    /// thing standing between an untrusted root and the confirmation prompt.
+    /// Failing here is therefore what keeps Dodot from asking a user to
+    /// approve a root it cannot describe, and from operating on configuration
+    /// it could not load (Spec, story 14). The offending file is named
+    /// because it is the only thing the user can act on.
+    #[error("cannot load the dotfiles configuration at {}: {reason}", config_file.display())]
+    DotfilesConfigUnusable {
+        /// The `.dodot.toml` that failed — the root's or a pack's.
+        config_file: PathBuf,
+        /// What was wrong with it.
+        reason: String,
+    },
+
+    /// The pack layout under the root could not be read, or its files could
+    /// not be routed to handlers.
+    ///
+    /// Distinct from [`DotfilesConfigUnusable`](Self::DotfilesConfigUnusable):
+    /// the configuration loaded, but the directory it describes cannot be
+    /// walked or classified — an unreadable root, a pack name Dodot refuses,
+    /// two packs colliding on one display name. Fails the same way and for the
+    /// same reason: an inventory that silently omitted what it could not read
+    /// would understate what approving the root allows.
+    #[error("cannot inspect the packs under {}: {reason}", directory.display())]
+    PackRoutingUnusable {
+        /// The directory whose contents could not be read or routed — the
+        /// root itself, or one pack under it.
+        directory: PathBuf,
+        /// What went wrong.
+        reason: String,
+    },
 }
 
 /// Result alias for Safety Lock APIs.
