@@ -137,13 +137,16 @@ pub fn script_supports_targeted_probe(script: &str) -> bool {
         .any(|line| line.trim() == "# dodot shell-init-probe v1")
 }
 
-/// Generate the challenge response branch used by `dodot init-sh`
-/// when it is invoked from a targeted verifier.
+/// Generate the guarded challenge response fragment used by current
+/// init scripts.
 ///
-/// The eval hook's command substitution runs a dodot process before
-/// any generated shell text exists. In probe mode that process emits
-/// only this branch, so the directly launched shell answers and exits
-/// without loading packs or writing activation evidence.
+/// [`generate_init_script`] embeds this fragment at the beginning of
+/// the full script. When a verifier starts a shell with a valid
+/// targeted challenge, the fragment prints the nonce-bound response and
+/// exits before activation evidence, Homebrew setup, profiling, or pack
+/// contributions run; ordinary shells continue into the generated init
+/// body. This helper returns the fragment by itself for callers that
+/// need to inspect or test the probe protocol.
 pub fn generate_init_probe_response(generation: u64) -> String {
     let mut script = String::new();
     emit_init_probe_response(&mut script, generation);
