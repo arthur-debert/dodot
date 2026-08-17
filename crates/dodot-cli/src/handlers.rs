@@ -128,7 +128,9 @@ fn passthrough_root() -> Result<PathBuf, anyhow::Error> {
 /// the post-`up` prompts, which run after dispatch returned and must never
 /// resolve a root of their own (ADR-0002: post-`up` installers reuse the
 /// root authorization of the protected `up` that reached them). Errors when
-/// no gate ran, which the soft-fail prompts turn into a logged skip.
+/// nothing was authorized — no gate ran, or only a dry-run/read-only one
+/// passed through (`up --dry-run` reaches the post-`up` seam but authorized
+/// nothing) — which the soft-fail prompts turn into a logged skip.
 fn authorized_root() -> Result<PathBuf, anyhow::Error> {
     let state = safety::authorized_state()
         .ok_or_else(|| anyhow::anyhow!("no safety gate ran in this process"))?;

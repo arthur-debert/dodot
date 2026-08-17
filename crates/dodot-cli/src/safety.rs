@@ -390,7 +390,6 @@ pub fn state(ctx: &CommandContext) -> Result<&SafetyState, anyhow::Error> {
 pub fn hook(sensitivity: RootSensitivity) -> Hooks {
     Hooks::new().pre_dispatch(move |matches, ctx| {
         let state = gate(sensitivity, get_deepest_matches(matches)).map_err(HookError::from)?;
-        remember_authorized(&state);
         ctx.extensions.insert(state);
         Ok(())
     })
@@ -405,9 +404,7 @@ pub fn hook(sensitivity: RootSensitivity) -> Hooks {
 /// (`main::exit_passthrough_failure`); the caller proceeds only on `Ok`.
 pub fn gate_passthrough(operation: RootOperation) -> Result<SafetyState, Refusal> {
     let facts = ProcessFacts::capture().map_err(refuse)?;
-    let state = gate_operation(facts, operation)?;
-    remember_authorized(&state);
-    Ok(state)
+    gate_operation(facts, operation)
 }
 
 /// Run the gate on a selection captured earlier in this process — no second
@@ -427,28 +424,31 @@ pub fn gate_captured(
     root: ResolvedRoot,
     operation: RootOperation,
 ) -> Result<SafetyState, Refusal> {
-    let state = authorize_resolved(facts, root, operation)?;
-    remember_authorized(&state);
-    Ok(state)
+    authorize_resolved(facts, root, operation)
 }
 
-/// The state whose gate this process already ran, for the post-`up` prompts.
+/// The state whose gate this process already put trust to, for the
+/// post-`up` prompts.
 ///
 /// The install ladder and the cfprefsd prompt fire in `main` after `up`'s
 /// dispatch returns, where the command context — and the [`SafetyState`] the
 /// hook put in it — is gone. They must reuse the root the user just
 /// authorized rather than resolving a second one (ADR-0002: post-`up`
 /// installers reuse the root authorization of the protected `up` that
-/// reached them), so the hook parks a copy here as it runs. `None` means no
-/// gate ran in this process, and the caller skips rather than resolving.
+/// reached them), so the gate parks a copy here — but only when the
+/// operation was a root-sensitive mutation, the one kind whose gate is an
+/// authorization. `None` means nothing was authorized in this process — no
+/// gate ran, or only a dry-run/read-only one passed through — and the
+/// caller skips rather than resolving, so `up --dry-run` on an untrusted
+/// root arms nothing.
 pub fn authorized_state() -> Option<&'static SafetyState> {
     AUTHORIZED.get()
 }
 
 static AUTHORIZED: OnceLock<SafetyState> = OnceLock::new();
 
-/// Park the gated state for [`authorized_state`]. One command dispatches per
-/// process, so first-write-wins is exact, not a race policy.
+/// Park the authorized state for [`authorized_state`]. One command
+/// dispatches per process, so first-write-wins is exact, not a race policy.
 fn remember_authorized(state: &SafetyState) {
     let _ = AUTHORIZED.set(state.clone());
 }
@@ -485,7 +485,8 @@ fn authorize_resolved(
         "safety lock: resolved root",
     );
 
-    if operation.requires_trusted_root() {
+    let requires_trust = operation.requires_trusted_root();
+    if requires_trust {
         // Loaded only for the one kind of operation whose answer depends on
         // it, so an unusable trust file cannot take `status` down with it.
         let config = SafetyLockConfig::load_from(facts.data_dir()).map_err(refuse)?;
@@ -497,10 +498,20 @@ fn authorize_resolved(
         }
     }
 
-    Ok(SafetyState {
+    let state = SafetyState {
         facts,
         root: Some(root),
-    })
+    };
+    // Parked only when the operation actually put trust to the test: the
+    // post-`up` installers reuse this as *authorization*, and a dry-run or
+    // read-only pass through the gate authorized nothing (ADR-0002 — they
+    // reuse the root authorization of the *protected* `up` that reached
+    // them). Recording those too would let `up --dry-run` on an untrusted
+    // root arm mutating post-`up` prompts the gate never approved.
+    if requires_trust {
+        remember_authorized(&state);
+    }
+    Ok(state)
 }
 
 /// Show the root and its orientation inventory, ask, and record the answer.

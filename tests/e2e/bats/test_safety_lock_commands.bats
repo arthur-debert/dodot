@@ -268,3 +268,25 @@ pty_run() {
 
     assert_not_exists "$SAFETY_STATE"
 }
+
+@test "up --dry-run on an untrusted root does not arm the post-up install ladder" {
+    # The dry-run bypass must not leak past the preview: `up --dry-run`
+    # still reaches main's post-`up` seam (it is the `up` subcommand), and
+    # the install ladder there performs root-derived mutations on the
+    # authorization the gate parked. A dry-run's pass through the gate
+    # authorizes nothing, so nothing may be parked — otherwise this exact
+    # invocation would offer to install git filters for a root the user
+    # never approved. The plist file makes the ladder's git-filter rung
+    # applicable, and the PTY gives the ladder the terminal stdin it wants;
+    # the `y` would accept its offer if it ever spoke.
+    mkdir -p "$SAFETY_ROOT/prefs"
+    printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>k</key><string>v</string></dict></plist>\n' \
+        > "$SAFETY_ROOT/prefs/com.example.test.plist"
+
+    pty_run "y
+" "$DODOT_BIN" up --dry-run
+
+    [ "$status" -eq 0 ]
+    assert_output_not_contains "dodot can wire git up"
+    assert_not_exists "$SAFETY_STATE"
+}

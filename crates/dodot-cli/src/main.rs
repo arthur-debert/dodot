@@ -152,7 +152,9 @@ fn main() {
             // Post-up nudges. Both fire only after a successful `up`
             // and are soft (failures land in the debug log, never
             // stderr); each handler's docstring covers what it offers
-            // and when it applies.
+            // and when it applies. `up --dry-run` lands here too, but
+            // its gate authorized nothing, so `authorized_root` inside
+            // each handler turns both into a skip (ADR-0002).
             if subcommand.as_deref() == Some("up") {
                 handlers::maybe_prompt_install_ladder();
                 handlers::maybe_prompt_invalidate_cfprefsd();
