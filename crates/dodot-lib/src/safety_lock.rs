@@ -58,11 +58,17 @@
 //!
 //! ACC01-WS01 establishes this vocabulary and the persisted schema; ACC01-WS02
 //! fills in [`environment`], the authoritative `DOTFILES_ROOT` path; ACC01-WS03
-//! fills in [`files`] and composes both into [`selection`]. The remaining
-//! trust-lifecycle, decision, inventory, and scoping entry points carry
+//! fills in [`files`] and composes both into [`selection`]; ACC01-WS04 fills in
+//! the trust lifecycle over the loaded collection — [`check`], [`list`], and
+//! [`forget`]. The remaining inventory and scoping entry points carry
 //! documented signatures with `todo!()` bodies; each names the Work Stream
-//! that fills it in. The data model, the schema, and root selection are
-//! complete and tested.
+//! that fills it in. The data model, the schema, root selection, and the
+//! registry lifecycle are complete and tested.
+//!
+//! What WS05 adds on top of [`check`] is the operation policy — which commands
+//! are root-sensitive, and how a read-only or dry-run invocation passes without
+//! establishing trust; [`decide`] answers only the part the collection can
+//! answer.
 //!
 //! Dodot's pre-Safety-Lock root resolution still runs in
 //! [`crate::paths`](crate::paths) and in the CLI: replacing those callers with
