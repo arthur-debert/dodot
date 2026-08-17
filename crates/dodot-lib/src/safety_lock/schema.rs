@@ -28,17 +28,22 @@
 //! Environment-selected roots never appear here: `DOTFILES_ROOT` *is* the
 //! deliberate selection, so it is authorized without a record (ADR-0003).
 //!
-//! This module owns the schema, the store's coordinates, and the three ways
-//! to reach the document at them: [`SafetyLockConfig::load_from`], which every
-//! consumer uses and which fails closed;
+//! This module owns the schema, the store's coordinates, and the ways to
+//! reach the document at them: [`SafetyLockConfig::load_from`], which every
+//! read-only consumer uses and which fails closed;
 //! [`SafetyLockConfig::load_for_revocation`], which drops the duplicate check
 //! alone so `roots forget` can repair the one violation a readable file can
-//! carry; and [`SafetyLockConfig::persist_to`], the write.
+//! carry; and [`TrustFileTransaction`], the only route to the write.
 //!
 //! Deciding *whether* to write stays outside: the checking, listing, and
 //! forgetting APIs take an already-loaded [`SafetyLockConfig`] and hand back a
 //! typed state change rather than committing it, so the CLI can record an
-//! approval before starting the mutation it authorizes.
+//! approval before starting the mutation it authorizes. What the transaction
+//! adds is *when* that state is read: a writer re-loads under the
+//! transaction's interprocess lock and applies its semantic change to the
+//! state actually on disk, so two concurrent writers compose instead of the
+//! later one silently persisting the earlier one away (Spec,
+//! "Testing / Verification": concurrent attempts).
 
 use std::path::{Path, PathBuf};
 
@@ -51,6 +56,10 @@ use super::roots::RootIdentity;
 
 /// File name of the trust file inside Dodot's data directory.
 pub const SAFETY_LOCK_FILE_NAME: &str = "safety-lock.toml";
+
+/// File name of the lock file [`TrustFileTransaction`] serializes writers on,
+/// beside the trust file. Holds no state — only the OS advisory lock.
+const SAFETY_LOCK_LOCK_FILE_NAME: &str = "safety-lock.toml.lock";
 
 /// Name of the clapfig persist scope that writes [`SAFETY_LOCK_FILE_NAME`].
 pub const SAFETY_LOCK_PERSIST_SCOPE: &str = "data";
@@ -179,51 +188,6 @@ impl SafetyLockConfig {
             })
     }
 
-    /// Write this collection to the trust file in `data_dir`.
-    ///
-    /// The write half of the coordinates this module states once: the two
-    /// load routes read that one document, and this puts it back. What stays
-    /// the caller's is the *decision* to write — [`approve`](super::check::approve)
-    /// and [`forget_root`](super::forget::forget_root) hand back a state
-    /// rather than committing it, which is what lets the CLI record an
-    /// approval **before** starting the mutation it authorizes (Spec,
-    /// "Risks").
-    ///
-    /// Written whole rather than through clapfig's per-key persist action:
-    /// the document *is* one collection, and clapfig's `Set` carries a string
-    /// value per dotted key, so routing an array of identities through it
-    /// would mean hand-building the TOML anyway.
-    ///
-    /// The replacement is atomic — a sibling temporary file renamed over the
-    /// destination — so an interrupted or failing write leaves the previous
-    /// approvals intact rather than truncating them into a file every later
-    /// load then fails closed on.
-    ///
-    /// Fails when the state cannot be serialized, the data directory cannot
-    /// be created, or the write or rename cannot complete. Every failure
-    /// names the trust file, because that path is what the user can act on.
-    pub fn persist_to(&self, data_dir: &Path) -> Result<()> {
-        let path = Self::path_in(data_dir);
-        let not_writable = |reason: String| SafetyLockError::TrustStateNotWritable {
-            path: path.clone(),
-            reason,
-        };
-
-        let document = toml::to_string(self).map_err(|err| not_writable(err.to_string()))?;
-
-        std::fs::create_dir_all(data_dir).map_err(|err| not_writable(err.to_string()))?;
-
-        // Same directory as the destination so the rename stays within one
-        // filesystem, which is what makes it a replacement rather than a
-        // copy that can fail halfway.
-        let scratch = path.with_extension("toml.new");
-        std::fs::write(&scratch, document).map_err(|err| not_writable(err.to_string()))?;
-        std::fs::rename(&scratch, &path).map_err(|err| {
-            let _ = std::fs::remove_file(&scratch);
-            not_writable(err.to_string())
-        })
-    }
-
     /// Whether `identity` is approved.
     ///
     /// Matching is exact on the canonical native path, so two roots whose
@@ -254,6 +218,135 @@ impl SafetyLockConfig {
                 });
             }
         }
+        Ok(())
+    }
+}
+
+/// An exclusive transaction over the trust file — the only route to a write.
+///
+/// Trust updates are whole-document read/modify/write operations, and two of
+/// them can run at once: an approval prompted in one terminal racing a
+/// `roots forget` in another, or two first-run approvals side by side. The
+/// transaction serializes them with an OS advisory lock on a sibling lock
+/// file ([`SAFETY_LOCK_LOCK_FILE_NAME`]), held from [`begin`](Self::begin)
+/// until the value drops. The discipline a writer follows is: begin, load
+/// **through the transaction** (never reuse a config read before the lock was
+/// held), apply the semantic change, [`persist`](Self::persist). Re-loading
+/// under the lock is what turns "write my whole stale document back" into
+/// "apply my one change to the current state" — without it, an approval
+/// racing a forget could resurrect the forgotten root, and one of two
+/// concurrent approvals could vanish.
+///
+/// Reads outside a transaction stay lock-free: the replacement below is
+/// atomic, so [`SafetyLockConfig::load_from`] always sees a complete document
+/// — one from just before or just after a concurrent write, either of which
+/// is a state the file genuinely held.
+///
+/// The lock file is separate from the trust file because the write replaces
+/// the trust file by rename: a lock held on the replaced inode would guard a
+/// file no longer at the path.
+pub struct TrustFileTransaction {
+    data_dir: PathBuf,
+    /// Held for the transaction's lifetime; dropping the handle releases the
+    /// OS advisory lock.
+    _lock: std::fs::File,
+}
+
+impl TrustFileTransaction {
+    /// Acquire the trust file's writer lock, blocking until any concurrent
+    /// transaction finishes.
+    ///
+    /// Blocking rather than failing: a collision means another Dodot process
+    /// is mid-update on a document that takes microseconds to write, and
+    /// "wait your turn" is the behaviour the Spec's concurrent-attempt
+    /// requirement describes — not a spurious error the user has to retry.
+    ///
+    /// Fails when the data directory cannot be created or the lock file
+    /// cannot be opened or locked, reported as the trust file not being
+    /// writable — which is what that situation is.
+    pub fn begin(data_dir: &Path) -> Result<Self> {
+        let not_writable = |reason: String| SafetyLockError::TrustStateNotWritable {
+            path: SafetyLockConfig::path_in(data_dir),
+            reason,
+        };
+
+        std::fs::create_dir_all(data_dir).map_err(|err| not_writable(err.to_string()))?;
+
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(data_dir.join(SAFETY_LOCK_LOCK_FILE_NAME))
+            .map_err(|err| not_writable(format!("cannot open the writer lock: {err}")))?;
+        lock.lock()
+            .map_err(|err| not_writable(format!("cannot acquire the writer lock: {err}")))?;
+
+        Ok(Self {
+            data_dir: data_dir.to_path_buf(),
+            _lock: lock,
+        })
+    }
+
+    /// [`SafetyLockConfig::load_from`], under the lock — the state a writer's
+    /// semantic change applies to.
+    pub fn load(&self) -> Result<SafetyLockConfig> {
+        SafetyLockConfig::load_from(&self.data_dir)
+    }
+
+    /// [`SafetyLockConfig::load_for_revocation`], under the lock — the same,
+    /// for `roots forget`'s repair route.
+    pub fn load_for_revocation(&self) -> Result<SafetyLockConfig> {
+        SafetyLockConfig::load_for_revocation(&self.data_dir)
+    }
+
+    /// Write `config` to the trust file.
+    ///
+    /// The write half of the coordinates this module states once: the two
+    /// load routes read that one document, and this puts it back. What stays
+    /// the caller's is the *decision* to write — [`approve`](super::check::approve)
+    /// and [`forget_root`](super::forget::forget_root) hand back a state
+    /// rather than committing it, which is what lets the CLI record an
+    /// approval **before** starting the mutation it authorizes (Spec,
+    /// "Risks").
+    ///
+    /// Written whole rather than through clapfig's per-key persist action:
+    /// the document *is* one collection, and clapfig's `Set` carries a string
+    /// value per dotted key, so routing an array of identities through it
+    /// would mean hand-building the TOML anyway.
+    ///
+    /// The replacement is atomic — a uniquely named sibling temporary file
+    /// renamed over the destination — so an interrupted or failing write
+    /// leaves the previous approvals intact rather than truncating them into
+    /// a file every later load then fails closed on. The unique scratch name
+    /// means even a writer outside this lock (a crashed process's leftover, a
+    /// concurrent version that predates the lock) cannot swap its bytes under
+    /// this writer's rename.
+    ///
+    /// Fails when the state cannot be serialized or the write or rename
+    /// cannot complete. Every failure names the trust file, because that path
+    /// is what the user can act on.
+    pub fn persist(&self, config: &SafetyLockConfig) -> Result<()> {
+        let path = SafetyLockConfig::path_in(&self.data_dir);
+        let not_writable = |reason: String| SafetyLockError::TrustStateNotWritable {
+            path: path.clone(),
+            reason,
+        };
+
+        let document = toml::to_string(config).map_err(|err| not_writable(err.to_string()))?;
+
+        // Same directory as the destination so the rename stays within one
+        // filesystem, which is what makes it a replacement rather than a
+        // copy that can fail halfway.
+        let mut scratch = tempfile::Builder::new()
+            .prefix(SAFETY_LOCK_FILE_NAME)
+            .suffix(".new")
+            .tempfile_in(&self.data_dir)
+            .map_err(|err| not_writable(err.to_string()))?;
+        std::io::Write::write_all(scratch.as_file_mut(), document.as_bytes())
+            .map_err(|err| not_writable(err.to_string()))?;
+        scratch
+            .persist(&path)
+            .map_err(|err| not_writable(err.to_string()))?;
         Ok(())
     }
 }
@@ -292,6 +385,13 @@ mod tests {
 
     fn load(data_dir: &Path) -> SafetyLockConfig {
         SafetyLockConfig::load_from(data_dir).unwrap()
+    }
+
+    fn persist(config: &SafetyLockConfig, data_dir: &Path) {
+        TrustFileTransaction::begin(data_dir)
+            .unwrap()
+            .persist(config)
+            .unwrap();
     }
 
     fn write_trust_file(data_dir: &Path, content: &str) {
@@ -529,13 +629,14 @@ mod tests {
             non_unicode_identity(b"\x80dots"),
         ];
 
-        SafetyLockConfig {
-            roots: TrustedRootsSection {
-                approved: approved.clone(),
+        persist(
+            &SafetyLockConfig {
+                roots: TrustedRootsSection {
+                    approved: approved.clone(),
+                },
             },
-        }
-        .persist_to(data_dir.path())
-        .unwrap();
+            data_dir.path(),
+        );
 
         assert_eq!(load(data_dir.path()).roots.approved, approved);
     }
@@ -547,7 +648,7 @@ mod tests {
         let parent = tempfile::tempdir().unwrap();
         let data_dir = parent.path().join("share").join("dodot");
 
-        SafetyLockConfig::default().persist_to(&data_dir).unwrap();
+        persist(&SafetyLockConfig::default(), &data_dir);
 
         assert!(SafetyLockConfig::path_in(&data_dir).is_file());
     }
@@ -557,29 +658,75 @@ mod tests {
     /// later load fails closed on.
     #[test]
     fn a_failed_write_leaves_the_previous_approvals_intact() {
+        use std::os::unix::fs::PermissionsExt;
+
         let data_dir = tempfile::tempdir().unwrap();
         let approved = vec![identity("/home/alice/dotfiles")];
-        SafetyLockConfig {
-            roots: TrustedRootsSection {
-                approved: approved.clone(),
+        persist(
+            &SafetyLockConfig {
+                roots: TrustedRootsSection {
+                    approved: approved.clone(),
+                },
             },
-        }
-        .persist_to(data_dir.path())
-        .unwrap();
+            data_dir.path(),
+        );
 
-        // A directory at the scratch path makes the write fail without ever
-        // touching the destination.
-        std::fs::create_dir(SafetyLockConfig::path_in(data_dir.path()).with_extension("toml.new"))
-            .unwrap();
-
-        let err = SafetyLockConfig::default()
-            .persist_to(data_dir.path())
+        // Acquire the transaction *before* revoking write permission — the
+        // failure under test is the write, not the lock.
+        let transaction = TrustFileTransaction::begin(data_dir.path()).unwrap();
+        let set_mode = |mode: u32| {
+            std::fs::set_permissions(data_dir.path(), std::fs::Permissions::from_mode(mode))
+                .unwrap();
+        };
+        set_mode(0o555);
+        let err = transaction
+            .persist(&SafetyLockConfig::default())
             .unwrap_err();
+        set_mode(0o755);
+
         assert!(
             matches!(err, SafetyLockError::TrustStateNotWritable { .. }),
             "unexpected error: {err}"
         );
         assert_eq!(load(data_dir.path()).roots.approved, approved);
+    }
+
+    /// The Spec's concurrent-attempt requirement at the storage seam: racing
+    /// writers that follow the transaction's discipline — load under the
+    /// lock, change, persist — compose, so every one of their updates
+    /// survives. Without the lock's serialization this is the classic lost
+    /// update; without loading *through* the transaction each writer would
+    /// persist its own stale full document over the others'.
+    #[test]
+    fn racing_transactions_lose_no_update() {
+        let data_dir = tempfile::tempdir().unwrap();
+
+        let writers: Vec<_> = (0..8)
+            .map(|index| {
+                let data_dir = data_dir.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let transaction = TrustFileTransaction::begin(&data_dir).unwrap();
+                    let mut config = transaction.load().unwrap();
+                    config
+                        .roots
+                        .approved
+                        .push(identity(&format!("/home/alice/dots-{index}")));
+                    transaction.persist(&config).unwrap();
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer.join().unwrap();
+        }
+
+        let approved = load(data_dir.path()).roots.approved;
+        assert_eq!(approved.len(), 8);
+        for index in 0..8 {
+            assert!(
+                approved.contains(&identity(&format!("/home/alice/dots-{index}"))),
+                "writer {index}'s update was lost: {approved:?}"
+            );
+        }
     }
 
     /// The file is self-documenting: clapfig generates its template from the

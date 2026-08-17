@@ -27,7 +27,9 @@ use standout::cli::ExitStatus;
 use standout::OutputMode;
 use standout_test::{serial, TestHarness};
 
-use dodot_lib::safety_lock::{RootIdentity, SafetyLockConfig, TrustedRootsSection};
+use dodot_lib::safety_lock::{
+    RootIdentity, SafetyLockConfig, TrustFileTransaction, TrustedRootsSection,
+};
 
 /// A dotfiles root, a home to deploy into, and a data directory — all under
 /// one tempdir, so no test can touch the developer's real deployment.
@@ -85,13 +87,14 @@ impl Sandbox {
     /// Pre-approve `path`, standing in for a user who already answered the
     /// prompt on an earlier run.
     fn approve(&self, path: &Path) {
-        SafetyLockConfig {
-            roots: TrustedRootsSection {
-                approved: vec![RootIdentity::new(path).unwrap()],
-            },
-        }
-        .persist_to(&self.data_dir())
-        .unwrap();
+        TrustFileTransaction::begin(&self.data_dir())
+            .unwrap()
+            .persist(&SafetyLockConfig {
+                roots: TrustedRootsSection {
+                    approved: vec![RootIdentity::new(path).unwrap()],
+                },
+            })
+            .unwrap();
     }
 
     /// Write the trust file verbatim — for states a valid write cannot

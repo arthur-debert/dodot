@@ -24,7 +24,7 @@ use serde::Serialize;
 use crate::commands::MessageResult;
 use crate::safety_lock::{
     forget_root, list_roots, ForgetRequest, PathProbe, SafetyLockConfig, SafetyLockResult,
-    NATIVE_BYTES_TAG,
+    TrustFileTransaction, NATIVE_BYTES_TAG,
 };
 
 /// One approved root as `dodot roots list` presents it.
@@ -88,12 +88,14 @@ pub fn list(data_dir: &Path, probe: &dyn PathProbe) -> SafetyLockResult<RootsLis
 /// approval" and "the trust file is broken" are different answers and the
 /// user needs to be able to tell them apart.
 ///
-/// Loads through
-/// [`load_for_revocation`](SafetyLockConfig::load_for_revocation), which is
-/// what makes this the narrow recovery route for a trust file listing one
+/// Loads through the transaction's
+/// [`load_for_revocation`](TrustFileTransaction::load_for_revocation), which
+/// is what makes this the narrow recovery route for a trust file listing one
 /// root twice — the one invariant violation a readable file can carry, and
 /// one whose only other exit would be the factory reset that drops every
-/// *other* approval with it.
+/// *other* approval with it. The whole read-remove-write runs inside one
+/// [`TrustFileTransaction`], so a revocation racing a concurrent approval
+/// composes with it instead of overwriting it.
 pub fn forget(
     data_dir: &Path,
     current_dir: &Path,
@@ -101,7 +103,8 @@ pub fn forget(
     probe: &dyn PathProbe,
 ) -> SafetyLockResult<MessageResult> {
     let anchored = anchor(current_dir, argument);
-    let config = SafetyLockConfig::load_for_revocation(data_dir)?;
+    let transaction = TrustFileTransaction::begin(data_dir)?;
+    let config = transaction.load_for_revocation()?;
     let change = forget_root(&config, &ForgetRequest::new(anchored), probe)?;
 
     let Some(removed) = change.removed.as_ref() else {
@@ -112,7 +115,7 @@ pub fn forget(
     };
 
     let spelling = removed.spelling();
-    change.config.persist_to(data_dir)?;
+    transaction.persist(&change.config)?;
 
     Ok(MessageResult {
         message: format!("Forgot {spelling}."),
@@ -161,16 +164,17 @@ mod tests {
     use super::*;
 
     fn approved(data_dir: &Path, paths: &[&Path]) {
-        SafetyLockConfig {
-            roots: TrustedRootsSection {
-                approved: paths
-                    .iter()
-                    .map(|path| RootIdentity::new(*path).unwrap())
-                    .collect(),
-            },
-        }
-        .persist_to(data_dir)
-        .unwrap();
+        TrustFileTransaction::begin(data_dir)
+            .unwrap()
+            .persist(&SafetyLockConfig {
+                roots: TrustedRootsSection {
+                    approved: paths
+                        .iter()
+                        .map(|path| RootIdentity::new(*path).unwrap())
+                        .collect(),
+                },
+            })
+            .unwrap();
     }
 
     #[test]

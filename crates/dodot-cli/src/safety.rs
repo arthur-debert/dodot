@@ -46,7 +46,7 @@ use dodot_lib::paths::{Pather, XdgPather};
 use dodot_lib::render;
 use dodot_lib::safety_lock::{
     approve, authorize, resolve_root, GateOutcome, OsPathProbe, ResolvedRoot, RootIdentity,
-    RootOperation, RootSelectionInput, SafetyLockConfig,
+    RootOperation, RootSelectionInput, SafetyLockConfig, SafetyLockError, TrustFileTransaction,
 };
 
 /// How a command relates to the resolved dotfiles root.
@@ -326,7 +326,7 @@ fn gate(
             authorize(operation, &root, &config, &OsFs, &HostFacts::detect()).map_err(refuse)?;
 
         if let GateOutcome::ConfirmationRequired { inventory } = outcome {
-            confirm(&root, &inventory, &config, facts.data_dir())?;
+            confirm(&root, &inventory, facts.data_dir())?;
         }
     }
 
@@ -349,7 +349,6 @@ fn gate(
 fn confirm(
     root: &ResolvedRoot,
     inventory: &dodot_lib::safety_lock::RootInventory,
-    config: &SafetyLockConfig,
     data_dir: &Path,
 ) -> Result<(), HookError> {
     let mut stderr = std::io::stderr().lock();
@@ -394,11 +393,26 @@ fn confirm(
         )));
     }
 
-    let change = approve(config, root).map_err(refuse)?;
+    record_approval(root, data_dir).map_err(refuse)?;
+    tracing::debug!(root = %root.identity().spelling(), "safety lock: approval recorded");
+    Ok(())
+}
+
+/// Record the user's approval of `root` in the trust file, transactionally.
+///
+/// The state is loaded fresh under the trust file's writer lock rather than
+/// reusing what the gate decided from: between the prompt appearing and the
+/// user answering, another Dodot process may have approved or forgotten a
+/// root, and this approval must compose with those writes — never resurrect a
+/// concurrently forgotten root, never overwrite a concurrent approval (Spec,
+/// concurrent attempts). [`approve`] is idempotent, so re-applying it to the
+/// fresh state is correct whatever happened in between.
+fn record_approval(root: &ResolvedRoot, data_dir: &Path) -> Result<(), SafetyLockError> {
+    let transaction = TrustFileTransaction::begin(data_dir)?;
+    let change = approve(&transaction.load()?, root)?;
     if change.added {
-        change.config.persist_to(data_dir).map_err(refuse)?;
+        transaction.persist(&change.config)?;
     }
-    tracing::debug!(root = %change.identity.spelling(), "safety lock: approval recorded");
     Ok(())
 }
 
@@ -476,6 +490,92 @@ mod tests {
                 "{sensitivity:?} was gated"
             );
         }
+    }
+
+    /// An implicit root at `dir`, the way the gate resolves one when neither
+    /// `DOTFILES_ROOT` nor Git selects a root.
+    fn implicit_root(dir: &Path, home: &Path) -> ResolvedRoot {
+        resolve_root(&RootSelectionInput::new(dir, home), &OsPathProbe).unwrap()
+    }
+
+    fn approved_spellings(data_dir: &Path) -> Vec<String> {
+        SafetyLockConfig::load_from(data_dir)
+            .unwrap()
+            .roots
+            .approved
+            .iter()
+            .map(RootIdentity::spelling)
+            .collect()
+    }
+
+    /// The interleaving the transaction exists for: the gate reads trust
+    /// state, the prompt sits open, and meanwhile another process forgets a
+    /// root. Recording the answered approval must apply to the state on disk
+    /// — adding the new root, keeping the survivor, and *not* resurrecting
+    /// the forgotten one from the gate's stale read.
+    #[test]
+    fn recording_an_approval_composes_with_a_concurrent_forget() {
+        let data = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let kept = tempfile::tempdir().unwrap();
+        let forgotten = tempfile::tempdir().unwrap();
+        let answered = tempfile::tempdir().unwrap();
+
+        let kept_root = implicit_root(kept.path(), home.path());
+        let forgotten_root = implicit_root(forgotten.path(), home.path());
+        record_approval(&kept_root, data.path()).unwrap();
+        record_approval(&forgotten_root, data.path()).unwrap();
+
+        // The gate has read [kept, forgotten] and is prompting; another
+        // process revokes one of them before the user answers.
+        dodot_lib::commands::roots::forget(
+            data.path(),
+            Path::new("/"),
+            forgotten_root.identity().as_path().as_os_str(),
+            &OsPathProbe,
+        )
+        .unwrap();
+
+        // The user answers `y` for a third root.
+        let answered_root = implicit_root(answered.path(), home.path());
+        record_approval(&answered_root, data.path()).unwrap();
+
+        let spellings = approved_spellings(data.path());
+        assert!(spellings.contains(&kept_root.identity().spelling()));
+        assert!(spellings.contains(&answered_root.identity().spelling()));
+        assert!(
+            !spellings.contains(&forgotten_root.identity().spelling()),
+            "the stale gate read resurrected a forgotten root: {spellings:?}"
+        );
+    }
+
+    /// Two first-run approvals racing from separate terminals: both must be
+    /// recorded — the Spec's concurrent-attempt requirement, through the
+    /// same `record_approval` the prompt commits with.
+    #[test]
+    fn concurrent_approvals_are_both_recorded() {
+        let data = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let roots: Vec<_> = (0..4).map(|_| tempfile::tempdir().unwrap()).collect();
+
+        let writers: Vec<_> = roots
+            .iter()
+            .map(|root| {
+                let root = implicit_root(root.path(), home.path());
+                let data = data.path().to_path_buf();
+                std::thread::spawn(move || record_approval(&root, &data).unwrap())
+            })
+            .collect();
+        for writer in writers {
+            writer.join().unwrap();
+        }
+
+        let spellings = approved_spellings(data.path());
+        assert_eq!(
+            spellings.len(),
+            roots.len(),
+            "an approval was lost: {spellings:?}"
+        );
     }
 
     /// The taxonomy is only reviewable if it is unambiguous: one row per
