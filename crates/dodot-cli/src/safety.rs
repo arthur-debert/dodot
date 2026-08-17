@@ -23,18 +23,30 @@
 //! missing from it gets no root at all rather than silently escaping the gate
 //! (`docs/adr/0002-guard-root-derived-mutations.md`).
 //!
+//! # The routes Standout does not dispatch
+//!
+//! `main` hands a few commands past Standout — the git-filter passthroughs,
+//! `config`, `init-sh`, the tutorial — so no pre-dispatch hook can gate them.
+//! Each declares its policy in [`PASSTHROUGH_POLICY`], and the ones that do
+//! mutate root-selected state ([`PassthroughPolicy::GatedInRoute`]) cross the
+//! same gate through [`gate_passthrough`]: one policy, one door, whichever
+//! way a command entered the process (ADR-0002).
+//!
 //! # Refusal
 //!
 //! Every refusal — declining, an unrecognized answer, EOF, a non-terminal
 //! channel, unusable configuration, an approval that could not be persisted —
-//! goes out the same door: [`refuse`] returns a Standout [`ExternalFailure`],
-//! which is written verbatim to stderr and exits 1 with stdout untouched. The
-//! interruption case needs no code at all: Dodot installs no `SIGINT`
-//! handler, so Ctrl-C at the prompt kills the process the conventional way
-//! and the shell reports 130, with no trust and no deployment written.
+//! goes out the same door: a [`Refusal`], written verbatim to stderr, exit 1,
+//! stdout untouched. Under Standout dispatch it travels as an
+//! [`ExternalFailure`]; the passthrough routes print it themselves
+//! (`main::exit_passthrough_failure`). The interruption case needs no code at
+//! all: Dodot installs no `SIGINT` handler, so Ctrl-C at the prompt kills the
+//! process the conventional way and the shell reports 130, with no trust and
+//! no deployment written.
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use standout::cli::{get_deepest_matches, CommandContext, ExternalFailure, HookError, Hooks};
 use standout::OutputMode;
@@ -166,6 +178,60 @@ pub const COMMAND_SENSITIVITY: &[(&str, RootSensitivity)] = &[
     ("roots.list", RootSensitivity::Rootless),
     ("roots.forget", RootSensitivity::Rootless),
 ];
+
+/// How a route `main` dispatches itself relates to the dotfiles root.
+///
+/// These commands return before (or instead of) `app.dispatch`, so no
+/// pre-dispatch hook can run for them; declaring them "not hooked" would be
+/// exactly the silent escape ADR-0002 forbids. Instead each declares its
+/// policy in [`PASSTHROUGH_POLICY`], and the matrix test in `main.rs` holds
+/// every command the CLI has to one of the two tables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PassthroughPolicy {
+    /// A stdin/stdout git filter. Its write target is whatever stream git
+    /// connected, never something the root selected — ADR-0002's explicit
+    /// exclusion. Gating it would also corrupt the filtered bytes.
+    Filter,
+    /// Reads the root, writes nothing derived from it.
+    ReadOnly,
+    /// The route runs [`gate_passthrough`] itself, choosing the operation
+    /// from the parsed invocation: `config` gates `set`/`unset` (the actions
+    /// that persist into the selected root) and leaves reads open; the
+    /// tutorial gates its real deployment step and leaves the narrated
+    /// read-only steps open.
+    GatedInRoute,
+    /// Never touches a dotfiles root (help text).
+    Rootless,
+}
+
+/// The reviewable list for the routes Standout does not dispatch — the
+/// passthrough half of the taxonomy [`COMMAND_SENSITIVITY`] starts.
+///
+/// Keys are dotted command paths. A row naming a bare command (`config`,
+/// `tutorial`) covers that command's whole subtree; a dotted row (`plist.clean`)
+/// covers only that leaf, so `template.clean` being a filter says nothing
+/// about `template.install-filter`, which stays in [`COMMAND_SENSITIVITY`].
+pub const PASSTHROUGH_POLICY: &[(&str, PassthroughPolicy)] = &[
+    ("plist.clean", PassthroughPolicy::Filter),
+    ("plist.smudge", PassthroughPolicy::Filter),
+    ("template.clean", PassthroughPolicy::Filter),
+    ("config", PassthroughPolicy::GatedInRoute),
+    ("init-sh", PassthroughPolicy::ReadOnly),
+    ("tutorial", PassthroughPolicy::GatedInRoute),
+    // The help pre-scan in `main` answers before any dispatch; clap's own
+    // synthesized `help` subcommand never runs.
+    ("help", PassthroughPolicy::Rootless),
+];
+
+/// True when the passthrough table classifies `path` — an exact row, or a
+/// bare-command row covering the whole subtree.
+#[cfg(test)]
+pub fn passthrough_policy_covers(path: &str) -> bool {
+    let top = path.split('.').next().unwrap_or(path);
+    PASSTHROUGH_POLICY
+        .iter()
+        .any(|(declared, _)| *declared == path || *declared == top)
+}
 
 /// Everything about the invoking process Safety Lock depends on, read once.
 ///
@@ -317,25 +383,63 @@ pub fn state(ctx: &CommandContext) -> Result<&SafetyState, anyhow::Error> {
 /// looks hooks up by path and has no all-commands seam.
 pub fn hook(sensitivity: RootSensitivity) -> Hooks {
     Hooks::new().pre_dispatch(move |matches, ctx| {
-        let state = gate(sensitivity, get_deepest_matches(matches))?;
+        let state = gate(sensitivity, get_deepest_matches(matches)).map_err(HookError::from)?;
+        remember_authorized(&state);
         ctx.extensions.insert(state);
         Ok(())
     })
 }
 
+/// Run the gate for a route Standout does not dispatch.
+///
+/// The same boundary as [`hook`] — capture, resolve, authorize, confirm —
+/// invoked directly by the passthrough routes that mutate root-selected
+/// state: `config set`/`unset` and the tutorial's real deployment step.
+/// A [`Refusal`] must reach the user exactly as the gate wrote it
+/// (`main::exit_passthrough_failure`); the caller proceeds only on `Ok`.
+pub fn gate_passthrough(operation: RootOperation) -> Result<SafetyState, Refusal> {
+    let facts = ProcessFacts::capture().map_err(refuse)?;
+    let state = gate_operation(facts, operation)?;
+    remember_authorized(&state);
+    Ok(state)
+}
+
+/// The state whose gate this process already ran, for the post-`up` prompts.
+///
+/// The install ladder and the cfprefsd prompt fire in `main` after `up`'s
+/// dispatch returns, where the command context — and the [`SafetyState`] the
+/// hook put in it — is gone. They must reuse the root the user just
+/// authorized rather than resolving a second one (ADR-0002: post-`up`
+/// installers reuse the root authorization of the protected `up` that
+/// reached them), so the hook parks a copy here as it runs. `None` means no
+/// gate ran in this process, and the caller skips rather than resolving.
+pub fn authorized_state() -> Option<&'static SafetyState> {
+    AUTHORIZED.get()
+}
+
+static AUTHORIZED: OnceLock<SafetyState> = OnceLock::new();
+
+/// Park the gated state for [`authorized_state`]. One command dispatches per
+/// process, so first-write-wins is exact, not a race policy.
+fn remember_authorized(state: &SafetyState) {
+    let _ = AUTHORIZED.set(state.clone());
+}
+
 /// Capture, resolve, and authorize — the whole boundary, in order.
-fn gate(
-    sensitivity: RootSensitivity,
-    matches: &clap::ArgMatches,
-) -> Result<SafetyState, HookError> {
+fn gate(sensitivity: RootSensitivity, matches: &clap::ArgMatches) -> Result<SafetyState, Refusal> {
     let facts = ProcessFacts::capture().map_err(refuse)?;
 
     if sensitivity == RootSensitivity::Rootless {
         return Ok(SafetyState { facts, root: None });
     }
 
+    gate_operation(facts, sensitivity.operation(matches))
+}
+
+/// Resolve the root and put `operation` to the gate — the shared tail of
+/// [`gate`] and [`gate_passthrough`].
+fn gate_operation(facts: ProcessFacts, operation: RootOperation) -> Result<SafetyState, Refusal> {
     let root = facts.resolve_root().map_err(refuse)?;
-    let operation = sensitivity.operation(matches);
     tracing::debug!(
         root = %root.identity().spelling(),
         selected_by = %root.source(),
@@ -375,7 +479,7 @@ fn confirm(
     root: &ResolvedRoot,
     inventory: &dodot_lib::safety_lock::RootInventory,
     data_dir: &Path,
-) -> Result<(), HookError> {
+) -> Result<(), Refusal> {
     let mut stderr = std::io::stderr().lock();
     if !std::io::stdin().is_terminal() || !stderr.is_terminal() {
         return Err(refusal(format!(
@@ -441,16 +545,40 @@ fn record_approval(root: &ResolvedRoot, data_dir: &Path) -> Result<(), SafetyLoc
     Ok(())
 }
 
+/// The one refusal shape: status 1, the diagnostic exactly as written to
+/// stderr, and a command that never ran, so stdout stays empty and nothing
+/// was mutated.
+///
+/// Carried as an error value so both doors can deliver it: the pre-dispatch
+/// hook converts it to Standout's [`ExternalFailure`], and the passthrough
+/// routes bubble it (via `anyhow`) to `main`, which prints it verbatim and
+/// exits 1 — never behind an `error:` prefix, because the diagnostic is the
+/// whole message.
+#[derive(Debug)]
+pub struct Refusal(String);
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Refusal {}
+
+impl From<Refusal> for HookError {
+    fn from(refusal: Refusal) -> Self {
+        let failure = ExternalFailure::new(1, refusal.0).expect("1 is a nonzero status");
+        HookError::pre_dispatch_external(failure)
+    }
+}
+
 /// Turn any refusal into the exit-1, verbatim-stderr failure.
-fn refuse(error: impl std::fmt::Display) -> HookError {
+fn refuse(error: impl std::fmt::Display) -> Refusal {
     refusal(error.to_string())
 }
 
-/// The one refusal shape: status 1, the diagnostic exactly as written, and a
-/// handler that never ran, so stdout stays empty and nothing was mutated.
-fn refusal(diagnostic: String) -> HookError {
-    let failure = ExternalFailure::new(1, diagnostic).expect("1 is a nonzero status");
-    HookError::pre_dispatch_external(failure)
+fn refusal(diagnostic: String) -> Refusal {
+    Refusal(diagnostic)
 }
 
 #[cfg(test)]
@@ -604,13 +732,48 @@ mod tests {
     }
 
     /// The taxonomy is only reviewable if it is unambiguous: one row per
-    /// command path.
+    /// command path, across both halves.
     #[test]
     fn every_command_is_declared_exactly_once() {
-        let mut paths: Vec<&str> = COMMAND_SENSITIVITY.iter().map(|(path, _)| *path).collect();
+        let mut paths: Vec<&str> = COMMAND_SENSITIVITY
+            .iter()
+            .map(|(path, _)| *path)
+            .chain(PASSTHROUGH_POLICY.iter().map(|(path, _)| *path))
+            .collect();
         paths.sort_unstable();
         let mut unique = paths.clone();
         unique.dedup();
         assert_eq!(paths, unique, "a command path is declared twice");
+    }
+
+    /// A bare-command row covers its subtree; a dotted row covers only its
+    /// leaf. `template` is the case that keeps this honest: its `clean` leaf
+    /// is a filter passthrough while `install-filter` is a gated dispatch,
+    /// and a subtree reading of the dotted row would silently exempt the
+    /// gated half.
+    #[test]
+    fn passthrough_coverage_distinguishes_leaf_rows_from_subtree_rows() {
+        assert!(passthrough_policy_covers("plist.clean"));
+        assert!(passthrough_policy_covers("template.clean"));
+        assert!(passthrough_policy_covers("config"));
+        assert!(passthrough_policy_covers("config.set"));
+        assert!(passthrough_policy_covers("tutorial"));
+
+        assert!(!passthrough_policy_covers("template.install-filter"));
+        assert!(!passthrough_policy_covers("template"));
+        assert!(!passthrough_policy_covers("plist"));
+        assert!(!passthrough_policy_covers("up"));
+    }
+
+    /// A refusal must cross `main`'s passthrough error handling as itself —
+    /// downcastable from the `anyhow` chain — or the gate's diagnostic would
+    /// pick up an `error:` prefix on one door and not the other.
+    #[test]
+    fn a_refusal_survives_the_anyhow_hop_intact() {
+        let err: anyhow::Error = refusal("dodot has not been approved for /x.".into()).into();
+        let refused = err
+            .downcast_ref::<Refusal>()
+            .expect("the refusal type was lost in conversion");
+        assert_eq!(refused.to_string(), "dodot has not been approved for /x.");
     }
 }

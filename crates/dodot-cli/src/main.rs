@@ -111,8 +111,7 @@ fn main() {
             return;
         }
         if let Err(e) = handlers::config_passthrough(sub_matches) {
-            eprintln!("error: {e}");
-            std::process::exit(1);
+            exit_passthrough_failure(e);
         }
         return;
     }
@@ -137,8 +136,7 @@ fn main() {
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
         if let Err(e) = tutorial::run(opts, &mut handle) {
-            eprintln!("error: {e}");
-            std::process::exit(1);
+            exit_passthrough_failure(e);
         }
         return;
     }
@@ -202,6 +200,20 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// Report a passthrough route's failure on stderr and exit 1.
+///
+/// A Safety Lock [`safety::Refusal`] is printed exactly as the gate wrote it
+/// — its diagnostic is the whole message, the same shape a refusal has under
+/// Standout dispatch — while any other error keeps the conventional
+/// `error:` prefix.
+fn exit_passthrough_failure(e: anyhow::Error) -> ! {
+    match e.downcast_ref::<safety::Refusal>() {
+        Some(refusal) => eprintln!("{refusal}"),
+        None => eprintln!("error: {e}"),
+    }
+    std::process::exit(1);
 }
 
 /// Templates shared with `dodot-lib` (via its `render` module). The
@@ -436,7 +448,23 @@ fn build_app() -> App {
         builder = builder.hooks(path, safety::hook(*sensitivity));
     }
 
-    builder.build().expect("app build")
+    let app = builder.build().expect("app build");
+
+    // The two halves of the taxonomy must stay disjoint: a passthrough row
+    // for a path that is also hooked would be dead policy pretending to be
+    // the live one. The matrix test walks the whole command tree; this
+    // registration-time check catches the overlap even in a build whose
+    // tests were not run.
+    if cfg!(debug_assertions) {
+        for (path, _) in safety::PASSTHROUGH_POLICY {
+            assert!(
+                app.get_hooks(path).is_none(),
+                "`{path}` is declared in both COMMAND_SENSITIVITY and PASSTHROUGH_POLICY"
+            );
+        }
+    }
+
+    app
 }
 
 fn build_clap_command() -> ClapCommand {
@@ -1014,51 +1042,56 @@ fn build_clap_command() -> ClapCommand {
 mod tests {
     use super::pack_status_width;
 
-    /// Commands `main` handles itself, before or instead of
-    /// `app.dispatch` — no pre-dispatch hook can run for them, so they are
-    /// deliberately outside the taxonomy. `config`'s root-persisting actions
-    /// and the tutorial's real deployment step are the remaining gate holes;
-    /// ACC01-WS08 owns closing them.
-    const PASSTHROUGH_COMMANDS: &[&str] =
-        &["plist", "template", "config", "init-sh", "tutorial", "help"];
-
-    /// Every command Standout dispatches must declare what it does to the
-    /// dotfiles root.
-    ///
-    /// Undeclared means unhooked, which means the handler gets no resolved
-    /// root and fails at its first step. That is the intended failure — a new
-    /// mutating command must not be able to reach the datastore by inheriting
-    /// "not gated" from whichever context helper it called
-    /// (`docs/adr/0002-guard-root-derived-mutations.md`) — but it should be
-    /// caught here rather than by a user.
-    #[test]
-    fn every_dispatched_command_declares_its_root_sensitivity() {
-        let app = super::build_app();
-
+    /// Every leaf command the CLI has, as dotted dispatch paths — the rows
+    /// the command-policy matrix must classify.
+    fn every_leaf_path() -> Vec<String> {
+        let mut leaves = Vec::new();
         for command in super::build_clap_command().get_subcommands() {
             let name = command.get_name();
-            if PASSTHROUGH_COMMANDS.contains(&name) {
-                continue;
-            }
-
-            let mut leaves: Vec<String> = command
-                .get_subcommands()
-                .map(|sub| format!("{name}.{}", sub.get_name()))
-                .collect();
+            leaves.extend(
+                command
+                    .get_subcommands()
+                    .map(|sub| format!("{name}.{}", sub.get_name())),
+            );
             // A grouping command that insists on a subcommand (`dodot
             // roots`) never dispatches on its own; one that does not
             // (`dodot probe`) has a bare form to classify too.
             if !command.is_subcommand_required_set() {
                 leaves.push(name.to_string());
             }
+        }
+        leaves
+    }
 
-            for path in leaves {
-                assert!(
-                    app.get_hooks(&path).is_some(),
-                    "`{path}` is not declared in safety::COMMAND_SENSITIVITY, so no \
-                     dotfiles root is resolved for it"
-                );
-            }
+    /// The command-policy matrix: every command the CLI has carries exactly
+    /// one explicit root-sensitivity classification.
+    ///
+    /// A dispatched command must have a row in
+    /// `safety::COMMAND_SENSITIVITY` — undeclared means unhooked, which
+    /// means the handler gets no resolved root and fails at its first step.
+    /// A route `main` dispatches itself must have a row in
+    /// `safety::PASSTHROUGH_POLICY` — there is no hook to fail loudly for
+    /// it, so this test is what keeps a new passthrough from quietly
+    /// escaping the gate. Either way, a new command cannot inherit "not
+    /// gated" from whichever helper it called
+    /// (`docs/adr/0002-guard-root-derived-mutations.md`); it fails here
+    /// rather than in front of a user.
+    #[test]
+    fn every_command_carries_exactly_one_root_sensitivity_classification() {
+        let app = super::build_app();
+
+        for path in every_leaf_path() {
+            let hooked = app.get_hooks(&path).is_some();
+            let passthrough = crate::safety::passthrough_policy_covers(&path);
+            assert!(
+                hooked || passthrough,
+                "`{path}` is in neither safety::COMMAND_SENSITIVITY nor \
+                 safety::PASSTHROUGH_POLICY — classify it before it ships"
+            );
+            assert!(
+                !(hooked && passthrough),
+                "`{path}` is classified in both tables; one of them is dead policy"
+            );
         }
     }
 
@@ -1068,7 +1101,19 @@ mod tests {
     fn every_declared_command_is_one_the_cli_has() {
         let command = super::build_clap_command();
 
-        for (path, _) in crate::safety::COMMAND_SENSITIVITY {
+        let declared = crate::safety::COMMAND_SENSITIVITY
+            .iter()
+            .map(|(path, _)| *path)
+            .chain(
+                crate::safety::PASSTHROUGH_POLICY
+                    .iter()
+                    .map(|(path, _)| *path),
+            )
+            // `help` is clap's synthesized subcommand plus main's own
+            // pre-scan; neither appears in the unbuilt command tree.
+            .filter(|path| *path != "help");
+
+        for path in declared {
             let mut segments = path.split('.');
             let top = segments.next().expect("a path has at least one segment");
             let found = command.find_subcommand(top);

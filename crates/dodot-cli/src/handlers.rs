@@ -103,22 +103,34 @@ fn pack_filter(matches: &clap::ArgMatches) -> Option<Vec<String>> {
         .map(|vals| vals.cloned().collect())
 }
 
-/// Resolve the dotfiles root for a surface Standout does not dispatch.
+/// Resolve the dotfiles root for a passthrough surface that never mutates it.
 ///
-/// The passthrough commands (`config`, `init-sh`, `template clean`) and the
-/// post-`up` prompts return before or after `app.dispatch`, so no
+/// `init-sh` and `template clean` return before `app.dispatch`, so no
 /// pre-dispatch hook ever runs for them and there is no injected
 /// [`safety::SafetyState`] to read. They go through the same capture and the
 /// same [`resolve_root`](dodot_lib::safety_lock::resolve_root) as the gate so
 /// there is still exactly one root-selection policy — what they do not get is
-/// the gate itself. That is deliberate for `config` and `init-sh`, which are
-/// read-only, and is the remaining hole ACC01-WS08 closes for the config
-/// actions that persist into the selected root.
+/// the gate itself, which is deliberate: both are classified ungated in
+/// [`safety::PASSTHROUGH_POLICY`] (`init-sh` reads the root; `template clean`
+/// is a stdin/stdout filter, ADR-0002's explicit exclusion). A passthrough
+/// that *does* mutate root-selected state must call
+/// [`safety::gate_passthrough`] instead, the way `config_passthrough` does.
 fn passthrough_root() -> Result<PathBuf, anyhow::Error> {
     Ok(safety::ProcessFacts::capture()?
         .resolve_root()?
         .as_path()
         .to_path_buf())
+}
+
+/// The root the safety gate authorized earlier in this same process — for
+/// the post-`up` prompts, which run after dispatch returned and must never
+/// resolve a root of their own (ADR-0002: post-`up` installers reuse the
+/// root authorization of the protected `up` that reached them). Errors when
+/// no gate ran, which the soft-fail prompts turn into a logged skip.
+fn authorized_root() -> Result<PathBuf, anyhow::Error> {
+    let state = safety::authorized_state()
+        .ok_or_else(|| anyhow::anyhow!("no safety gate ran in this process"))?;
+    Ok(state.root()?.as_path().to_path_buf())
 }
 
 // ── Command handlers ────────────────────────────────────────────
@@ -580,9 +592,23 @@ pub(crate) fn config_command() -> clapfig::ConfigCommand {
 
 /// `dodot config` — delegates to clapfig's config subcommands.
 /// Uses `handle_to_string` (clapfig 0.16) for programmatic output.
+///
+/// The only persist scope below is `local` — the resolved dotfiles root — so
+/// `set` and `unset` are root-persisted mutations and cross the central gate
+/// before clapfig touches anything (ADR-0002). Reads (`list`, `get`) and
+/// generation (`gen`, `schema`) stay available on an untrusted root: they
+/// write nothing the root selected, and reading configuration is part of how
+/// a user decides whether to trust a root at all.
 pub fn config_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Error> {
-    let dotfiles_root = passthrough_root()?;
     let action = config_command().parse(matches)?;
+    let operation = match &action {
+        clapfig::ConfigAction::Set { .. } | clapfig::ConfigAction::Unset { .. } => {
+            dodot_lib::safety_lock::RootOperation::RootSensitiveMutation
+        }
+        _ => dodot_lib::safety_lock::RootOperation::ReadOnly,
+    };
+    let state = safety::gate_passthrough(operation)?;
+    let dotfiles_root = state.root()?.as_path().to_path_buf();
 
     let output = clapfig::Clapfig::builder::<dodot_lib::config::DodotConfig>()
         .app_name("dodot")
@@ -814,7 +840,8 @@ fn try_prompt_install_ladder() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    let dotfiles_root = passthrough_root()?;
+    // The root the user just authorized for `up` — never a second resolution.
+    let dotfiles_root = authorized_root()?;
     let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
 
     // Determine applicability per rung. Each rung is considered iff
@@ -1064,7 +1091,8 @@ fn try_prompt_invalidate_cfprefsd() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    let dotfiles_root = passthrough_root()?;
+    // The root the user just authorized for `up` — never a second resolution.
+    let dotfiles_root = authorized_root()?;
     let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
 
     if !dodot_lib::probe::cfprefsd_marker_exists(ctx.fs.as_ref(), ctx.paths.as_ref()) {

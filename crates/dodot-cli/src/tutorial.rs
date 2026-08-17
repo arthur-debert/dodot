@@ -228,6 +228,14 @@ pub struct TutorialEnv {
     /// Where the dotfiles root came from (for the check_root step
     /// template) — `"DOTFILES_ROOT env var"` / `"git toplevel"` / etc.
     pub root_origin: String,
+    /// The Safety Lock gate the real deployment step crosses before it
+    /// mutates anything — the tutorial's real `up` is in ADR-0002's
+    /// protected set, and it goes through the same central gate every
+    /// dispatched mutation does rather than a check of its own. Production
+    /// wires [`production_deployment_gate`]; tests stub it, the same seam
+    /// discipline as [`Prompts`]. The narrated read-only steps and the
+    /// dry-run preview never call it.
+    pub deployment_gate: fn() -> Result<()>,
 }
 
 impl TutorialEnv {
@@ -264,6 +272,7 @@ impl TutorialEnv {
             shell_env: ShellEnv::from_process(),
             probe_policy: ProbePolicy::production(),
             root_origin: origin,
+            deployment_gate: production_deployment_gate,
         })
     }
 
@@ -693,6 +702,10 @@ fn step_real_up(
         .chosen_pack
         .clone()
         .ok_or_else(|| anyhow!("no pack chosen"))?;
+    // The step that mutates crosses the central gate first — an untrusted
+    // implicit root is confirmed (or refused) here, exactly as a standalone
+    // `dodot up` would be, and a refusal aborts before anything deploys.
+    (env.deployment_gate)()?;
     let up_out = render_dodot_up(env, &pack, false, opts.mode)?;
     ctx.up_output = Some(up_out);
     let new_status = render_dodot_status(env, &pack, opts.mode)?;
@@ -748,8 +761,8 @@ fn build_initial_ctx(env: &TutorialEnv) -> Result<TutorialCtx> {
 /// [`resolve_root`](dodot_lib::safety_lock::resolve_root) as the gate, so the
 /// root it shows in `check_root` is the root every other command would pick
 /// and the provenance it names is the one Safety Lock's own diagnostics use.
-///
-/// The tutorial's real deployment step is not yet gated; ACC01-WS08 owns that.
+/// The gate itself runs later, at the real deployment step
+/// ([`production_deployment_gate`]) — everything before it only reads.
 fn discover_root_with_origin() -> Result<(PathBuf, String)> {
     let root = crate::safety::ProcessFacts::capture()
         .and_then(|facts| facts.resolve_root())
@@ -758,6 +771,17 @@ fn discover_root_with_origin() -> Result<(PathBuf, String)> {
         root.as_path().to_path_buf(),
         root.source().label().to_string(),
     ))
+}
+
+/// Cross Safety Lock's central gate for the tutorial's one real mutation.
+///
+/// The same [`gate_passthrough`](crate::safety::gate_passthrough) `config
+/// set` uses: capture, resolve, authorize, and — for an untrusted implicit
+/// root — the confirmation prompt on stderr. A refusal surfaces as the
+/// gate's own diagnostic, which `main` prints verbatim before exiting 1.
+fn production_deployment_gate() -> Result<()> {
+    crate::safety::gate_passthrough(dodot_lib::safety_lock::RootOperation::RootSensitiveMutation)?;
+    Ok(())
 }
 
 fn render_dodot_status(env: &TutorialEnv, pack: &str, mode: OutputMode) -> Result<String> {
@@ -863,6 +887,12 @@ mod tests {
             shell_env,
             probe_policy: ProbePolicy::Never,
             root_origin: "test fixture".into(),
+            // An open gate: these tests drive the flow, not the process
+            // boundary. The gate's own behaviour is proven where a real
+            // process, terminal, and exit status exist (the Bats suite);
+            // the refusal seam is exercised by
+            // `a_refused_deployment_gate_aborts_before_anything_deploys`.
+            deployment_gate: || Ok(()),
         }
     }
 
@@ -939,6 +969,55 @@ mod tests {
             "expected vim/vimrc to be a symlink at {}",
             user_target.display()
         );
+    }
+
+    /// The real deployment step consults the gate before it mutates: a
+    /// refusal aborts the tutorial with the gate's own diagnostic and
+    /// nothing deployed — the same contract a refused standalone `up` has.
+    /// The read-only steps and the dry-run preview before it must all have
+    /// run without the gate answering for them (the flow reaches `real_up`
+    /// even though the gate would refuse).
+    #[test]
+    fn a_refused_deployment_gate_aborts_before_anything_deploys() {
+        let temp = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible\n")
+            .done()
+            .build();
+        let mut env = env_from(&temp);
+        env.deployment_gate = || Err(anyhow!("dodot has not been approved for this root"));
+
+        let prompts = ScriptedPrompts::new([
+            ScriptedAnswer::Confirm(true), // intro: ready?
+            ScriptedAnswer::Confirm(true), // check_root: is this your repo?
+            ScriptedAnswer::Choice(0),     // pick_pack: vim
+            ScriptedAnswer::Enter,         // show_status
+            ScriptedAnswer::Enter,         // annotate_status
+            ScriptedAnswer::Confirm(true), // concept_targets: looks right?
+            ScriptedAnswer::Confirm(true), // dry_run: apply for real?
+        ]);
+
+        let mut buf: Vec<u8> = Vec::new();
+        let err = run_with_prompts(&env, opts_text(), &prompts, &mut buf)
+            .expect_err("a refused gate must abort the tutorial");
+
+        assert!(
+            err.to_string().contains("has not been approved"),
+            "the gate's diagnostic was rewritten: {err}"
+        );
+        // The dry-run preview ran (it needs no trust)…
+        let out = String::from_utf8(buf).unwrap();
+        assert!(
+            out.contains("Step 6 — dry run") || out.contains("dry run"),
+            "the flow never reached the dry-run step: {out}"
+        );
+        // …but the refused real step deployed nothing.
+        let user_target = temp.config_home.join("vim").join("vimrc");
+        assert!(
+            !temp.fs.exists(&user_target),
+            "a refused gate deployed anyway"
+        );
+        assert_eq!(prompts.remaining(), 0, "the refusal fired before real_up");
     }
 
     /// Quitting at the intro should not deploy anything and should
