@@ -122,7 +122,7 @@ pub use operation::{authorize, GateOutcome, RootOperation};
 pub use roots::{ResolvedRoot, RootIdentity, RootSource};
 pub use schema::{
     SafetyLockConfig, TrustFileTransaction, TrustedRootsSection, SAFETY_LOCK_FILE_NAME,
-    SAFETY_LOCK_PERSIST_SCOPE,
+    SAFETY_LOCK_LOCK_FILE_NAME, SAFETY_LOCK_PERSIST_SCOPE,
 };
 pub use scope::{scope_to_root, MutationScope, OutOfRootReason, OutOfRootTarget, ScopeOutcome};
 pub use selection::{resolve_root, RootSelectionInput};

@@ -3,6 +3,10 @@
 use crate::commands;
 use crate::fs::Fs;
 use crate::paths::Pather;
+use crate::safety_lock::{
+    RootIdentity, SafetyLockConfig, TrustFileTransaction, SAFETY_LOCK_FILE_NAME,
+    SAFETY_LOCK_LOCK_FILE_NAME,
+};
 use crate::testing::TempEnvironment;
 
 use super::support::make_ctx;
@@ -45,9 +49,17 @@ fn reset_removes_everything_under_data_dir() {
 
     let data = env.paths.data_dir();
     assert!(env.fs.is_dir(data), "data dir itself is kept");
-    assert!(
-        env.fs.read_dir(data).unwrap().is_empty(),
-        "data dir must be empty after reset"
+    let leftovers: Vec<String> = env
+        .fs
+        .read_dir(data)
+        .unwrap()
+        .into_iter()
+        .map(|entry| entry.name)
+        .collect();
+    assert_eq!(
+        leftovers,
+        vec![SAFETY_LOCK_LOCK_FILE_NAME.to_string()],
+        "after reset the data dir holds only the trust writer lock"
     );
     assert!(result.message.contains("Run `dodot up` to redeploy"));
     // read_dir sorts by name, so details are deterministic.
@@ -127,6 +139,114 @@ fn reset_with_no_state_reports_nothing_to_do() {
 
     assert!(result.message.starts_with("Nothing to reset"));
     assert!(result.details.is_empty());
+}
+
+/// The trust writer lock file survives reset: unlinking it while a
+/// writer holds it would split the lock across two inodes, letting two
+/// "exclusive" writers run at once. The trust FILE itself is still
+/// swept, and the sweep report never names the lock file.
+#[test]
+fn reset_preserves_the_writer_lock_file() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    seed_data_dir(&env);
+    let data = env.paths.data_dir().to_path_buf();
+    // A prior transaction leaves both the trust file and the lock file.
+    let transaction = TrustFileTransaction::begin(&data).unwrap();
+    let mut config = transaction.load().unwrap();
+    config
+        .roots
+        .approved
+        .push(RootIdentity::new("/home/alice/dots").unwrap());
+    transaction.persist(&config).unwrap();
+    drop(transaction);
+    let ctx = make_ctx(&env);
+
+    let result = commands::reset::reset(&ctx).unwrap();
+
+    assert!(
+        env.fs.exists(&data.join(SAFETY_LOCK_LOCK_FILE_NAME)),
+        "the writer lock file must survive reset"
+    );
+    assert!(
+        !env.fs.exists(&data.join(SAFETY_LOCK_FILE_NAME)),
+        "the trust file itself is dodot state and must be swept"
+    );
+    assert!(
+        result
+            .details
+            .iter()
+            .all(|d| !d.contains(SAFETY_LOCK_LOCK_FILE_NAME)),
+        "the sweep report must not name the lock file: {:?}",
+        result.details
+    );
+}
+
+/// The interleaving the writer lock exists for: a transaction is
+/// mid-flight when reset runs. Reset must wait for it, sweep whatever
+/// it persisted, and leave a subsequent writer applying to the empty
+/// post-reset state — a pre-reset approval can never be resurrected.
+#[test]
+fn reset_waits_for_an_active_transaction_and_clears_its_write() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    seed_data_dir(&env);
+    let data = env.paths.data_dir().to_path_buf();
+
+    // Active transaction: lock held, pre-reset document loaded.
+    let transaction = TrustFileTransaction::begin(&data).unwrap();
+    let mut config = transaction.load().unwrap();
+    config
+        .roots
+        .approved
+        .push(RootIdentity::new("/home/alice/dots").unwrap());
+
+    let ctx = make_ctx(&env);
+    let reset_thread = std::thread::spawn(move || commands::reset::reset(&ctx));
+
+    // While the transaction holds the lock, reset must not have swept.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(
+        env.fs.is_dir(&data.join("packs")),
+        "reset must block on the active transaction"
+    );
+
+    transaction.persist(&config).unwrap();
+    drop(transaction);
+    reset_thread.join().unwrap().unwrap();
+
+    assert!(
+        !env.fs.exists(&data.join(SAFETY_LOCK_FILE_NAME)),
+        "the approval persisted before reset must be swept with everything else"
+    );
+
+    // A subsequent writer sees the empty post-reset state, not a
+    // resurrected pre-reset document.
+    let transaction = TrustFileTransaction::begin(&data).unwrap();
+    let mut config = transaction.load().unwrap();
+    assert!(
+        config.roots.approved.is_empty(),
+        "post-reset state must start empty"
+    );
+    config
+        .roots
+        .approved
+        .push(RootIdentity::new("/home/alice/new-dots").unwrap());
+    transaction.persist(&config).unwrap();
+    drop(transaction);
+
+    let final_state = SafetyLockConfig::load_from(&data).unwrap();
+    assert_eq!(
+        final_state.roots.approved,
+        vec![RootIdentity::new("/home/alice/new-dots").unwrap()],
+        "only the post-reset approval may exist"
+    );
 }
 
 /// A top-level symlink in the data dir is removed as a link — reset

@@ -59,7 +59,12 @@ pub const SAFETY_LOCK_FILE_NAME: &str = "safety-lock.toml";
 
 /// File name of the lock file [`TrustFileTransaction`] serializes writers on,
 /// beside the trust file. Holds no state — only the OS advisory lock.
-const SAFETY_LOCK_LOCK_FILE_NAME: &str = "safety-lock.toml.lock";
+///
+/// This path must be STABLE: nothing may unlink it (`reset`'s sweep skips it
+/// by this name). Unlinking a held lock file splits the lock — the holder
+/// keeps the old inode while the next writer creates and locks a fresh one at
+/// the same path, and both then believe they are exclusive.
+pub const SAFETY_LOCK_LOCK_FILE_NAME: &str = "safety-lock.toml.lock";
 
 /// Name of the clapfig persist scope that writes [`SAFETY_LOCK_FILE_NAME`].
 pub const SAFETY_LOCK_PERSIST_SCOPE: &str = "data";
@@ -245,6 +250,13 @@ impl SafetyLockConfig {
 /// The lock file is separate from the trust file because the write replaces
 /// the trust file by rename: a lock held on the replaced inode would guard a
 /// file no longer at the path.
+///
+/// `reset` participates in the same serialization: it takes a transaction
+/// before removing the trust file, so an in-flight approval either persists
+/// before the wipe (and is wiped with everything else) or begins after it
+/// (and applies to the empty post-reset state) — never resurrects a
+/// pre-reset document. The lock file itself survives `reset` (see
+/// [`SAFETY_LOCK_LOCK_FILE_NAME`]).
 pub struct TrustFileTransaction {
     data_dir: PathBuf,
     /// Held for the transaction's lifetime; dropping the handle releases the
