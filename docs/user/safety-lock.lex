@@ -44,7 +44,7 @@ dodot resolves which directory is your dotfiles root by checking `$DOTFILES_ROOT
     - `dodot roots list` — every approved root and whether it still exists.
     - `dodot roots forget <path>` — revoke one; the next mutating command from that root asks again.
 
-    See [./commands/roots.lex]. Approvals are keyed to the canonical path: moving a root means the new location is unapproved (and the old approval is inert — forget it at your leisure). Factory `dodot reset` removes the approvals file along with the rest of dodot's state, even when the file is damaged beyond parsing.
+    See [./commands/roots.lex]. Approvals are keyed to the canonical path: moving a root means the new location is unapproved (and the old approval is inert — forget it at your leisure). Factory `dodot reset` removes the approvals file along with the rest of dodot's state, even when the file is damaged beyond parsing. After reset, the next root-sensitive mutation on each implicitly discovered root asks again.
 
 5. Two roots, one machine
 

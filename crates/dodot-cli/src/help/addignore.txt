@@ -26,6 +26,13 @@ Idempotent — safe to run repeatedly. Remove the marker file by hand
   [desc]To skip a [item]pattern[/item] within an otherwise-deployed pack (e.g. swap
   files, README), use [item][pack] ignore[/item] in [item].dodot.toml[/item] instead.[/desc]
 
+[header]SAFETY LOCK[/header]
+  [desc][item]addignore[/item] writes inside the selected root, so its first use on an
+  implicitly discovered, unapproved root asks for approval before creating the
+  marker. A non-interactive invocation refuses. For automation, set a valid
+  [item]DOTFILES_ROOT[/item] explicitly. Read-only [item]list[/item] / [item]status[/item] remain
+  available without approval. Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot list[/item]    [desc]Confirm the directory no longer appears[/desc]
   [item]dodot config[/item]  [desc]Inspect or adjust [item][pack] ignore[/item] patterns[/desc]

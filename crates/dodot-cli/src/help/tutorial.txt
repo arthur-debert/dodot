@@ -41,6 +41,15 @@ re-running [item]dodot tutorial[/item] offers to resume where you left off.[/des
   [desc]Ctrl-C at any prompt exits cleanly. Your saved position is kept
   so you can resume on the next run.[/desc]
 
+[header]SAFETY LOCK[/header]
+  [desc]The tutorial can save progress and can offer [item]install --write[/item] before
+  deployment; those changes do not derive their targets from the dotfiles root.
+  Immediately before the real [item]up[/item] — the first root-sensitive mutation — an
+  implicitly discovered, unapproved root asks for approval. A non-interactive
+  invocation refuses. For automation, set a valid [item]DOTFILES_ROOT[/item]
+  explicitly. The dry-run preview bypasses the gate and records no approval.
+  Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot status[/item]                       [desc]Inspect a pack the way the tutorial does[/desc]
   [item]docs/user/getting-started.lex[/item]    [desc]The same content as a written guide[/desc]

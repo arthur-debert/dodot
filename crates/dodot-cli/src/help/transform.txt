@@ -34,6 +34,14 @@ file with its divergence state ([item]synced[/item], [item]input_changed[/item],
   dodot transform check              [dim]# apply it[/dim]
   dodot transform install-hook       [dim]# run --strict on every commit[/dim][/example]
 
+[header]SAFETY LOCK[/header]
+  [desc][item]transform check[/item] and [item]transform install-hook[/item] can write inside the
+  selected root, so their first mutating use on an implicitly discovered,
+  unapproved root asks for approval; a non-interactive invocation refuses. For
+  automation, set a valid [item]DOTFILES_ROOT[/item] explicitly. [item]check --dry-run[/item]
+  and [item]status[/item] are read-only, so they bypass the gate and record no approval.
+  Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot refresh[/item]                     [desc]Make git notice deployed-side edits[/desc]
   [item]dodot template[/item]                    [desc]The clean filter that shows the merged view in git diff[/desc]

@@ -27,6 +27,13 @@ the source files in your pack stay exactly where they were.[/desc]
   changes belong to your system, not to dodot. [item]down[/item] only retracts the
   bookkeeping so a future [item]up[/item] re-runs the install / Brewfile.[/desc]
 
+[header]SAFETY LOCK[/header]
+  [desc]Before [item]down[/item] can remove anything for the first time on an implicitly
+  discovered, unapproved root, dodot asks you to approve the canonical path. A
+  non-interactive invocation refuses instead. For automation, set a valid
+  [item]DOTFILES_ROOT[/item] explicitly. [item]down --dry-run[/item] bypasses the gate and
+  records no approval. Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot up[/item]       [desc]Deploy packs[/desc]
   [item]dodot status[/item]   [desc]See what is deployed before tearing it down[/desc]

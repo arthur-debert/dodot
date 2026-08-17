@@ -49,10 +49,10 @@ datastore; let dodot do the work and verify with `status`.
    non-interactive session it refuses with exit 1 ("has not been approved").
    Set `DOTFILES_ROOT=<the root the user means>` explicitly — a valid explicit
    root never prompts. Never work around a refusal by piping input; read-only
-   commands, `status`, and every `--dry-run` work untrusted. Recovery surface:
+   commands and documented preview modes work untrusted. Recovery surface:
    `dodot roots list` / `dodot roots forget <path>`.
-2. **Act.** Run the workflow below. When unsure of the effect, run with
-   `--dry-run` first — every mutating command supports it.
+2. **Act.** Run the workflow below. When unsure of the effect, use the command's
+   documented preview mode if it has one; not every mutation supports `--dry-run`.
 3. **Verify.** Run `dodot status` again and confirm the change landed (`deployed`,
    no `error`).
 

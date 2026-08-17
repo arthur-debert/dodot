@@ -28,6 +28,14 @@ line:
   [example]dodot template install-filter      [dim]# register the filter, once per clone[/dim]
   echo '*.tmpl filter=dodot-template' >> .gitattributes[/example]
 
+[header]SAFETY LOCK[/header]
+  [desc][item]template install-filter[/item] writes the selected root's [item].git/config[/item],
+  so its first use on an implicitly discovered, unapproved root asks for
+  approval before writing. A non-interactive invocation refuses. For
+  automation, set a valid [item]DOTFILES_ROOT[/item] explicitly. [item]template clean[/item]
+  is stdin/stdout filter plumbing, so it bypasses the gate and records no
+  approval. Inspect or revoke approvals with [item]dodot roots[/item].[/desc]
+
 [header]SEE ALSO[/header]
   [item]dodot transform[/item]                  [desc]Actually write the merged form back to source[/desc]
   [item]dodot refresh[/item]                    [desc]Make git re-read diverged sources[/desc]
