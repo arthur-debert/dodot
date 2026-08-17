@@ -115,7 +115,7 @@ Design Specification: Targeted Shell-Init Verification
                 _dodot_probe_nonce=$DODOT_INTERNAL_SHELL_INIT_PROBE
                 unset DODOT_INTERNAL_SHELL_INIT_PROBE
                 unset DODOT_INTERNAL_SHELL_INIT_PROBE_PARENT
-                printf 'dodot-shell-init-probe:v1|%s|%s|%s|1786998535|5.7.0\n' \
+                \printf '\ndodot-shell-init-probe:v1|%s|%s|%s|1786998535|5.7.0\n' \
                     "$_dodot_probe_nonce" "$PPID" "$$"
                 unset _dodot_probe_nonce
                 exit 0
@@ -132,7 +132,7 @@ Design Specification: Targeted Shell-Init Verification
         - The init-script generation, compared with the generation on disk.
         - The dodot version that generated the script, compared with the running dodot.
 
-        The branch performs no external command. `printf` and `exit` are shell builtins in the supported shells.
+        The branch performs no external command. `printf` and `exit` are shell builtins in the supported shells. Every verifier-owned machine record, including the post-rc compatibility stamp, starts its format with `\n` so preceding unterminated rc output cannot hide the marker inside another line. It invokes `\printf` so an interactive-shell alias cannot replace the builtin.
 
     3.3. The Eval Hook
 
@@ -257,6 +257,7 @@ Design Specification: Targeted Shell-Init Verification
         - Generated file-source scripts carry the response branch before heartbeat, profiling, PATH, Homebrew, and pack contributions.
         - `dodot init-sh` emits only the response-and-exit script when the challenge is present.
         - A matching nonce, verifier parent ID, and spawned-shell ID are required; stale, missing, and malformed responses are rejected.
+        - File-source, eval, and compatibility-fallback records remain parseable after unterminated rc output and when the rc defines a `printf` alias.
         - An arbitrary pre-exported challenge does not exit an ordinary shell, and a nested interactive shell cannot answer for the direct child.
         - Generation and version skew produce distinct typed outcomes.
         - Probe mode writes no heartbeat or profile.
