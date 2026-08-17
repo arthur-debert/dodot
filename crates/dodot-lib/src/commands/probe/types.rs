@@ -232,9 +232,13 @@ pub struct ShellInitHistoryRow {
     /// the filename. Empty when the timestamp couldn't be parsed.
     pub when: String,
     pub shell: String,
+    /// False when the profile lacks its closing `# end_t` marker. In
+    /// that case whole-run totals are unknown, but per-entry rows from
+    /// before interruption still contribute to `user_total_us`.
+    pub complete: bool,
     pub total_label: String,
     pub user_total_label: String,
-    pub total_us: u64,
+    pub total_us: Option<u64>,
     pub user_total_us: u64,
     pub failed_entries: usize,
     pub entry_count: usize,
@@ -288,8 +292,11 @@ pub struct ShellInitView {
     pub shell: String,
     /// True when the profiling wrapper is enabled in config.
     pub profiling_enabled: bool,
-    /// True when the directory exists and contained a parseable file.
+    /// True when a complete profile was selected for display.
     pub has_profile: bool,
+    /// True when profiles exist but the newest one is incomplete and no
+    /// completed profile was selected for display.
+    pub latest_profile_incomplete: bool,
     /// Pre-grouped rows for the template; empty when `has_profile` is
     /// false.
     pub groups: Vec<ShellInitGroup>,

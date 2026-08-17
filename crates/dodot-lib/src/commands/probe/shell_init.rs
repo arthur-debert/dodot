@@ -3,7 +3,7 @@
 //! Five public entry points produce the five `ShellInit*` `ProbeResult`
 //! variants:
 //!
-//! - [`shell_init`] — most recent profile, grouped by (pack, handler),
+//! - [`shell_init`] — most recent complete profile, grouped by (pack, handler),
 //!   plus (by default) the live hook-line trace: one report, two
 //!   halves, because the user running it is asking "why isn't my
 //!   shell init working" and the halves answer that together
@@ -29,13 +29,14 @@ use crate::probe::{
 };
 use crate::Result;
 
-/// Render the most recent shell-init profile, with the live hook-line
-/// trace when `trace` is true.
+/// Render the most recent complete shell-init profile, with the live
+/// hook-line trace when `trace` is true.
 ///
-/// When no profile has been written yet (fresh install, or profiling
-/// disabled, or the user hasn't started a shell since the last `up`),
-/// returns a "no data" view with `has_profile = false`. The template
-/// uses that flag to print a hint instead of an empty table.
+/// When no complete profile has been written yet (fresh install,
+/// profiling disabled, no shell started since the last `up`, or only
+/// interrupted profiles exist), returns a "no data" view with
+/// `has_profile = false`. The template distinguishes profiling
+/// disabled, ordinary empty state, and retained incomplete profiles.
 ///
 /// `trace` is the caller's suppression switch (`--no-trace`, or a
 /// `<file>` argument having routed to the filter view instead): when
@@ -48,6 +49,10 @@ pub fn shell_init(ctx: &ExecutionContext, trace: bool) -> Result<ProbeResult> {
     let profiling_enabled = root_config.profiling.enabled;
 
     let profile_opt = read_latest_profile(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let latest_profile_incomplete = profile_opt.is_none()
+        && read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), 1)?
+            .first()
+            .is_some_and(|p| !p.complete);
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
     let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
     let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
@@ -62,6 +67,7 @@ pub fn shell_init(ctx: &ExecutionContext, trace: bool) -> Result<ProbeResult> {
                 shell: profile.shell.clone(),
                 profiling_enabled,
                 has_profile: true,
+                latest_profile_incomplete: false,
                 groups: shell_init_groups(&grouped),
                 user_total_us: grouped.user_total_us,
                 framing_us: grouped.framing_us,
@@ -78,6 +84,7 @@ pub fn shell_init(ctx: &ExecutionContext, trace: bool) -> Result<ProbeResult> {
             shell: String::new(),
             profiling_enabled,
             has_profile: false,
+            latest_profile_incomplete,
             groups: Vec::new(),
             user_total_us: 0,
             framing_us: 0,
@@ -880,12 +887,17 @@ pub fn shell_init_history(ctx: &ExecutionContext, limit: usize) -> Result<ProbeR
 }
 
 fn into_history_row(h: HistoryEntry) -> ShellInitHistoryRow {
+    let total_label = h
+        .total_us
+        .map(humanize_us)
+        .unwrap_or_else(|| "unknown".to_string());
     ShellInitHistoryRow {
         filename: h.filename,
         unix_ts: h.unix_ts,
         when: format_unix_ts(h.unix_ts),
         shell: h.shell,
-        total_label: humanize_us(h.total_us),
+        complete: h.complete,
+        total_label,
         user_total_label: humanize_us(h.user_total_us),
         total_us: h.total_us,
         user_total_us: h.user_total_us,

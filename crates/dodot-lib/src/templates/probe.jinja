@@ -36,10 +36,14 @@
   user-sourced total   [deployed]{{ user_total_us }} µs[/deployed]
   dodot framing        [dim]{{ framing_us }} µs[/dim]
   grand total          [header]{{ total_us }} µs[/header]
-{% else %}{% if profiling_enabled %}  [dim](no profile yet — open a new shell that sources `dodot-init.sh`,[/dim]
-  [dim] then re-run `dodot probe shell-init`)[/dim]
-{% else %}  [dim](profiling is disabled in config — set [profiling] enabled = true,[/dim]
+{% else %}{% if not profiling_enabled %}  [dim](profiling is disabled in config — set [profiling] enabled = true,[/dim]
   [dim] run `dodot up`, then start a new shell)[/dim]
+{% if latest_profile_incomplete %}  [warning](latest retained profile is incomplete; run[/warning]
+  [warning] `dodot probe shell-init --history` to inspect partial rows)[/warning]
+{% endif %}{% elif latest_profile_incomplete %}  [warning](no complete profile yet — the latest profile is incomplete;[/warning]
+  [warning] run `dodot probe shell-init --history` to inspect partial rows)[/warning]
+{% else %}  [dim](no profile yet — open a new shell that sources `dodot-init.sh`,[/dim]
+  [dim] then re-run `dodot probe shell-init`)[/dim]
 {% endif %}{% endif %}{% if trace %}
 [header]Hook resolution[/header]{% if trace.rc %} [dim]{{ trace.rc }}{% if trace.hook_line > 0 %}:{{ trace.hook_line }}{% endif %} ({{ trace.shell }})[/dim]{% endif %}
   [{{ trace.status_class }}]{{ trace.headline }}[/{{ trace.status_class }}]
@@ -101,8 +105,8 @@
            a new shell to capture a fresh profile.
 
 {% endif %}
-{% if rows %}  [dim]{{ "when (UTC)" | col(18) }} {{ "shell" | col(20) }} {{ "total" | col(10) }} {{ "user" | col(10) }} {{ "entries" | col(8) }} fail[/dim]
-{% for r in rows %}  {{ r.when | col(18) }} {{ r.shell | col(20) }} [deployed]{{ r.total_label | col(10) }}[/deployed] {{ r.user_total_label | col(10) }} {{ r.entry_count | string | col(8) }} {% if r.failed_entries > 0 %}[error]{{ r.failed_entries }}[/error]{% else %}[dim]0[/dim]{% endif %}
+{% if rows %}  [dim]{{ "when (UTC)" | col(18) }} {{ "shell" | col(20) }} {{ "state" | col(10) }} {{ "total" | col(10) }} {{ "user" | col(10) }} {{ "entries" | col(8) }} fail[/dim]
+{% for r in rows %}  {{ r.when | col(18) }} {{ r.shell | col(20) }} {% if r.complete %}[deployed]{{ "complete" | col(10) }}[/deployed]{% else %}[warning]{{ "incomplete" | col(10) }}[/warning]{% endif %} {% if r.complete %}[deployed]{{ r.total_label | col(10) }}[/deployed]{% else %}[warning]{{ r.total_label | col(10) }}[/warning]{% endif %} {{ r.user_total_label | col(10) }} {{ r.entry_count | string | col(8) }} {% if r.failed_entries > 0 %}[error]{{ r.failed_entries }}[/error]{% else %}[dim]0[/dim]{% endif %}
 {% endfor %}{% else %}{% if profiling_enabled %}  [dim](no profiles yet — open a shell that sources `dodot-init.sh`)[/dim]
 {% else %}  [dim](profiling is disabled in config — set [profiling] enabled = true,[/dim]
   [dim] run `dodot up`, then start a new shell)[/dim]
