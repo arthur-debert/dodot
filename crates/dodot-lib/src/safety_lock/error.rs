@@ -110,7 +110,12 @@ pub enum SafetyLockError {
     )]
     EnvironmentRootNotApprovable { spelling: String },
 
-    /// A `.dodot.toml` under the root could not be loaded or is not valid.
+    /// A `.dodot.toml` under the root could not be loaded, parsed, or applied.
+    ///
+    /// "Applied" covers configuration that reads fine and then fails in use —
+    /// an unresolvable gate label, an invalid `[mappings.gates]` glob, a file
+    /// gated two ways at once. Those are the user's configuration just as much
+    /// as a syntax error is, and they name the same file.
     ///
     /// Raised while building the orientation inventory, which is the only
     /// thing standing between an untrusted root and the confirmation prompt.

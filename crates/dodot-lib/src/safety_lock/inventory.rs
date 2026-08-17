@@ -26,7 +26,7 @@ use crate::fs::Fs;
 use crate::gates::{pack_os_active, GateTable, HostFacts};
 use crate::handlers::{create_registry, ExecutionPhase};
 use crate::packs::scan_packs;
-use crate::rules::Scanner;
+use crate::rules::{RuleMatch, Scanner};
 
 use super::error::{Result, SafetyLockError};
 use super::roots::ResolvedRoot;
@@ -172,7 +172,12 @@ impl RootInventory {
 /// `fs` and `host` are injected for the same reason every other Safety Lock
 /// entry point takes its collaborators: this module captures no process state
 /// of its own, so gating decisions stay stateable in a test rather than
-/// depending on the machine the suite runs on.
+/// depending on the machine the suite runs on. The injection is not total, and
+/// callers should not read it as a virtualized filesystem: the pack walk,
+/// routing, and registry go through `fs`, but configuration is loaded by
+/// [`ConfigManager`], which reads `.dodot.toml` through `std::fs` and searches
+/// ancestors for a `.git` marker. A test that varies configuration therefore
+/// has to write real files, as this module's own tests do.
 ///
 /// Fails when a `.dodot.toml` cannot be loaded
 /// ([`DotfilesConfigUnusable`](SafetyLockError::DotfilesConfigUnusable)) or a
@@ -234,7 +239,7 @@ pub fn build_inventory(
                 host,
                 &pack_config.mappings.gates,
             )
-            .map_err(|error| unusable_routing(&pack.path, error))?;
+            .map_err(|error| unusable_scan(&pack.path, error))?;
 
         for matched in matches {
             let Some(category) = category_of(&matched.handler, &registry) else {
@@ -247,7 +252,8 @@ pub fn build_inventory(
                 // Pack-relative becomes root-relative: the prompt names the
                 // root once, and the pack directory is part of what the user
                 // is being asked to recognize.
-                relative_path: Path::new(&pack.name).join(&matched.relative_path),
+                relative_path: Path::new(&pack.name)
+                    .join(source_relative_path(&pack.path, &matched)),
             });
         }
     }
@@ -272,6 +278,24 @@ pub fn build_inventory(
         omitted: recognized - entries.len(),
         sample: entries,
     })
+}
+
+/// The entry's path as the root actually spells it, relative to its pack.
+///
+/// [`RuleMatch::relative_path`] is the *effective* path routing works from,
+/// not the one on disk: a passing basename gate presents
+/// `aliases._darwin.sh` under its stripped name `aliases.sh`, and a passing
+/// directory gate lifts `_darwin/aliases.sh` to `aliases.sh` at the pack root.
+/// That rewrite is right for handlers and wrong for this prompt, which asks
+/// the user to recognize their own root by the names it carries — a path that
+/// is not in the directory is evidence about a directory that does not exist.
+/// The absolute path is never rewritten, so the displayed path is derived from
+/// it; classification still uses the effective match.
+fn source_relative_path<'a>(pack_path: &Path, matched: &'a RuleMatch) -> &'a Path {
+    matched
+        .absolute_path
+        .strip_prefix(pack_path)
+        .unwrap_or(matched.relative_path.as_path())
 }
 
 /// The inventory category a routed file contributes to, or `None` when it
@@ -304,6 +328,25 @@ fn unusable_routing(
     SafetyLockError::PackRoutingUnusable {
         directory: directory.into(),
         reason: error.to_string(),
+    }
+}
+
+/// A scan failure, classified by what the user can act on.
+///
+/// The scanner does two jobs at once: it walks the pack, and it interprets the
+/// pack's configuration — `[mappings.gates]` globs, the gate labels those
+/// entries and filename tokens name, and the conflict between the two all come
+/// back as [`DodotError::Config`](crate::error::DodotError::Config). Reporting
+/// those as a routing failure would name the pack *directory* when the thing
+/// the user has to open is the pack's `.dodot.toml` (story 14: name the bad
+/// file, not the neighbourhood it is in). Everything else the walk can fail on
+/// — an unreadable directory, a layout Dodot refuses — is a routing failure and
+/// names the directory.
+fn unusable_scan(pack_path: &Path, error: crate::error::DodotError) -> SafetyLockError {
+    if matches!(error, crate::error::DodotError::Config(_)) {
+        unusable_config(pack_path.join(DOTFILES_CONFIG_FILE), error)
+    } else {
+        unusable_routing(pack_path, error)
     }
 }
 
@@ -578,6 +621,41 @@ mod tests {
         );
     }
 
+    /// A gate that *passes* is invisible to routing by design — the scanner
+    /// presents `aliases._darwin.sh` as `aliases.sh` and lifts `_darwin/vimrc`
+    /// to the pack root — but it must stay visible to the prompt. The user is
+    /// being asked to recognize their own root, and a path that is not in the
+    /// directory is evidence about a directory that does not exist. The
+    /// classification still follows the effective name: `aliases._darwin.sh`
+    /// is a shell file because `aliases.sh` is what the rules match.
+    #[test]
+    fn a_passing_gate_is_listed_under_the_name_the_root_carries() {
+        let env = TempEnvironment::builder()
+            .pack("zsh")
+            .file("aliases._darwin.sh", "alias g=git")
+            .done()
+            .pack("vim")
+            .file("_darwin/vimrc", "")
+            .done()
+            .build();
+
+        let inventory = inventory_of(&env);
+
+        assert_eq!(
+            counts_of(&inventory),
+            [(InventoryCategory::Shell, 1), (InventoryCategory::Link, 1)],
+            "the passing gates changed what the entries were classified as"
+        );
+        assert_eq!(
+            sample_of(&inventory),
+            [
+                (InventoryCategory::Shell, "zsh/aliases._darwin.sh".into()),
+                (InventoryCategory::Link, "vim/_darwin/vimrc".into()),
+            ],
+            "the prompt showed a path that does not exist under the root"
+        );
+    }
+
     /// The scanner stops at a pack's top level and so does the inventory: a
     /// directory is one entry, because one entry is what routing recognized
     /// and what a handler acts on. Recursing to make the count "more accurate"
@@ -689,6 +767,47 @@ mod tests {
                         if config_file == &canonical_root(&env).join(offender) && !reason.is_empty()
                 ),
                 "unexpected error: {error}"
+            );
+        }
+    }
+
+    /// Story 14 again, for the configuration that fails in *use* rather than
+    /// in parsing. The scanner interprets gate configuration as it walks, so
+    /// an invalid `[mappings.gates]` glob, an unresolvable label, and a file
+    /// gated two ways at once all surface from the walk — and naming the pack
+    /// directory for them would point the user at a place instead of at the
+    /// file they have to edit.
+    #[test]
+    fn configuration_the_walk_rejects_names_the_pack_config_file() {
+        for pack_config in [
+            // An invalid glob: rejected when the mapping gates compile.
+            "[mappings.gates]\n\"[unclosed\" = \"darwin\"\n",
+            // A label nothing defines, reached through `[mappings.gates]`.
+            "[mappings.gates]\n\"aliases.sh\" = \"no-such-label\"\n",
+            // A label nothing defines, reached through the filename grammar.
+            "",
+            // One file gated two ways at once.
+            "[mappings.gates]\n\"*.sh\" = \"darwin\"\n",
+        ] {
+            let env = TempEnvironment::builder()
+                .pack("vim")
+                .config(pack_config)
+                .file("aliases.sh", "")
+                .file("profile._no-such-label.sh", "")
+                .done()
+                .build();
+
+            let error =
+                build_inventory(&resolved(&env), env.fs.as_ref(), &host()).expect_err("accepted");
+
+            assert!(
+                matches!(
+                    &error,
+                    SafetyLockError::DotfilesConfigUnusable { config_file, reason }
+                        if config_file == &canonical_root(&env).join("vim/.dodot.toml")
+                            && !reason.is_empty()
+                ),
+                "unexpected error for config {pack_config:?}: {error}"
             );
         }
     }

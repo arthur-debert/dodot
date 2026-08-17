@@ -71,7 +71,10 @@
 //! inventory does it: pack discovery and rule matching need the directory. It
 //! stops at routing metadata — configuration and which handler claims which
 //! entry — and never renders, resolves, or reads a candidate file's contents
-//! (Spec, "Non-Goals").
+//! (Spec, "Non-Goals"). The injected [`Fs`](crate::fs::Fs) is not a full
+//! virtualization of that read: configuration goes through
+//! [`ConfigManager`](crate::config::ConfigManager), which uses `std::fs`. See
+//! [`build_inventory`](inventory::build_inventory).
 //!
 //! # Work Stream status
 //!
