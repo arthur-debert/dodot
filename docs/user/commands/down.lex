@@ -54,7 +54,7 @@ Your dotfiles repo is not touched. `down` only retracts the bookkeeping; the sou
 
 5. Watch out for
 
-    - *`down` is Safety Lock-gated, same as `up`.* Run from the wrong directory, an implicit unapproved root refuses before anything is removed — so a stray `dodot down` in an unrelated repo cannot tear down the deployment your real root made. `down --dry-run` needs no approval. See [./../safety-lock.lex].
+    - *`down` is Safety Lock-gated, same as `up`.* Run from the wrong directory, an implicit unapproved root refuses before anything is removed — so a stray `dodot down` in an unrelated repo cannot tear down the deployment your real root made. `down --dry-run` needs no approval. See [./../safety-lock.md].
     - *`down` clears provisioning sentinels.* `dodot down git` followed by `dodot up git` will *re-run* `install.sh` and `brew bundle` because their content-hash sentinels were removed. That's usually what you want when intentionally tearing down; it can surprise if you only meant to retract symlinks. Pass `--no-provision` on the subsequent `up` to skip the re-execution.
     - *Already-open shells lag.* `down` regenerates `dodot-init.sh`, but a shell session that's already open keeps its current `$PATH` and sourced functions until you re-source the rc or open a new shell.
     - *Side-effects don't undo themselves.* If `install.sh` did `mkdir ~/foo`, that directory is still there after `down`. If `brew bundle` installed a hundred packages, they're still installed. Plan provisioning scripts to be idempotent and (where it matters) to track their own undo state, so re-runs after `down` are safe.

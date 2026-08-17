@@ -457,6 +457,13 @@ mod tests {
         let reset = lookup("reset");
         assert!(reset.contains("safety-lock.toml"));
         assert!(reset.contains("asks again"));
+
+        let roots = lookup("roots");
+        assert!(roots.contains("next root-sensitive mutation"));
+        assert!(
+            !roots.contains("next deploying command"),
+            "roots help must cover every gated mutation after forget, not only deployment"
+        );
     }
 
     /// Every subcommand clap knows about must have its own help text —
