@@ -76,13 +76,17 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
     4.2. The hook-line trace (`--trace-hook`)
 
-        A hookup can be wired, fire on every shell start, and still be dead — because the `dodot` your rc resolves at the hook line is not the dodot you run at the prompt. No static scan can see that. With `--trace-hook`, `probe shell-init` spawns your shell and runs your whole rc under tracing, announcing itself first:
+        A hookup can be wired, fire on every shell start, and still be dead — because the `dodot` your rc resolves at the hook line is not the dodot you run at the prompt. No static scan can see that. With `--trace-hook`, `probe shell-init` spawns your shell under tracing and announces the maximum work first:
 
             tracing shell startup (zsh)… (runs your rc file, up to twice)
 
         :: text ::
 
-        The spawn is guarded the same way as every dodot shell probe: stdin from `/dev/null`, output captured, a hard timeout with a process-group kill, dodot's own evidence variables scrubbed. It never writes your rc. If your rc defeats the tracing (a `PS4` override, say), dodot retries against a temporary *copy* with a report line inserted — and says so: `(traced via a temporary copy of your rc — your real files were not touched)`. If your rc has no dodot hook at all, nothing is spawned and the report says so:
+        How far that shell runs depends on the hook it finds. Current generated file-source hooks and current `dodot init-sh` eval hooks understand diagnostic mode: they suppress heartbeat and profile writes, then let the shell continue through PATH setup, Homebrew, pack contributions, and the rest of the rc so the trace can diagnose that work. Their rc side effects can therefore run.
+
+        A capability-unknown legacy target is handled differently. dodot builds a faithful temporary rc copy, inserts a report immediately before the hook, records PATH there, and stops the diagnostic shell before the hook executes. The legacy target, pack contributions, and later rc work do not run. If dodot cannot build a faithful copy, it reports that it could not trace instead of running the legacy hook or guessing.
+
+        Every spawn uses stdin from `/dev/null`, captured output, and a hard timeout with a process-group kill. dodot scrubs its evidence variables, and diagnostic-capable targets suppress heartbeat and profile writes. Neither path writes your real rc or changes existing heartbeat/profile evidence. When a temporary copy supplies the answer, the report says `(traced via a temporary copy of your rc — your real files were not touched)`. If your rc has no dodot hook at all, nothing is spawned and the report says so:
 
             no dodot hook in ~/.zshrc — run `dodot install --write` to add one
 
@@ -122,13 +126,15 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
         The shell init script optionally records, for every source it runs, how long the source took and what exit code resulted. The rest of `probe shell-init` is the read side of that data:
 
             | View                      | Effect                                                                         |
-            | (default)                 | Most recent run, sorted by time. Each source as a row.                         |
+            | (default)                 | Newest complete run, sorted by time. Each source as a row.                     |
             | `--runs [N]`              | Aggregate the last N runs into per-target `p50` / `p95` / `max`. Default N=10. |
-            | `--history`               | One summary row per recent run, newest first.                                  |
+            | `--history`               | Complete and incomplete runs, newest first, one summary row each.              |
             | `--errors-only`           | Every target with a non-zero exit across recent runs, sorted by failure count. |
             | `<PACK>` / `<PACK/FILE>`  | Drill into one source — per-run exit codes and stderr.                         |
 
         :: table align=ll ::
+
+        The default report skips a newer incomplete profile and selects the newest completed run. If no complete profile exists, it says so rather than presenting an interrupted run as finished. `--history` keeps interrupted runs visible: rows that completed before interruption remain in the record, the run is marked `incomplete`, and its whole-run total is `unknown` because no closing timestamp exists.
 
         Useful for: hunting slow shell startup, finding a pack whose `aliases.sh` is failing silently, auditing what a teammate's pack actually does on login.
 
@@ -172,6 +178,6 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
     - *`probe app` is macOS-acute.* On Linux, `app_support_dir` collapses onto `$XDG_CONFIG_HOME`, the brew/Spotlight enrichment doesn't apply, and the output is correspondingly thinner. The command isn't an error elsewhere; it just has less to say.
     - *`probe shell-init`'s timings require the timing wrapper.* The init script only writes timing data when `[shell_init].profiling.enabled = true` (see `dodot config get shell_init.profiling.enabled`). Without it the command reports "no profiles yet, open a new shell that sources `dodot-init.sh`." Targeted verification needs no profiling — it measures the live time to reach the hook.
-    - *`probe shell-init --trace-hook` runs your whole rc.* Announced, in a throwaway shell — your rc's side effects (a `neofetch`, a network call) run with it. Up to twice: if the first pass comes back unreadable (a `PS4` override, or macOS's bash 3.2, where it usually does) dodot re-runs it on a copy. The default targeted verification exits at the hook for current hooks; use `--no-verify` if even that spawn matters right now.
+    - *`probe shell-init --trace-hook` may run your whole rc.* A current diagnostic-capable hook lets the throwaway shell continue, so rc side effects such as a `neofetch` or network call can run. dodot may start the rc up to twice while it identifies an eval target or retries unreadable tracing. A capability-unknown legacy target instead uses a faithful temporary copy and stops immediately before the hook. The default targeted verification exits at the hook for current hooks; use `--no-verify` if even that spawn matters right now.
     - *`probe deployment-map` shows only what dodot owns.* Files at the deploy target that dodot didn't create (regular files, foreign symlinks) don't appear here — `dodot status` is where those surface as conflicts or `error` rows.
     - *`show-data-dir --depth 8` can be a lot.* A repo with many packs and many handlers fills the tree quickly. Start at the default depth 4; deepen only when you're hunting a specific path.
