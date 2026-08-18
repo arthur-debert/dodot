@@ -1,13 +1,14 @@
-//! The verification probe — measuring whether a *new* shell would
-//! activate dodot (`docs/proposals/shipped/shell-hookup.lex` §3).
+//! The shell verification probe — measuring whether a *new* shell
+//! reaches dodot's init hook.
 //!
 //! Signals 1 and 2 (the environment stamp and the heartbeat, both in
 //! [`crate::shell::activation`]) answer "is this shell live?" and "has
 //! any shell activated?". Neither answers the question a fresh install
-//! or a freshly broken hookup actually poses: *would the next terminal
-//! the user opens load dodot?* Only running one answers that, so when
-//! the cheap signals come back inconclusive, dodot spawns the user's
-//! shell and reads the stamp back out of it.
+//! or a freshly broken hookup actually poses: *would the next terminal the
+//! user opens reach the hook dodot just wrote?* Only running one answers
+//! that, so when the cheap signals come back inconclusive, dodot spawns the
+//! user's shell and accepts the nonce-bound response emitted at the start of
+//! current init scripts. Older hooks fall back to the post-rc stamp command.
 //!
 //! # Gating
 //!
@@ -24,17 +25,17 @@
 //! # Mechanics
 //!
 //! User rc files prompt, hang, `exec` into multiplexers, and fail in
-//! creative ways, so [`run`] is defensive by construction: interactive
-//! non-login shell (the mode that reads the file the hook lives in),
-//! stdin from `/dev/null`, output captured, a hard timeout that kills
-//! the whole process group, and `DODOT_INIT_*` scrubbed from the child
-//! environment — an inherited stamp would be a false positive every
-//! time the probe runs from an already-live shell.
+//! creative ways, so [`run_targeted`] is defensive by construction:
+//! interactive non-login shell (the mode that reads the file the hook lives
+//! in), stdin from `/dev/null`, output captured, a hard timeout that kills the
+//! whole process group, and `DODOT_INIT_*` scrubbed from the child environment
+//! — an inherited stamp would be a false positive whenever a legacy fallback
+//! probe runs from an already-live shell.
 //!
 //! That defensive envelope lives in [`spawn_captured`] and its streaming
-//! sibling [`spawn_captured_until_stderr`]. [`run`] uses the targeted
-//! response variant below, and [`crate::shell::trace`] uses the capture
-//! helpers for hook-line tracing — all with the same process-group kill.
+//! sibling [`spawn_captured_until_stderr`]. Hook-line tracing uses those
+//! capture helpers, while targeted verification uses the same process-group
+//! and pipe handling in [`spawn_until_targeted_marker`].
 //!
 //! # Verdicts
 //!
@@ -124,7 +125,8 @@ pub enum ProbePolicy {
     #[default]
     Never,
     /// Spawn the shell when [`gate_says_probe`] says the cheap signals
-    /// are inconclusive, giving it `timeout` to finish starting up.
+    /// are inconclusive, giving it `timeout` to reach the hook or return
+    /// legacy fallback evidence.
     Gated { timeout: Duration },
 }
 
@@ -483,10 +485,10 @@ pub fn spawn_captured_until_stderr(
 
 /// Spawn `shell` interactively and read the stamp back.
 ///
-/// Safe against hostile rc files by construction — the whole
-/// [`spawn_captured`] envelope. Never returns an error: every failure
-/// mode is an outcome, because a probe that could not run must
-/// degrade, not propagate (spec §3.3).
+/// Safe against hostile rc files by construction through the shared
+/// process-group and pipe-handling envelope. Never returns an error:
+/// every failure mode is an outcome, because a probe that could not
+/// run must degrade, not propagate (spec §3.3).
 pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
     run_targeted(shell, timeout).outcome
 }
