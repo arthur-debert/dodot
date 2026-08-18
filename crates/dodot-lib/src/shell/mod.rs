@@ -29,6 +29,15 @@
 //! carry the challenge variables and continue into activation evidence
 //! unchanged.
 //!
+//! # Hook tracing
+//!
+//! Current init scripts also recognize the internal diagnostic mode
+//! used by `dodot probe shell-init --trace-hook`. In that mode they
+//! suppress activation evidence and profiling writes, then continue
+//! through Homebrew, PATH setup, and pack contributions so the trace
+//! can diagnose the same startup work without manufacturing heartbeat
+//! or profile evidence.
+//!
 //! # Activation evidence (shell-hookup-ergonomics.lex §2.1)
 //!
 //! Every generated script — profiled or not, empty datastore or not —
@@ -75,8 +84,9 @@
 //! check (`bash 5+` / `zsh` with `EPOCHREALTIME` available); shells
 //! without the variable fall through to the unchanged source/PATH
 //! path with a single `[ "$_dodot_prof" = "1" ]` test of overhead.
-//! When `profiling_enabled = false`, the generated script is
-//! byte-identical to the unwrapped form.
+//! When `profiling_enabled = false`, the profile writer is omitted;
+//! the verification and diagnostic branches still remain at the top
+//! because they serve separate command paths.
 //!
 //! Sources are *not* wrapped in a shell function: in zsh, `source`
 //! inside a function changes scoping for plain variable assignments
@@ -135,6 +145,15 @@ pub fn script_supports_targeted_probe(script: &str) -> bool {
     script
         .lines()
         .any(|line| line.trim() == "# dodot shell-init-probe v1")
+}
+
+/// Whether a generated script can suppress activation evidence and
+/// shell-init profile writes while a hook trace runs through the rest
+/// of the init body.
+pub fn script_supports_diagnostic_trace(script: &str) -> bool {
+    script
+        .lines()
+        .any(|line| line.trim() == "# dodot shell-init-trace v1")
 }
 
 /// Generate the guarded challenge response fragment used by current
@@ -203,6 +222,7 @@ pub fn generate_init_script(
     writeln!(script).unwrap();
 
     emit_init_probe_response(&mut script, generation);
+    emit_trace_mode_preamble(&mut script);
     emit_activation_evidence(&mut script, generation, &paths.hookup_heartbeat_path());
 
     if let Some(blocks) = homebrew {
@@ -424,17 +444,39 @@ fn emit_init_probe_response(script: &mut String, generation: u64) {
 ///
 /// Still two exports and one redirect: no command execution, no `dodot`
 /// invocation on the shell startup path.
+fn emit_trace_mode_preamble(script: &mut String) {
+    writeln!(script, "# dodot shell-init-trace v1").unwrap();
+    writeln!(script, "_dodot_trace=0").unwrap();
+    writeln!(
+        script,
+        "if [ -n \"${{{}-}}\" ]; then",
+        trace::DIAGNOSTIC_TRACE_ENV
+    )
+    .unwrap();
+    writeln!(script, "  unset {}", trace::DIAGNOSTIC_TRACE_ENV).unwrap();
+    writeln!(script, "  _dodot_trace=1").unwrap();
+    writeln!(script, "fi").unwrap();
+    writeln!(script).unwrap();
+}
+
 fn emit_activation_evidence(script: &mut String, generation: u64, heartbeat_path: &Path) {
     let heartbeat = sh_quote(&heartbeat_path.display().to_string());
     let version = activation::running_version();
+    writeln!(script, "if [ \"${{_dodot_trace:-0}}\" != \"1\" ]; then").unwrap();
     writeln!(script, "# ── dodot activation evidence ──").unwrap();
-    writeln!(script, "export {}={generation}", activation::INIT_GEN_ENV).unwrap();
-    writeln!(script, "export {}={version}", activation::INIT_VERSION_ENV).unwrap();
+    writeln!(script, "  export {}={generation}", activation::INIT_GEN_ENV).unwrap();
     writeln!(
         script,
-        "echo {generation} {version} >| {heartbeat} 2>/dev/null || :"
+        "  export {}={version}",
+        activation::INIT_VERSION_ENV
     )
     .unwrap();
+    writeln!(
+        script,
+        "  echo {generation} {version} >| {heartbeat} 2>/dev/null || :"
+    )
+    .unwrap();
+    writeln!(script, "fi").unwrap();
     writeln!(script).unwrap();
 }
 
@@ -450,9 +492,10 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
     let init_script = sh_quote(&init_script_path.display().to_string());
     writeln!(script, "# ── dodot shell-init profiling (Phase 2) ──").unwrap();
     writeln!(script, "_dodot_prof=0").unwrap();
+    writeln!(script, "if [ \"${{_dodot_trace:-0}}\" != \"1\" ]; then").unwrap();
     writeln!(
         script,
-        "if [ -n \"${{BASH_VERSION:-}}\" ] || [ -n \"${{ZSH_VERSION:-}}\" ]; then"
+        "  if [ -n \"${{BASH_VERSION:-}}\" ] || [ -n \"${{ZSH_VERSION:-}}\" ]; then"
     )
     .unwrap();
     // zsh exposes EPOCHREALTIME only after `zmodload zsh/datetime`. Load
@@ -462,14 +505,14 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
     // hot paths in plain sh.
     writeln!(
         script,
-        "  [ -n \"${{ZSH_VERSION:-}}\" ] && zmodload zsh/datetime 2>/dev/null"
+        "    [ -n \"${{ZSH_VERSION:-}}\" ] && zmodload zsh/datetime 2>/dev/null"
     )
     .unwrap();
-    writeln!(script, "  if [ -n \"${{EPOCHREALTIME:-}}\" ]; then").unwrap();
-    writeln!(script, "    _dodot_prof_dir={dir}").unwrap();
+    writeln!(script, "    if [ -n \"${{EPOCHREALTIME:-}}\" ]; then").unwrap();
+    writeln!(script, "      _dodot_prof_dir={dir}").unwrap();
     writeln!(
         script,
-        "    _dodot_prof_file=\"$_dodot_prof_dir/profile-${{EPOCHSECONDS:-0}}-$$-${{RANDOM}}.tsv\""
+        "      _dodot_prof_file=\"$_dodot_prof_dir/profile-${{EPOCHSECONDS:-0}}-$$-${{RANDOM}}.tsv\""
     )
     .unwrap();
     // Sibling errors log: one record per source whose stderr was non-empty.
@@ -479,43 +522,51 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
     // and parsed by `probe::shell_init::parse_errors_log`.
     writeln!(
         script,
-        "    _dodot_err_file=\"${{_dodot_prof_file%.tsv}}.errors.log\""
+        "      _dodot_err_file=\"${{_dodot_prof_file%.tsv}}.errors.log\""
     )
     .unwrap();
     // Per-shell scratch file for capturing each source's stderr. Reused
     // across every source in this shell startup; truncated each time.
-    writeln!(script, "    _dodot_err_tmp=\"$_dodot_prof_dir/.errtmp-$$\"").unwrap();
     writeln!(
         script,
-        "    if mkdir -p \"$_dodot_prof_dir\" 2>/dev/null; then"
-    )
-    .unwrap();
-    writeln!(script, "      _dodot_prof_t0=$EPOCHREALTIME").unwrap();
-    writeln!(script, "      {{").unwrap();
-    writeln!(script, "        printf '# dodot shell-init profile v1\\n'").unwrap();
-    writeln!(
-        script,
-        "        printf '# shell\\t%s\\n' \"${{BASH_VERSION:+bash $BASH_VERSION}}${{ZSH_VERSION:+zsh $ZSH_VERSION}}\""
+        "      _dodot_err_tmp=\"$_dodot_prof_dir/.errtmp-$$\""
     )
     .unwrap();
     writeln!(
         script,
-        "        printf '# start_t\\t%s\\n' \"$_dodot_prof_t0\""
+        "      if mkdir -p \"$_dodot_prof_dir\" 2>/dev/null; then"
+    )
+    .unwrap();
+    writeln!(script, "        _dodot_prof_t0=$EPOCHREALTIME").unwrap();
+    writeln!(script, "        {{").unwrap();
+    writeln!(
+        script,
+        "          printf '# dodot shell-init profile v1\\n'"
     )
     .unwrap();
     writeln!(
         script,
-        "        printf '# init_script\\t%s\\n' {init_script}"
+        "          printf '# shell\\t%s\\n' \"${{BASH_VERSION:+bash $BASH_VERSION}}${{ZSH_VERSION:+zsh $ZSH_VERSION}}\""
     )
     .unwrap();
     writeln!(
         script,
-        "        printf '# columns\\tphase\\tpack\\thandler\\ttarget\\tstart_t\\tend_t\\texit_status\\n'"
+        "          printf '# start_t\\t%s\\n' \"$_dodot_prof_t0\""
     )
     .unwrap();
     writeln!(
         script,
-        "      }} > \"$_dodot_prof_file\" 2>/dev/null && _dodot_prof=1"
+        "          printf '# init_script\\t%s\\n' {init_script}"
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "          printf '# columns\\tphase\\tpack\\thandler\\ttarget\\tstart_t\\tend_t\\texit_status\\n'"
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "        }} > \"$_dodot_prof_file\" 2>/dev/null && _dodot_prof=1"
     )
     .unwrap();
     // Errors log is created lazily — see `emit_timed_source`. Most shell
@@ -523,6 +574,7 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
     // header file for each one would defeat the "fast path is free"
     // claim. The first source that actually emits stderr seeds the
     // header before appending its record.
+    writeln!(script, "      fi").unwrap();
     writeln!(script, "    fi").unwrap();
     writeln!(script, "  fi").unwrap();
     writeln!(script, "fi").unwrap();
@@ -1124,6 +1176,33 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_trace_mode_precedes_and_guards_mutating_evidence() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .done()
+            .build();
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
+
+        let trace = script.find("# dodot shell-init-trace v1").unwrap();
+        let evidence_guard = script
+            .find("if [ \"${_dodot_trace:-0}\" != \"1\" ]; then")
+            .unwrap();
+        let path_or_shell = script.find("# Shell scripts").unwrap();
+        assert!(
+            trace < evidence_guard && evidence_guard < path_or_shell,
+            "diagnostic trace mode must be known before evidence/profile writes but keep contributions:\n{script}"
+        );
+        assert!(script_supports_diagnostic_trace(&script));
+    }
+
+    #[test]
     fn eval_probe_response_contains_no_ordinary_init_body() {
         let script = generate_init_probe_response(TEST_GEN);
 
@@ -1138,10 +1217,10 @@ mod tests {
     // ── Phase 2: profiling wrapper ──────────────────────────────────
 
     #[test]
-    fn profiling_disabled_matches_phase1_byte_for_byte() {
-        // The contract: when profiling is off, the script must be the
-        // exact same bytes a Phase-1 generator would have produced. This
-        // protects users who don't want any change to their init script.
+    fn profiling_disabled_omits_the_profile_wrapper() {
+        // The contract: when profiling is off, the profile writer is
+        // absent. Other top-of-file protocol branches may still be
+        // present because they serve verification and tracing.
         let env = TempEnvironment::builder()
             .pack("vim")
             .file("aliases.sh", "alias vi=vim")
@@ -1496,9 +1575,13 @@ mod tests {
             .filter(|l| l.contains("DODOT_INIT") || l.contains("heartbeat"))
             .collect();
         assert_eq!(evidence.len(), 3, "evidence block: {evidence:?}");
-        assert!(evidence[0].starts_with("export DODOT_INIT_GEN="));
-        assert!(evidence[1].starts_with("export DODOT_INIT_VERSION="));
-        assert!(evidence[2].starts_with("echo "));
+        assert!(evidence[0]
+            .trim_start()
+            .starts_with("export DODOT_INIT_GEN="));
+        assert!(evidence[1]
+            .trim_start()
+            .starts_with("export DODOT_INIT_VERSION="));
+        assert!(evidence[2].trim_start().starts_with("echo "));
         for forbidden in ["mkdir", "dodot ", "date", "$(", "`"] {
             assert!(
                 !evidence.iter().any(|l| l.contains(forbidden)),

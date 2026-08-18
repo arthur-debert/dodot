@@ -250,6 +250,61 @@ echo tool output'
     assert_output_contains "5.0.0"
 }
 
+_mtime_of() {
+    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"
+}
+
+_profiles_snapshot() {
+    local dir="$XDG_DATA_HOME/dodot/probes/shell-init"
+    if [[ ! -d "$dir" ]]; then
+        return 0
+    fi
+    while IFS= read -r file; do
+        printf '%s ' "${file#$dir/}"
+        cksum "$file"
+    done < <(find "$dir" -type f -name 'profile-*' | sort)
+}
+
+@test "trace-hook current file-source target leaves evidence untouched and runs contributions" {
+    create_pack_file "shell" "trace.sh" 'echo trace contribution > "$HOME/trace-contribution"'
+    dodot up
+    dodot install --write
+
+    bash -ic true
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    local hb_contents hb_mtime profiles_before
+    hb_contents="$(cat "$hb")"
+    hb_mtime="$(_mtime_of "$hb")"
+    profiles_before="$(_profiles_snapshot)"
+    rm -f "$HOME/trace-contribution"
+
+    run dodot probe shell-init --trace-hook
+    [ "$status" -eq 0 ]
+    assert_output_contains "Hook resolution"
+    assert_output_contains "the hookup is sound"
+    assert_output_contains "elapsed:"
+
+    assert_exists "$HOME/trace-contribution"
+    [ "$(cat "$hb")" = "$hb_contents" ]
+    [ "$(_mtime_of "$hb")" = "$hb_mtime" ]
+    [ "$(_profiles_snapshot)" = "$profiles_before" ]
+}
+
+@test "trace-hook capability-unknown eval target uses copy and exits before the hook" {
+    dodot up
+    printf 'echo should-not-run > "$HOME/eval-hook-ran"; eval "$(dodot init-sh)"\n' \
+        > "$HOME/.bashrc"
+
+    run dodot probe shell-init --trace-hook
+    [ "$status" -eq 0 ]
+    assert_output_contains "Hook resolution"
+    assert_output_contains "temporary copy"
+    assert_output_contains "elapsed:"
+    assert_not_exists "$HOME/eval-hook-ran"
+    assert_not_exists "$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    [ -z "$(_profiles_snapshot)" ]
+}
+
 @test "probe shell-init --no-trace keeps the report passive" {
     dodot up
     printf 'eval "$(dodot init-sh)"\n' > "$HOME/.bashrc"

@@ -441,6 +441,7 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
         );
     };
     let hook_line = hook.line;
+    let execution = trace_execution_for_hook(fs, &hook.form);
 
     // Only a context that may measure gets to spawn; every
     // non-production context leaves the policy at `Never`.
@@ -466,6 +467,7 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
         rc_resolved: &target.path,
         hook_line,
         timeout,
+        execution,
     };
     let run = match trace::run_trace(fs, &request) {
         Ok(run) => run,
@@ -547,6 +549,7 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
         rc_display,
         hook_line,
         run.used_fallback,
+        run.elapsed_us,
     )
 }
 
@@ -562,6 +565,8 @@ fn skipped_trace(reason: String, shell: String, rc: String) -> ShellInitTraceVie
         verdict: String::new(),
         headline: reason,
         detail_lines: Vec::new(),
+        elapsed_us: 0,
+        elapsed_label: humanize_us(0),
         used_fallback: false,
     }
 }
@@ -578,6 +583,8 @@ fn untraced(reason: String, shell: String, rc: String, hook_line: usize) -> Shel
         verdict: String::new(),
         headline: format!("could not trace — {reason}"),
         detail_lines: Vec::new(),
+        elapsed_us: 0,
+        elapsed_label: humanize_us(0),
         used_fallback: false,
     }
 }
@@ -607,6 +614,7 @@ fn verdict_trace_view(
     rc: String,
     hook_line: usize,
     used_fallback: bool,
+    elapsed_us: u64,
 ) -> ShellInitTraceView {
     use crate::shell::activation::running_version;
     use crate::shell::rc::display_home_relative;
@@ -786,7 +794,27 @@ fn verdict_trace_view(
         verdict: tag.into(),
         headline,
         detail_lines,
+        elapsed_us,
+        elapsed_label: humanize_us(elapsed_us),
         used_fallback,
+    }
+}
+
+fn trace_execution_for_hook(
+    fs: &dyn crate::fs::Fs,
+    hook: &crate::shell::trace::HookForm,
+) -> crate::shell::trace::TraceExecution {
+    use crate::shell::trace::{HookForm, SourcedScript, TraceExecution};
+
+    match hook {
+        HookForm::FileSource(SourcedScript::Path(script))
+            if fs
+                .read_to_string(script)
+                .is_ok_and(|text| crate::shell::script_supports_diagnostic_trace(&text)) =>
+        {
+            TraceExecution::DiagnosticSupported
+        }
+        _ => TraceExecution::ReportOnly,
     }
 }
 
