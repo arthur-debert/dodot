@@ -1022,7 +1022,7 @@ fn build_clap_command() -> ClapCommand {
                             Arg::new("trace-hook")
                                 .long("trace-hook")
                                 .help(
-                                    "Run the full hook-line PATH diagnosis instead of targeted verification (spawns your shell, running your whole rc file up to twice)",
+                                    "Run the full hook-line PATH diagnosis instead of targeted verification (spawns your shell and may run your rc file up to three times)",
                                 )
                                 .action(ArgAction::SetTrue)
                                 .conflicts_with("no-verify")

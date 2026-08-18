@@ -21,7 +21,7 @@ Design Specification: Targeted Shell-Init Verification
             | Question | Former mechanism | Required work |
             | Is this shell, or any recent shell, using dodot? | Environment stamp and heartbeat | Environment and file reads only |
             | Would a new interactive shell reach dodot's init script? | Start `$SHELL -ic`, run the complete rc, print the resulting stamp | Every command in the rc and every deployed pack contribution |
-            | What does `dodot` resolve to at the hook line? | Start the shell with PS4 tracing; retry against a temporary rc copy when necessary | The complete rc once or twice, trace capture and parsing, PATH resolution, sometimes another binary's `--version` |
+            | What does `dodot` resolve to at the hook line? | Start the shell with PS4 tracing; retry against a temporary rc copy when necessary | The complete rc up to twice for file-source hooks or three times for diagnostic-capable eval hooks, trace capture and parsing, PATH resolution, sometimes another binary's `--version` |
 
             :: table align=lll header=1 ::
 
@@ -79,7 +79,7 @@ Design Specification: Targeted Shell-Init Verification
         | Module | Answer | May start a shell? | Typical callers |
         | Activation evidence | What this shell and the most recent observed shell loaded | No | `status`, `up`, `down`, `install` |
         | Targeted verification | Whether a new interactive shell reached a specific dodot init script, with identity and elapsed time | Yes, at most once | `up`, `install --write`, bare `probe shell-init` |
-        | Hook-resolution trace | Whether the hook line ran and, for the eval form, which `dodot` PATH selected there | Yes, explicitly requested; fallback may start it again | `probe shell-init --trace-hook` |
+        | Hook-resolution trace | Whether the hook line ran and, for the eval form, which `dodot` PATH selected there | Yes, explicitly requested; diagnostic-capable eval hooks can require target discovery, a primary trace, and a fallback | `probe shell-init --trace-hook` |
 
         :: table align=llll header=1 ::
 

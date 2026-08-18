@@ -71,11 +71,14 @@
 //!   different path under the trace than it does in earnest. Reading
 //!   `PATH` at the hook line is what this buys, and there is no way to
 //!   buy it without the option set.
-//! - **The rc runs up to twice for diagnostic-capable hooks.** The
-//!   fallback re-runs it on a copy, so side effects before the hook
-//!   can happen again. Capability-unknown hooks use only the copy and
-//!   stop before the hook. [`announcement`] says the upper bound
-//!   before anything is spawned.
+//! - **The rc can run up to three times for a diagnostic-capable eval
+//!   hook.** Eval diagnosis first uses a report-only copy to identify
+//!   the target, then runs the primary trace; its fallback can re-run
+//!   the rc on another copy. Side effects before the hook can therefore
+//!   happen three times. File-source hooks need no target-discovery pass
+//!   and run at most twice. Capability-unknown hooks use only one copy
+//!   and stop before the hook. [`announcement`] says the maximum upper
+//!   bound before anything is spawned.
 //!
 //! # Boundaries
 //!
@@ -691,15 +694,16 @@ pub fn parse_version_output(stdout: &str) -> Option<String> {
 /// The line printed before any shell is spawned. The trace is
 /// announced, never covert — same rule as the INS01 probe.
 ///
-/// It says "up to twice" because that is true: the fallback re-runs
-/// the rc on a copy, and on macOS's `/bin/bash` it is the normal
-/// route. This line is the user's only warning before their own rc's
-/// side effects happen, so promising "once" understated the thing they
-/// are being warned about — and the count is not knowable until the
-/// first pass comes back unreadable.
+/// It says "up to three times" because a diagnostic-capable eval hook
+/// first gets one report-only target-discovery run, then a primary
+/// diagnostic run whose fallback can re-run the rc on a copy. This
+/// line is the user's only warning before their own rc's side effects
+/// happen. File-source hooks run at most twice and capability-unknown
+/// hooks once, but the hook form and fallback path should not make the
+/// pre-spawn warning understate the maximum.
 pub fn announcement(shell: HookupShell) -> String {
     format!(
-        "tracing shell startup ({})… (runs your rc file, up to twice)",
+        "tracing shell startup ({})… (may run your rc file up to three times)",
         shell.as_str()
     )
 }
@@ -1133,6 +1137,14 @@ mod tests {
 
     const FIXTURE_PATH: &str = "/opt/homebrew/bin:/usr/bin:/bin";
     const FIXTURE_CWD: &str = "/tmp/dodot-trace-exp";
+
+    #[test]
+    fn the_announcement_warns_about_the_maximum_rc_starts() {
+        assert_eq!(
+            announcement(HookupShell::Zsh),
+            "tracing shell startup (zsh)… (may run your rc file up to three times)"
+        );
+    }
 
     #[test]
     fn the_zsh_record_at_the_hook_line_is_addressable() {

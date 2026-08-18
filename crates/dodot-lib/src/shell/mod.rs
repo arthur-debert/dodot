@@ -21,7 +21,7 @@
 //! # Targeted verification
 //!
 //! Current init scripts open with the one-use challenge branch from
-//! `shipped/targeted-shell-init-verification.lex`: when dodot starts a fresh
+//! `docs/proposals/shipped/targeted-shell-init-verification.lex`: when dodot starts a fresh
 //! interactive shell only to verify that the hook is reached, the
 //! script reports its nonce, verifier PID, shell PID, generation, and
 //! dodot version, then exits before heartbeat writes, profiling, PATH
