@@ -115,13 +115,20 @@ pub const RECORD_SUFFIX: &str = "|> ";
 pub const DIAGNOSTIC_TRACE_ENV: &str = "DODOT_INTERNAL_SHELL_INIT_TRACE";
 
 /// Hold a report-only rc until the parent sees the record and stops the
-/// process group. The clean `/bin/sh` waits for EOF on the liveness pipe;
-/// if Rust disappears first, its unshadowed builtin sends uncatchable
+/// process group. A clean instance of the supported shell receives the
+/// liveness descriptor as data, avoiding multi-digit redirection syntax.
+/// If Rust disappears first, its unshadowed builtin sends uncatchable
 /// SIGKILL to the traced shell. No path lookup or external `kill` is used.
-fn report_only_hold(parent_liveness_fd: RawFd) -> String {
+fn report_only_hold(shell_path: &Path, shell: HookupShell, parent_liveness_fd: RawFd) -> String {
+    let clean_flags = match shell {
+        // Privileged mode suppresses BASH_ENV and imported functions.
+        HookupShell::Bash => "--noprofile --norc -p",
+        HookupShell::Zsh => "-f",
+    };
     format!(
-        "/bin/sh -c 'IFS= read -r _ <&{parent_liveness_fd}; kill -s KILL 0' \
-         dodot-report-only"
+        "{} {clean_flags} -c 'IFS= read -r -u \"$1\" _; kill -s KILL 0' \
+         dodot-report-only {parent_liveness_fd}",
+        shell_quote(&shell_path.display().to_string()),
     )
 }
 
@@ -856,6 +863,8 @@ fn run_fallback(
         &rc_text,
         req.rc_nominal,
         req.hook_line,
+        req.shell_path,
+        req.shell,
         liveness.as_ref().map(ParentLiveness::descriptor),
     );
     // The file that stands in for the user's rc — the one whose parse
@@ -1043,10 +1052,15 @@ fn insert_report_line(
     rc_text: &str,
     rc_nominal: &Path,
     hook_line: usize,
+    shell_path: &Path,
+    shell: HookupShell,
     parent_liveness_fd: Option<RawFd>,
 ) -> String {
     let maybe_hold = if let Some(parent_liveness_fd) = parent_liveness_fd {
-        format!("{}\n", report_only_hold(parent_liveness_fd))
+        format!(
+            "{}\n",
+            report_only_hold(shell_path, shell, parent_liveness_fd)
+        )
     } else {
         String::new()
     };
@@ -1686,7 +1700,14 @@ mod tests {
     #[test]
     fn the_report_line_is_inserted_not_truncated() {
         let rc = "if true; then\n  eval \"$(dodot init-sh)\"\nfi\n";
-        let copy = insert_report_line(rc, Path::new("/home/u/.zshrc"), 2, None);
+        let copy = insert_report_line(
+            rc,
+            Path::new("/home/u/.zshrc"),
+            2,
+            Path::new("/bin/zsh"),
+            HookupShell::Zsh,
+            None,
+        );
         let lines: Vec<&str> = copy.lines().collect();
         assert_eq!(lines.len(), 4, "insertion, not replacement: {copy}");
         assert!(lines[1].starts_with("printf '+dodot-trace|"), "{copy}");
@@ -1703,10 +1724,20 @@ mod tests {
     #[test]
     fn report_only_copy_stops_before_the_hook() {
         let rc = "eval \"$(dodot init-sh)\"\necho after\n";
-        let copy = insert_report_line(rc, Path::new("/home/u/.bashrc"), 1, Some(42));
+        let copy = insert_report_line(
+            rc,
+            Path::new("/home/u/.bashrc"),
+            1,
+            Path::new("/bin/bash"),
+            HookupShell::Bash,
+            Some(42),
+        );
         let lines: Vec<&str> = copy.lines().collect();
         assert!(lines[0].starts_with("printf '+dodot-trace|"), "{copy}");
-        assert_eq!(lines[1], report_only_hold(42));
+        assert_eq!(
+            lines[1],
+            report_only_hold(Path::new("/bin/bash"), HookupShell::Bash, 42)
+        );
         assert_eq!(lines[2], "eval \"$(dodot init-sh)\"");
         assert_eq!(lines[3], "echo after");
     }
@@ -1749,19 +1780,34 @@ mod tests {
         p.exists().then_some(p)
     }
 
+    fn dash() -> Option<&'static Path> {
+        ["/bin/dash", "/usr/bin/dash"]
+            .into_iter()
+            .map(Path::new)
+            .find(|path| path.exists())
+    }
+
     const TIMEOUT: Duration = Duration::from_secs(10);
     const REDUCED_NOFILE_DRIVER_ENV: &str = "DODOT_TEST_REDUCED_NOFILE_DRIVER";
 
     #[test]
     fn report_only_hold_terminates_with_parent_liveness_in_bash() {
         let Some(bash) = bash() else { return };
-        report_only_hold_terminates_with_parent_liveness(bash);
+        report_only_hold_terminates_with_parent_liveness(bash, HookupShell::Bash);
     }
 
     #[test]
     fn report_only_hold_terminates_with_parent_liveness_in_zsh() {
         let Some(zsh) = zsh() else { return };
-        report_only_hold_terminates_with_parent_liveness(zsh);
+        report_only_hold_terminates_with_parent_liveness(zsh, HookupShell::Zsh);
+    }
+
+    #[test]
+    fn report_only_hold_avoids_multi_digit_redirection_in_dash() {
+        let (Some(dash), Some(bash)) = (dash(), bash()) else {
+            return;
+        };
+        report_only_hold_terminates_with_parent_liveness_using(dash, bash, HookupShell::Bash);
     }
 
     #[test]
@@ -1775,7 +1821,8 @@ mod tests {
                 HookupShell::Bash,
                 ".bashrc",
             );
-            let descriptor = report_only_hold_terminates_with_parent_liveness(bash);
+            let descriptor =
+                report_only_hold_terminates_with_parent_liveness(bash, HookupShell::Bash);
             assert!(descriptor > libc::STDERR_FILENO, "descriptor: {descriptor}");
             assert!(descriptor < SOFT_LIMIT as RawFd, "descriptor: {descriptor}");
             return;
@@ -1827,13 +1874,24 @@ mod tests {
         );
     }
 
-    fn report_only_hold_terminates_with_parent_liveness(shell_path: &Path) -> RawFd {
+    fn report_only_hold_terminates_with_parent_liveness(
+        shell_path: &Path,
+        shell: HookupShell,
+    ) -> RawFd {
+        report_only_hold_terminates_with_parent_liveness_using(shell_path, shell_path, shell)
+    }
+
+    fn report_only_hold_terminates_with_parent_liveness_using(
+        outer_shell_path: &Path,
+        clean_shell_path: &Path,
+        shell: HookupShell,
+    ) -> RawFd {
         use std::os::unix::process::ExitStatusExt;
 
         let env = TempEnvironment::builder().build();
         let touched = env.home.join("continued-after-hold");
         let script = env.home.join("report-only-hold.sh");
-        let mut command = Command::new(shell_path);
+        let mut command = Command::new(outer_shell_path);
         command.stdin(std::process::Stdio::null());
         crate::shell::probe::configure_probe_session(&mut command);
         let liveness = crate::shell::probe::ParentLiveness::attach(&mut command)
@@ -1844,7 +1902,7 @@ mod tests {
                 &script,
                 format!(
                     "{}\nprintf should-not-run > {}\n",
-                    report_only_hold(descriptor),
+                    report_only_hold(clean_shell_path, shell, descriptor),
                     shell_quote(&touched.display().to_string()),
                 )
                 .as_bytes(),
