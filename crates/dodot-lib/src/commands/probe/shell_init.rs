@@ -392,11 +392,15 @@ const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// wrong file.
 ///
 /// The spawn is announced before it runs and rides the INS01 envelope
-/// via [`crate::shell::trace::run_trace`].
+/// via [`crate::shell::trace::run_trace`]. Eval-form hooks first take
+/// a report-only PATH record so dodot can identify the target without
+/// running it; only targets whose emitted init script advertises
+/// diagnostic trace support get a second run that continues through
+/// generated contributions.
 fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
     use crate::shell::activation;
     use crate::shell::rc;
-    use crate::shell::trace::{self, HookForm, SourcedScript, TraceError};
+    use crate::shell::trace::{self, HookForm, SourcedScript};
 
     let fs = ctx.fs.as_ref();
     let home = ctx.paths.home_dir();
@@ -441,6 +445,7 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
         );
     };
     let hook_line = hook.line;
+    let execution = trace_execution_for_hook(fs, &hook.form);
 
     // Only a context that may measure gets to spawn; every
     // non-production context leaves the policy at `Never`.
@@ -450,11 +455,12 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
             shell_name,
             rc_display,
             hook_line,
+            None,
         );
     };
 
     eprintln!("{}", trace::announcement(shell));
-    let request = trace::TraceRequest {
+    let mut request = trace::TraceRequest {
         shell_path: std::path::Path::new(&shell_path),
         shell,
         home,
@@ -466,47 +472,49 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
         rc_resolved: &target.path,
         hook_line,
         timeout,
+        execution,
     };
-    let run = match trace::run_trace(fs, &request) {
-        Ok(run) => run,
-        Err(TraceError::TimedOut) => {
-            return untraced(
-                "your shell did not finish starting up in time".to_string(),
-                shell_name,
-                rc_display,
+    let trace_started = std::time::Instant::now();
+    let run = match &hook.form {
+        HookForm::Eval => {
+            request.execution = trace::TraceExecution::ReportOnly;
+            let path_run =
+                match run_trace_for_view(fs, &request, trace_started, &shell_name, &rc_display) {
+                    Ok(run) => run,
+                    Err(view) => return *view,
+                };
+            let diagnostic_supported = trace::record_at(
+                &path_run.records,
+                &[target.nominal(), &target.path],
                 hook_line,
             )
+            .is_some_and(|record| eval_target_supports_diagnostic_trace(fs, record));
+            if diagnostic_supported {
+                request.execution = trace::TraceExecution::DiagnosticSupported;
+                let mut run =
+                    match run_trace_for_view(fs, &request, trace_started, &shell_name, &rc_display)
+                    {
+                        Ok(run) => run,
+                        Err(view) => return *view,
+                    };
+                run.elapsed_us = elapsed_since(trace_started);
+                run
+            } else {
+                let mut path_run = path_run;
+                path_run.elapsed_us = elapsed_since(trace_started);
+                path_run
+            }
         }
-        Err(TraceError::SpawnFailed(e)) => {
-            return untraced(
-                format!("could not run your shell ({e})"),
-                shell_name,
-                rc_display,
-                hook_line,
-            )
-        }
-        Err(TraceError::RcUnreadable(e)) => {
-            return untraced(
-                format!("could not read {rc_display} ({e})"),
-                shell_name,
-                rc_display,
-                hook_line,
-            )
-        }
-        Err(TraceError::FallbackUnfaithful(e)) => {
-            return untraced(
-                format!("could not reproduce your shell's startup files ({e})"),
-                shell_name,
-                rc_display,
-                hook_line,
-            )
-        }
+        _ => match run_trace_for_view(fs, &request, trace_started, &shell_name, &rc_display) {
+            Ok(run) => run,
+            Err(view) => return *view,
+        },
     };
 
     let record = trace::record_at(&run.records, &[target.nominal(), &target.path], hook_line);
     let verdict = match record {
         None => trace::TraceVerdict::HookNeverRan,
-        Some(record) => match hook.form {
+        Some(record) => match &hook.form {
             HookForm::Eval => {
                 // The verdict is an identity comparison against the
                 // running binary. Without it there is no comparison to
@@ -518,6 +526,7 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
                         shell_name,
                         rc_display,
                         hook_line,
+                        Some(run.elapsed_us),
                     );
                 };
                 trace::judge_eval_hook(fs, record, &running_exe, &version_by_running)
@@ -529,14 +538,14 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
             // the script rather than assumed from its existence.
             HookForm::FileSource(SourcedScript::Path(script)) => trace::judge_file_source_hook(
                 fs,
-                script,
+                script.clone(),
                 // The generation `dodot up` last wrote: what a sound
                 // hook's script should be carrying.
                 activation::read_script_generation(fs, ctx.paths.as_ref()),
                 activation::running_version(),
             ),
             HookForm::FileSource(SourcedScript::Unresolved { raw }) => {
-                trace::TraceVerdict::ScriptUnresolved { raw }
+                trace::TraceVerdict::ScriptUnresolved { raw: raw.clone() }
             }
         },
     };
@@ -547,7 +556,50 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
         rc_display,
         hook_line,
         run.used_fallback,
+        run.elapsed_us,
     )
+}
+
+fn run_trace_for_view(
+    fs: &dyn crate::fs::Fs,
+    request: &crate::shell::trace::TraceRequest<'_>,
+    trace_started: std::time::Instant,
+    shell: &str,
+    rc: &str,
+) -> std::result::Result<crate::shell::trace::TraceRun, Box<ShellInitTraceView>> {
+    use crate::shell::trace::{self, TraceError};
+
+    match trace::run_trace(fs, request) {
+        Ok(run) => Ok(run),
+        Err(TraceError::TimedOut) => Err(Box::new(untraced(
+            "your shell did not finish starting up in time".to_string(),
+            shell.to_string(),
+            rc.to_string(),
+            request.hook_line,
+            Some(elapsed_since(trace_started)),
+        ))),
+        Err(TraceError::SpawnFailed(e)) => Err(Box::new(untraced(
+            format!("could not run your shell ({e})"),
+            shell.to_string(),
+            rc.to_string(),
+            request.hook_line,
+            Some(elapsed_since(trace_started)),
+        ))),
+        Err(TraceError::RcUnreadable(e)) => Err(Box::new(untraced(
+            format!("could not read {rc} ({e})"),
+            shell.to_string(),
+            rc.to_string(),
+            request.hook_line,
+            Some(elapsed_since(trace_started)),
+        ))),
+        Err(TraceError::FallbackUnfaithful(e)) => Err(Box::new(untraced(
+            format!("could not reproduce your shell's startup files ({e})"),
+            shell.to_string(),
+            rc.to_string(),
+            request.hook_line,
+            Some(elapsed_since(trace_started)),
+        ))),
+    }
 }
 
 /// A trace view for "nothing to trace": stated plainly, nothing
@@ -562,13 +614,22 @@ fn skipped_trace(reason: String, shell: String, rc: String) -> ShellInitTraceVie
         verdict: String::new(),
         headline: reason,
         detail_lines: Vec::new(),
+        elapsed_us: 0,
+        elapsed_label: String::new(),
         used_fallback: false,
     }
 }
 
 /// A trace view for "wanted to trace but could not": the recorded
 /// half stands alone, labeled honestly.
-fn untraced(reason: String, shell: String, rc: String, hook_line: usize) -> ShellInitTraceView {
+fn untraced(
+    reason: String,
+    shell: String,
+    rc: String,
+    hook_line: usize,
+    elapsed_us: Option<u64>,
+) -> ShellInitTraceView {
+    let elapsed_us = elapsed_us.unwrap_or(0);
     ShellInitTraceView {
         status: "untraced".into(),
         status_class: "warning",
@@ -578,6 +639,12 @@ fn untraced(reason: String, shell: String, rc: String, hook_line: usize) -> Shel
         verdict: String::new(),
         headline: format!("could not trace — {reason}"),
         detail_lines: Vec::new(),
+        elapsed_us,
+        elapsed_label: if elapsed_us == 0 {
+            String::new()
+        } else {
+            humanize_us(elapsed_us)
+        },
         used_fallback: false,
     }
 }
@@ -607,6 +674,7 @@ fn verdict_trace_view(
     rc: String,
     hook_line: usize,
     used_fallback: bool,
+    elapsed_us: u64,
 ) -> ShellInitTraceView {
     use crate::shell::activation::running_version;
     use crate::shell::rc::display_home_relative;
@@ -786,8 +854,60 @@ fn verdict_trace_view(
         verdict: tag.into(),
         headline,
         detail_lines,
+        elapsed_us,
+        elapsed_label: humanize_us(elapsed_us),
         used_fallback,
     }
+}
+
+fn trace_execution_for_hook(
+    fs: &dyn crate::fs::Fs,
+    hook: &crate::shell::trace::HookForm,
+) -> crate::shell::trace::TraceExecution {
+    use crate::shell::trace::{HookForm, SourcedScript, TraceExecution};
+
+    match hook {
+        HookForm::FileSource(SourcedScript::Path(script))
+            if fs
+                .read_to_string(script)
+                .is_ok_and(|text| crate::shell::script_supports_diagnostic_trace(&text)) =>
+        {
+            TraceExecution::DiagnosticSupported
+        }
+        _ => TraceExecution::ReportOnly,
+    }
+}
+
+fn eval_target_supports_diagnostic_trace(
+    fs: &dyn crate::fs::Fs,
+    record: &crate::shell::trace::TraceRecord,
+) -> bool {
+    let resolution = crate::shell::trace::resolve_on_path(
+        fs,
+        &record.path,
+        std::path::Path::new(&record.cwd),
+        "dodot",
+    );
+    let Some(winner) = resolution.winner else {
+        return false;
+    };
+    init_script_by_running(&winner)
+        .as_deref()
+        .is_some_and(crate::shell::script_supports_diagnostic_trace)
+}
+
+fn init_script_by_running(binary: &std::path::Path) -> Option<String> {
+    use crate::shell::probe::{spawn_captured, SpawnOutcome};
+    let mut command = std::process::Command::new(binary);
+    command.arg("init-sh");
+    match spawn_captured(command, VERSION_TIMEOUT) {
+        SpawnOutcome::Finished(capture) if capture.status == Some(0) => Some(capture.stdout),
+        _ => None,
+    }
+}
+
+fn elapsed_since(started: std::time::Instant) -> u64 {
+    started.elapsed().as_micros().try_into().unwrap_or(u64::MAX)
 }
 
 fn shell_init_groups(grouped: &GroupedProfile) -> Vec<ShellInitGroup> {

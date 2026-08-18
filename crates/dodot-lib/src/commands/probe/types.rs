@@ -310,6 +310,15 @@ pub struct ShellInitTraceView {
     /// Supporting lines: candidate binaries passed over and why, the
     /// paths and versions compared, the next command to run.
     pub detail_lines: Vec<String>,
+    /// Numeric elapsed wall-clock microseconds for the diagnostic
+    /// trace attempt, including capability negotiation and a fallback
+    /// attempt when one was needed. `0` means no shell process was
+    /// attempted.
+    pub elapsed_us: u64,
+    /// Human-readable elapsed duration for terminal output. Empty
+    /// when no shell process was attempted, so the terminal renderer
+    /// omits the elapsed line instead of reporting a fake duration.
+    pub elapsed_label: String,
     /// True when the answer came from the fallback copy (temporary
     /// `ZDOTDIR` / `--rcfile`) rather than the primary xtrace run.
     pub used_fallback: bool,
