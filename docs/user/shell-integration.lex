@@ -142,7 +142,7 @@ Shell integration
 
     This state is not only inferred. When `dodot up` or `dodot install --write` starts a shell to check the hookup (see _Verified broken_ below), that shell reports both halves of what it loaded — the generation *and* the dodot that wrote it — so a hookup that mints a perfectly current generation from the wrong binary is measured as skew rather than certified as healthy. That is the failure this whole page exists for, and it is exactly the case a generation alone reads as fine.
 
-    For the measured answer — which binary `dodot` resolves to at the hook line, and why — run `dodot probe shell-init` ([./commands/probe.lex] §4).
+    For the measured answer — which binary `dodot` resolves to at the hook line, and why — run `dodot probe shell-init --trace-hook` ([./commands/probe.lex] §4).
 
     _Empty script_ — the hookup is wired and firing, but the generated script carries no pack contributions, so a healthy-sounding line would be misleading. This is what `dodot down` leaves behind, and also a first `up` that deployed nothing. The line says "no packs", not "the script is empty": on a Homebrew host the script still carries the `brew shellenv` block ([#3]) and is doing real work — just none of yours. It reads the same whether dodot inferred the hookup was firing or measured it:
 
@@ -186,7 +186,7 @@ Shell integration
 
     :: shell ::
 
-    _Verified broken_ comes only from `dodot up` or `dodot install --write`, which are the two commands allowed to start a shell to find out. The diagnosis splits, because the cases need different fixes — the hook is missing from the file:
+    _Verified broken_ in the activation footer comes from `dodot up` or `dodot install --write`. Bare `dodot probe shell-init` can run the same targeted measurement, but reports it separately as `Hook verification` rather than changing the footer. The diagnosis splits, because the cases need different fixes — the hook is missing from the file:
 
         ✗ Shell hookup: a new shell did not load dodot.
         The dodot hook is missing from ~/.zshrc — run `dodot install --write` to add it.
@@ -209,6 +209,7 @@ Shell integration
     - `dodot status` never does. It reports the evidence it can read for free, so it stays safe to run anywhere.
     - `dodot up` does, but only when the cheap evidence is inconclusive — no current stamp *and* no fresh heartbeat. That is the fresh-install case and the broken-hook case. The first real shell activation writes the heartbeat and the check retires; a healthy machine never pays for it.
     - `dodot install --write` does, unconditionally, because you just asked it to change the file and a measured answer is what makes the change worth trusting.
+    - Bare `dodot probe shell-init` does, on demand, and reports the targeted result without writing your rc or activation evidence. Its passive filters and history views do not start a shell.
 
     The spawn is announced when it happens (`verifying shell integration (zsh)…`), runs your shell interactive but non-login with stdin from `/dev/null`, and is killed on a hard timeout. A timeout or a spawn failure degrades to reporting what is *configured*, clearly labelled as such — it never wedges `up`.
 
@@ -269,11 +270,11 @@ Shell integration
 
     What does `dodot` resolve to at the hook line — plus per-source timings and errors from your last shell start:
 
-        dodot probe shell-init
+        dodot probe shell-init --trace-hook
 
     :: shell ::
 
-    That is the deep diagnosis for a hookup the footer flags as skewed or dead: it runs your rc under tracing and names the rc file, the hook's line, and which binary `dodot` resolves to *at that line* — including stale installs it passed over on the way. See [./commands/probe.lex] §4.
+    That is the deep diagnosis for a hookup the footer flags as skewed or dead: it traces startup to the hook and names the rc file, the hook's line, and which binary `dodot` resolves to *at that line* — including stale installs it passed over on the way. Current diagnostic-capable hooks let the trace continue through the rest of the rc; capability-unknown legacy targets stop immediately before the hook. See [./commands/probe.lex] §4.
 
     The probe surfaces stale data with a flag if the report predates the most recent `dodot up` — staleness is detected via `$XDG_DATA_HOME/dodot/last-up-at` (typically `~/.local/share/dodot/last-up-at`), written on every successful `up`.
 

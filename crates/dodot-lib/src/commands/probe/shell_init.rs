@@ -1,19 +1,22 @@
 //! Entry points and helpers for the `probe shell-init` family.
 //!
-//! Five public entry points produce the five `ShellInit*` `ProbeResult`
+//! Six public entry points produce the five `ShellInit*` `ProbeResult`
 //! variants:
 //!
 //! - [`shell_init`] — most recent profile, grouped by (pack, handler),
 //!   plus (by default) a fresh targeted time-to-hook verification; the
 //!   historical profile and live verification are timed separately
+//! - [`shell_init_trace`] — the same profile view with explicit
+//!   hook-line diagnosis instead of targeted verification
 //! - [`shell_init_aggregate`] — percentile stats across last N runs
 //! - [`shell_init_history`] — one summary row per recent profile
 //! - [`shell_init_filter`] — drill-down by `<pack>[/<file>]`
 //! - [`shell_init_errors`] — non-zero-exit entries across the window
 //!
-//! Only [`shell_init`] may carry live verification or trace data, and
-//! only it may spawn a shell; every other view — and every other
-//! command — stays passive (INS01 §9 still binds).
+//! [`shell_init`] may spawn for targeted verification, and
+//! [`shell_init_trace`] may spawn for explicit diagnosis. The aggregate,
+//! history, filter, and error entry points remain passive (INS01 §9
+//! still binds).
 
 use crate::commands::probe::types::{
     ProbeResult, ShellInitAggregateRow, ShellInitAggregateView, ShellInitErrorsView,

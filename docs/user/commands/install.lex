@@ -91,7 +91,7 @@ Run it with `--write` and it splices its own marked block into that file, then s
 
 5. The verdict: what `--write` measures
 
-    After writing, `dodot install --write` starts your shell — interactive, non-login, stdin from `/dev/null`, output captured, on a five-second timeout — and checks whether the generated init script actually ran in it. It announces itself while doing so:
+    After writing, `dodot install --write` starts your shell — interactive, non-login, stdin from `/dev/null`, output captured, on a five-second timeout — and checks whether the generated init script is reached. A current script answers at its start and exits the verification shell before heartbeat or profile writes, PATH and Homebrew setup, pack contributions, or later rc work. This proves the hookup, not that every contribution completed. It announces itself while doing so:
 
         $ dodot install --write
 

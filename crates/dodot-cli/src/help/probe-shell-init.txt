@@ -9,7 +9,7 @@ Views, by flag:
 
   [dim]•[/dim] [item]default[/item]               most recent run + fresh hook verification
   [dim]•[/dim] [item]--no-verify[/item]           recorded timings only; no shell is spawned
-  [dim]•[/dim] [item]--trace-hook[/item]          full hook-line PATH diagnosis
+  [dim]•[/dim] [item]--trace-hook[/item]          hook-line PATH diagnosis; may execute rc side effects
   [dim]•[/dim] [item]--runs [N][/item]            aggregate the last [item]N[/item] runs into per-target [item]p50[/item] / [item]p95[/item] / [item]max[/item]
   [dim]•[/dim] [item]--history[/item]             one summary row per run, newest first
   [dim]•[/dim] [item]--errors-only[/item]         every target with a non-zero exit, sorted by failure count
@@ -35,7 +35,9 @@ actually does on login.[/desc]
                   Conflicts with [item]--runs[/item], [item]--history[/item], and [item]<PACK[/FILE]>[/item].[/desc]
   [item]--no-verify[/item]     [desc]Skip the fresh hook verification and report recorded timings only.[/desc]
   [item]--no-trace[/item]      [desc]Deprecated alias for [item]--no-verify[/item].[/desc]
-  [item]--trace-hook[/item]    [desc]Run the full hook-line PATH diagnosis instead of targeted verification.[/desc]
+  [item]--trace-hook[/item]    [desc]Run the full hook-line PATH diagnosis instead of targeted verification.
+                  May execute rc and pack side effects; a diagnostic-capable eval
+                  hook can start the rc up to three times.[/desc]
 
 [header]EXAMPLES[/header]
   [example]dodot probe shell-init                     [dim]# most recent run + hook verification[/dim]

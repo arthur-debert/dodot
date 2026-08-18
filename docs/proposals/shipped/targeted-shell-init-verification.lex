@@ -1,27 +1,27 @@
 Design Specification: Targeted Shell-Init Verification
 
     :: note ::
-        *Status: proposed.* Epic code unassigned. This is a focused successor to [./shipped/shell-hookup.lex] and [./shell-hookup-ergonomics.lex]. It retains their activation evidence, process-group timeout, and PATH-at-the-hook diagnosis. It replaces only the requirement that routine verification and a bare `dodot probe shell-init` run the user's complete rc file.
+        *Status: implemented and shipped.* Epic SIV01 delivered targeted verification, explicit hook tracing, and honest incomplete profiles across work streams #327–#330. The user-facing reference is [./../../user/commands/probe.lex] §4, with activation behavior in [./../../user/shell-integration.lex]. This document is preserved as historical design context, not a maintained command reference. Where it and the user documentation disagree, the user documentation is authoritative; where either disagrees with the source, the source is authoritative.
 
-        Until this proposal ships, the code and current user documentation remain authoritative: `dodot up` and `dodot install --write` may run the full rc to verify activation, and a bare `dodot probe shell-init` runs the full rc under tracing by default.
+        This is a focused successor to [./shell-hookup.lex] and [./../shell-hookup-ergonomics.lex]. It retains their activation evidence, process-group timeout, and PATH-at-the-hook diagnosis. It replaces only the former requirement that routine verification and a bare `dodot probe shell-init` run the user's complete rc file.
     ::
 
-    dodot needs to answer one small question after creating or inspecting a shell hookup: *did a new interactive shell reach the dodot init script?* The current implementation answers a larger question. It waits for the entire rc file to finish, and `probe shell-init` additionally traces every command so it can reconstruct `PATH` at the hook line. That diagnosis is valuable when PATH resolution is broken, but it is unnecessary work for routine activation verification and can time out after dodot's hook has already run.
+    dodot needed to answer one small question after creating or inspecting a shell hookup: *did a new interactive shell reach the dodot init script?* Before SIV01, the implementation answered a larger question. It waited for the entire rc file to finish, and `probe shell-init` additionally traced every command so it could reconstruct `PATH` at the hook line. That diagnosis remains valuable when PATH resolution is broken, but it was unnecessary work for routine activation verification and could time out after dodot's hook had already run.
 
-    This proposal gives routine verification its own narrow protocol. A child shell carries a one-use nonce; the generated init script recognizes it before any pack contribution runs, reports its generation and dodot version, and exits the child shell immediately. The result says whether the hook was reached, which init script answered, and how long reaching it took. Full hook-resolution tracing remains available only when explicitly requested.
+    SIV01 gives routine verification its own narrow protocol. A child shell carries a one-use nonce; the generated init script recognizes it before any pack contribution runs, reports its generation and dodot version, and exits the child shell immediately. The result says whether the hook was reached, which init script answered, and how long reaching it took. Full hook-resolution tracing remains available only when explicitly requested.
 
 
 1. The Problem
 
     1.1. Three Questions Share Two Implementations
 
-        The current shell-hookup code answers three different questions:
+        The pre-SIV01 shell-hookup code answered three different questions:
 
-        Current questions and mechanisms:
-            | Question | Current mechanism | Required work |
+        Pre-SIV01 questions and mechanisms:
+            | Question | Former mechanism | Required work |
             | Is this shell, or any recent shell, using dodot? | Environment stamp and heartbeat | Environment and file reads only |
             | Would a new interactive shell reach dodot's init script? | Start `$SHELL -ic`, run the complete rc, print the resulting stamp | Every command in the rc and every deployed pack contribution |
-            | What does `dodot` resolve to at the hook line? | Start the shell with PS4 tracing; retry against a temporary rc copy when necessary | The complete rc once or twice, trace capture and parsing, PATH resolution, sometimes another binary's `--version` |
+            | What does `dodot` resolve to at the hook line? | Start the shell with PS4 tracing; retry against a temporary rc copy when necessary | The complete rc up to twice for file-source hooks or three times for diagnostic-capable eval hooks, trace capture and parsing, PATH resolution, sometimes another binary's `--version` |
 
             :: table align=lll header=1 ::
 
@@ -29,9 +29,9 @@ Design Specification: Targeted Shell-Init Verification
 
     1.2. The Timeout Reports the Wrong Requirement
 
-        The shell process currently gets five seconds to *finish starting*. A timeout is rendered as:
+        The shell process formerly got five seconds to *finish starting*. A timeout was rendered as:
 
-        Current timeout:
+        Former timeout:
 
             Hook resolution ~/.zshrc:6 (zsh)
               could not trace — your shell did not finish starting up in time
@@ -44,9 +44,9 @@ Design Specification: Targeted Shell-Init Verification
 
     1.3. The Verification Cost Is Missing from the Report
 
-        `probe shell-init` reads the most recent profile before it starts the live hook trace. The displayed profile therefore describes an earlier shell. The trace can create a newer profile, but the command does not display it, and the trace result carries no elapsed duration.
+        Before SIV01, `probe shell-init` read the most recent profile before it started the live hook trace. The displayed profile therefore described an earlier shell. The trace could create a newer profile, but the command did not display it, and the trace result carried no elapsed duration.
 
-        This produces four misleading outcomes:
+        This produced four misleading outcomes:
 
         - The displayed grand total excludes the live verification step the command just performed.
         - A successful report does not say whether hook verification took 8 ms, 200 ms, or 4.9 seconds.
@@ -79,7 +79,7 @@ Design Specification: Targeted Shell-Init Verification
         | Module | Answer | May start a shell? | Typical callers |
         | Activation evidence | What this shell and the most recent observed shell loaded | No | `status`, `up`, `down`, `install` |
         | Targeted verification | Whether a new interactive shell reached a specific dodot init script, with identity and elapsed time | Yes, at most once | `up`, `install --write`, bare `probe shell-init` |
-        | Hook-resolution trace | Whether the hook line ran and, for the eval form, which `dodot` PATH selected there | Yes, explicitly requested; fallback may start it again | `probe shell-init --trace-hook` |
+        | Hook-resolution trace | Whether the hook line ran and, for the eval form, which `dodot` PATH selected there | Yes, explicitly requested; diagnostic-capable eval hooks can require target discovery, a primary trace, and a fallback | `probe shell-init --trace-hook` |
 
         :: table align=llll header=1 ::
 
@@ -180,7 +180,7 @@ Design Specification: Targeted Shell-Init Verification
 
     4.3. `dodot install --write`
 
-        `install --write` starts one targeted verification after changing the rc, as it starts one full activation probe today. This checks the exact state it just wrote without running any pack contribution. A bare `dodot install` remains passive.
+        `install --write` starts one targeted verification after changing the rc. This checks the exact state it just wrote without running any pack contribution. A bare `dodot install` remains passive.
 
     4.4. `dodot probe shell-init`
 
@@ -304,7 +304,7 @@ Design Specification: Targeted Shell-Init Verification
 
 10. Further Notes
 
-    - [./shipped/shell-hookup.lex] remains authoritative for activation evidence, the evidence-first decision in `up`, rc selection, and `install --write` ownership.
-    - [./shell-hookup-ergonomics.lex] remains authoritative for version-stamped evidence and PATH-at-the-hook diagnosis. This proposal supersedes its epic decision 6 only: full tracing is no longer the default behavior of bare `probe shell-init`.
-    - [./shipped/profiling.lex] remains authoritative for ordinary shell-init profile records and historical views, with [#5.3] adding the missing incomplete-record rule.
+    - [./shell-hookup.lex] remains authoritative for activation evidence, the evidence-first decision in `up`, rc selection, and `install --write` ownership.
+    - [./../shell-hookup-ergonomics.lex] remains authoritative for version-stamped evidence and PATH-at-the-hook diagnosis. This proposal supersedes its epic decision 6 only: full tracing is no longer the default behavior of bare `probe shell-init`.
+    - [./profiling.lex] remains authoritative for ordinary shell-init profile records and historical views, with [#5.3] adding the missing incomplete-record rule.
     - The observed performance problem came from a minimal zsh rc whose first executable line sources the managed init script. That shape makes the distinction especially clear: reaching the hook is cheap; running every deployed contribution and the rest of the rc is a separate operation.

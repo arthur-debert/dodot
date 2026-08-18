@@ -12,7 +12,7 @@
 //! `dodot install --write` wires the line below into the user's rc
 //! file ([`rc`]), [`probe`] measures whether a new shell actually
 //! runs it, and [`trace`] reports what `dodot` resolves to at that
-//! rc line (`dodot probe shell-init`). Users can also add it by hand:
+//! rc line (`dodot probe shell-init --trace-hook`). Users can also add it by hand:
 //!
 //! ```sh
 //! [ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && . "$HOME/.local/share/dodot/shell/dodot-init.sh"
@@ -21,7 +21,7 @@
 //! # Targeted verification
 //!
 //! Current init scripts open with the one-use challenge branch from
-//! `targeted-shell-init-verification.lex`: when dodot starts a fresh
+//! `docs/proposals/shipped/targeted-shell-init-verification.lex`: when dodot starts a fresh
 //! interactive shell only to verify that the hook is reached, the
 //! script reports its nonce, verifier PID, shell PID, generation, and
 //! dodot version, then exits before heartbeat writes, profiling, PATH
