@@ -34,7 +34,10 @@ assert_no_verification_side_effects() {
     if [ -d "$profiles_dir" ]; then
         local count
         count=$(find "$profiles_dir" -name 'profile-*.tsv' -type f | wc -l | tr -d ' ')
-        [ "$count" = "0" ]
+        if [ "$count" != "0" ]; then
+            echo "expected 0 shell-init profiles, got $count" >&2
+            return 1
+        fi
     fi
 }
 

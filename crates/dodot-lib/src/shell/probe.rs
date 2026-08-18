@@ -386,10 +386,10 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
 
 /// Spawn `shell` interactively and read the stamp back.
 ///
-/// Safe against hostile rc files by construction — the whole
-/// [`spawn_captured`] envelope. Never returns an error: every failure
-/// mode is an outcome, because a probe that could not run must
-/// degrade, not propagate (spec §3.3).
+/// Safe against hostile rc files by construction through the shared
+/// process-group and pipe-handling envelope. Never returns an error:
+/// every failure mode is an outcome, because a probe that could not
+/// run must degrade, not propagate (spec §3.3).
 pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
     run_targeted(shell, timeout).outcome
 }
