@@ -107,7 +107,28 @@ const POLL_INTERVAL: Duration = Duration::from_millis(20);
 const POST_EXIT_DRAIN: Duration = Duration::from_millis(200);
 
 /// Descriptor inherited by a report-only hold from the Rust parent.
-pub(crate) const PARENT_LIVENESS_FD: RawFd = 3;
+/// Kept above the range rc files conventionally use for saved streams.
+pub(crate) const PARENT_LIVENESS_FD: RawFd = 63;
+
+/// Put a probed shell in its own session and process group.
+///
+/// Besides making whole-group timeout termination possible, dropping the
+/// controlling terminal prevents an explicitly interactive shell from
+/// stopping itself with `SIGTTIN` or `SIGTTOU` when dodot runs under a PTY.
+pub(crate) fn configure_probe_session(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+
+    // SAFETY: `setsid` is an async-signal-safe syscall and touches no Rust
+    // state between fork and exec. A failure is returned by `spawn`.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
 
 /// A close-on-exec socket pair whose child end is installed at the
 /// stable descriptor consumed by the report-only hold.
@@ -128,13 +149,6 @@ impl ParentLiveness {
         // alive in `Self` until `Command::spawn` returns.
         unsafe {
             command.pre_exec(move || {
-                // A session leader is also its own process-group leader,
-                // while having no controlling terminal. That prevents an
-                // explicitly interactive zsh from stopping itself when the
-                // caller happens to run under a PTY.
-                if libc::setsid() == -1 {
-                    return Err(std::io::Error::last_os_error());
-                }
                 libc::close(parent_fd);
                 if libc::dup2(child_fd, PARENT_LIVENESS_FD) == -1 {
                     return Err(std::io::Error::last_os_error());
@@ -391,13 +405,7 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     for key in scrubbed_keys(std::env::vars().map(|(k, _)| k)) {
         command.env_remove(key);
     }
-    // Its own process group, so a timeout can take out everything the
-    // rc file spawned, not just the shell we can see.
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    configure_probe_session(&mut command);
 
     let mut child = match command.spawn() {
         Ok(c) => c,
@@ -465,6 +473,7 @@ pub fn spawn_captured_until_stderr(
     for key in scrubbed_keys(std::env::vars().map(|(k, _)| k)) {
         command.env_remove(key);
     }
+    configure_probe_session(&mut command);
     let liveness = match ParentLiveness::attach(&mut command) {
         Ok(liveness) => liveness,
         Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
@@ -639,11 +648,7 @@ fn spawn_until_targeted_marker(
     for key in scrubbed_keys(std::env::vars().map(|(k, _)| k)) {
         command.env_remove(key);
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    configure_probe_session(&mut command);
 
     let mut child = match command.spawn() {
         Ok(c) => c,
@@ -1446,6 +1451,174 @@ mod tests {
         assert!(
             profile_entries.is_empty(),
             "targeted verification must not create startup profiles: {profile_entries:?}"
+        );
+    }
+
+    const PTY_DRIVER_ENV: &str = "DODOT_TEST_PROBE_PTY_DRIVER";
+
+    #[test]
+    fn primary_trace_spawn_finishes_under_a_pty() {
+        if std::env::var(PTY_DRIVER_ENV).as_deref() == Ok("primary") {
+            let shell = Path::new("/bin/zsh");
+            if !shell.exists() {
+                return;
+            }
+            let mut command = Command::new(shell);
+            command.args(["-ic", "printf 'primary-pty-ok\\n'"]);
+            let outcome = spawn_captured(command, Duration::from_secs(2));
+            assert!(
+                matches!(
+                    outcome,
+                    SpawnOutcome::Finished(SpawnCapture { ref stdout, .. })
+                        if stdout.contains("primary-pty-ok")
+                ),
+                "primary trace spawn did not finish under a PTY: {outcome:?}"
+            );
+            eprintln!("pty-driver-primary-complete");
+            return;
+        }
+
+        run_current_test_under_pty(
+            "shell::probe::tests::primary_trace_spawn_finishes_under_a_pty",
+            "primary",
+        );
+    }
+
+    #[test]
+    fn targeted_marker_spawn_finishes_under_a_pty() {
+        if std::env::var(PTY_DRIVER_ENV).as_deref() == Ok("targeted") {
+            let shell = Path::new("/bin/zsh");
+            if !shell.exists() {
+                return;
+            }
+            let nonce = "pty-nonce";
+            let verifier_pid = std::process::id();
+            let mut command = Command::new(shell);
+            command.args([
+                "-ic",
+                &format!(
+                    "printf '{TARGET_PROBE_MARKER}{nonce}|{verifier_pid}|%s|42|5.7.0\\n' \
+                     \"$$\"; sleep 5"
+                ),
+            ]);
+
+            let outcome =
+                spawn_until_targeted_marker(command, Duration::from_secs(2), nonce, verifier_pid);
+            assert!(
+                matches!(
+                    outcome,
+                    TargetedSpawnOutcome::TargetedStamp(ProbeStamp {
+                        generation: 42,
+                        version: EvidenceVersion::Known(ref version),
+                    }) if version == "5.7.0"
+                ),
+                "targeted marker spawn did not finish under a PTY"
+            );
+            eprintln!("pty-driver-targeted-complete");
+            return;
+        }
+
+        run_current_test_under_pty(
+            "shell::probe::tests::targeted_marker_spawn_finishes_under_a_pty",
+            "targeted",
+        );
+    }
+
+    fn run_current_test_under_pty(test_name: &str, driver: &str) {
+        use std::io::Read as _;
+        use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+        use std::os::unix::process::CommandExt as _;
+
+        let mut master_fd = -1;
+        let mut slave_fd = -1;
+        // SAFETY: `openpty` initializes both descriptors on success; the
+        // null termios and window-size pointers request system defaults.
+        let opened = unsafe {
+            libc::openpty(
+                &mut master_fd,
+                &mut slave_fd,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(opened, 0, "openpty: {}", std::io::Error::last_os_error());
+        // SAFETY: successful `openpty` returned two newly owned descriptors.
+        let mut master = unsafe { std::fs::File::from_raw_fd(master_fd) };
+        let slave = unsafe { OwnedFd::from_raw_fd(slave_fd) };
+        set_close_on_exec(master.as_raw_fd());
+        set_close_on_exec(slave.as_raw_fd());
+
+        let slave_fd = slave.as_raw_fd();
+        let mut command = Command::new(std::env::current_exe().expect("current test binary"));
+        command
+            .args(["--exact", test_name, "--nocapture"])
+            .env(PTY_DRIVER_ENV, driver)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        // SAFETY: the closure uses only async-signal-safe descriptor and
+        // session syscalls before exec. `slave` remains alive through spawn.
+        unsafe {
+            command.pre_exec(move || {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::ioctl(slave_fd, libc::TIOCSCTTY as _, 0) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                for target in [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+                    if libc::dup2(slave_fd, target) == -1 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                }
+                if slave_fd > libc::STDERR_FILENO {
+                    libc::close(slave_fd);
+                }
+                Ok(())
+            });
+        }
+
+        let mut child = command.spawn().expect("PTY test driver starts");
+        drop(slave);
+        let output = std::thread::spawn(move || {
+            let mut output = Vec::new();
+            let _ = master.read_to_end(&mut output);
+            output
+        });
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("PTY driver remains waitable") {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("PTY test driver timed out: {test_name}");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let output = output.join().expect("PTY output reader joins");
+        let output = String::from_utf8_lossy(&output);
+        assert!(
+            status.success(),
+            "PTY test driver failed: {test_name}\n{output}"
+        );
+        assert!(
+            output.contains(&format!("pty-driver-{driver}-complete")),
+            "PTY test driver did not exercise its inner branch: {test_name}\n{output}"
+        );
+    }
+
+    fn set_close_on_exec(fd: RawFd) {
+        // SAFETY: `fd` is live for both fcntl calls and no pointer is involved.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert_ne!(flags, -1, "F_GETFD: {}", std::io::Error::last_os_error());
+        assert_ne!(
+            unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) },
+            -1,
+            "F_SETFD: {}",
+            std::io::Error::last_os_error()
         );
     }
 

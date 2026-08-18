@@ -1770,6 +1770,7 @@ mod tests {
             .unwrap();
         let mut command = Command::new(shell_path);
         command.arg(&script).stdin(std::process::Stdio::null());
+        crate::shell::probe::configure_probe_session(&mut command);
         let liveness = crate::shell::probe::ParentLiveness::attach(&mut command)
             .expect("liveness pipe attaches");
         let mut child = command.spawn().expect("shell starts");
@@ -1935,18 +1936,22 @@ mod tests {
     }
 
     #[test]
-    fn report_only_trace_ignores_shadowed_termination_commands_in_bash() {
+    fn report_only_trace_survives_fd_three_and_shadowed_commands_in_bash() {
         let Some(bash) = bash() else { return };
-        report_only_trace_ignores_shadowed_termination_commands(bash, HookupShell::Bash, ".bashrc");
+        report_only_trace_survives_fd_three_and_shadowed_commands(
+            bash,
+            HookupShell::Bash,
+            ".bashrc",
+        );
     }
 
     #[test]
-    fn report_only_trace_ignores_shadowed_termination_commands_in_zsh() {
+    fn report_only_trace_survives_fd_three_and_shadowed_commands_in_zsh() {
         let Some(zsh) = zsh() else { return };
-        report_only_trace_ignores_shadowed_termination_commands(zsh, HookupShell::Zsh, ".zshrc");
+        report_only_trace_survives_fd_three_and_shadowed_commands(zsh, HookupShell::Zsh, ".zshrc");
     }
 
-    fn report_only_trace_ignores_shadowed_termination_commands(
+    fn report_only_trace_survives_fd_three_and_shadowed_commands(
         shell_path: &Path,
         shell: HookupShell,
         rc_name: &str,
@@ -1972,7 +1977,8 @@ mod tests {
             .write_file(
                 &rc,
                 format!(
-                    "command() {{ return 0; }}\n\
+                    "exec 3>&1\n\
+                     command() {{ return 0; }}\n\
                      builtin() {{ return 0; }}\n\
                      kill() {{ return 0; }}\n\
                      exit() {{ return 0; }}\n\
@@ -1992,13 +1998,13 @@ mod tests {
             .unwrap();
         let rc_before = env.fs.read_to_string(&rc).unwrap();
 
-        let mut req = request(&env, shell_path, shell, &rc, 10);
+        let mut req = request(&env, shell_path, shell, &rc, 11);
         req.execution = TraceExecution::ReportOnly;
         let run = run_trace(env.fs.as_ref(), &req).expect("report-only trace runs");
 
         assert!(run.used_fallback);
         assert!(
-            record_at(&run.records, &[&rc], 10).is_some(),
+            record_at(&run.records, &[&rc], 11).is_some(),
             "report-only trace must still print the hook-line record"
         );
         assert!(
