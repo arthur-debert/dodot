@@ -393,6 +393,30 @@ _profiles_snapshot() {
     [ "$(_profiles_snapshot)" = "$profiles_before" ]
 }
 
+@test "trace-hook keeps evidence suppression across duplicate init-script sources" {
+    create_pack_file "shell" "trace.sh" 'echo trace contribution > "$HOME/trace-contribution"'
+    dodot up
+    dodot install --write
+    local init_script="$XDG_DATA_HOME/dodot/shell/dodot-init.sh"
+    printf '[ -f "%s" ] && . "%s"\n' "$init_script" "$init_script" >> "$HOME/.bashrc"
+
+    bash -ic true
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    local hb_contents hb_mtime profiles_before
+    hb_contents="$(cat "$hb")"
+    hb_mtime="$(_mtime_of "$hb")"
+    profiles_before="$(_profiles_snapshot)"
+    rm -f "$HOME/trace-contribution"
+
+    run dodot probe shell-init --trace-hook
+    [ "$status" -eq 0 ]
+    assert_output_contains "the hookup is sound"
+    assert_exists "$HOME/trace-contribution"
+    [ "$(cat "$hb")" = "$hb_contents" ]
+    [ "$(_mtime_of "$hb")" = "$hb_mtime" ]
+    [ "$(_profiles_snapshot)" = "$profiles_before" ]
+}
+
 @test "trace-hook current eval target leaves evidence untouched and runs contributions" {
     create_pack_file "shell" "trace.sh" 'echo trace contribution > "$HOME/trace-contribution"'
     dodot up

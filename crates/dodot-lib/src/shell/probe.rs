@@ -462,9 +462,19 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
+            Ok(Some(status)) => {
+                // The direct process can exit while rc-started descendants
+                // keep running or retain one of the capture pipes. End the
+                // whole probe lifetime before joining either reader.
+                kill_process_group(pid);
+                break Some(status);
+            }
             Ok(None) => {}
-            Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+            Err(e) => {
+                kill_process_group(pid);
+                let _ = child.wait();
+                return SpawnOutcome::SpawnFailed(format!("{e}"));
+            }
         }
         if Instant::now() >= deadline {
             kill_process_group(pid);
@@ -573,7 +583,12 @@ pub(crate) fn spawn_captured_until_stderr_with_liveness(
                 break Some(status);
             }
             Ok(None) => {}
-            Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+            Err(e) => {
+                kill_process_group(child_pid);
+                let _ = child.wait();
+                drain_pending_lines(&rx, &mut stderr, POST_EXIT_DRAIN);
+                return SpawnOutcome::SpawnFailed(format!("{e}"));
+            }
         }
         if Instant::now() >= deadline {
             kill_process_group(child_pid);
@@ -724,6 +739,9 @@ fn spawn_until_targeted_marker(
         }
         match child.try_wait() {
             Ok(Some(_)) => {
+                // The shell is only the process-group leader. Its exit does
+                // not imply that rc-started descendants are gone.
+                kill_process_group(child_pid);
                 drain_pending_lines(&rx, &mut stdout, POST_EXIT_DRAIN);
                 if let Some(stamp) =
                     matching_targeted_stamp_in_output(&stdout, nonce, verifier_pid, child_pid)
@@ -733,7 +751,12 @@ fn spawn_until_targeted_marker(
                 return TargetedSpawnOutcome::Finished(stdout);
             }
             Ok(None) => {}
-            Err(e) => return TargetedSpawnOutcome::SpawnFailed(format!("{e}")),
+            Err(e) => {
+                kill_process_group(child_pid);
+                let _ = child.wait();
+                drain_pending_lines(&rx, &mut stdout, POST_EXIT_DRAIN);
+                return TargetedSpawnOutcome::SpawnFailed(format!("{e}"));
+            }
         }
         if Instant::now() >= deadline {
             kill_process_group(child_pid);
@@ -1371,6 +1394,47 @@ mod tests {
         assert_eq!(
             matching_targeted_stamp_in_output(&stdout, "abc", 10, 21),
             None
+        );
+    }
+
+    #[test]
+    fn targeted_runner_terminates_descendants_when_the_direct_shell_exits() {
+        use crate::fs::Fs;
+
+        let shell = Path::new("/bin/sh");
+        if !shell.exists() {
+            return;
+        }
+        let env = crate::testing::TempEnvironment::builder().build();
+        let started = env.home.join("targeted-descendant-started");
+        let leaked = env.home.join("targeted-descendant-survived");
+        let mut command = Command::new(shell);
+        command
+            .env("DODOT_TEST_DESCENDANT_STARTED", &started)
+            .env("DODOT_TEST_DESCENDANT_LEAKED", &leaked)
+            .args([
+                "-c",
+                "( : > \"$DODOT_TEST_DESCENDANT_STARTED\"; sleep 1; \
+                 : > \"$DODOT_TEST_DESCENDANT_LEAKED\" ) & \
+                 while [ ! -e \"$DODOT_TEST_DESCENDANT_STARTED\" ]; do :; done",
+            ]);
+
+        let outcome = spawn_until_targeted_marker(
+            command,
+            Duration::from_secs(2),
+            "unused-nonce",
+            std::process::id(),
+        );
+
+        assert!(
+            matches!(outcome, TargetedSpawnOutcome::Finished(_)),
+            "the marker-less direct shell should finish"
+        );
+        assert!(env.fs.exists(&started), "the descendant never started");
+        std::thread::sleep(Duration::from_millis(1_200));
+        assert!(
+            !env.fs.exists(&leaked),
+            "a descendant survived the targeted probe's terminal path"
         );
     }
 

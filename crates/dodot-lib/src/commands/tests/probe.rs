@@ -1304,6 +1304,60 @@ fn probe_shell_init_without_trace_has_null_trace_field() {
 }
 
 #[test]
+fn probe_shell_init_skipped_verification_has_no_fake_elapsed_time() {
+    let env = TempEnvironment::builder().build();
+    let mut ctx = make_ctx(&env);
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/bash".into()),
+        zdotdir: None,
+    };
+
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["verification"]["outcome"], "skipped");
+    assert_eq!(parsed["verification"]["elapsed_us"], 0);
+    assert_eq!(parsed["verification"]["elapsed_label"], "");
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("elapsed:"),
+        "no shell was attempted:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_spawn_forbidden_has_no_fake_elapsed_time() {
+    let env = TempEnvironment::builder().build();
+    let script =
+        crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            format!(". \"{}\"\n", script.display()).as_bytes(),
+        )
+        .unwrap();
+    let mut ctx = make_ctx(&env);
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/bash".into()),
+        zdotdir: None,
+    };
+
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["verification"]["outcome"], "spawn-forbidden");
+    assert_eq!(parsed["verification"]["elapsed_us"], 0);
+    assert_eq!(parsed["verification"]["elapsed_label"], "");
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("elapsed:"),
+        "no shell was attempted:\n{text}"
+    );
+}
+
+#[test]
 fn probe_shell_init_declines_unresolved_file_source_hooks() {
     let env = TempEnvironment::builder().build();
     env.fs
@@ -1322,6 +1376,8 @@ fn probe_shell_init_declines_unresolved_file_source_hooks() {
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["verification"]["outcome"], "script-unresolved");
+    assert_eq!(parsed["verification"]["elapsed_us"], 0);
+    assert_eq!(parsed["verification"]["elapsed_label"], "");
 
     let text = render::render("probe", &result, OutputMode::Text).unwrap();
     assert!(
@@ -1331,6 +1387,10 @@ fn probe_shell_init_declines_unresolved_file_source_hooks() {
     assert!(
         !text.contains("the hookup is sound"),
         "an unresolved hook must not be certified; got:\n{text}"
+    );
+    assert!(
+        !text.contains("elapsed:"),
+        "an unresolved hook did not start a shell; got:\n{text}"
     );
 }
 
@@ -1488,7 +1548,6 @@ cat <<'SCRIPT'
 # dodot shell-init-trace v1
 _dodot_trace=0
 if [ -n "${DODOT_INTERNAL_SHELL_INIT_TRACE-}" ]; then
-  unset DODOT_INTERNAL_SHELL_INIT_TRACE
   _dodot_trace=1
 fi
 if [ "${_dodot_trace:-0}" != "1" ]; then

@@ -172,6 +172,31 @@ pub fn generate_init_probe_response(generation: u64) -> String {
     script
 }
 
+/// Generate the targeted response fragment for an eval-form hook.
+///
+/// This fragment is intentionally cheap to create: `dodot init-sh` can
+/// return it before resolving the dotfiles root, loading configuration,
+/// capturing Homebrew, or scanning packs. The shell still owns the parent
+/// identity check. If inherited or stale challenge variables fail that
+/// check, the fragment clears them and asks the exact same dodot executable
+/// for the ordinary full init body.
+pub fn generate_eval_init_probe_response(generation: u64, dodot_executable: &Path) -> String {
+    let mut script = String::new();
+    emit_init_probe_response_body(&mut script, generation);
+    writeln!(script, "else").unwrap();
+    writeln!(script, "    unset {}", probe::TARGET_PROBE_ENV).unwrap();
+    writeln!(script, "    unset {}", probe::TARGET_PROBE_PARENT_ENV).unwrap();
+    writeln!(
+        script,
+        "    eval \"$({} init-sh)\"",
+        sh_quote(&dodot_executable.display().to_string())
+    )
+    .unwrap();
+    writeln!(script, "fi").unwrap();
+    writeln!(script).unwrap();
+    script
+}
+
 /// Append the "nothing to do" notice for an empty init script.
 fn append_empty_notice(script: &mut String) {
     writeln!(script, "{EMPTY_SCRIPT_MARKER}").unwrap();
@@ -387,6 +412,15 @@ pub fn write_init_script(
 
 /// Emit the process-bound shell-init verification branch.
 fn emit_init_probe_response(script: &mut String, generation: u64) {
+    emit_init_probe_response_body(script, generation);
+    writeln!(script, "fi").unwrap();
+    writeln!(script).unwrap();
+}
+
+/// Emit the targeted response through its `exit 0`, leaving the opening
+/// `if` unfinished so file-source and eval callers can choose their own
+/// identity-mismatch behavior.
+fn emit_init_probe_response_body(script: &mut String, generation: u64) {
     let version = activation::running_version();
     writeln!(script, "# dodot shell-init-probe v1").unwrap();
     writeln!(
@@ -414,8 +448,6 @@ fn emit_init_probe_response(script: &mut String, generation: u64) {
     .unwrap();
     writeln!(script, "    unset _dodot_probe_nonce").unwrap();
     writeln!(script, "    exit 0").unwrap();
-    writeln!(script, "fi").unwrap();
-    writeln!(script).unwrap();
 }
 
 // ── Activation evidence emitter ──────────────────────────────────────
@@ -458,7 +490,10 @@ fn emit_trace_mode_preamble(script: &mut String) {
         trace::DIAGNOSTIC_TRACE_ENV
     )
     .unwrap();
-    writeln!(script, "  unset {}", trace::DIAGNOSTIC_TRACE_ENV).unwrap();
+    // Keep the process-scoped marker exported until the trace shell dies.
+    // An rc may source this script more than once; consuming the marker on
+    // the first source would let a later source write heartbeat/profile
+    // evidence during the same diagnostic invocation.
     writeln!(script, "  _dodot_trace=1").unwrap();
     writeln!(script, "fi").unwrap();
     writeln!(script).unwrap();
@@ -1249,6 +1284,56 @@ mod tests {
             .unwrap();
             assert_trace_state_is_cleaned(bash, &env, &script, label);
         }
+    }
+
+    #[test]
+    fn diagnostic_trace_mode_stays_sticky_across_repeated_sources() {
+        let bash = std::path::Path::new("/bin/bash");
+        if !bash.exists() {
+            return;
+        }
+
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .done()
+            .build();
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+        env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true, TEST_GEN, None)
+                .unwrap();
+        let script_path = env.home.join("dodot-init.sh");
+        env.fs.write_file(&script_path, script.as_bytes()).unwrap();
+        let source_twice = format!(
+            ". {path}; . {path}",
+            path = sh_quote(&script_path.display().to_string())
+        );
+
+        let status = std::process::Command::new(bash)
+            .args(["--noprofile", "--norc", "-c", &source_twice])
+            .env(trace::DIAGNOSTIC_TRACE_ENV, "1")
+            .env("HOME", &env.home)
+            .status()
+            .expect("bash runs");
+
+        assert!(
+            status.success(),
+            "generated script failed when sourced twice"
+        );
+        assert!(
+            !env.fs.exists(&env.paths.hookup_heartbeat_path()),
+            "the second source wrote activation evidence"
+        );
+        assert!(
+            env.fs
+                .read_dir(&env.paths.probes_shell_init_dir())
+                .unwrap_or_default()
+                .is_empty(),
+            "the second source created a startup profile"
+        );
     }
 
     fn assert_trace_state_is_cleaned(

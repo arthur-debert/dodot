@@ -193,7 +193,7 @@ fn verification_view(ctx: &ExecutionContext) -> ShellInitVerificationView {
             hook_line,
             outcome: "spawn-forbidden".into(),
             elapsed_us: 0,
-            elapsed_label: humanize_us(0),
+            elapsed_label: String::new(),
             headline: "could not verify — shell verification is unavailable in this context".into(),
             detail_lines: Vec::new(),
         };
@@ -224,7 +224,7 @@ fn skipped_verification(reason: String, shell: String, rc: String) -> ShellInitV
         hook_line: 0,
         outcome: "skipped".into(),
         elapsed_us: 0,
-        elapsed_label: humanize_us(0),
+        elapsed_label: String::new(),
         headline: reason,
         detail_lines: Vec::new(),
     }
@@ -244,7 +244,7 @@ fn unresolved_hook_verification(
         hook_line,
         outcome: "script-unresolved".into(),
         elapsed_us: 0,
-        elapsed_label: humanize_us(0),
+        elapsed_label: String::new(),
         headline: format!("dodot could not tell which file the hook at {rc}:{hook_line} sources"),
         detail_lines: vec![
             format!("the line sources {raw}"),

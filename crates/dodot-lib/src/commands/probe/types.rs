@@ -268,9 +268,11 @@ pub struct ShellInitVerificationView {
     /// `"script-unresolved"` when a file-source hook names its script
     /// in shell syntax dodot intentionally refuses to guess.
     pub outcome: String,
-    /// Numeric elapsed wall-clock microseconds for the live check.
+    /// Numeric elapsed wall-clock microseconds for the live check. `0` means
+    /// no shell process was attempted.
     pub elapsed_us: u64,
-    /// Human-readable elapsed duration for terminal output.
+    /// Human-readable elapsed duration for terminal output. Empty when no
+    /// shell process was attempted.
     pub elapsed_label: String,
     /// One-line statement of the outcome.
     pub headline: String,

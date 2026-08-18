@@ -648,10 +648,24 @@ fn clean_debug_format(input: &str) -> String {
     result
 }
 
-/// `dodot init-sh` — prints the full shell init script for
-/// `eval "$(dodot init-sh)"`, including the guarded targeted-verification
-/// response branch.
+/// `dodot init-sh` — prints shell code for `eval "$(dodot init-sh)"`.
+///
+/// A targeted-verification invocation returns only the guarded response and
+/// its ordinary-init fallback. Normal invocations generate the full shell
+/// init script.
 pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
+    if std::env::var_os(dodot_lib::shell::probe::TARGET_PROBE_ENV).is_some()
+        && std::env::var_os(dodot_lib::shell::probe::TARGET_PROBE_PARENT_ENV).is_some()
+    {
+        let executable = std::env::current_exe()?;
+        let script = dodot_lib::shell::generate_eval_init_probe_response(
+            dodot_lib::shell::activation::current_generation(),
+            &executable,
+        );
+        print!("{script}");
+        return Ok(());
+    }
+
     let dotfiles_root = passthrough_root()?;
     let ctx = ExecutionContext::production(&dotfiles_root, false)?;
     let root_config = ctx.config_manager.root_config()?;
