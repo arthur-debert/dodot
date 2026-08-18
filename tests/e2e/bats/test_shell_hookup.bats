@@ -290,6 +290,32 @@ _profiles_snapshot() {
     [ "$(_profiles_snapshot)" = "$profiles_before" ]
 }
 
+@test "trace-hook current eval target leaves evidence untouched and runs contributions" {
+    create_pack_file "shell" "trace.sh" 'echo trace contribution > "$HOME/trace-contribution"'
+    dodot up
+    printf 'export PATH=%s:$PATH\neval "$(dodot init-sh)"\n' "$(dirname "$DODOT_BIN")" \
+        > "$HOME/.bashrc"
+
+    bash -ic true
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    local hb_contents hb_mtime profiles_before
+    hb_contents="$(cat "$hb")"
+    hb_mtime="$(_mtime_of "$hb")"
+    profiles_before="$(_profiles_snapshot)"
+    rm -f "$HOME/trace-contribution"
+
+    run dodot probe shell-init --trace-hook
+    [ "$status" -eq 0 ]
+    assert_output_contains "Hook resolution"
+    assert_output_contains "the hookup is sound"
+    assert_output_contains "elapsed:"
+
+    assert_exists "$HOME/trace-contribution"
+    [ "$(cat "$hb")" = "$hb_contents" ]
+    [ "$(_mtime_of "$hb")" = "$hb_mtime" ]
+    [ "$(_profiles_snapshot)" = "$profiles_before" ]
+}
+
 @test "trace-hook capability-unknown eval target uses copy and exits before the hook" {
     dodot up
     printf 'echo should-not-run > "$HOME/eval-hook-ran"; eval "$(dodot init-sh)"\n' \

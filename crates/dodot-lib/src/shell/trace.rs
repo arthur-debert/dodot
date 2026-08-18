@@ -44,9 +44,10 @@
 //! ends.
 //!
 //! For capability-unknown hooks, the copy prints the hook-line record
-//! and exits before the hook itself. That is the only trace shape that
-//! cannot create heartbeat/profile evidence through a legacy init
-//! script that does not understand diagnostic suppression.
+//! and kills the diagnostic shell before the hook itself. That is the
+//! only trace shape that cannot create heartbeat/profile evidence
+//! through a legacy init script that does not understand diagnostic
+//! suppression.
 //!
 //! The copy must reproduce the shell's startup, not approximate it. A
 //! shell that read a different set of files than the real one does
@@ -1011,7 +1012,11 @@ fn insert_report_line(
     hook_line: usize,
     exit_before_hook: bool,
 ) -> String {
-    let maybe_exit = if exit_before_hook { "exit 0\n" } else { "" };
+    let maybe_exit = if exit_before_hook {
+        "/bin/kill -KILL \"$$\"\n"
+    } else {
+        ""
+    };
     let report = format!(
         "printf '+{TRACE_MARKER}%s|%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PWD\" \"$PATH\" >&2\n{maybe_exit}",
         shell_quote(&rc_nominal.display().to_string()),
@@ -1663,12 +1668,12 @@ mod tests {
     }
 
     #[test]
-    fn report_only_copy_exits_before_the_hook() {
+    fn report_only_copy_stops_before_the_hook() {
         let rc = "eval \"$(dodot init-sh)\"\necho after\n";
         let copy = insert_report_line(rc, Path::new("/home/u/.bashrc"), 1, true);
         let lines: Vec<&str> = copy.lines().collect();
         assert!(lines[0].starts_with("printf '+dodot-trace|"), "{copy}");
-        assert_eq!(lines[1], "exit 0");
+        assert_eq!(lines[1], "/bin/kill -KILL \"$$\"");
         assert_eq!(lines[2], "eval \"$(dodot init-sh)\"");
         assert_eq!(lines[3], "echo after");
     }
@@ -1817,6 +1822,59 @@ mod tests {
         assert!(
             !env.fs.exists(&touched),
             "report-only fallback must exit before executing the unknown hook"
+        );
+    }
+
+    #[test]
+    fn report_only_trace_ignores_shadowed_exit_in_bash() {
+        let Some(bash) = bash() else { return };
+        report_only_trace_ignores_shadowed_exit(bash, HookupShell::Bash, ".bashrc");
+    }
+
+    #[test]
+    fn report_only_trace_ignores_shadowed_exit_in_zsh() {
+        let Some(zsh) = zsh() else { return };
+        report_only_trace_ignores_shadowed_exit(zsh, HookupShell::Zsh, ".zshrc");
+    }
+
+    fn report_only_trace_ignores_shadowed_exit(
+        shell_path: &Path,
+        shell: HookupShell,
+        rc_name: &str,
+    ) {
+        if !Path::new("/bin/kill").exists() {
+            return;
+        }
+        let env = TempEnvironment::builder().build();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+        let rc = env.home.join(rc_name);
+        let touched = env.home.join("hook-ran");
+        env.fs
+            .write_file(
+                &rc,
+                format!(
+                    "exit() {{ echo shadowed-exit; return 0; }}\n\
+                     alias exit='echo alias-exit'\n\
+                     export PATH=/before-hook\n\
+                     echo should-not-run > {}\n",
+                    touched.display()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        let mut req = request(&env, shell_path, shell, &rc, 4);
+        req.execution = TraceExecution::ReportOnly;
+        let run = run_trace(env.fs.as_ref(), &req).expect("report-only trace runs");
+
+        assert!(run.used_fallback);
+        assert!(
+            record_at(&run.records, &[&rc], 4).is_some(),
+            "report-only trace must still print the hook-line record"
+        );
+        assert!(
+            !env.fs.exists(&touched),
+            "a shadowed exit must not let report-only tracing continue into the hook"
         );
     }
 

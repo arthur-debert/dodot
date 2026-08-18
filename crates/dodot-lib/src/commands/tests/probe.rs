@@ -1470,6 +1470,73 @@ fn probe_shell_init_trace_end_to_end_names_the_stale_binary_and_the_skips() {
 }
 
 #[test]
+fn probe_shell_init_trace_runs_diagnostic_capable_eval_contributions() {
+    if !std::path::Path::new("/bin/bash").exists() {
+        return;
+    }
+    let env = TempEnvironment::builder().build();
+    let _home = crate::testing::EnvVarGuard::set("HOME", &env.home.display().to_string());
+
+    let bin_dir = env.home.join("bin");
+    env.fs.mkdir_all(&bin_dir).unwrap();
+    env.fs
+        .write_file_with_mode(
+            &bin_dir.join("dodot"),
+            br#"#!/bin/sh
+if [ "$1" = "init-sh" ]; then
+cat <<'SCRIPT'
+# dodot shell-init-trace v1
+_dodot_trace=0
+if [ -n "${DODOT_INTERNAL_SHELL_INIT_TRACE-}" ]; then
+  unset DODOT_INTERNAL_SHELL_INIT_TRACE
+  _dodot_trace=1
+fi
+if [ "${_dodot_trace:-0}" != "1" ]; then
+  echo mutated > "$HOME/eval-evidence"
+fi
+echo contribution > "$HOME/eval-contribution"
+unset _dodot_trace
+SCRIPT
+elif [ "$1" = "--version" ]; then
+  echo "dodot 5.6.0"
+fi
+"#,
+            0o755,
+        )
+        .unwrap();
+
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            format!(
+                "export PATH={}:$PATH\neval \"$(dodot init-sh)\"\n",
+                bin_dir.display()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+
+    let ctx = make_tracing_ctx(&env, "/bin/bash");
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(parsed["trace"]["status"], "verdict");
+    assert!(
+        env.fs.exists(&env.home.join("eval-contribution")),
+        "diagnostic-capable eval hook should continue through generated contributions"
+    );
+    assert!(
+        !env.fs.exists(&env.home.join("eval-evidence")),
+        "diagnostic-capable eval hook must not write activation evidence"
+    );
+    assert!(
+        parsed["trace"]["elapsed_us"].as_u64().unwrap() > 0,
+        "trace elapsed time must include the capability negotiation"
+    );
+}
+
+#[test]
 fn probe_shell_init_trace_reports_a_hook_the_shell_never_reaches() {
     // The fourth verdict: the hook is in the file but inside a branch
     // that does not run — a static scan calls this fine; only the

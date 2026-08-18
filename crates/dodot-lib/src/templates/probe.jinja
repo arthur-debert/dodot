@@ -48,13 +48,15 @@
 [header]Hook verification[/header]{% if verification.rc %} [dim]{{ verification.rc }}{% if verification.hook_line > 0 %}:{{ verification.hook_line }}{% endif %} ({{ verification.shell }})[/dim]{% endif %}
   [{{ verification.status_class }}]{{ verification.headline }}[/{{ verification.status_class }}]
 {% for line in verification.detail_lines %}  [dim]{{ line }}[/dim]
-{% endfor %}  [dim]elapsed:[/dim] {{ verification.elapsed_us }} µs
+{% endfor %}{% if verification.elapsed_label %}  [dim]elapsed:[/dim] {{ verification.elapsed_label }}
+{% endif %}
 {% endif %}{% if trace %}
 [header]Hook resolution[/header]{% if trace.rc %} [dim]{{ trace.rc }}{% if trace.hook_line > 0 %}:{{ trace.hook_line }}{% endif %} ({{ trace.shell }})[/dim]{% endif %}
   [{{ trace.status_class }}]{{ trace.headline }}[/{{ trace.status_class }}]
 {% for line in trace.detail_lines %}  [dim]{{ line }}[/dim]
 {% endfor %}{% if trace.used_fallback %}  [dim](traced via a temporary copy of your rc — your real files were not touched)[/dim]
-{% endif %}  [dim]elapsed:[/dim] {{ trace.elapsed_us }} µs
+{% endif %}{% if trace.elapsed_label %}  [dim]elapsed:[/dim] {{ trace.elapsed_label }}
+{% endif %}
 {% endif %}
   [dim]profiles dir:[/dim] {{ profiles_dir }}
   [dim]for intra-file profiling, see `zprof` (zsh) or PS4 tracing (bash).[/dim]

@@ -206,7 +206,9 @@ fn append_empty_notice(script: &mut String) {
 ///
 /// When `profiling_enabled` is true and there is at least one entry to
 /// emit, the script also carries the per-line timing wrapper described
-/// in the module docs.
+/// in the module docs. Every generated completion path clears the
+/// temporary `_dodot_trace` shell variable before returning control to
+/// the user's interactive shell.
 pub fn generate_init_script(
     fs: &dyn Fs,
     paths: &dyn Pather,
@@ -232,6 +234,7 @@ pub fn generate_init_script(
     let packs_dir = paths.data_dir().join("packs");
     if !fs.exists(&packs_dir) {
         append_empty_notice(&mut script);
+        emit_trace_mode_cleanup(&mut script);
         return Ok(script);
     }
 
@@ -285,6 +288,7 @@ pub fn generate_init_script(
 
     if path_additions.is_empty() && shell_sources.is_empty() {
         append_empty_notice(&mut script);
+        emit_trace_mode_cleanup(&mut script);
         return Ok(script);
     }
 
@@ -338,6 +342,7 @@ pub fn generate_init_script(
     if profiling_active {
         emit_profiling_epilogue(&mut script);
     }
+    emit_trace_mode_cleanup(&mut script);
 
     Ok(script)
 }
@@ -457,6 +462,10 @@ fn emit_trace_mode_preamble(script: &mut String) {
     writeln!(script, "  _dodot_trace=1").unwrap();
     writeln!(script, "fi").unwrap();
     writeln!(script).unwrap();
+}
+
+fn emit_trace_mode_cleanup(script: &mut String) {
+    writeln!(script, "unset _dodot_trace 2>/dev/null").unwrap();
 }
 
 fn emit_activation_evidence(script: &mut String, generation: u64, heartbeat_path: &Path) {
@@ -1200,6 +1209,69 @@ mod tests {
             "diagnostic trace mode must be known before evidence/profile writes but keep contributions:\n{script}"
         );
         assert!(script_supports_diagnostic_trace(&script));
+    }
+
+    #[test]
+    fn generated_scripts_do_not_leave_trace_state_in_the_shell() {
+        let bash = std::path::Path::new("/bin/bash");
+        if !bash.exists() {
+            return;
+        }
+
+        let empty_env = TempEnvironment::builder().build();
+        let empty_script = generate_init_script(
+            empty_env.fs.as_ref(),
+            empty_env.paths.as_ref(),
+            false,
+            TEST_GEN,
+            None,
+        )
+        .unwrap();
+        assert_trace_state_is_cleaned(bash, &empty_env, &empty_script, "empty");
+
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("bin/tool", "#!/bin/sh\n")
+            .done()
+            .build();
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
+            .unwrap();
+
+        for (label, profiling) in [("plain", false), ("profiled", true)] {
+            let script = generate_init_script(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                profiling,
+                TEST_GEN,
+                None,
+            )
+            .unwrap();
+            assert_trace_state_is_cleaned(bash, &env, &script, label);
+        }
+    }
+
+    fn assert_trace_state_is_cleaned(
+        bash: &std::path::Path,
+        env: &TempEnvironment,
+        script: &str,
+        label: &str,
+    ) {
+        let script_path = env.home.join(format!("{label}-dodot-init.sh"));
+        env.fs.mkdir_all(&env.paths.probes_hookup_dir()).unwrap();
+        env.fs.write_file(&script_path, script.as_bytes()).unwrap();
+        let status = std::process::Command::new(bash)
+            .arg("-c")
+            .arg(format!(
+                ". {}; test -z \"${{_dodot_trace+x}}\"",
+                sh_quote(&script_path.display().to_string())
+            ))
+            .status()
+            .expect("bash runs");
+        assert!(
+            status.success(),
+            "{label}: generated script left _dodot_trace in scope:\n{script}"
+        );
     }
 
     #[test]
