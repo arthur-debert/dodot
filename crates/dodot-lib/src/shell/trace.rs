@@ -94,7 +94,9 @@ use std::time::{Duration, Instant};
 
 use crate::fs::Fs;
 use crate::shell::activation::{self, EvidenceVersion};
-use crate::shell::probe::{spawn_captured, spawn_captured_until_stderr, SpawnOutcome};
+use crate::shell::probe::{
+    spawn_captured, spawn_captured_until_stderr, SpawnOutcome, PARENT_LIVENESS_FD,
+};
 use crate::shell::rc::{self, HookupShell};
 
 /// The field prefix every trace record carries, behind the leading
@@ -111,11 +113,16 @@ pub const RECORD_SUFFIX: &str = "|> ";
 /// shell continues through PATH and source work.
 pub const DIAGNOSTIC_TRACE_ENV: &str = "DODOT_INTERNAL_SHELL_INIT_TRACE";
 
-/// Holds a report-only rc at the insertion point until the parent sees
-/// the record and stops the process group. Arithmetic commands are shell
-/// grammar in bash and zsh, so rc-defined aliases and functions cannot
-/// redirect this loop into returning normally.
-const REPORT_ONLY_HOLD: &str = "while (( 1 )); do (( 1 )); done";
+/// Hold a report-only rc until the parent sees the record and stops the
+/// process group. The clean `/bin/sh` waits for EOF on the liveness pipe;
+/// if Rust disappears first, its unshadowed builtin sends uncatchable
+/// SIGKILL to the traced shell. No path lookup or external `kill` is used.
+fn report_only_hold() -> String {
+    format!(
+        "/bin/sh -c 'IFS= read -r _ <&{PARENT_LIVENESS_FD}; kill -s KILL 0' \
+         dodot-report-only"
+    )
+}
 
 // ── The PS4 contract ────────────────────────────────────────────
 
@@ -702,10 +709,10 @@ pub enum TraceError {
     RcUnreadable(String),
     /// The fallback's scratch copy could not be built so that it
     /// reproduces the shell's startup faithfully — the scratch
-    /// directory would not open, or one of the files that stands in
-    /// for a startup file could not be written. A verdict computed
-    /// from a shell that read a different set of files than the real
-    /// one does is worse than no verdict, because the user acts on it.
+    /// directory would not open, or one of the files that stands in for
+    /// a startup file could not be written. A verdict computed from a
+    /// shell that read a different set of files than the real one does
+    /// is worse than no verdict, because the user acts on it.
     FallbackUnfaithful(String),
 }
 
@@ -869,8 +876,8 @@ fn run_fallback(
         return Err(TraceError::FallbackUnfaithful(broken));
     }
     let outcome = if stop_before_hook {
-        spawn_captured_until_stderr(command, req.timeout, |stderr| {
-            let records = parse_trace(stderr);
+        spawn_captured_until_stderr(command, req.timeout, |line| {
+            let records = parse_trace(line);
             record_at(&records, &req.rc_paths(), req.hook_line).is_some()
         })
     } else {
@@ -1027,7 +1034,7 @@ fn insert_report_line(
     stop_before_hook: bool,
 ) -> String {
     let maybe_hold = if stop_before_hook {
-        format!("{REPORT_ONLY_HOLD}\n")
+        format!("{}\n", report_only_hold())
     } else {
         String::new()
     };
@@ -1687,7 +1694,7 @@ mod tests {
         let copy = insert_report_line(rc, Path::new("/home/u/.bashrc"), 1, true);
         let lines: Vec<&str> = copy.lines().collect();
         assert!(lines[0].starts_with("printf '+dodot-trace|"), "{copy}");
-        assert_eq!(lines[1], REPORT_ONLY_HOLD);
+        assert_eq!(lines[1], report_only_hold());
         assert_eq!(lines[2], "eval \"$(dodot init-sh)\"");
         assert_eq!(lines[3], "echo after");
     }
@@ -1731,6 +1738,63 @@ mod tests {
     }
 
     const TIMEOUT: Duration = Duration::from_secs(10);
+
+    #[test]
+    fn report_only_hold_terminates_with_parent_liveness_in_bash() {
+        let Some(bash) = bash() else { return };
+        report_only_hold_terminates_with_parent_liveness(bash);
+    }
+
+    #[test]
+    fn report_only_hold_terminates_with_parent_liveness_in_zsh() {
+        let Some(zsh) = zsh() else { return };
+        report_only_hold_terminates_with_parent_liveness(zsh);
+    }
+
+    fn report_only_hold_terminates_with_parent_liveness(shell_path: &Path) {
+        use std::os::unix::process::ExitStatusExt;
+
+        let env = TempEnvironment::builder().build();
+        let touched = env.home.join("continued-after-hold");
+        let script = env.home.join("report-only-hold.sh");
+        env.fs
+            .write_file(
+                &script,
+                format!(
+                    "{}\nprintf should-not-run > {}\n",
+                    report_only_hold(),
+                    shell_quote(&touched.display().to_string()),
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        let mut command = Command::new(shell_path);
+        command.arg(&script).stdin(std::process::Stdio::null());
+        let liveness = crate::shell::probe::ParentLiveness::attach(&mut command)
+            .expect("liveness pipe attaches");
+        let mut child = command.spawn().expect("shell starts");
+
+        // Dropping the Rust end is the same kernel event as process death:
+        // the clean helper reads EOF and kills its parent shell.
+        drop(liveness.child_spawned());
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("shell remains waitable") {
+                break status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "liveness EOF must terminate the shell"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+
+        assert_eq!(status.signal(), Some(libc::SIGKILL));
+        assert!(
+            !env.fs.exists(&touched),
+            "the liveness hold must terminate before later rc code"
+        );
+    }
 
     /// A request tracing `rc` at `hook_line` with the given shell,
     /// rooted at the test environment's home.
@@ -1837,6 +1901,37 @@ mod tests {
             !env.fs.exists(&touched),
             "report-only fallback must exit before executing the unknown hook"
         );
+    }
+
+    #[test]
+    fn report_only_trace_reaches_the_record_after_noisy_rc_output() {
+        let Some(bash) = bash() else { return };
+        let env = TempEnvironment::builder().build();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+        let rc = env.home.join(".bashrc");
+        let touched = env.home.join("noisy-hook-ran");
+        env.fs
+            .write_file(
+                &rc,
+                format!(
+                    "i=0\n\
+                     while (( i < 5000 )); do printf 'noise-%s\\n' \"$i\" >&2; \
+                     (( i += 1 )); done\n\
+                     export PATH=/after-noise\n\
+                     printf should-not-run > {}\n",
+                    shell_quote(&touched.display().to_string()),
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        let mut req = request(&env, bash, HookupShell::Bash, &rc, 4);
+        req.execution = TraceExecution::ReportOnly;
+        let run = run_trace(env.fs.as_ref(), &req).expect("noisy report-only trace runs");
+
+        let record = record_at(&run.records, &[&rc], 4).expect("hook-line record");
+        assert_eq!(record.path, "/after-noise");
+        assert!(!env.fs.exists(&touched));
     }
 
     #[test]

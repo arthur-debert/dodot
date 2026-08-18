@@ -55,6 +55,8 @@
 //! run this probe exists for.
 
 use std::io::{BufRead, BufReader, Read};
+use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -103,6 +105,60 @@ const POLL_INTERVAL: Duration = Duration::from_millis(20);
 /// thread to deliver already-written output. This stays bounded because
 /// rc-started background jobs can inherit stdout.
 const POST_EXIT_DRAIN: Duration = Duration::from_millis(200);
+
+/// Descriptor inherited by a report-only hold from the Rust parent.
+pub(crate) const PARENT_LIVENESS_FD: RawFd = 3;
+
+/// A close-on-exec socket pair whose child end is installed at the
+/// stable descriptor consumed by the report-only hold.
+pub(crate) struct ParentLiveness {
+    child_end: UnixStream,
+    parent_end: UnixStream,
+}
+
+impl ParentLiveness {
+    pub(crate) fn attach(command: &mut Command) -> std::io::Result<Self> {
+        use std::os::unix::process::CommandExt;
+
+        let (child_end, parent_end) = UnixStream::pair()?;
+        let child_fd = child_end.as_raw_fd();
+        let parent_fd = parent_end.as_raw_fd();
+        // SAFETY: the closure uses only async-signal-safe descriptor
+        // syscalls between fork and exec. Both source descriptors stay
+        // alive in `Self` until `Command::spawn` returns.
+        unsafe {
+            command.pre_exec(move || {
+                // A session leader is also its own process-group leader,
+                // while having no controlling terminal. That prevents an
+                // explicitly interactive zsh from stopping itself when the
+                // caller happens to run under a PTY.
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                libc::close(parent_fd);
+                if libc::dup2(child_fd, PARENT_LIVENESS_FD) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::fcntl(PARENT_LIVENESS_FD, libc::F_SETFD, 0) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if child_fd != PARENT_LIVENESS_FD {
+                    libc::close(child_fd);
+                }
+                Ok(())
+            });
+        }
+        Ok(Self {
+            child_end,
+            parent_end,
+        })
+    }
+
+    pub(crate) fn child_spawned(self) -> UnixStream {
+        drop(self.child_end);
+        self.parent_end
+    }
+}
 
 // ── Policy ──────────────────────────────────────────────────────
 
@@ -385,13 +441,18 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
 }
 
 /// Run `command` under the probe envelope and stop its process group as
-/// soon as `stop_when` matches the captured stderr.
+/// soon as `stop_when` matches one newly captured stderr line.
 ///
 /// This is the streaming counterpart to [`spawn_captured`]. It keeps the
-/// same stdin, environment scrub, output capture, process-group, and
+/// same environment scrub, stderr capture, process-group, and
 /// timeout guarantees, but lets a protocol response end a shell whose rc
-/// deliberately waits after writing that response. A response-stopped
-/// process returns [`SpawnOutcome::Finished`] with `status: None`.
+/// deliberately waits after writing that response. Stdout is discarded:
+/// the caller's protocol is on stderr, and a descendant retaining stdout
+/// must not outlive the hard timeout. A private inherited descriptor is
+/// an unwritten liveness pipe: a report-only hold can detect the Rust
+/// process disappearing by reading EOF without interfering with an
+/// interactive shell's stdin. A response-stopped process returns
+/// [`SpawnOutcome::Finished`] with `status: None`.
 pub fn spawn_captured_until_stderr(
     mut command: Command,
     timeout: Duration,
@@ -399,23 +460,23 @@ pub fn spawn_captured_until_stderr(
 ) -> SpawnOutcome {
     command
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped());
     for key in scrubbed_keys(std::env::vars().map(|(k, _)| k)) {
         command.env_remove(key);
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    let liveness = match ParentLiveness::attach(&mut command) {
+        Ok(liveness) => liveness,
+        Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+    };
 
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
     };
     let child_pid = child.id();
-    let stdout = child.stdout.take().map(drain);
+    // Keep the parent end alive for exactly as long as this Rust scope.
+    let _parent_liveness = liveness.child_spawned();
     let (tx, rx) = mpsc::channel();
     if let Some(stderr) = child.stderr.take() {
         read_lines(stderr, tx);
@@ -423,19 +484,35 @@ pub fn spawn_captured_until_stderr(
 
     let deadline = Instant::now() + timeout;
     let mut stderr = String::new();
+    let mut stderr_connected = true;
     let mut stopped_on_output = false;
     let status = 'running: loop {
-        while let Ok(line) = rx.try_recv() {
-            stderr.push_str(&line);
-            if stop_when(&stderr) {
-                kill_process_group(child_pid);
-                let _ = child.wait();
-                stopped_on_output = true;
-                break 'running None;
+        loop {
+            match rx.try_recv() {
+                Ok(line) => {
+                    let should_stop = stop_when(&line);
+                    stderr.push_str(&line);
+                    if should_stop {
+                        kill_process_group(child_pid);
+                        let _ = child.wait();
+                        stopped_on_output = true;
+                        break 'running None;
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    stderr_connected = false;
+                    break;
+                }
             }
         }
         match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
+            Ok(Some(status)) => {
+                // The direct shell is done, but descendants may still
+                // hold its pipes or continue diagnostic side effects.
+                kill_process_group(child_pid);
+                break Some(status);
+            }
             Ok(None) => {}
             Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
         }
@@ -448,27 +525,22 @@ pub fn spawn_captured_until_stderr(
         if wait.is_zero() {
             continue;
         }
-        match rx.recv_timeout(wait) {
-            Ok(line) => {
-                stderr.push_str(&line);
-                if stop_when(&stderr) {
-                    kill_process_group(child_pid);
-                    let _ = child.wait();
-                    stopped_on_output = true;
-                    break 'running None;
-                }
+        if let Some(line) = receive_line_or_wait(&rx, wait, &mut stderr_connected) {
+            let should_stop = stop_when(&line);
+            stderr.push_str(&line);
+            if should_stop {
+                kill_process_group(child_pid);
+                let _ = child.wait();
+                stopped_on_output = true;
+                break 'running None;
             }
-            Err(mpsc::RecvTimeoutError::Disconnected | mpsc::RecvTimeoutError::Timeout) => {}
         }
     };
 
-    let stdout = stdout
-        .and_then(|handle| handle.join().ok())
-        .unwrap_or_default();
     drain_pending_lines(&rx, &mut stderr, POST_EXIT_DRAIN);
     if stopped_on_output {
         return SpawnOutcome::Finished(SpawnCapture {
-            stdout,
+            stdout: String::new(),
             stderr,
             status: None,
         });
@@ -477,10 +549,31 @@ pub fn spawn_captured_until_stderr(
         return SpawnOutcome::TimedOut;
     };
     SpawnOutcome::Finished(SpawnCapture {
-        stdout,
+        stdout: String::new(),
         stderr,
         status: status.code(),
     })
+}
+
+/// Receive one stderr line without spinning after the reader exits.
+fn receive_line_or_wait(
+    rx: &mpsc::Receiver<String>,
+    wait: Duration,
+    connected: &mut bool,
+) -> Option<String> {
+    if !*connected {
+        std::thread::sleep(wait);
+        return None;
+    }
+    match rx.recv_timeout(wait) {
+        Ok(line) => Some(line),
+        Err(mpsc::RecvTimeoutError::Timeout) => None,
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            *connected = false;
+            std::thread::sleep(wait);
+            None
+        }
+    }
 }
 
 /// Spawn `shell` interactively and read the stamp back.
@@ -704,17 +797,18 @@ pub fn scrubbed_keys(keys: impl Iterator<Item = String>) -> Vec<String> {
 
 /// Kill the probed shell's whole process group.
 ///
-/// The shell was spawned as its own group leader, so its pid is the
-/// group id and a negative-pid signal reaches every process the rc
-/// file started — the `exec`-into-a-multiplexer case, where killing
-/// only the shell we can see would leave the real hang behind.
+/// The shell was spawned as its own group leader, either directly or
+/// as a new session leader, so its pid is the group id and a negative-
+/// pid signal reaches every process the rc file started — the
+/// `exec`-into-a-multiplexer case, where killing only the shell we can
+/// see would leave the real hang behind.
 #[cfg(unix)]
 fn kill_process_group(pid: u32) {
     // SAFETY: `kill` is a plain syscall wrapper with no memory
     // effects. A negative pid addresses the process group; the group
-    // is one we created via `process_group(0)`, so we are not
-    // signalling anything we did not spawn. A failure (the group
-    // already exited) is nothing to handle.
+    // is one we created for this child, so we are not signalling
+    // anything we did not spawn. A failure (the group already exited)
+    // is nothing to handle.
     unsafe {
         libc::kill(-(pid as libc::pid_t), libc::SIGKILL);
     }
@@ -1223,6 +1317,86 @@ mod tests {
             matching_targeted_stamp_in_output(&stdout, "abc", 10, 21),
             None
         );
+    }
+
+    #[test]
+    fn stderr_stop_does_not_wait_for_a_descendant_retaining_stdout() {
+        let shell = Path::new("/bin/sh");
+        if !shell.exists() {
+            return;
+        }
+        let mut command = Command::new(shell);
+        command.args(["-c", "(sleep 5) &"]);
+
+        let started = Instant::now();
+        let outcome = spawn_captured_until_stderr(command, Duration::from_secs(2), |_| false);
+
+        assert!(
+            matches!(
+                outcome,
+                SpawnOutcome::Finished(SpawnCapture {
+                    status: Some(0),
+                    ..
+                })
+            ),
+            "direct child should finish normally: {outcome:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "a descendant retaining stdout must not block completion"
+        );
+    }
+
+    #[test]
+    fn disconnected_stderr_waits_instead_of_spinning() {
+        let (tx, rx) = mpsc::channel::<String>();
+        drop(tx);
+        let mut connected = true;
+        let wait = Duration::from_millis(30);
+
+        let started = Instant::now();
+        assert_eq!(receive_line_or_wait(&rx, wait, &mut connected), None);
+
+        assert!(!connected);
+        assert!(
+            started.elapsed() >= Duration::from_millis(25),
+            "a disconnected channel must still yield the polling interval"
+        );
+    }
+
+    #[test]
+    fn stderr_stop_matches_each_line_and_retains_complete_diagnostics() {
+        let shell = Path::new("/bin/sh");
+        if !shell.exists() {
+            return;
+        }
+        let mut command = Command::new(shell);
+        command.args([
+            "-c",
+            "i=0; while [ \"$i\" -lt 2000 ]; do printf 'noise-%s\\n' \"$i\" >&2; \
+             i=$((i + 1)); done; printf 'stop\\n' >&2; sleep 5",
+        ]);
+        let mut inspected = 0;
+
+        let outcome = spawn_captured_until_stderr(command, Duration::from_secs(5), |line| {
+            inspected += 1;
+            assert_eq!(
+                line.lines().count(),
+                1,
+                "predicate received more than one line"
+            );
+            line == "stop\n"
+        });
+        let SpawnOutcome::Finished(capture) = outcome else {
+            panic!("expected marker-stopped capture, got {outcome:?}");
+        };
+
+        assert_eq!(inspected, 2001);
+        assert_eq!(capture.stderr.lines().count(), 2001);
+        assert!(capture.stderr.starts_with("noise-0\n"));
+        assert!(capture.stderr.ends_with("stop\n"));
+        assert_eq!(capture.status, None);
+        assert!(capture.stdout.is_empty());
     }
 
     #[test]
