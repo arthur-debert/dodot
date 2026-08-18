@@ -74,19 +74,19 @@
 //! - **The rc runs up to twice for diagnostic-capable hooks.** The
 //!   fallback re-runs it on a copy, so side effects before the hook
 //!   can happen again. Capability-unknown hooks use only the copy and
-//!   exit before the hook. [`announcement`] says the upper bound
+//!   stop before the hook. [`announcement`] says the upper bound
 //!   before anything is spawned.
 //!
 //! # Boundaries
 //!
 //! Only `dodot probe shell-init` reaches this module; `status` and
-//! `up` never do (INS01 §9 still binds). Every spawn goes through
-//! [`crate::shell::probe::spawn_captured`] — the INS01 envelope
-//! (announced, stdin from `/dev/null`, output captured, hard timeout
-//! with a process-group kill, `DODOT_INIT_*` scrubbed) reused
-//! unchanged. The spawned shell is interactive non-login (the mode
-//! that reads the file the hook lives in) and inherits this process's
-//! environment minus the scrub, same as the INS01 probe.
+//! `up` never do (INS01 §9 still binds). Every spawn uses the capture
+//! helpers in [`crate::shell::probe`] — the INS01 envelope (announced,
+//! stdin from `/dev/null`, output captured, hard timeout with a
+//! process-group kill, `DODOT_INIT_*` scrubbed). The spawned shell is
+//! interactive non-login (the mode that reads the file the hook lives
+//! in) and inherits this process's environment minus the scrub, same as
+//! the INS01 probe.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -94,7 +94,7 @@ use std::time::{Duration, Instant};
 
 use crate::fs::Fs;
 use crate::shell::activation::{self, EvidenceVersion};
-use crate::shell::probe::{spawn_captured, SpawnOutcome};
+use crate::shell::probe::{spawn_captured, spawn_captured_until_stderr, SpawnOutcome};
 use crate::shell::rc::{self, HookupShell};
 
 /// The field prefix every trace record carries, behind the leading
@@ -111,8 +111,11 @@ pub const RECORD_SUFFIX: &str = "|> ";
 /// shell continues through PATH and source work.
 pub const DIAGNOSTIC_TRACE_ENV: &str = "DODOT_INTERNAL_SHELL_INIT_TRACE";
 
-const REPORT_ONLY_TERMINATION: &str =
-    "\\command kill -KILL \"$$\" 2>/dev/null || \\builtin kill -KILL \"$$\" 2>/dev/null || kill -KILL \"$$\"";
+/// Holds a report-only rc at the insertion point until the parent sees
+/// the record and stops the process group. Arithmetic commands are shell
+/// grammar in bash and zsh, so rc-defined aliases and functions cannot
+/// redirect this loop into returning normally.
+const REPORT_ONLY_HOLD: &str = "while (( 1 )); do (( 1 )); done";
 
 // ── The PS4 contract ────────────────────────────────────────────
 
@@ -752,7 +755,7 @@ impl TraceRequest<'_> {
 /// Current generated scripts understand [`DIAGNOSTIC_TRACE_ENV`], so
 /// primary tracing can run the hook without creating heartbeat/profile
 /// evidence. Capability-unknown hooks are traced through the temporary
-/// copy only, with a report line that exits before the hook.
+/// copy only, with a report line that stops before the hook.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraceExecution {
     DiagnosticSupported,
@@ -821,7 +824,7 @@ pub fn run_trace(fs: &dyn Fs, req: &TraceRequest) -> Result<TraceRun, TraceError
 fn run_fallback(
     fs: &dyn Fs,
     req: &TraceRequest,
-    exit_before_hook: bool,
+    stop_before_hook: bool,
 ) -> Result<Vec<TraceRecord>, TraceError> {
     let rc_text = fs
         .read_to_string(req.rc_resolved)
@@ -832,10 +835,10 @@ fn run_fallback(
     let temp = scratch.path();
     let unfaithful = |e: crate::DodotError| TraceError::FallbackUnfaithful(format!("{e}"));
     let mut command = Command::new(req.shell_path);
-    if !exit_before_hook {
+    if !stop_before_hook {
         command.env(DIAGNOSTIC_TRACE_ENV, "1");
     }
-    let copy = insert_report_line(&rc_text, req.rc_nominal, req.hook_line, exit_before_hook);
+    let copy = insert_report_line(&rc_text, req.rc_nominal, req.hook_line, stop_before_hook);
     // The file that stands in for the user's rc — the one whose parse
     // has to survive the insertion.
     let copy_path;
@@ -865,7 +868,15 @@ fn run_fallback(
     if let Some(broken) = insertion_broke_the_parse(req, copy_path) {
         return Err(TraceError::FallbackUnfaithful(broken));
     }
-    match spawn_captured(command, req.timeout) {
+    let outcome = if stop_before_hook {
+        spawn_captured_until_stderr(command, req.timeout, |stderr| {
+            let records = parse_trace(stderr);
+            record_at(&records, &req.rc_paths(), req.hook_line).is_some()
+        })
+    } else {
+        spawn_captured(command, req.timeout)
+    };
+    match outcome {
         SpawnOutcome::TimedOut => Err(TraceError::TimedOut),
         SpawnOutcome::SpawnFailed(e) => Err(TraceError::SpawnFailed(e)),
         SpawnOutcome::Finished(capture) => Ok(parse_trace(&capture.stderr)),
@@ -1013,15 +1024,15 @@ fn insert_report_line(
     rc_text: &str,
     rc_nominal: &Path,
     hook_line: usize,
-    exit_before_hook: bool,
+    stop_before_hook: bool,
 ) -> String {
-    let maybe_exit = if exit_before_hook {
-        format!("{REPORT_ONLY_TERMINATION}\n")
+    let maybe_hold = if stop_before_hook {
+        format!("{REPORT_ONLY_HOLD}\n")
     } else {
         String::new()
     };
     let report = format!(
-        "printf '+{TRACE_MARKER}%s|%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PWD\" \"$PATH\" >&2\n{maybe_exit}",
+        "printf '+{TRACE_MARKER}%s|%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PWD\" \"$PATH\" >&2\n{maybe_hold}",
         shell_quote(&rc_nominal.display().to_string()),
         hook_line,
     );
@@ -1676,7 +1687,7 @@ mod tests {
         let copy = insert_report_line(rc, Path::new("/home/u/.bashrc"), 1, true);
         let lines: Vec<&str> = copy.lines().collect();
         assert!(lines[0].starts_with("printf '+dodot-trace|"), "{copy}");
-        assert_eq!(lines[1], REPORT_ONLY_TERMINATION);
+        assert_eq!(lines[1], REPORT_ONLY_HOLD);
         assert_eq!(lines[2], "eval \"$(dodot init-sh)\"");
         assert_eq!(lines[3], "echo after");
     }
@@ -1829,18 +1840,18 @@ mod tests {
     }
 
     #[test]
-    fn report_only_trace_ignores_shadowed_exit_in_bash() {
+    fn report_only_trace_ignores_shadowed_termination_commands_in_bash() {
         let Some(bash) = bash() else { return };
-        report_only_trace_ignores_shadowed_exit(bash, HookupShell::Bash, ".bashrc");
+        report_only_trace_ignores_shadowed_termination_commands(bash, HookupShell::Bash, ".bashrc");
     }
 
     #[test]
-    fn report_only_trace_ignores_shadowed_exit_in_zsh() {
+    fn report_only_trace_ignores_shadowed_termination_commands_in_zsh() {
         let Some(zsh) = zsh() else { return };
-        report_only_trace_ignores_shadowed_exit(zsh, HookupShell::Zsh, ".zshrc");
+        report_only_trace_ignores_shadowed_termination_commands(zsh, HookupShell::Zsh, ".zshrc");
     }
 
-    fn report_only_trace_ignores_shadowed_exit(
+    fn report_only_trace_ignores_shadowed_termination_commands(
         shell_path: &Path,
         shell: HookupShell,
         rc_name: &str,
@@ -1848,33 +1859,67 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
         let rc = env.home.join(rc_name);
-        let touched = env.home.join("hook-ran");
+        let heartbeat = env.paths.hookup_heartbeat_path();
+        let profiles_dir = env.paths.probes_shell_init_dir();
+        let profile = profiles_dir.join("profile-existing.jsonl");
+        let touched = env.home.join("after-hook-ran");
+        env.fs.mkdir_all(heartbeat.parent().unwrap()).unwrap();
+        env.fs.mkdir_all(&profiles_dir).unwrap();
+        let heartbeat_contents = "existing-heartbeat-bytes\n";
+        env.fs
+            .write_file(&heartbeat, heartbeat_contents.as_bytes())
+            .unwrap();
+        env.fs
+            .write_file(&profile, b"existing-profile-bytes\n")
+            .unwrap();
+        let profiles_before = profile_snapshot(&env);
         env.fs
             .write_file(
                 &rc,
                 format!(
-                    "exit() {{ echo shadowed-exit; return 0; }}\n\
-                     alias exit='echo alias-exit'\n\
+                    "command() {{ return 0; }}\n\
+                     builtin() {{ return 0; }}\n\
+                     kill() {{ return 0; }}\n\
+                     exit() {{ return 0; }}\n\
+                     alias command='true'\n\
+                     alias builtin='true'\n\
+                     alias kill='true'\n\
+                     alias exit='true'\n\
                      export PATH=/before-hook\n\
-                     echo should-not-run > {}\n",
-                    touched.display()
+                     printf changed > {}; printf changed > {}\n\
+                     printf should-not-run > {}\n",
+                    shell_quote(&heartbeat.display().to_string()),
+                    shell_quote(&profile.display().to_string()),
+                    shell_quote(&touched.display().to_string()),
                 )
                 .as_bytes(),
             )
             .unwrap();
+        let rc_before = env.fs.read_to_string(&rc).unwrap();
 
-        let mut req = request(&env, shell_path, shell, &rc, 4);
+        let mut req = request(&env, shell_path, shell, &rc, 10);
         req.execution = TraceExecution::ReportOnly;
         let run = run_trace(env.fs.as_ref(), &req).expect("report-only trace runs");
 
         assert!(run.used_fallback);
         assert!(
-            record_at(&run.records, &[&rc], 4).is_some(),
+            record_at(&run.records, &[&rc], 10).is_some(),
             "report-only trace must still print the hook-line record"
         );
         assert!(
             !env.fs.exists(&touched),
-            "a shadowed exit must not let report-only tracing continue into the hook"
+            "report-only tracing must not continue past the inserted record"
+        );
+        assert_eq!(env.fs.read_to_string(&rc).unwrap(), rc_before);
+        assert_eq!(
+            env.fs.read_to_string(&heartbeat).unwrap(),
+            heartbeat_contents,
+            "the legacy hook must not rewrite heartbeat evidence"
+        );
+        assert_eq!(
+            profile_snapshot(&env),
+            profiles_before,
+            "the legacy hook must not rewrite profile evidence"
         );
     }
 

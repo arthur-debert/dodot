@@ -31,11 +31,10 @@
 //! environment — an inherited stamp would be a false positive every
 //! time the probe runs from an already-live shell.
 //!
-//! That defensive envelope lives in [`spawn_captured`], which is the
-//! one place dodot spawns anything user-authored: [`run`] uses it for
-//! the activation probe, and [`crate::shell::trace`] reuses it
-//! unchanged for the hook-line trace (RCS01 WS02) — one audited
-//! process-group kill, not two.
+//! That defensive envelope lives in [`spawn_captured`] and its streaming
+//! sibling [`spawn_captured_until_stderr`]. [`run`] uses the targeted
+//! response variant below, and [`crate::shell::trace`] uses the capture
+//! helpers for hook-line tracing — all with the same process-group kill.
 //!
 //! # Verdicts
 //!
@@ -373,6 +372,105 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     let stdout = stdout.and_then(|h| h.join().ok()).unwrap_or_default();
     let stderr = stderr.and_then(|h| h.join().ok()).unwrap_or_default();
 
+    let Some(status) = status else {
+        return SpawnOutcome::TimedOut;
+    };
+    SpawnOutcome::Finished(SpawnCapture {
+        stdout,
+        stderr,
+        status: status.code(),
+    })
+}
+
+/// Run `command` under the probe envelope and stop its process group as
+/// soon as `stop_when` matches the captured stderr.
+///
+/// This is the streaming counterpart to [`spawn_captured`]. It keeps the
+/// same stdin, environment scrub, output capture, process-group, and
+/// timeout guarantees, but lets a protocol response end a shell whose rc
+/// deliberately waits after writing that response. A response-stopped
+/// process returns [`SpawnOutcome::Finished`] with `status: None`.
+pub fn spawn_captured_until_stderr(
+    mut command: Command,
+    timeout: Duration,
+    mut stop_when: impl FnMut(&str) -> bool,
+) -> SpawnOutcome {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for key in scrubbed_keys(std::env::vars().map(|(k, _)| k)) {
+        command.env_remove(key);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+    };
+    let child_pid = child.id();
+    let stdout = child.stdout.take().map(drain);
+    let (tx, rx) = mpsc::channel();
+    if let Some(stderr) = child.stderr.take() {
+        read_lines(stderr, tx);
+    }
+
+    let deadline = Instant::now() + timeout;
+    let mut stderr = String::new();
+    let mut stopped_on_output = false;
+    let status = 'running: loop {
+        while let Ok(line) = rx.try_recv() {
+            stderr.push_str(&line);
+            if stop_when(&stderr) {
+                kill_process_group(child_pid);
+                let _ = child.wait();
+                stopped_on_output = true;
+                break 'running None;
+            }
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {}
+            Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+        }
+        if Instant::now() >= deadline {
+            kill_process_group(child_pid);
+            let _ = child.wait();
+            break None;
+        }
+        let wait = POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now()));
+        if wait.is_zero() {
+            continue;
+        }
+        match rx.recv_timeout(wait) {
+            Ok(line) => {
+                stderr.push_str(&line);
+                if stop_when(&stderr) {
+                    kill_process_group(child_pid);
+                    let _ = child.wait();
+                    stopped_on_output = true;
+                    break 'running None;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected | mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    };
+
+    let stdout = stdout
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_default();
+    drain_pending_lines(&rx, &mut stderr, POST_EXIT_DRAIN);
+    if stopped_on_output {
+        return SpawnOutcome::Finished(SpawnCapture {
+            stdout,
+            stderr,
+            status: None,
+        });
+    }
     let Some(status) = status else {
         return SpawnOutcome::TimedOut;
     };
