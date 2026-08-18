@@ -55,7 +55,7 @@
 //! run this probe exists for.
 
 use std::io::{BufRead, BufReader, Read};
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -106,9 +106,9 @@ const POLL_INTERVAL: Duration = Duration::from_millis(20);
 /// rc-started background jobs can inherit stdout.
 const POST_EXIT_DRAIN: Duration = Duration::from_millis(200);
 
-/// Descriptor inherited by a report-only hold from the Rust parent.
-/// Kept above the range rc files conventionally use for saved streams.
-pub(crate) const PARENT_LIVENESS_FD: RawFd = 63;
+/// Preferred lower bound for the descriptor inherited by a report-only hold.
+/// The actual descriptor is selected below the process's soft open-file limit.
+const PREFERRED_PARENT_LIVENESS_FD: RawFd = 63;
 
 /// Put a probed shell in its own session and process group.
 ///
@@ -130,8 +130,8 @@ pub(crate) fn configure_probe_session(command: &mut Command) {
     }
 }
 
-/// A close-on-exec socket pair whose child end is installed at the
-/// stable descriptor consumed by the report-only hold.
+/// A close-on-exec socket pair whose child end is inherited by the
+/// report-only hold at a dynamically selected descriptor.
 pub(crate) struct ParentLiveness {
     child_end: UnixStream,
     parent_end: UnixStream,
@@ -142,6 +142,7 @@ impl ParentLiveness {
         use std::os::unix::process::CommandExt;
 
         let (child_end, parent_end) = UnixStream::pair()?;
+        let child_end = duplicate_liveness_descriptor(&child_end)?;
         let child_fd = child_end.as_raw_fd();
         let parent_fd = parent_end.as_raw_fd();
         // SAFETY: the closure uses only async-signal-safe descriptor
@@ -150,14 +151,8 @@ impl ParentLiveness {
         unsafe {
             command.pre_exec(move || {
                 libc::close(parent_fd);
-                if libc::dup2(child_fd, PARENT_LIVENESS_FD) == -1 {
+                if libc::fcntl(child_fd, libc::F_SETFD, 0) == -1 {
                     return Err(std::io::Error::last_os_error());
-                }
-                if libc::fcntl(PARENT_LIVENESS_FD, libc::F_SETFD, 0) == -1 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                if child_fd != PARENT_LIVENESS_FD {
-                    libc::close(child_fd);
                 }
                 Ok(())
             });
@@ -168,10 +163,56 @@ impl ParentLiveness {
         })
     }
 
+    pub(crate) fn descriptor(&self) -> RawFd {
+        self.child_end.as_raw_fd()
+    }
+
     pub(crate) fn child_spawned(self) -> UnixStream {
         drop(self.child_end);
         self.parent_end
     }
+}
+
+fn duplicate_liveness_descriptor(child_end: &UnixStream) -> std::io::Result<UnixStream> {
+    let soft_limit = descriptor_soft_limit()?;
+    let preferred = PREFERRED_PARENT_LIVENESS_FD.min(soft_limit - 1);
+    let duplicated =
+        duplicate_from(child_end.as_raw_fd(), preferred).or_else(|preferred_error| {
+            if preferred <= libc::STDERR_FILENO + 1 {
+                return Err(preferred_error);
+            }
+            duplicate_from(child_end.as_raw_fd(), libc::STDERR_FILENO + 1)
+        })?;
+
+    // SAFETY: F_DUPFD_CLOEXEC returned a new descriptor owned by this process.
+    Ok(unsafe { UnixStream::from_raw_fd(duplicated) })
+}
+
+fn duplicate_from(source: RawFd, minimum: RawFd) -> std::io::Result<RawFd> {
+    // SAFETY: `source` is a live descriptor and F_DUPFD_CLOEXEC takes an integer.
+    let duplicated = unsafe { libc::fcntl(source, libc::F_DUPFD_CLOEXEC, minimum) };
+    if duplicated == -1 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(duplicated)
+    }
+}
+
+fn descriptor_soft_limit() -> std::io::Result<RawFd> {
+    let mut limit = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+    // SAFETY: getrlimit initializes `limit` on success.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, limit.as_mut_ptr()) } == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: the successful getrlimit call initialized the value.
+    let current = unsafe { limit.assume_init() }.rlim_cur;
+    let capped = current.min(RawFd::MAX as libc::rlim_t);
+    if capped <= (libc::STDERR_FILENO + 1) as libc::rlim_t {
+        return Err(std::io::Error::other(
+            "open-file limit leaves no descriptor for parent liveness",
+        ));
+    }
+    Ok(capped as RawFd)
 }
 
 // ── Policy ──────────────────────────────────────────────────────
@@ -464,6 +505,19 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
 pub fn spawn_captured_until_stderr(
     mut command: Command,
     timeout: Duration,
+    stop_when: impl FnMut(&str) -> bool,
+) -> SpawnOutcome {
+    let liveness = match ParentLiveness::attach(&mut command) {
+        Ok(liveness) => liveness,
+        Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+    };
+    spawn_captured_until_stderr_with_liveness(command, timeout, liveness, stop_when)
+}
+
+pub(crate) fn spawn_captured_until_stderr_with_liveness(
+    mut command: Command,
+    timeout: Duration,
+    liveness: ParentLiveness,
     mut stop_when: impl FnMut(&str) -> bool,
 ) -> SpawnOutcome {
     command
@@ -474,10 +528,6 @@ pub fn spawn_captured_until_stderr(
         command.env_remove(key);
     }
     configure_probe_session(&mut command);
-    let liveness = match ParentLiveness::attach(&mut command) {
-        Ok(liveness) => liveness,
-        Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
-    };
 
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -1455,14 +1505,13 @@ mod tests {
     }
 
     const PTY_DRIVER_ENV: &str = "DODOT_TEST_PROBE_PTY_DRIVER";
+    const PTY_SHELL_ENV: &str = "DODOT_TEST_PROBE_PTY_SHELL";
 
     #[test]
     fn primary_trace_spawn_finishes_under_a_pty() {
         if std::env::var(PTY_DRIVER_ENV).as_deref() == Ok("primary") {
-            let shell = Path::new("/bin/zsh");
-            if !shell.exists() {
-                return;
-            }
+            let shell_path = std::env::var_os(PTY_SHELL_ENV).expect("PTY shell is selected");
+            let shell = Path::new(&shell_path);
             let mut command = Command::new(shell);
             command.args(["-ic", "printf 'primary-pty-ok\\n'"]);
             let outcome = spawn_captured(command, Duration::from_secs(2));
@@ -1478,19 +1527,21 @@ mod tests {
             return;
         }
 
+        let Some(shell) = pty_test_shell() else {
+            return;
+        };
         run_current_test_under_pty(
             "shell::probe::tests::primary_trace_spawn_finishes_under_a_pty",
             "primary",
+            shell,
         );
     }
 
     #[test]
     fn targeted_marker_spawn_finishes_under_a_pty() {
         if std::env::var(PTY_DRIVER_ENV).as_deref() == Ok("targeted") {
-            let shell = Path::new("/bin/zsh");
-            if !shell.exists() {
-                return;
-            }
+            let shell_path = std::env::var_os(PTY_SHELL_ENV).expect("PTY shell is selected");
+            let shell = Path::new(&shell_path);
             let nonce = "pty-nonce";
             let verifier_pid = std::process::id();
             let mut command = Command::new(shell);
@@ -1518,13 +1569,24 @@ mod tests {
             return;
         }
 
+        let Some(shell) = pty_test_shell() else {
+            return;
+        };
         run_current_test_under_pty(
             "shell::probe::tests::targeted_marker_spawn_finishes_under_a_pty",
             "targeted",
+            shell,
         );
     }
 
-    fn run_current_test_under_pty(test_name: &str, driver: &str) {
+    fn pty_test_shell() -> Option<&'static Path> {
+        ["/bin/zsh", "/usr/bin/zsh", "/bin/bash", "/usr/bin/bash"]
+            .into_iter()
+            .map(Path::new)
+            .find(|path| path.exists())
+    }
+
+    fn run_current_test_under_pty(test_name: &str, driver: &str, shell: &Path) {
         use std::io::Read as _;
         use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
         use std::os::unix::process::CommandExt as _;
@@ -1554,6 +1616,7 @@ mod tests {
         command
             .args(["--exact", test_name, "--nocapture"])
             .env(PTY_DRIVER_ENV, driver)
+            .env(PTY_SHELL_ENV, shell)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());

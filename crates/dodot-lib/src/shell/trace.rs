@@ -88,6 +88,7 @@
 //! in) and inherits this process's environment minus the scrub, same as
 //! the INS01 probe.
 
+use std::os::fd::RawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -95,7 +96,7 @@ use std::time::{Duration, Instant};
 use crate::fs::Fs;
 use crate::shell::activation::{self, EvidenceVersion};
 use crate::shell::probe::{
-    spawn_captured, spawn_captured_until_stderr, SpawnOutcome, PARENT_LIVENESS_FD,
+    spawn_captured, spawn_captured_until_stderr_with_liveness, ParentLiveness, SpawnOutcome,
 };
 use crate::shell::rc::{self, HookupShell};
 
@@ -117,9 +118,9 @@ pub const DIAGNOSTIC_TRACE_ENV: &str = "DODOT_INTERNAL_SHELL_INIT_TRACE";
 /// process group. The clean `/bin/sh` waits for EOF on the liveness pipe;
 /// if Rust disappears first, its unshadowed builtin sends uncatchable
 /// SIGKILL to the traced shell. No path lookup or external `kill` is used.
-fn report_only_hold() -> String {
+fn report_only_hold(parent_liveness_fd: RawFd) -> String {
     format!(
-        "/bin/sh -c 'IFS= read -r _ <&{PARENT_LIVENESS_FD}; kill -s KILL 0' \
+        "/bin/sh -c 'IFS= read -r _ <&{parent_liveness_fd}; kill -s KILL 0' \
          dodot-report-only"
     )
 }
@@ -842,10 +843,21 @@ fn run_fallback(
     let temp = scratch.path();
     let unfaithful = |e: crate::DodotError| TraceError::FallbackUnfaithful(format!("{e}"));
     let mut command = Command::new(req.shell_path);
-    if !stop_before_hook {
+    let liveness = if stop_before_hook {
+        Some(
+            ParentLiveness::attach(&mut command)
+                .map_err(|e| TraceError::SpawnFailed(format!("{e}")))?,
+        )
+    } else {
         command.env(DIAGNOSTIC_TRACE_ENV, "1");
-    }
-    let copy = insert_report_line(&rc_text, req.rc_nominal, req.hook_line, stop_before_hook);
+        None
+    };
+    let copy = insert_report_line(
+        &rc_text,
+        req.rc_nominal,
+        req.hook_line,
+        liveness.as_ref().map(ParentLiveness::descriptor),
+    );
     // The file that stands in for the user's rc — the one whose parse
     // has to survive the insertion.
     let copy_path;
@@ -875,8 +887,8 @@ fn run_fallback(
     if let Some(broken) = insertion_broke_the_parse(req, copy_path) {
         return Err(TraceError::FallbackUnfaithful(broken));
     }
-    let outcome = if stop_before_hook {
-        spawn_captured_until_stderr(command, req.timeout, |line| {
+    let outcome = if let Some(liveness) = liveness {
+        spawn_captured_until_stderr_with_liveness(command, req.timeout, liveness, |line| {
             let records = parse_trace(line);
             record_at(&records, &req.rc_paths(), req.hook_line).is_some()
         })
@@ -1031,10 +1043,10 @@ fn insert_report_line(
     rc_text: &str,
     rc_nominal: &Path,
     hook_line: usize,
-    stop_before_hook: bool,
+    parent_liveness_fd: Option<RawFd>,
 ) -> String {
-    let maybe_hold = if stop_before_hook {
-        format!("{}\n", report_only_hold())
+    let maybe_hold = if let Some(parent_liveness_fd) = parent_liveness_fd {
+        format!("{}\n", report_only_hold(parent_liveness_fd))
     } else {
         String::new()
     };
@@ -1674,7 +1686,7 @@ mod tests {
     #[test]
     fn the_report_line_is_inserted_not_truncated() {
         let rc = "if true; then\n  eval \"$(dodot init-sh)\"\nfi\n";
-        let copy = insert_report_line(rc, Path::new("/home/u/.zshrc"), 2, false);
+        let copy = insert_report_line(rc, Path::new("/home/u/.zshrc"), 2, None);
         let lines: Vec<&str> = copy.lines().collect();
         assert_eq!(lines.len(), 4, "insertion, not replacement: {copy}");
         assert!(lines[1].starts_with("printf '+dodot-trace|"), "{copy}");
@@ -1691,10 +1703,10 @@ mod tests {
     #[test]
     fn report_only_copy_stops_before_the_hook() {
         let rc = "eval \"$(dodot init-sh)\"\necho after\n";
-        let copy = insert_report_line(rc, Path::new("/home/u/.bashrc"), 1, true);
+        let copy = insert_report_line(rc, Path::new("/home/u/.bashrc"), 1, Some(42));
         let lines: Vec<&str> = copy.lines().collect();
         assert!(lines[0].starts_with("printf '+dodot-trace|"), "{copy}");
-        assert_eq!(lines[1], report_only_hold());
+        assert_eq!(lines[1], report_only_hold(42));
         assert_eq!(lines[2], "eval \"$(dodot init-sh)\"");
         assert_eq!(lines[3], "echo after");
     }
@@ -1738,6 +1750,7 @@ mod tests {
     }
 
     const TIMEOUT: Duration = Duration::from_secs(10);
+    const REDUCED_NOFILE_DRIVER_ENV: &str = "DODOT_TEST_REDUCED_NOFILE_DRIVER";
 
     #[test]
     fn report_only_hold_terminates_with_parent_liveness_in_bash() {
@@ -1751,28 +1764,93 @@ mod tests {
         report_only_hold_terminates_with_parent_liveness(zsh);
     }
 
-    fn report_only_hold_terminates_with_parent_liveness(shell_path: &Path) {
+    #[test]
+    fn report_only_hold_uses_a_descriptor_below_a_reduced_soft_limit() {
+        const SOFT_LIMIT: libc::rlim_t = 32;
+
+        if std::env::var(REDUCED_NOFILE_DRIVER_ENV).as_deref() == Ok("1") {
+            let bash = bash().expect("outer driver requires bash");
+            report_only_trace_survives_fd_three_and_shadowed_commands(
+                bash,
+                HookupShell::Bash,
+                ".bashrc",
+            );
+            let descriptor = report_only_hold_terminates_with_parent_liveness(bash);
+            assert!(descriptor > libc::STDERR_FILENO, "descriptor: {descriptor}");
+            assert!(descriptor < SOFT_LIMIT as RawFd, "descriptor: {descriptor}");
+            return;
+        }
+        if bash().is_none() {
+            return;
+        }
+
+        use std::os::unix::process::CommandExt as _;
+
+        let mut inherited = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+        // SAFETY: getrlimit initializes `inherited` on success.
+        assert_ne!(
+            unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, inherited.as_mut_ptr()) },
+            -1,
+            "getrlimit: {}",
+            std::io::Error::last_os_error()
+        );
+        // SAFETY: the successful getrlimit call initialized the value.
+        let inherited = unsafe { inherited.assume_init() };
+        assert!(inherited.rlim_max >= SOFT_LIMIT);
+        let reduced = libc::rlimit {
+            rlim_cur: SOFT_LIMIT,
+            rlim_max: inherited.rlim_max,
+        };
+        let mut command = Command::new(std::env::current_exe().expect("current test binary"));
+        command
+            .args([
+                "--exact",
+                "shell::trace::tests::report_only_hold_uses_a_descriptor_below_a_reduced_soft_limit",
+                "--nocapture",
+            ])
+            .env(REDUCED_NOFILE_DRIVER_ENV, "1");
+        // SAFETY: setrlimit is an async-signal-safe syscall and `reduced`
+        // remains captured by value until the child execs.
+        unsafe {
+            command.pre_exec(move || {
+                if libc::setrlimit(libc::RLIMIT_NOFILE, &reduced) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let output = command.output().expect("reduced-limit test driver starts");
+        assert!(
+            output.status.success(),
+            "reduced-limit test driver failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn report_only_hold_terminates_with_parent_liveness(shell_path: &Path) -> RawFd {
         use std::os::unix::process::ExitStatusExt;
 
         let env = TempEnvironment::builder().build();
         let touched = env.home.join("continued-after-hold");
         let script = env.home.join("report-only-hold.sh");
+        let mut command = Command::new(shell_path);
+        command.stdin(std::process::Stdio::null());
+        crate::shell::probe::configure_probe_session(&mut command);
+        let liveness = crate::shell::probe::ParentLiveness::attach(&mut command)
+            .expect("liveness pipe attaches");
+        let descriptor = liveness.descriptor();
         env.fs
             .write_file(
                 &script,
                 format!(
                     "{}\nprintf should-not-run > {}\n",
-                    report_only_hold(),
+                    report_only_hold(descriptor),
                     shell_quote(&touched.display().to_string()),
                 )
                 .as_bytes(),
             )
             .unwrap();
-        let mut command = Command::new(shell_path);
-        command.arg(&script).stdin(std::process::Stdio::null());
-        crate::shell::probe::configure_probe_session(&mut command);
-        let liveness = crate::shell::probe::ParentLiveness::attach(&mut command)
-            .expect("liveness pipe attaches");
+        command.arg(&script);
         let mut child = command.spawn().expect("shell starts");
 
         // Dropping the Rust end is the same kernel event as process death:
@@ -1795,6 +1873,7 @@ mod tests {
             !env.fs.exists(&touched),
             "the liveness hold must terminate before later rc code"
         );
+        descriptor
     }
 
     /// A request tracing `rc` at `hook_line` with the given shell,
