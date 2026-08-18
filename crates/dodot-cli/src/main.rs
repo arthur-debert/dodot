@@ -989,25 +989,48 @@ fn build_clap_command() -> ClapCommand {
                 .subcommand(
                     ClapCommand::new("shell-init")
                         .about(
-                            "Startup timings + live hook diagnosis (spawns your shell, running your whole rc file up to twice; --no-trace for timings only)",
+                            "Startup timings + fresh hook verification (--trace-hook for PATH diagnosis)",
                         )
                         .arg(
                             Arg::new("filter")
                                 .help(
-                                    "Drill into one pack or file (e.g. `gpg` or `gpg/env.sh`) — shows per-run exit codes and captured stderr across recent runs; suppresses the trace",
+                                    "Drill into one pack or file (e.g. `gpg` or `gpg/env.sh`) — shows per-run exit codes and captured stderr across recent runs; no shell is spawned",
                                 )
                                 .value_name("PACK[/FILE]")
                                 .num_args(0..=1)
                                 .conflicts_with("runs")
-                                .conflicts_with("history"),
+                                .conflicts_with("history")
+                                .conflicts_with("trace-hook"),
+                        )
+                        .arg(
+                            Arg::new("no-verify")
+                                .long("no-verify")
+                                .help(
+                                    "Skip fresh hook verification (no shell is spawned; report the recorded timings only)",
+                                )
+                                .action(ArgAction::SetTrue),
                         )
                         .arg(
                             Arg::new("no-trace")
                                 .long("no-trace")
                                 .help(
-                                    "Skip the live hook-line trace (no shell is spawned; report the recorded timings only). The filter/--runs/--history/--errors-only views never trace",
+                                    "Deprecated alias for --no-verify",
                                 )
                                 .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("trace-hook")
+                                .long("trace-hook")
+                                .help(
+                                    "Run the full hook-line PATH diagnosis instead of targeted verification (spawns your shell and may run your rc file up to three times)",
+                                )
+                                .action(ArgAction::SetTrue)
+                                .conflicts_with("no-verify")
+                                .conflicts_with("no-trace")
+                                .conflicts_with("filter")
+                                .conflicts_with("runs")
+                                .conflicts_with("history")
+                                .conflicts_with("errors-only"),
                         )
                         .arg(
                             Arg::new("runs")
@@ -1020,13 +1043,15 @@ fn build_clap_command() -> ClapCommand {
                                 // DEFAULT_RUNS, `--runs 5` overrides.
                                 .num_args(0..=1)
                                 .default_missing_value("10")
-                                .conflicts_with("history"),
+                                .conflicts_with("history")
+                                .conflicts_with("trace-hook"),
                         )
                         .arg(
                             Arg::new("history")
                                 .long("history")
                                 .help("Show one summary row per recent run, newest first")
-                                .action(ArgAction::SetTrue),
+                                .action(ArgAction::SetTrue)
+                                .conflicts_with("trace-hook"),
                         )
                         .arg(
                             Arg::new("errors-only")
@@ -1037,7 +1062,8 @@ fn build_clap_command() -> ClapCommand {
                                 .action(ArgAction::SetTrue)
                                 .conflicts_with("runs")
                                 .conflicts_with("history")
-                                .conflicts_with("filter"),
+                                .conflicts_with("filter")
+                                .conflicts_with("trace-hook"),
                         ),
                 ),
         )

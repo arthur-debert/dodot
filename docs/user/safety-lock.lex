@@ -28,7 +28,7 @@ dodot resolves which directory is your dotfiles root by checking `$DOTFILES_ROOT
 
     Never gated, and never establishing trust:
 
-    - Everything read-only: `status`, `list`, `probe`, `config list`/`get`/`gen`/`schema`, `git-show-*`, `transform status`, `secret *`, `prompts list` — so you can inspect an unfamiliar root before deciding anything.
+    - Everything that does not write the selected root: `status`, `list`, `probe`, `config list`/`get`/`gen`/`schema`, `git-show-*`, `transform status`, `secret *`, `prompts list` — so you can inspect an unfamiliar root before deciding anything. This is a Safety Lock classification, not a promise that spawned user code has no side effects: `probe shell-init --trace-hook` can execute rc and pack commands ([./commands/probe.lex] §4).
     - Every documented preview: `up --dry-run`, `down --dry-run`, `adopt --dry-run`, `refresh --list-paths`, `transform check --dry-run`.
     - Mutations the root did not select: `install --write` (your shell rc), `git-install-alias` (ditto), `prompts reset`, factory `reset`, and the `plist`/`template clean` git-filter passthroughs.
     - `roots list` / `roots forget` — the management surface itself resolves no root, so a broken `$DOTFILES_ROOT` can't lock you out of it.

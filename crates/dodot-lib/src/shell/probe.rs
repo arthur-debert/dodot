@@ -1,13 +1,14 @@
-//! The verification probe — measuring whether a *new* shell would
-//! activate dodot (`docs/proposals/shipped/shell-hookup.lex` §3).
+//! The shell verification probe — measuring whether a *new* shell
+//! reaches dodot's init hook.
 //!
 //! Signals 1 and 2 (the environment stamp and the heartbeat, both in
 //! [`crate::shell::activation`]) answer "is this shell live?" and "has
 //! any shell activated?". Neither answers the question a fresh install
-//! or a freshly broken hookup actually poses: *would the next terminal
-//! the user opens load dodot?* Only running one answers that, so when
-//! the cheap signals come back inconclusive, dodot spawns the user's
-//! shell and reads the stamp back out of it.
+//! or a freshly broken hookup actually poses: *would the next terminal the
+//! user opens reach the hook dodot just wrote?* Only running one answers
+//! that, so when the cheap signals come back inconclusive, dodot spawns the
+//! user's shell and accepts the nonce-bound response emitted at the start of
+//! current init scripts. Older hooks fall back to the post-rc stamp command.
 //!
 //! # Gating
 //!
@@ -24,18 +25,17 @@
 //! # Mechanics
 //!
 //! User rc files prompt, hang, `exec` into multiplexers, and fail in
-//! creative ways, so [`run`] is defensive by construction: interactive
-//! non-login shell (the mode that reads the file the hook lives in),
-//! stdin from `/dev/null`, output captured, a hard timeout that kills
-//! the whole process group, and `DODOT_INIT_*` scrubbed from the child
-//! environment — an inherited stamp would be a false positive every
-//! time the probe runs from an already-live shell.
+//! creative ways, so [`run_targeted`] is defensive by construction:
+//! interactive non-login shell (the mode that reads the file the hook lives
+//! in), stdin from `/dev/null`, output captured, a hard timeout that kills the
+//! whole process group, and `DODOT_INIT_*` scrubbed from the child environment
+//! — an inherited stamp would be a false positive whenever a legacy fallback
+//! probe runs from an already-live shell.
 //!
-//! That defensive envelope lives in [`spawn_captured`], which is the
-//! one place dodot spawns anything user-authored: [`run`] uses it for
-//! the activation probe, and [`crate::shell::trace`] reuses it
-//! unchanged for the hook-line trace (RCS01 WS02) — one audited
-//! process-group kill, not two.
+//! That defensive envelope lives in [`spawn_captured`] and its streaming
+//! sibling [`spawn_captured_until_stderr`]. Hook-line tracing uses those
+//! capture helpers, while targeted verification uses the same process-group
+//! and pipe handling in [`spawn_until_targeted_marker`].
 //!
 //! # Verdicts
 //!
@@ -54,9 +54,12 @@
 //! the epic's own failure as health, on the first `up`, which is the
 //! run this probe exists for.
 
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use crate::fs::Fs;
@@ -75,6 +78,18 @@ pub const PROBE_MARKER: &str = "dodot-probe-stamp:";
 /// spawned shell sourced, and the dodot that wrote it.
 pub const PROBE_FIELD_SEP: char = '|';
 
+/// Challenge variable carrying the one-use nonce for targeted
+/// shell-init verification.
+pub const TARGET_PROBE_ENV: &str = "DODOT_INTERNAL_SHELL_INIT_PROBE";
+
+/// Challenge variable carrying the verifier process ID the directly
+/// launched shell must see as `$PPID`.
+pub const TARGET_PROBE_PARENT_ENV: &str = "DODOT_INTERNAL_SHELL_INIT_PROBE_PARENT";
+
+/// Prefix for the process-bound response emitted by current init
+/// scripts before activation evidence.
+pub const TARGET_PROBE_MARKER: &str = "dodot-shell-init-probe:v1|";
+
 /// How long a spawned shell gets before its process group is killed.
 /// Spec §3.2 calls for "order of 5 seconds": long enough for a heavy
 /// rc file, short enough that a hung one is not a hung `dodot up`.
@@ -85,6 +100,120 @@ const SCRUB_PREFIX: &str = "DODOT_INIT_";
 
 /// How long to wait between liveness checks on the spawned shell.
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+/// Extra time after the direct child exits or is killed for the reader
+/// thread to deliver already-written output. This stays bounded because
+/// rc-started background jobs can inherit stdout.
+const POST_EXIT_DRAIN: Duration = Duration::from_millis(200);
+
+/// Preferred lower bound for the descriptor inherited by a report-only hold.
+/// The actual descriptor is selected below the process's soft open-file limit.
+const PREFERRED_PARENT_LIVENESS_FD: RawFd = 63;
+
+/// Put a probed shell in its own session and process group.
+///
+/// Besides making whole-group timeout termination possible, dropping the
+/// controlling terminal prevents an explicitly interactive shell from
+/// stopping itself with `SIGTTIN` or `SIGTTOU` when dodot runs under a PTY.
+pub(crate) fn configure_probe_session(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+
+    // SAFETY: `setsid` is an async-signal-safe syscall and touches no Rust
+    // state between fork and exec. A failure is returned by `spawn`.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+/// A close-on-exec socket pair whose child end is inherited by the
+/// report-only hold at a dynamically selected descriptor.
+pub(crate) struct ParentLiveness {
+    child_end: UnixStream,
+    parent_end: UnixStream,
+}
+
+impl ParentLiveness {
+    pub(crate) fn attach(command: &mut Command) -> std::io::Result<Self> {
+        use std::os::unix::process::CommandExt;
+
+        let (child_end, parent_end) = UnixStream::pair()?;
+        let child_end = duplicate_liveness_descriptor(&child_end)?;
+        let child_fd = child_end.as_raw_fd();
+        let parent_fd = parent_end.as_raw_fd();
+        // SAFETY: the closure uses only async-signal-safe descriptor
+        // syscalls between fork and exec. Both source descriptors stay
+        // alive in `Self` until `Command::spawn` returns.
+        unsafe {
+            command.pre_exec(move || {
+                libc::close(parent_fd);
+                if libc::fcntl(child_fd, libc::F_SETFD, 0) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        Ok(Self {
+            child_end,
+            parent_end,
+        })
+    }
+
+    pub(crate) fn descriptor(&self) -> RawFd {
+        self.child_end.as_raw_fd()
+    }
+
+    pub(crate) fn child_spawned(self) -> UnixStream {
+        drop(self.child_end);
+        self.parent_end
+    }
+}
+
+fn duplicate_liveness_descriptor(child_end: &UnixStream) -> std::io::Result<UnixStream> {
+    let soft_limit = descriptor_soft_limit()?;
+    let preferred = PREFERRED_PARENT_LIVENESS_FD.min(soft_limit - 1);
+    let duplicated =
+        duplicate_from(child_end.as_raw_fd(), preferred).or_else(|preferred_error| {
+            if preferred <= libc::STDERR_FILENO + 1 {
+                return Err(preferred_error);
+            }
+            duplicate_from(child_end.as_raw_fd(), libc::STDERR_FILENO + 1)
+        })?;
+
+    // SAFETY: F_DUPFD_CLOEXEC returned a new descriptor owned by this process.
+    Ok(unsafe { UnixStream::from_raw_fd(duplicated) })
+}
+
+fn duplicate_from(source: RawFd, minimum: RawFd) -> std::io::Result<RawFd> {
+    // SAFETY: `source` is a live descriptor and F_DUPFD_CLOEXEC takes an integer.
+    let duplicated = unsafe { libc::fcntl(source, libc::F_DUPFD_CLOEXEC, minimum) };
+    if duplicated == -1 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(duplicated)
+    }
+}
+
+fn descriptor_soft_limit() -> std::io::Result<RawFd> {
+    let mut limit = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+    // SAFETY: getrlimit initializes `limit` on success.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, limit.as_mut_ptr()) } == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: the successful getrlimit call initialized the value.
+    let current = unsafe { limit.assume_init() }.rlim_cur;
+    let capped = current.min(RawFd::MAX as libc::rlim_t);
+    if capped <= (libc::STDERR_FILENO + 1) as libc::rlim_t {
+        return Err(std::io::Error::other(
+            "open-file limit leaves no descriptor for parent liveness",
+        ));
+    }
+    Ok(capped as RawFd)
+}
 
 // ── Policy ──────────────────────────────────────────────────────
 
@@ -107,7 +236,8 @@ pub enum ProbePolicy {
     #[default]
     Never,
     /// Spawn the shell when [`gate_says_probe`] says the cheap signals
-    /// are inconclusive, giving it `timeout` to finish starting up.
+    /// are inconclusive, giving it `timeout` to reach the hook or return
+    /// legacy fallback evidence.
     Gated { timeout: Duration },
 }
 
@@ -172,6 +302,23 @@ pub enum ProbeOutcome {
     SpawnFailed(String),
 }
 
+/// Result of one targeted verification run, including the wall-clock
+/// time until a marker, timeout, spawn failure, or shell completion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TargetedVerification {
+    pub outcome: ProbeOutcome,
+    pub elapsed_us: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TargetedResponse {
+    nonce: String,
+    verifier_pid: u32,
+    shell_pid: u32,
+    generation: u64,
+    version: EvidenceVersion,
+}
+
 /// The line the probe prints before spawning. The probe is announced,
 /// never covert (spec §3.2): every terminal open runs the user's rc
 /// anyway, and the only unacceptable version of this is a silent one.
@@ -216,6 +363,40 @@ pub fn parse_probe_output(stdout: &str) -> Option<ProbeStamp> {
             })
         })
         .next_back()
+}
+
+/// Extract the process-bound response from one stdout line.
+fn parse_targeted_response(line: &str) -> Option<TargetedResponse> {
+    let record = line.trim().strip_prefix(TARGET_PROBE_MARKER)?;
+    let mut fields = record.split(PROBE_FIELD_SEP);
+    let nonce = fields.next()?.to_string();
+    let verifier_pid = fields.next()?.parse::<u32>().ok()?;
+    let shell_pid = fields.next()?.parse::<u32>().ok()?;
+    let generation = activation::parse_generation(fields.next()?)?;
+    let version = EvidenceVersion::from_field(Some(fields.next()?));
+    fields.next().is_none().then_some(TargetedResponse {
+        nonce,
+        verifier_pid,
+        shell_pid,
+        generation,
+        version,
+    })
+}
+
+fn matching_targeted_stamp(
+    line: &str,
+    nonce: &str,
+    verifier_pid: u32,
+    child_pid: u32,
+) -> Option<ProbeStamp> {
+    let response = parse_targeted_response(line)?;
+    (response.nonce == nonce
+        && response.verifier_pid == verifier_pid
+        && response.shell_pid == child_pid)
+        .then_some(ProbeStamp {
+            generation: response.generation,
+            version: response.version,
+        })
 }
 
 /// Both streams a spawned process wrote before finishing, and how it
@@ -265,13 +446,7 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     for key in scrubbed_keys(std::env::vars().map(|(k, _)| k)) {
         command.env_remove(key);
     }
-    // Its own process group, so a timeout can take out everything the
-    // rc file spawned, not just the shell we can see.
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    configure_probe_session(&mut command);
 
     let mut child = match command.spawn() {
         Ok(c) => c,
@@ -287,9 +462,19 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
+            Ok(Some(status)) => {
+                // The direct process can exit while rc-started descendants
+                // keep running or retain one of the capture pipes. End the
+                // whole probe lifetime before joining either reader.
+                kill_process_group(pid);
+                break Some(status);
+            }
             Ok(None) => {}
-            Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+            Err(e) => {
+                kill_process_group(pid);
+                let _ = child.wait();
+                return SpawnOutcome::SpawnFailed(format!("{e}"));
+            }
         }
         if Instant::now() >= deadline {
             kill_process_group(pid);
@@ -314,27 +499,359 @@ pub fn spawn_captured(mut command: Command, timeout: Duration) -> SpawnOutcome {
     })
 }
 
+/// Run `command` under the probe envelope and stop its process group as
+/// soon as `stop_when` matches one newly captured stderr line.
+///
+/// This is the streaming counterpart to [`spawn_captured`]. It keeps the
+/// same environment scrub, stderr capture, process-group, and
+/// timeout guarantees, but lets a protocol response end a shell whose rc
+/// deliberately waits after writing that response. Stdout is discarded:
+/// the caller's protocol is on stderr, and a descendant retaining stdout
+/// must not outlive the hard timeout. A private inherited descriptor is
+/// an unwritten liveness pipe: a report-only hold can detect the Rust
+/// process disappearing by reading EOF without interfering with an
+/// interactive shell's stdin. A response-stopped process returns
+/// [`SpawnOutcome::Finished`] with `status: None`.
+pub fn spawn_captured_until_stderr(
+    mut command: Command,
+    timeout: Duration,
+    stop_when: impl FnMut(&str) -> bool,
+) -> SpawnOutcome {
+    let liveness = match ParentLiveness::attach(&mut command) {
+        Ok(liveness) => liveness,
+        Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+    };
+    spawn_captured_until_stderr_with_liveness(command, timeout, liveness, stop_when)
+}
+
+pub(crate) fn spawn_captured_until_stderr_with_liveness(
+    mut command: Command,
+    timeout: Duration,
+    liveness: ParentLiveness,
+    mut stop_when: impl FnMut(&str) -> bool,
+) -> SpawnOutcome {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    for key in scrubbed_keys(std::env::vars().map(|(k, _)| k)) {
+        command.env_remove(key);
+    }
+    configure_probe_session(&mut command);
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(e) => return SpawnOutcome::SpawnFailed(format!("{e}")),
+    };
+    let child_pid = child.id();
+    // Keep the parent end alive for exactly as long as this Rust scope.
+    let _parent_liveness = liveness.child_spawned();
+    let (tx, rx) = mpsc::channel();
+    if let Some(stderr) = child.stderr.take() {
+        read_lines(stderr, tx);
+    }
+
+    let deadline = Instant::now() + timeout;
+    let mut stderr = String::new();
+    let mut stderr_connected = true;
+    let mut stopped_on_output = false;
+    let status = 'running: loop {
+        loop {
+            match rx.try_recv() {
+                Ok(line) => {
+                    let should_stop = stop_when(&line);
+                    stderr.push_str(&line);
+                    if should_stop {
+                        kill_process_group(child_pid);
+                        let _ = child.wait();
+                        stopped_on_output = true;
+                        break 'running None;
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    stderr_connected = false;
+                    break;
+                }
+            }
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // The direct shell is done, but descendants may still
+                // hold its pipes or continue diagnostic side effects.
+                kill_process_group(child_pid);
+                break Some(status);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                kill_process_group(child_pid);
+                let _ = child.wait();
+                drain_pending_lines(&rx, &mut stderr, POST_EXIT_DRAIN);
+                return SpawnOutcome::SpawnFailed(format!("{e}"));
+            }
+        }
+        if Instant::now() >= deadline {
+            kill_process_group(child_pid);
+            let _ = child.wait();
+            break None;
+        }
+        let wait = POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now()));
+        if wait.is_zero() {
+            continue;
+        }
+        if let Some(line) = receive_line_or_wait(&rx, wait, &mut stderr_connected) {
+            let should_stop = stop_when(&line);
+            stderr.push_str(&line);
+            if should_stop {
+                kill_process_group(child_pid);
+                let _ = child.wait();
+                stopped_on_output = true;
+                break 'running None;
+            }
+        }
+    };
+
+    drain_pending_lines(&rx, &mut stderr, POST_EXIT_DRAIN);
+    if stopped_on_output {
+        return SpawnOutcome::Finished(SpawnCapture {
+            stdout: String::new(),
+            stderr,
+            status: None,
+        });
+    }
+    let Some(status) = status else {
+        return SpawnOutcome::TimedOut;
+    };
+    SpawnOutcome::Finished(SpawnCapture {
+        stdout: String::new(),
+        stderr,
+        status: status.code(),
+    })
+}
+
+/// Receive one stderr line without spinning after the reader exits.
+fn receive_line_or_wait(
+    rx: &mpsc::Receiver<String>,
+    wait: Duration,
+    connected: &mut bool,
+) -> Option<String> {
+    if !*connected {
+        std::thread::sleep(wait);
+        return None;
+    }
+    match rx.recv_timeout(wait) {
+        Ok(line) => Some(line),
+        Err(mpsc::RecvTimeoutError::Timeout) => None,
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            *connected = false;
+            std::thread::sleep(wait);
+            None
+        }
+    }
+}
+
 /// Spawn `shell` interactively and read the stamp back.
 ///
-/// Safe against hostile rc files by construction — the whole
-/// [`spawn_captured`] envelope. Never returns an error: every failure
-/// mode is an outcome, because a probe that could not run must
-/// degrade, not propagate (spec §3.3).
+/// Safe against hostile rc files by construction through the shared
+/// process-group and pipe-handling envelope. Never returns an error:
+/// every failure mode is an outcome, because a probe that could not
+/// run must degrade, not propagate (spec §3.3).
 pub fn run(shell: &Path, timeout: Duration) -> ProbeOutcome {
+    run_targeted(shell, timeout).outcome
+}
+
+/// Spawn `shell` interactively and verify the hook through the
+/// process-bound v1 response branch.
+///
+/// Current init scripts respond before activation evidence, profiling,
+/// PATH setup, Homebrew, and pack contributions, so success is bounded
+/// by time-to-hook rather than time-to-finish-rc. The post-rc stamp
+/// command remains as a compatibility fallback for legacy hooks that
+/// do not understand the targeted challenge.
+pub fn run_targeted(shell: &Path, timeout: Duration) -> TargetedVerification {
+    let started = Instant::now();
     let mut command = Command::new(shell);
-    // Interactive non-login: the mode that reads the rc file the hook
-    // lives in.
     command.arg("-ic").arg(probe_command());
-    match spawn_captured(command, timeout) {
-        SpawnOutcome::SpawnFailed(e) => ProbeOutcome::SpawnFailed(e),
-        SpawnOutcome::TimedOut => ProbeOutcome::TimedOut,
-        // A nonzero exit is not a failed probe: unrelated rc breakage
-        // fails loudly and still activates dodot. The stamp is the bit.
-        SpawnOutcome::Finished(capture) => match parse_probe_output(&capture.stdout) {
+    let nonce = fresh_nonce();
+    let verifier_pid = std::process::id();
+    command
+        .env(TARGET_PROBE_ENV, &nonce)
+        .env(TARGET_PROBE_PARENT_ENV, verifier_pid.to_string());
+
+    let outcome = match spawn_until_targeted_marker(command, timeout, &nonce, verifier_pid) {
+        TargetedSpawnOutcome::TargetedStamp(stamp) => ProbeOutcome::Stamp(stamp),
+        TargetedSpawnOutcome::Finished(stdout) => match parse_probe_output(&stdout) {
             Some(stamp) => ProbeOutcome::Stamp(stamp),
             None => ProbeOutcome::NoStamp,
         },
+        TargetedSpawnOutcome::TimedOut => ProbeOutcome::TimedOut,
+        TargetedSpawnOutcome::SpawnFailed(e) => ProbeOutcome::SpawnFailed(e),
+    };
+    TargetedVerification {
+        outcome,
+        elapsed_us: elapsed_us(started),
     }
+}
+
+enum TargetedSpawnOutcome {
+    TargetedStamp(ProbeStamp),
+    Finished(String),
+    TimedOut,
+    SpawnFailed(String),
+}
+
+fn spawn_until_targeted_marker(
+    mut command: Command,
+    timeout: Duration,
+    nonce: &str,
+    verifier_pid: u32,
+) -> TargetedSpawnOutcome {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for key in scrubbed_keys(std::env::vars().map(|(k, _)| k)) {
+        command.env_remove(key);
+    }
+    configure_probe_session(&mut command);
+
+    let mut child = match command.spawn() {
+        Ok(c) => c,
+        Err(e) => return TargetedSpawnOutcome::SpawnFailed(format!("{e}")),
+    };
+    let child_pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    if let Some(stdout) = child.stdout.take() {
+        read_lines(stdout, tx);
+    }
+    let _stderr = child.stderr.take().map(drain);
+
+    let deadline = Instant::now() + timeout;
+    let mut stdout = String::new();
+    loop {
+        while let Ok(line) = rx.try_recv() {
+            stdout.push_str(&line);
+            if let Some(stamp) = matching_targeted_stamp(&line, nonce, verifier_pid, child_pid) {
+                kill_process_group(child_pid);
+                let _ = child.wait();
+                return TargetedSpawnOutcome::TargetedStamp(stamp);
+            }
+        }
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                // The shell is only the process-group leader. Its exit does
+                // not imply that rc-started descendants are gone.
+                kill_process_group(child_pid);
+                drain_pending_lines(&rx, &mut stdout, POST_EXIT_DRAIN);
+                if let Some(stamp) =
+                    matching_targeted_stamp_in_output(&stdout, nonce, verifier_pid, child_pid)
+                {
+                    return TargetedSpawnOutcome::TargetedStamp(stamp);
+                }
+                return TargetedSpawnOutcome::Finished(stdout);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                kill_process_group(child_pid);
+                let _ = child.wait();
+                drain_pending_lines(&rx, &mut stdout, POST_EXIT_DRAIN);
+                return TargetedSpawnOutcome::SpawnFailed(format!("{e}"));
+            }
+        }
+        if Instant::now() >= deadline {
+            kill_process_group(child_pid);
+            let _ = child.wait();
+            drain_pending_lines(&rx, &mut stdout, POST_EXIT_DRAIN);
+            if let Some(stamp) =
+                matching_targeted_stamp_in_output(&stdout, nonce, verifier_pid, child_pid)
+            {
+                return TargetedSpawnOutcome::TargetedStamp(stamp);
+            }
+            return TargetedSpawnOutcome::TimedOut;
+        }
+        let wait = POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now()));
+        if wait.is_zero() {
+            continue;
+        }
+        match rx.recv_timeout(wait) {
+            Ok(line) => {
+                stdout.push_str(&line);
+                if let Some(stamp) = matching_targeted_stamp(&line, nonce, verifier_pid, child_pid)
+                {
+                    kill_process_group(child_pid);
+                    let _ = child.wait();
+                    return TargetedSpawnOutcome::TargetedStamp(stamp);
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected | mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
+fn read_lines<R: Read + Send + 'static>(pipe: R, tx: mpsc::Sender<String>) {
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(pipe);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if tx.send(line).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+fn matching_targeted_stamp_in_output(
+    stdout: &str,
+    nonce: &str,
+    verifier_pid: u32,
+    child_pid: u32,
+) -> Option<ProbeStamp> {
+    stdout
+        .lines()
+        .find_map(|line| matching_targeted_stamp(line, nonce, verifier_pid, child_pid))
+}
+
+fn drain_pending_lines(rx: &mpsc::Receiver<String>, stdout: &mut String, max_wait: Duration) {
+    let deadline = Instant::now() + max_wait;
+    while Instant::now() < deadline {
+        match rx.recv_timeout(POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now())))
+        {
+            Ok(line) => stdout.push_str(&line),
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+        }
+    }
+    while let Ok(line) = rx.try_recv() {
+        stdout.push_str(&line);
+    }
+}
+
+fn elapsed_us(started: Instant) -> u64 {
+    started.elapsed().as_micros().try_into().unwrap_or(u64::MAX)
+}
+
+fn fresh_nonce() -> String {
+    let mut bytes = [0u8; 16];
+    if std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut bytes))
+        .is_ok()
+    {
+        return bytes.iter().map(|b| format!("{b:02x}")).collect();
+    }
+    format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default()
+    )
 }
 
 /// Read a child pipe to end on its own thread.
@@ -358,17 +875,18 @@ pub fn scrubbed_keys(keys: impl Iterator<Item = String>) -> Vec<String> {
 
 /// Kill the probed shell's whole process group.
 ///
-/// The shell was spawned as its own group leader, so its pid is the
-/// group id and a negative-pid signal reaches every process the rc
-/// file started — the `exec`-into-a-multiplexer case, where killing
-/// only the shell we can see would leave the real hang behind.
+/// The shell was spawned as its own group leader, either directly or
+/// as a new session leader, so its pid is the group id and a negative-
+/// pid signal reaches every process the rc file started — the
+/// `exec`-into-a-multiplexer case, where killing only the shell we can
+/// see would leave the real hang behind.
 #[cfg(unix)]
 fn kill_process_group(pid: u32) {
     // SAFETY: `kill` is a plain syscall wrapper with no memory
     // effects. A negative pid addresses the process group; the group
-    // is one we created via `process_group(0)`, so we are not
-    // signalling anything we did not spawn. A failure (the group
-    // already exited) is nothing to handle.
+    // is one we created for this child, so we are not signalling
+    // anything we did not spawn. A failure (the group already exited)
+    // is nothing to handle.
     unsafe {
         libc::kill(-(pid as libc::pid_t), libc::SIGKILL);
     }
@@ -424,11 +942,18 @@ impl Verdict {
     /// for the same reason it does there: a current generation from
     /// the wrong dodot is not health, and a stale one from the wrong
     /// dodot is not fixed by opening a new shell.
+    ///
+    /// `known_capable` is the targeted-protocol capability of the hook the
+    /// rc file is expected to run. A capable hook that finishes or times
+    /// out without a marker is measured broken; an eval or legacy hook
+    /// without a marker is only inconclusive unless the static scan shows
+    /// the hook is absent.
     pub fn from_outcome(
         outcome: ProbeOutcome,
         reference: Option<u64>,
         running: &str,
         hook: Option<(HookPresence, String)>,
+        known_capable: bool,
     ) -> Verdict {
         match outcome {
             ProbeOutcome::Stamp(stamp) if activation::is_skewed(Some(&stamp.version), running) => {
@@ -452,17 +977,25 @@ impl Verdict {
                     },
                 }
             }
-            ProbeOutcome::NoStamp => Verdict::Broken {
+            ProbeOutcome::NoStamp => match hook {
+                Some((HookPresence::Absent, rc)) => Verdict::Broken {
+                    diagnosis: Diagnosis::HookAbsent { rc },
+                },
+                Some((_, rc)) if known_capable => Verdict::Broken {
+                    diagnosis: Diagnosis::HookNotReached { rc },
+                },
+                Some(_) | None => Verdict::Unverified {
+                    reason: "verification was inconclusive".into(),
+                },
+            },
+            ProbeOutcome::TimedOut if known_capable => Verdict::Broken {
                 diagnosis: match hook {
-                    Some((presence, rc)) if presence.is_present() => {
-                        Diagnosis::HookNotReached { rc }
-                    }
-                    Some((_, rc)) => Diagnosis::HookAbsent { rc },
+                    Some((_, rc)) => Diagnosis::HookNotReached { rc },
                     None => Diagnosis::Unknown,
                 },
             },
             ProbeOutcome::TimedOut => Verdict::Unverified {
-                reason: "your shell did not finish starting up in time".into(),
+                reason: "verification produced no conclusive evidence before the timeout".into(),
             },
             ProbeOutcome::SpawnFailed(e) => Verdict::Unverified {
                 reason: format!("could not run your shell ({e})"),
@@ -473,14 +1006,13 @@ impl Verdict {
     /// Render the verdict for `up` / `install` output.
     ///
     /// `evidence` is the footer the signal ladder alone produced,
-    /// `evidence_line` the footer's second line re-read *after* the
-    /// probe ran (the spawned shell updates the heartbeat, so the
-    /// pre-probe reading is stale by the time there is a verdict), and
-    /// `hook_line` the manual line to fall back on. A couldn't-verify
-    /// verdict degrades to `evidence`, clearly labeled as
-    /// configuration state rather than measured activation; the other
-    /// two verdicts are measurements and take precedence over it —
-    /// including over the stale-shell advice, which is the wrong
+    /// `evidence_line` is either the measured-success line from the
+    /// targeted response or the historical line the signals produced,
+    /// and `hook_line` is the manual line to fall back on. A
+    /// couldn't-verify verdict degrades to `evidence`, clearly labeled
+    /// as configuration state rather than measured activation; the
+    /// other two verdicts are measurements and take precedence over it
+    /// — including over the stale-shell advice, which is the wrong
     /// answer for a hookup that just measured broken.
     ///
     /// A measured verdict says the same thing the evidence path says
@@ -600,24 +1132,97 @@ pub fn measure(
     };
 
     eprintln!("{}", announcement(shell));
-    let outcome = run(shell, timeout);
     let hook = rc::scan_expected_rc(fs, paths.home_dir(), shell_env, rc_override);
-    // Line two is re-read now, not before the spawn: a shell that
-    // activated wrote the heartbeat on its way through, and "last
-    // loaded 9 days ago" under a verdict that just watched it load
-    // would contradict itself. A shell that did *not* activate left
-    // the heartbeat alone, so the same read still reports the last
-    // time one did — which is the evidence the broken verdict wants.
+    let known_capable =
+        hook_verification_capability(fs, paths, shell_env, rc_override, hook.as_ref());
+    let outcome = run(shell, timeout);
+    // Current targeted verification does not write the heartbeat:
+    // success is a measured event owned by this command, while the
+    // heartbeat remains evidence from ordinary shell use. Legacy hooks
+    // can still update it before their compatibility stamp prints; for
+    // broken/unverified outcomes the historical evidence remains the
+    // useful line.
     let evidence_line =
         activation::Evidence::collect(fs, paths, activation::EnvStamp::default(), reference, false)
             .map(|e| e.evidence_line())
             .unwrap_or(stale_line);
-    Verdict::from_outcome(outcome, reference, activation::running_version(), hook).notice(
-        evidence,
-        &evidence_line,
-        &hook_line,
-        has_contributions,
+    let measured_line = measured_evidence_line(&outcome).unwrap_or(evidence_line);
+    Verdict::from_outcome(
+        outcome,
+        reference,
+        activation::running_version(),
+        hook,
+        known_capable,
     )
+    .notice(evidence, &measured_line, &hook_line, has_contributions)
+}
+
+fn hook_verification_capability(
+    fs: &dyn Fs,
+    paths: &dyn Pather,
+    shell_env: &ShellEnv,
+    rc_override: Option<&Path>,
+    hook: Option<&(HookPresence, String)>,
+) -> bool {
+    let Some((presence, _)) = hook else {
+        return false;
+    };
+    match presence {
+        HookPresence::ManagedBlock => activation::read_script(fs, paths)
+            .is_some_and(|script| crate::shell::script_supports_targeted_probe(&script)),
+        HookPresence::Manual => {
+            manual_hook_supports_targeted_probe(fs, paths.home_dir(), shell_env, rc_override)
+        }
+        HookPresence::Absent => false,
+    }
+}
+
+fn manual_hook_supports_targeted_probe(
+    fs: &dyn Fs,
+    home: &Path,
+    shell_env: &ShellEnv,
+    rc_override: Option<&Path>,
+) -> bool {
+    use crate::shell::trace::{self, HookForm, SourcedScript};
+
+    let path = match rc_override {
+        Some(path) => path.to_path_buf(),
+        None => {
+            let Some(shell) = shell_env.hookup_shell() else {
+                return false;
+            };
+            rc::resolve_rc(fs, home, Some(shell), shell_env, None).path
+        }
+    };
+    let Ok(rc_text) = fs.read_to_string(&path) else {
+        return false;
+    };
+    let Some(hook) = trace::find_hook(&rc_text, home) else {
+        return false;
+    };
+    match hook.form {
+        HookForm::FileSource(SourcedScript::Path(script)) => fs
+            .read_to_string(&script)
+            .is_ok_and(|text| crate::shell::script_supports_targeted_probe(&text)),
+        _ => false,
+    }
+}
+
+fn measured_evidence_line(outcome: &ProbeOutcome) -> Option<String> {
+    match outcome {
+        ProbeOutcome::Stamp(ProbeStamp {
+            version: EvidenceVersion::Known(version),
+            ..
+        }) => Some(format!("Verified just now by dodot {version}.")),
+        ProbeOutcome::Stamp(ProbeStamp {
+            version: EvidenceVersion::PreVersion,
+            ..
+        }) => Some(format!(
+            "Verified just now by dodot {} or earlier.",
+            activation::PRE_VERSION_RELEASE
+        )),
+        _ => None,
+    }
 }
 
 /// Evaluate shell activation for a command that is allowed to measure.
@@ -756,6 +1361,395 @@ mod tests {
     }
 
     #[test]
+    fn targeted_response_requires_nonce_and_direct_child_identity() {
+        let line = format!("{TARGET_PROBE_MARKER}abc|10|20|100|5.7.0");
+        assert_eq!(
+            matching_targeted_stamp(&line, "abc", 10, 20),
+            Some(stamp(100, "5.7.0"))
+        );
+        assert_eq!(matching_targeted_stamp(&line, "wrong", 10, 20), None);
+        assert_eq!(matching_targeted_stamp(&line, "abc", 11, 20), None);
+        assert_eq!(matching_targeted_stamp(&line, "abc", 10, 21), None);
+        assert_eq!(
+            parse_targeted_response(&format!(
+                "{TARGET_PROBE_MARKER}abc|10|20|not-a-generation|5.7.0"
+            )),
+            None
+        );
+        assert_eq!(
+            parse_targeted_response(&format!("{TARGET_PROBE_MARKER}abc|10|20|100")),
+            None
+        );
+    }
+
+    #[test]
+    fn targeted_response_is_found_after_trailing_output_is_drained() {
+        let stdout =
+            format!("unterminated rc output\n{TARGET_PROBE_MARKER}abc|10|20|100|5.7.0\nignored\n");
+
+        assert_eq!(
+            matching_targeted_stamp_in_output(&stdout, "abc", 10, 20),
+            Some(stamp(100, "5.7.0"))
+        );
+        assert_eq!(
+            matching_targeted_stamp_in_output(&stdout, "abc", 10, 21),
+            None
+        );
+    }
+
+    #[test]
+    fn targeted_runner_terminates_descendants_when_the_direct_shell_exits() {
+        use crate::fs::Fs;
+
+        let shell = Path::new("/bin/sh");
+        if !shell.exists() {
+            return;
+        }
+        let env = crate::testing::TempEnvironment::builder().build();
+        let started = env.home.join("targeted-descendant-started");
+        let leaked = env.home.join("targeted-descendant-survived");
+        let mut command = Command::new(shell);
+        command
+            .env("DODOT_TEST_DESCENDANT_STARTED", &started)
+            .env("DODOT_TEST_DESCENDANT_LEAKED", &leaked)
+            .args([
+                "-c",
+                "( : > \"$DODOT_TEST_DESCENDANT_STARTED\"; sleep 1; \
+                 : > \"$DODOT_TEST_DESCENDANT_LEAKED\" ) & \
+                 while [ ! -e \"$DODOT_TEST_DESCENDANT_STARTED\" ]; do :; done",
+            ]);
+
+        let outcome = spawn_until_targeted_marker(
+            command,
+            Duration::from_secs(2),
+            "unused-nonce",
+            std::process::id(),
+        );
+
+        assert!(
+            matches!(outcome, TargetedSpawnOutcome::Finished(_)),
+            "the marker-less direct shell should finish"
+        );
+        assert!(env.fs.exists(&started), "the descendant never started");
+        std::thread::sleep(Duration::from_millis(1_200));
+        assert!(
+            !env.fs.exists(&leaked),
+            "a descendant survived the targeted probe's terminal path"
+        );
+    }
+
+    #[test]
+    fn stderr_stop_does_not_wait_for_a_descendant_retaining_stdout() {
+        let shell = Path::new("/bin/sh");
+        if !shell.exists() {
+            return;
+        }
+        let mut command = Command::new(shell);
+        command.args(["-c", "(sleep 5) &"]);
+
+        let started = Instant::now();
+        let outcome = spawn_captured_until_stderr(command, Duration::from_secs(2), |_| false);
+
+        assert!(
+            matches!(
+                outcome,
+                SpawnOutcome::Finished(SpawnCapture {
+                    status: Some(0),
+                    ..
+                })
+            ),
+            "direct child should finish normally: {outcome:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "a descendant retaining stdout must not block completion"
+        );
+    }
+
+    #[test]
+    fn disconnected_stderr_waits_instead_of_spinning() {
+        let (tx, rx) = mpsc::channel::<String>();
+        drop(tx);
+        let mut connected = true;
+        let wait = Duration::from_millis(30);
+
+        let started = Instant::now();
+        assert_eq!(receive_line_or_wait(&rx, wait, &mut connected), None);
+
+        assert!(!connected);
+        assert!(
+            started.elapsed() >= Duration::from_millis(25),
+            "a disconnected channel must still yield the polling interval"
+        );
+    }
+
+    #[test]
+    fn stderr_stop_matches_each_line_and_retains_complete_diagnostics() {
+        let shell = Path::new("/bin/sh");
+        if !shell.exists() {
+            return;
+        }
+        let mut command = Command::new(shell);
+        command.args([
+            "-c",
+            "i=0; while [ \"$i\" -lt 2000 ]; do printf 'noise-%s\\n' \"$i\" >&2; \
+             i=$((i + 1)); done; printf 'stop\\n' >&2; sleep 5",
+        ]);
+        let mut inspected = 0;
+
+        let outcome = spawn_captured_until_stderr(command, Duration::from_secs(5), |line| {
+            inspected += 1;
+            assert_eq!(
+                line.lines().count(),
+                1,
+                "predicate received more than one line"
+            );
+            line == "stop\n"
+        });
+        let SpawnOutcome::Finished(capture) = outcome else {
+            panic!("expected marker-stopped capture, got {outcome:?}");
+        };
+
+        assert_eq!(inspected, 2001);
+        assert_eq!(capture.stderr.lines().count(), 2001);
+        assert!(capture.stderr.starts_with("noise-0\n"));
+        assert!(capture.stderr.ends_with("stop\n"));
+        assert_eq!(capture.status, None);
+        assert!(capture.stdout.is_empty());
+    }
+
+    #[test]
+    fn targeted_verification_stops_at_current_file_source_hook() {
+        use crate::fs::Fs;
+        use crate::paths::Pather;
+
+        let shell = if Path::new("/bin/bash").exists() {
+            "/bin/bash"
+        } else {
+            return;
+        };
+        let env = crate::testing::TempEnvironment::builder().build();
+        let _home = crate::testing::EnvVarGuard::set("HOME", &env.home.display().to_string());
+        let script =
+            crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), true, None)
+                .unwrap();
+        env.fs
+            .write_file(
+                &env.home.join(".bashrc"),
+                format!(
+                    "shopt -s expand_aliases\nalias printf='echo alias-hijacked'\n. '{}'\nsleep 5\n",
+                    script.display()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        let run = run_targeted(Path::new(shell), Duration::from_millis(700));
+
+        assert!(
+            matches!(run.outcome, ProbeOutcome::Stamp(_)),
+            "expected marker-driven stamp, got {run:?}"
+        );
+        assert!(
+            run.elapsed_us < 700_000,
+            "verification must stop before post-hook rc work: {run:?}"
+        );
+        assert!(
+            !env.fs.exists(&env.paths.hookup_heartbeat_path()),
+            "targeted verification must not write activation heartbeat"
+        );
+        let profile_entries = env
+            .fs
+            .read_dir(&env.paths.probes_shell_init_dir())
+            .unwrap_or_default();
+        assert!(
+            profile_entries.is_empty(),
+            "targeted verification must not create startup profiles: {profile_entries:?}"
+        );
+    }
+
+    const PTY_DRIVER_ENV: &str = "DODOT_TEST_PROBE_PTY_DRIVER";
+    const PTY_SHELL_ENV: &str = "DODOT_TEST_PROBE_PTY_SHELL";
+
+    #[test]
+    fn primary_trace_spawn_finishes_under_a_pty() {
+        if std::env::var(PTY_DRIVER_ENV).as_deref() == Ok("primary") {
+            let shell_path = std::env::var_os(PTY_SHELL_ENV).expect("PTY shell is selected");
+            let shell = Path::new(&shell_path);
+            let mut command = Command::new(shell);
+            command.args(["-ic", "printf 'primary-pty-ok\\n'"]);
+            let outcome = spawn_captured(command, Duration::from_secs(2));
+            assert!(
+                matches!(
+                    outcome,
+                    SpawnOutcome::Finished(SpawnCapture { ref stdout, .. })
+                        if stdout.contains("primary-pty-ok")
+                ),
+                "primary trace spawn did not finish under a PTY: {outcome:?}"
+            );
+            eprintln!("pty-driver-primary-complete");
+            return;
+        }
+
+        let Some(shell) = pty_test_shell() else {
+            return;
+        };
+        run_current_test_under_pty(
+            "shell::probe::tests::primary_trace_spawn_finishes_under_a_pty",
+            "primary",
+            shell,
+        );
+    }
+
+    #[test]
+    fn targeted_marker_spawn_finishes_under_a_pty() {
+        if std::env::var(PTY_DRIVER_ENV).as_deref() == Ok("targeted") {
+            let shell_path = std::env::var_os(PTY_SHELL_ENV).expect("PTY shell is selected");
+            let shell = Path::new(&shell_path);
+            let nonce = "pty-nonce";
+            let verifier_pid = std::process::id();
+            let mut command = Command::new(shell);
+            command.args([
+                "-ic",
+                &format!(
+                    "printf '{TARGET_PROBE_MARKER}{nonce}|{verifier_pid}|%s|42|5.7.0\\n' \
+                     \"$$\"; sleep 5"
+                ),
+            ]);
+
+            let outcome =
+                spawn_until_targeted_marker(command, Duration::from_secs(2), nonce, verifier_pid);
+            assert!(
+                matches!(
+                    outcome,
+                    TargetedSpawnOutcome::TargetedStamp(ProbeStamp {
+                        generation: 42,
+                        version: EvidenceVersion::Known(ref version),
+                    }) if version == "5.7.0"
+                ),
+                "targeted marker spawn did not finish under a PTY"
+            );
+            eprintln!("pty-driver-targeted-complete");
+            return;
+        }
+
+        let Some(shell) = pty_test_shell() else {
+            return;
+        };
+        run_current_test_under_pty(
+            "shell::probe::tests::targeted_marker_spawn_finishes_under_a_pty",
+            "targeted",
+            shell,
+        );
+    }
+
+    fn pty_test_shell() -> Option<&'static Path> {
+        ["/bin/zsh", "/usr/bin/zsh", "/bin/bash", "/usr/bin/bash"]
+            .into_iter()
+            .map(Path::new)
+            .find(|path| path.exists())
+    }
+
+    fn run_current_test_under_pty(test_name: &str, driver: &str, shell: &Path) {
+        use std::io::Read as _;
+        use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+        use std::os::unix::process::CommandExt as _;
+
+        let mut master_fd = -1;
+        let mut slave_fd = -1;
+        // SAFETY: `openpty` initializes both descriptors on success; the
+        // null termios and window-size pointers request system defaults.
+        let opened = unsafe {
+            libc::openpty(
+                &mut master_fd,
+                &mut slave_fd,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(opened, 0, "openpty: {}", std::io::Error::last_os_error());
+        // SAFETY: successful `openpty` returned two newly owned descriptors.
+        let mut master = unsafe { std::fs::File::from_raw_fd(master_fd) };
+        let slave = unsafe { OwnedFd::from_raw_fd(slave_fd) };
+        set_close_on_exec(master.as_raw_fd());
+        set_close_on_exec(slave.as_raw_fd());
+
+        let slave_fd = slave.as_raw_fd();
+        let mut command = Command::new(std::env::current_exe().expect("current test binary"));
+        command
+            .args(["--exact", test_name, "--nocapture"])
+            .env(PTY_DRIVER_ENV, driver)
+            .env(PTY_SHELL_ENV, shell)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        // SAFETY: the closure uses only async-signal-safe descriptor and
+        // session syscalls before exec. `slave` remains alive through spawn.
+        unsafe {
+            command.pre_exec(move || {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::ioctl(slave_fd, libc::TIOCSCTTY as _, 0) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                for target in [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+                    if libc::dup2(slave_fd, target) == -1 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                }
+                if slave_fd > libc::STDERR_FILENO {
+                    libc::close(slave_fd);
+                }
+                Ok(())
+            });
+        }
+
+        let mut child = command.spawn().expect("PTY test driver starts");
+        drop(slave);
+        let output = std::thread::spawn(move || {
+            let mut output = Vec::new();
+            let _ = master.read_to_end(&mut output);
+            output
+        });
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("PTY driver remains waitable") {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("PTY test driver timed out: {test_name}");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let output = output.join().expect("PTY output reader joins");
+        let output = String::from_utf8_lossy(&output);
+        assert!(
+            status.success(),
+            "PTY test driver failed: {test_name}\n{output}"
+        );
+        assert!(
+            output.contains(&format!("pty-driver-{driver}-complete")),
+            "PTY test driver did not exercise its inner branch: {test_name}\n{output}"
+        );
+    }
+
+    fn set_close_on_exec(fd: RawFd) {
+        // SAFETY: `fd` is live for both fcntl calls and no pointer is involved.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert_ne!(flags, -1, "F_GETFD: {}", std::io::Error::last_os_error());
+        assert_ne!(
+            unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) },
+            -1,
+            "F_SETFD: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+
+    #[test]
     fn only_the_init_stamp_family_is_scrubbed() {
         let keys = [
             "DODOT_INIT_GEN",
@@ -803,6 +1797,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
         let notice = v
@@ -842,6 +1837,7 @@ mod tests {
                 Some(100),
                 RUNNING,
                 hook(HookPresence::Manual),
+                false,
             );
             assert_eq!(
                 v,
@@ -886,6 +1882,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
 
@@ -934,6 +1931,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(
             v,
@@ -958,6 +1956,7 @@ mod tests {
             Some(100),
             activation::PRE_VERSION_RELEASE,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(v, Verdict::Verified { generation: 100 });
     }
@@ -969,6 +1968,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::Absent),
+            false,
         );
         assert_eq!(
             v,
@@ -987,10 +1987,15 @@ mod tests {
     }
 
     #[test]
-    fn no_stamp_with_the_hook_present_blames_the_rc_file_instead() {
+    fn no_stamp_from_a_known_capable_hook_blames_the_rc_file() {
         for presence in [HookPresence::ManagedBlock, HookPresence::Manual] {
-            let v =
-                Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, hook(presence));
+            let v = Verdict::from_outcome(
+                ProbeOutcome::NoStamp,
+                Some(100),
+                RUNNING,
+                hook(presence),
+                true,
+            );
             let hint = v
                 .notice(None, "Never loaded.", "HOOK", DEPLOYED)
                 .unwrap()
@@ -1008,20 +2013,43 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_shell_falls_back_to_the_hook_line() {
-        let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, None);
+    fn no_stamp_from_an_unknown_capability_hook_is_inconclusive() {
+        let v = Verdict::from_outcome(
+            ProbeOutcome::NoStamp,
+            Some(100),
+            RUNNING,
+            hook(HookPresence::Manual),
+            false,
+        );
+
+        assert!(matches!(v, Verdict::Unverified { .. }), "{v:?}");
+    }
+
+    #[test]
+    fn timeout_from_a_known_capable_hook_is_broken() {
+        let v = Verdict::from_outcome(
+            ProbeOutcome::TimedOut,
+            Some(100),
+            RUNNING,
+            hook(HookPresence::ManagedBlock),
+            true,
+        );
+
         assert_eq!(
             v,
             Verdict::Broken {
-                diagnosis: Diagnosis::Unknown
+                diagnosis: Diagnosis::HookNotReached {
+                    rc: "~/.zshrc".into()
+                }
             }
         );
-        let hint = v
-            .notice(None, "Never loaded.", "THE-HOOK-LINE", DEPLOYED)
-            .unwrap()
-            .hint
-            .unwrap();
-        assert!(hint.contains("THE-HOOK-LINE"), "{hint}");
+    }
+
+    #[test]
+    fn no_stamp_without_static_hook_context_is_inconclusive() {
+        let v = Verdict::from_outcome(ProbeOutcome::NoStamp, Some(100), RUNNING, None, true);
+
+        assert!(matches!(v, Verdict::Unverified { .. }), "{v:?}");
     }
 
     #[test]
@@ -1031,6 +2059,7 @@ mod tests {
             Some(100),
             RUNNING,
             hook(HookPresence::ManagedBlock),
+            false,
         );
         assert_eq!(
             v,
@@ -1056,7 +2085,13 @@ mod tests {
             ProbeOutcome::TimedOut,
             ProbeOutcome::SpawnFailed("no such file".into()),
         ] {
-            let v = Verdict::from_outcome(outcome, Some(100), RUNNING, hook(HookPresence::Absent));
+            let v = Verdict::from_outcome(
+                outcome,
+                Some(100),
+                RUNNING,
+                hook(HookPresence::Absent),
+                false,
+            );
             let notice = v
                 .notice(Some(evidence.clone()), "Never loaded.", "HOOK", DEPLOYED)
                 .unwrap();
@@ -1157,6 +2192,7 @@ mod tests {
                 Some(1_755_200_000),
                 RUNNING,
                 hook(HookPresence::Manual),
+                false,
             );
             assert_eq!(
                 verdict,

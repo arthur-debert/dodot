@@ -543,20 +543,20 @@ pub fn transform_install_hook_handler(
 }
 
 /// `dodot probe shell-init` — most recent shell-startup profile plus,
-/// by default, the live hook-line diagnosis.
+/// by default, a fresh time-to-hook verification.
 ///
 /// Five views, picked by argument shape:
 /// - `<pack>[/<file>]` positional: drill-down across recent runs with
-///   captured stderr (wins over flags — the user is asking a specific
-///   question about one source's timings, so it also suppresses the
-///   trace: the shipped status warning points here and must stay
-///   cheap and passive)
+///   captured stderr (kept cheap and passive; conflicts with live
+///   tracing)
 /// - `--errors-only`: cross-history list of failing targets
 /// - `--runs N`: per-target percentile aggregate over the last N runs
 /// - `--history`: one-row-per-run trend, newest first
-/// - default: single-run detail (most recent profile) + the live
-///   trace — one report, two halves. `--no-trace` keeps only the
-///   recorded half; only this default view ever spawns a shell.
+/// - `--trace-hook`: explicit PATH-at-hook diagnostic trace
+/// - default: single-run detail (most recent profile) + live
+///   verification. `--no-verify` keeps only the recorded half, and
+///   `--no-trace` remains its deprecated compatibility spelling; only
+///   these live views ever spawn a shell.
 pub fn probe_shell_init_handler(
     matches: &clap::ArgMatches,
     cmd: &CommandContext,
@@ -566,7 +566,8 @@ pub fn probe_shell_init_handler(
     let runs = matches.get_one::<usize>("runs").copied();
     let history = flag_or_false(matches, "history");
     let errors_only = flag_or_false(matches, "errors-only");
-    let no_trace = flag_or_false(matches, "no-trace");
+    let no_verify = flag_or_false(matches, "no-verify") || flag_or_false(matches, "no-trace");
+    let trace_hook = flag_or_false(matches, "trace-hook");
 
     let result = if errors_only {
         commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS)?
@@ -576,8 +577,10 @@ pub fn probe_shell_init_handler(
         commands::probe::shell_init_aggregate(&ctx, n)?
     } else if history {
         commands::probe::shell_init_history(&ctx, commands::probe::DEFAULT_HISTORY_LIMIT)?
+    } else if trace_hook {
+        commands::probe::shell_init_trace(&ctx)?
     } else {
-        commands::probe::shell_init(&ctx, !no_trace)?
+        commands::probe::shell_init(&ctx, !no_verify)?
     };
     Ok(Output::Render(result))
 }
@@ -645,8 +648,24 @@ fn clean_debug_format(input: &str) -> String {
     result
 }
 
-/// `dodot init-sh` — prints shell init script for `eval "$(dodot init-sh)"`.
+/// `dodot init-sh` — prints shell code for `eval "$(dodot init-sh)"`.
+///
+/// A targeted-verification invocation returns only the guarded response and
+/// its ordinary-init fallback. Normal invocations generate the full shell
+/// init script.
 pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
+    if std::env::var_os(dodot_lib::shell::probe::TARGET_PROBE_ENV).is_some()
+        && std::env::var_os(dodot_lib::shell::probe::TARGET_PROBE_PARENT_ENV).is_some()
+    {
+        let executable = std::env::current_exe()?;
+        let script = dodot_lib::shell::generate_eval_init_probe_response(
+            dodot_lib::shell::activation::current_generation(),
+            &executable,
+        );
+        print!("{script}");
+        return Ok(());
+    }
+
     let dotfiles_root = passthrough_root()?;
     let ctx = ExecutionContext::production(&dotfiles_root, false)?;
     let root_config = ctx.config_manager.root_config()?;

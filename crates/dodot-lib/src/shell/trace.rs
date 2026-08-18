@@ -43,6 +43,12 @@
 //! name at mode `0700` (see [`scratch_dir`]) and removed when the run
 //! ends.
 //!
+//! For capability-unknown hooks, the copy prints the hook-line record
+//! and kills the diagnostic shell before the hook itself. That is the
+//! only trace shape that cannot create heartbeat/profile evidence
+//! through a legacy init script that does not understand diagnostic
+//! suppression.
+//!
 //! The copy must reproduce the shell's startup, not approximate it. A
 //! shell that read a different set of files than the real one does
 //! yields a verdict the user would act on and should not — so a copy
@@ -65,28 +71,36 @@
 //!   different path under the trace than it does in earnest. Reading
 //!   `PATH` at the hook line is what this buys, and there is no way to
 //!   buy it without the option set.
-//! - **The rc runs up to twice.** The fallback re-runs it on a copy,
-//!   so side effects in the rc happen again. [`announcement`] says so
-//!   before anything is spawned.
+//! - **The rc can run up to three times for a diagnostic-capable eval
+//!   hook.** Eval diagnosis first uses a report-only copy to identify
+//!   the target, then runs the primary trace; its fallback can re-run
+//!   the rc on another copy. Side effects before the hook can therefore
+//!   happen three times. File-source hooks need no target-discovery pass
+//!   and run at most twice. Capability-unknown hooks use only one copy
+//!   and stop before the hook. [`announcement`] says the maximum upper
+//!   bound before anything is spawned.
 //!
 //! # Boundaries
 //!
 //! Only `dodot probe shell-init` reaches this module; `status` and
-//! `up` never do (INS01 §9 still binds). Every spawn goes through
-//! [`crate::shell::probe::spawn_captured`] — the INS01 envelope
-//! (announced, stdin from `/dev/null`, output captured, hard timeout
-//! with a process-group kill, `DODOT_INIT_*` scrubbed) reused
-//! unchanged. The spawned shell is interactive non-login (the mode
-//! that reads the file the hook lives in) and inherits this process's
-//! environment minus the scrub, same as the INS01 probe.
+//! `up` never do (INS01 §9 still binds). Every spawn uses the capture
+//! helpers in [`crate::shell::probe`] — the INS01 envelope (announced,
+//! stdin from `/dev/null`, output captured, hard timeout with a
+//! process-group kill, `DODOT_INIT_*` scrubbed). The spawned shell is
+//! interactive non-login (the mode that reads the file the hook lives
+//! in) and inherits this process's environment minus the scrub, same as
+//! the INS01 probe.
 
+use std::os::fd::RawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::fs::Fs;
 use crate::shell::activation::{self, EvidenceVersion};
-use crate::shell::probe::{spawn_captured, SpawnOutcome};
+use crate::shell::probe::{
+    spawn_captured, spawn_captured_until_stderr_with_liveness, ParentLiveness, SpawnOutcome,
+};
 use crate::shell::rc::{self, HookupShell};
 
 /// The field prefix every trace record carries, behind the leading
@@ -96,6 +110,30 @@ pub const TRACE_MARKER: &str = "dodot-trace|";
 /// Terminates the PATH field of a record, separating it from the
 /// traced command text that follows on the same line.
 pub const RECORD_SUFFIX: &str = "|> ";
+
+/// Internal environment flag carried by `probe shell-init --trace-hook`.
+/// Current init scripts consume it before pack contributions and use it
+/// only to suppress heartbeat and profile writes while the diagnostic
+/// shell continues through PATH and source work.
+pub const DIAGNOSTIC_TRACE_ENV: &str = "DODOT_INTERNAL_SHELL_INIT_TRACE";
+
+/// Hold a report-only rc until the parent sees the record and stops the
+/// process group. A clean instance of the supported shell receives the
+/// liveness descriptor as data, avoiding multi-digit redirection syntax.
+/// If Rust disappears first, its unshadowed builtin sends uncatchable
+/// SIGKILL to the traced shell. No path lookup or external `kill` is used.
+fn report_only_hold(shell_path: &Path, shell: HookupShell, parent_liveness_fd: RawFd) -> String {
+    let clean_flags = match shell {
+        // Privileged mode suppresses BASH_ENV and imported functions.
+        HookupShell::Bash => "--noprofile --norc -p",
+        HookupShell::Zsh => "-f",
+    };
+    format!(
+        "{} {clean_flags} -c 'IFS= read -r -u \"$1\" _; kill -s KILL 0' \
+         dodot-report-only {parent_liveness_fd}",
+        shell_quote(&shell_path.display().to_string()),
+    )
+}
 
 // ── The PS4 contract ────────────────────────────────────────────
 
@@ -656,15 +694,16 @@ pub fn parse_version_output(stdout: &str) -> Option<String> {
 /// The line printed before any shell is spawned. The trace is
 /// announced, never covert — same rule as the INS01 probe.
 ///
-/// It says "up to twice" because that is true: the fallback re-runs
-/// the rc on a copy, and on macOS's `/bin/bash` it is the normal
-/// route. This line is the user's only warning before their own rc's
-/// side effects happen, so promising "once" understated the thing they
-/// are being warned about — and the count is not knowable until the
-/// first pass comes back unreadable.
+/// It says "up to three times" because a diagnostic-capable eval hook
+/// first gets one report-only target-discovery run, then a primary
+/// diagnostic run whose fallback can re-run the rc on a copy. This
+/// line is the user's only warning before their own rc's side effects
+/// happen. File-source hooks run at most twice and capability-unknown
+/// hooks once, but the hook form and fallback path should not make the
+/// pre-spawn warning understate the maximum.
 pub fn announcement(shell: HookupShell) -> String {
     format!(
-        "tracing shell startup ({})… (runs your rc file, up to twice)",
+        "tracing shell startup ({})… (may run your rc file up to three times)",
         shell.as_str()
     )
 }
@@ -682,10 +721,10 @@ pub enum TraceError {
     RcUnreadable(String),
     /// The fallback's scratch copy could not be built so that it
     /// reproduces the shell's startup faithfully — the scratch
-    /// directory would not open, or one of the files that stands in
-    /// for a startup file could not be written. A verdict computed
-    /// from a shell that read a different set of files than the real
-    /// one does is worse than no verdict, because the user acts on it.
+    /// directory would not open, or one of the files that stands in for
+    /// a startup file could not be written. A verdict computed from a
+    /// shell that read a different set of files than the real one does
+    /// is worse than no verdict, because the user acts on it.
     FallbackUnfaithful(String),
 }
 
@@ -695,6 +734,7 @@ pub enum TraceError {
 pub struct TraceRun {
     pub records: Vec<TraceRecord>,
     pub used_fallback: bool,
+    pub elapsed_us: u64,
 }
 
 /// Everything one trace needs to know about the shell it is
@@ -719,6 +759,7 @@ pub struct TraceRequest<'a> {
     /// 1-indexed line the hook sits on.
     pub hook_line: usize,
     pub timeout: Duration,
+    pub execution: TraceExecution,
 }
 
 impl TraceRequest<'_> {
@@ -726,6 +767,18 @@ impl TraceRequest<'_> {
     fn rc_paths(&self) -> [&Path; 2] {
         [self.rc_nominal, self.rc_resolved]
     }
+}
+
+/// Whether it is safe to run the real hook during a trace.
+///
+/// Current generated scripts understand [`DIAGNOSTIC_TRACE_ENV`], so
+/// primary tracing can run the hook without creating heartbeat/profile
+/// evidence. Capability-unknown hooks are traced through the temporary
+/// copy only, with a report line that stops before the hook.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceExecution {
+    DiagnosticSupported,
+    ReportOnly,
 }
 
 /// Spawn the shell under xtrace and read the hook-line records back,
@@ -737,12 +790,23 @@ impl TraceRequest<'_> {
 /// `PS4` override can strip the marker from any suffix of the file,
 /// so absence alone cannot distinguish "hook never ran" from "marker
 /// lost"; the fallback's inserted report can, because it fires exactly
-/// when the hook line would be reached. A missing record *after* the
-/// fallback is therefore the hook-never-ran answer, confirmed on a
-/// copy that cannot lose the marker.
+/// when the hook line would be reached. Capability-unknown hooks skip
+/// the primary run and use that copy in report-only mode so a legacy
+/// init script cannot write activation evidence before dodot has the
+/// PATH answer.
 pub fn run_trace(fs: &dyn Fs, req: &TraceRequest) -> Result<TraceRun, TraceError> {
+    let started = Instant::now();
+    if req.execution == TraceExecution::ReportOnly {
+        return run_fallback(fs, req, true).map(|records| TraceRun {
+            records,
+            used_fallback: true,
+            elapsed_us: elapsed_us(started),
+        });
+    }
+
     let mut command = Command::new(req.shell_path);
     command
+        .env(DIAGNOSTIC_TRACE_ENV, "1")
         .env("PS4", ps4(req.shell))
         .args(trace_args(req.shell));
     let records = match spawn_captured(command, req.timeout) {
@@ -754,11 +818,13 @@ pub fn run_trace(fs: &dyn Fs, req: &TraceRequest) -> Result<TraceRun, TraceError
         return Ok(TraceRun {
             records,
             used_fallback: false,
+            elapsed_us: elapsed_us(started),
         });
     }
-    run_fallback(fs, req).map(|records| TraceRun {
+    run_fallback(fs, req, false).map(|records| TraceRun {
         records,
         used_fallback: true,
+        elapsed_us: elapsed_us(started),
     })
 }
 
@@ -774,7 +840,11 @@ pub fn run_trace(fs: &dyn Fs, req: &TraceRequest) -> Result<TraceRun, TraceError
 /// of files than the real one does ends the trace with
 /// [`TraceError::FallbackUnfaithful`] rather than yielding a verdict
 /// the user would act on.
-fn run_fallback(fs: &dyn Fs, req: &TraceRequest) -> Result<Vec<TraceRecord>, TraceError> {
+fn run_fallback(
+    fs: &dyn Fs,
+    req: &TraceRequest,
+    stop_before_hook: bool,
+) -> Result<Vec<TraceRecord>, TraceError> {
     let rc_text = fs
         .read_to_string(req.rc_resolved)
         .map_err(|e| TraceError::RcUnreadable(format!("{e}")))?;
@@ -784,7 +854,23 @@ fn run_fallback(fs: &dyn Fs, req: &TraceRequest) -> Result<Vec<TraceRecord>, Tra
     let temp = scratch.path();
     let unfaithful = |e: crate::DodotError| TraceError::FallbackUnfaithful(format!("{e}"));
     let mut command = Command::new(req.shell_path);
-    let copy = insert_report_line(&rc_text, req.rc_nominal, req.hook_line);
+    let liveness = if stop_before_hook {
+        Some(
+            ParentLiveness::attach(&mut command)
+                .map_err(|e| TraceError::SpawnFailed(format!("{e}")))?,
+        )
+    } else {
+        command.env(DIAGNOSTIC_TRACE_ENV, "1");
+        None
+    };
+    let copy = insert_report_line(
+        &rc_text,
+        req.rc_nominal,
+        req.hook_line,
+        req.shell_path,
+        req.shell,
+        liveness.as_ref().map(ParentLiveness::descriptor),
+    );
     // The file that stands in for the user's rc — the one whose parse
     // has to survive the insertion.
     let copy_path;
@@ -814,7 +900,15 @@ fn run_fallback(fs: &dyn Fs, req: &TraceRequest) -> Result<Vec<TraceRecord>, Tra
     if let Some(broken) = insertion_broke_the_parse(req, copy_path) {
         return Err(TraceError::FallbackUnfaithful(broken));
     }
-    match spawn_captured(command, req.timeout) {
+    let outcome = if let Some(liveness) = liveness {
+        spawn_captured_until_stderr_with_liveness(command, req.timeout, liveness, |line| {
+            let records = parse_trace(line);
+            record_at(&records, &req.rc_paths(), req.hook_line).is_some()
+        })
+    } else {
+        spawn_captured(command, req.timeout)
+    };
+    match outcome {
         SpawnOutcome::TimedOut => Err(TraceError::TimedOut),
         SpawnOutcome::SpawnFailed(e) => Err(TraceError::SpawnFailed(e)),
         SpawnOutcome::Finished(capture) => Ok(parse_trace(&capture.stderr)),
@@ -958,9 +1052,24 @@ fn zshrc_copy(rc_copy: &str) -> String {
 /// stop the parse. [`insertion_broke_the_parse`] is what turns that
 /// from a silent wrong verdict into a refusal to answer, because
 /// nothing in this function can tell.
-fn insert_report_line(rc_text: &str, rc_nominal: &Path, hook_line: usize) -> String {
+fn insert_report_line(
+    rc_text: &str,
+    rc_nominal: &Path,
+    hook_line: usize,
+    shell_path: &Path,
+    shell: HookupShell,
+    parent_liveness_fd: Option<RawFd>,
+) -> String {
+    let maybe_hold = if let Some(parent_liveness_fd) = parent_liveness_fd {
+        format!(
+            "{}\n",
+            report_only_hold(shell_path, shell, parent_liveness_fd)
+        )
+    } else {
+        String::new()
+    };
     let report = format!(
-        "printf '+{TRACE_MARKER}%s|%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PWD\" \"$PATH\" >&2\n",
+        "printf '+{TRACE_MARKER}%s|%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PWD\" \"$PATH\" >&2\n{maybe_hold}",
         shell_quote(&rc_nominal.display().to_string()),
         hook_line,
     );
@@ -976,6 +1085,10 @@ fn insert_report_line(rc_text: &str, rc_nominal: &Path, hook_line: usize) -> Str
     // yields a well-formed copy; the missing record then reads as
     // "hook never ran", which is true of the copy that was run.
     out
+}
+
+fn elapsed_us(started: Instant) -> u64 {
+    started.elapsed().as_micros().try_into().unwrap_or(u64::MAX)
 }
 
 /// Single-quote `value` for the shell, the only quoting that needs no
@@ -1007,6 +1120,7 @@ fn scratch_dir() -> Result<tempfile::TempDir, TraceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paths::Pather;
     use crate::testing::TempEnvironment;
 
     // ── Trace parsing, against captured real traces ─────────────
@@ -1023,6 +1137,14 @@ mod tests {
 
     const FIXTURE_PATH: &str = "/opt/homebrew/bin:/usr/bin:/bin";
     const FIXTURE_CWD: &str = "/tmp/dodot-trace-exp";
+
+    #[test]
+    fn the_announcement_warns_about_the_maximum_rc_starts() {
+        assert_eq!(
+            announcement(HookupShell::Zsh),
+            "tracing shell startup (zsh)… (may run your rc file up to three times)"
+        );
+    }
 
     #[test]
     fn the_zsh_record_at_the_hook_line_is_addressable() {
@@ -1590,7 +1712,14 @@ mod tests {
     #[test]
     fn the_report_line_is_inserted_not_truncated() {
         let rc = "if true; then\n  eval \"$(dodot init-sh)\"\nfi\n";
-        let copy = insert_report_line(rc, Path::new("/home/u/.zshrc"), 2);
+        let copy = insert_report_line(
+            rc,
+            Path::new("/home/u/.zshrc"),
+            2,
+            Path::new("/bin/zsh"),
+            HookupShell::Zsh,
+            None,
+        );
         let lines: Vec<&str> = copy.lines().collect();
         assert_eq!(lines.len(), 4, "insertion, not replacement: {copy}");
         assert!(lines[1].starts_with("printf '+dodot-trace|"), "{copy}");
@@ -1602,6 +1731,27 @@ mod tests {
         assert_eq!(lines[0], "if true; then");
         assert_eq!(lines[2], "  eval \"$(dodot init-sh)\"");
         assert_eq!(lines[3], "fi");
+    }
+
+    #[test]
+    fn report_only_copy_stops_before_the_hook() {
+        let rc = "eval \"$(dodot init-sh)\"\necho after\n";
+        let copy = insert_report_line(
+            rc,
+            Path::new("/home/u/.bashrc"),
+            1,
+            Path::new("/bin/bash"),
+            HookupShell::Bash,
+            Some(42),
+        );
+        let lines: Vec<&str> = copy.lines().collect();
+        assert!(lines[0].starts_with("printf '+dodot-trace|"), "{copy}");
+        assert_eq!(
+            lines[1],
+            report_only_hold(Path::new("/bin/bash"), HookupShell::Bash, 42)
+        );
+        assert_eq!(lines[2], "eval \"$(dodot init-sh)\"");
+        assert_eq!(lines[3], "echo after");
     }
 
     #[test]
@@ -1642,7 +1792,159 @@ mod tests {
         p.exists().then_some(p)
     }
 
+    fn dash() -> Option<&'static Path> {
+        ["/bin/dash", "/usr/bin/dash"]
+            .into_iter()
+            .map(Path::new)
+            .find(|path| path.exists())
+    }
+
     const TIMEOUT: Duration = Duration::from_secs(10);
+    const REDUCED_NOFILE_DRIVER_ENV: &str = "DODOT_TEST_REDUCED_NOFILE_DRIVER";
+
+    #[test]
+    fn report_only_hold_terminates_with_parent_liveness_in_bash() {
+        let Some(bash) = bash() else { return };
+        report_only_hold_terminates_with_parent_liveness(bash, HookupShell::Bash);
+    }
+
+    #[test]
+    fn report_only_hold_terminates_with_parent_liveness_in_zsh() {
+        let Some(zsh) = zsh() else { return };
+        report_only_hold_terminates_with_parent_liveness(zsh, HookupShell::Zsh);
+    }
+
+    #[test]
+    fn report_only_hold_avoids_multi_digit_redirection_in_dash() {
+        let (Some(dash), Some(bash)) = (dash(), bash()) else {
+            return;
+        };
+        report_only_hold_terminates_with_parent_liveness_using(dash, bash, HookupShell::Bash);
+    }
+
+    #[test]
+    fn report_only_hold_uses_a_descriptor_below_a_reduced_soft_limit() {
+        const SOFT_LIMIT: libc::rlim_t = 32;
+
+        if std::env::var(REDUCED_NOFILE_DRIVER_ENV).as_deref() == Ok("1") {
+            let bash = bash().expect("outer driver requires bash");
+            report_only_trace_survives_fd_three_and_shadowed_commands(
+                bash,
+                HookupShell::Bash,
+                ".bashrc",
+            );
+            let descriptor =
+                report_only_hold_terminates_with_parent_liveness(bash, HookupShell::Bash);
+            assert!(descriptor > libc::STDERR_FILENO, "descriptor: {descriptor}");
+            assert!(descriptor < SOFT_LIMIT as RawFd, "descriptor: {descriptor}");
+            return;
+        }
+        if bash().is_none() {
+            return;
+        }
+
+        use std::os::unix::process::CommandExt as _;
+
+        let mut inherited = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+        // SAFETY: getrlimit initializes `inherited` on success.
+        assert_ne!(
+            unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, inherited.as_mut_ptr()) },
+            -1,
+            "getrlimit: {}",
+            std::io::Error::last_os_error()
+        );
+        // SAFETY: the successful getrlimit call initialized the value.
+        let inherited = unsafe { inherited.assume_init() };
+        assert!(inherited.rlim_max >= SOFT_LIMIT);
+        let reduced = libc::rlimit {
+            rlim_cur: SOFT_LIMIT,
+            rlim_max: inherited.rlim_max,
+        };
+        let mut command = Command::new(std::env::current_exe().expect("current test binary"));
+        command
+            .args([
+                "--exact",
+                "shell::trace::tests::report_only_hold_uses_a_descriptor_below_a_reduced_soft_limit",
+                "--nocapture",
+            ])
+            .env(REDUCED_NOFILE_DRIVER_ENV, "1");
+        // SAFETY: setrlimit is an async-signal-safe syscall and `reduced`
+        // remains captured by value until the child execs.
+        unsafe {
+            command.pre_exec(move || {
+                if libc::setrlimit(libc::RLIMIT_NOFILE, &reduced) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let output = command.output().expect("reduced-limit test driver starts");
+        assert!(
+            output.status.success(),
+            "reduced-limit test driver failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn report_only_hold_terminates_with_parent_liveness(
+        shell_path: &Path,
+        shell: HookupShell,
+    ) -> RawFd {
+        report_only_hold_terminates_with_parent_liveness_using(shell_path, shell_path, shell)
+    }
+
+    fn report_only_hold_terminates_with_parent_liveness_using(
+        outer_shell_path: &Path,
+        clean_shell_path: &Path,
+        shell: HookupShell,
+    ) -> RawFd {
+        use std::os::unix::process::ExitStatusExt;
+
+        let env = TempEnvironment::builder().build();
+        let touched = env.home.join("continued-after-hold");
+        let script = env.home.join("report-only-hold.sh");
+        let mut command = Command::new(outer_shell_path);
+        command.stdin(std::process::Stdio::null());
+        crate::shell::probe::configure_probe_session(&mut command);
+        let liveness = crate::shell::probe::ParentLiveness::attach(&mut command)
+            .expect("liveness pipe attaches");
+        let descriptor = liveness.descriptor();
+        env.fs
+            .write_file(
+                &script,
+                format!(
+                    "{}\nprintf should-not-run > {}\n",
+                    report_only_hold(clean_shell_path, shell, descriptor),
+                    shell_quote(&touched.display().to_string()),
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        command.arg(&script);
+        let mut child = command.spawn().expect("shell starts");
+
+        // Dropping the Rust end is the same kernel event as process death:
+        // the clean helper reads EOF and kills its parent shell.
+        drop(liveness.child_spawned());
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("shell remains waitable") {
+                break status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "liveness EOF must terminate the shell"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+
+        assert_eq!(status.signal(), Some(libc::SIGKILL));
+        assert!(
+            !env.fs.exists(&touched),
+            "the liveness hold must terminate before later rc code"
+        );
+        descriptor
+    }
 
     /// A request tracing `rc` at `hook_line` with the given shell,
     /// rooted at the test environment's home.
@@ -1662,6 +1964,7 @@ mod tests {
             rc_resolved: rc,
             hook_line,
             timeout: TIMEOUT,
+            execution: TraceExecution::DiagnosticSupported,
         }
     }
 
@@ -1716,6 +2019,239 @@ mod tests {
         assert_eq!(record.path, "/from/fallback");
         // The user's real rc was never written.
         assert_eq!(env.fs.read_to_string(&rc).unwrap(), before);
+    }
+
+    #[test]
+    fn report_only_trace_does_not_execute_a_capability_unknown_hook() {
+        let Some(bash) = bash() else { return };
+        let env = TempEnvironment::builder().build();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+        let rc = env.home.join(".bashrc");
+        let touched = env.home.join("touched");
+        env.fs
+            .write_file(
+                &rc,
+                format!(
+                    "export PATH=/before-hook\necho should-not-run > {}\n",
+                    touched.display()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        let mut req = request(&env, bash, HookupShell::Bash, &rc, 2);
+        req.execution = TraceExecution::ReportOnly;
+        let run = run_trace(env.fs.as_ref(), &req).expect("report-only trace runs");
+
+        assert!(run.used_fallback);
+        assert!(run.elapsed_us > 0);
+        let record = record_at(&run.records, &[&rc], 2).expect("inserted report record");
+        assert_eq!(record.path, "/before-hook");
+        assert!(
+            !env.fs.exists(&touched),
+            "report-only fallback must exit before executing the unknown hook"
+        );
+    }
+
+    #[test]
+    fn report_only_trace_reaches_the_record_after_noisy_rc_output() {
+        let Some(bash) = bash() else { return };
+        let env = TempEnvironment::builder().build();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+        let rc = env.home.join(".bashrc");
+        let touched = env.home.join("noisy-hook-ran");
+        env.fs
+            .write_file(
+                &rc,
+                format!(
+                    "i=0\n\
+                     while (( i < 5000 )); do printf 'noise-%s\\n' \"$i\" >&2; \
+                     (( i += 1 )); done\n\
+                     export PATH=/after-noise\n\
+                     printf should-not-run > {}\n",
+                    shell_quote(&touched.display().to_string()),
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        let mut req = request(&env, bash, HookupShell::Bash, &rc, 4);
+        req.execution = TraceExecution::ReportOnly;
+        let run = run_trace(env.fs.as_ref(), &req).expect("noisy report-only trace runs");
+
+        let record = record_at(&run.records, &[&rc], 4).expect("hook-line record");
+        assert_eq!(record.path, "/after-noise");
+        assert!(!env.fs.exists(&touched));
+    }
+
+    #[test]
+    fn report_only_trace_survives_fd_three_and_shadowed_commands_in_bash() {
+        let Some(bash) = bash() else { return };
+        report_only_trace_survives_fd_three_and_shadowed_commands(
+            bash,
+            HookupShell::Bash,
+            ".bashrc",
+        );
+    }
+
+    #[test]
+    fn report_only_trace_survives_fd_three_and_shadowed_commands_in_zsh() {
+        let Some(zsh) = zsh() else { return };
+        report_only_trace_survives_fd_three_and_shadowed_commands(zsh, HookupShell::Zsh, ".zshrc");
+    }
+
+    fn report_only_trace_survives_fd_three_and_shadowed_commands(
+        shell_path: &Path,
+        shell: HookupShell,
+        rc_name: &str,
+    ) {
+        let env = TempEnvironment::builder().build();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+        let rc = env.home.join(rc_name);
+        let heartbeat = env.paths.hookup_heartbeat_path();
+        let profiles_dir = env.paths.probes_shell_init_dir();
+        let profile = profiles_dir.join("profile-existing.jsonl");
+        let touched = env.home.join("after-hook-ran");
+        env.fs.mkdir_all(heartbeat.parent().unwrap()).unwrap();
+        env.fs.mkdir_all(&profiles_dir).unwrap();
+        let heartbeat_contents = "existing-heartbeat-bytes\n";
+        env.fs
+            .write_file(&heartbeat, heartbeat_contents.as_bytes())
+            .unwrap();
+        env.fs
+            .write_file(&profile, b"existing-profile-bytes\n")
+            .unwrap();
+        let profiles_before = profile_snapshot(&env);
+        env.fs
+            .write_file(
+                &rc,
+                format!(
+                    "exec 3>&1\n\
+                     command() {{ return 0; }}\n\
+                     builtin() {{ return 0; }}\n\
+                     kill() {{ return 0; }}\n\
+                     exit() {{ return 0; }}\n\
+                     alias command='true'\n\
+                     alias builtin='true'\n\
+                     alias kill='true'\n\
+                     alias exit='true'\n\
+                     export PATH=/before-hook\n\
+                     printf changed > {}; printf changed > {}\n\
+                     printf should-not-run > {}\n",
+                    shell_quote(&heartbeat.display().to_string()),
+                    shell_quote(&profile.display().to_string()),
+                    shell_quote(&touched.display().to_string()),
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        let rc_before = env.fs.read_to_string(&rc).unwrap();
+
+        let mut req = request(&env, shell_path, shell, &rc, 11);
+        req.execution = TraceExecution::ReportOnly;
+        let run = run_trace(env.fs.as_ref(), &req).expect("report-only trace runs");
+
+        assert!(run.used_fallback);
+        assert!(
+            record_at(&run.records, &[&rc], 11).is_some(),
+            "report-only trace must still print the hook-line record"
+        );
+        assert!(
+            !env.fs.exists(&touched),
+            "report-only tracing must not continue past the inserted record"
+        );
+        assert_eq!(env.fs.read_to_string(&rc).unwrap(), rc_before);
+        assert_eq!(
+            env.fs.read_to_string(&heartbeat).unwrap(),
+            heartbeat_contents,
+            "the legacy hook must not rewrite heartbeat evidence"
+        );
+        assert_eq!(
+            profile_snapshot(&env),
+            profiles_before,
+            "the legacy hook must not rewrite profile evidence"
+        );
+    }
+
+    #[test]
+    fn diagnostic_supported_trace_leaves_evidence_untouched_and_runs_contributions() {
+        let Some(bash) = bash() else { return };
+        let env = TempEnvironment::builder()
+            .pack("shell")
+            .file(
+                "trace.sh",
+                "echo trace contribution > \"$HOME/trace-contribution\"",
+            )
+            .done()
+            .build();
+        let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
+
+        let handler_dir = env.paths.handler_data_dir("shell", "shell");
+        env.fs.mkdir_all(&handler_dir).unwrap();
+        env.fs
+            .symlink(
+                &env.dotfiles_root.join("shell/trace.sh"),
+                &handler_dir.join("trace.sh"),
+            )
+            .unwrap();
+        crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), true, None).unwrap();
+
+        let rc = env.home.join(".bashrc");
+        let init = env.paths.init_script_path();
+        env.fs
+            .write_file(
+                &rc,
+                format!(
+                    "[ -f \"{}\" ] && . \"{}\"\n",
+                    init.display(),
+                    init.display()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        std::process::Command::new(bash)
+            .arg("-ic")
+            .arg("true")
+            .status()
+            .expect("seed shell runs");
+
+        let heartbeat = env.paths.hookup_heartbeat_path();
+        let heartbeat_contents = env.fs.read_to_string(&heartbeat).unwrap();
+        let heartbeat_mtime = std::fs::metadata(&heartbeat).unwrap().modified().unwrap();
+        let profiles_before = profile_snapshot(&env);
+        let contribution = env.home.join("trace-contribution");
+        std::fs::remove_file(&contribution).unwrap();
+
+        let run = run_trace(
+            env.fs.as_ref(),
+            &request(&env, bash, HookupShell::Bash, &rc, 1),
+        )
+        .expect("diagnostic trace runs");
+
+        assert!(run.elapsed_us > 0);
+        assert!(
+            record_at(&run.records, &[&rc], 1).is_some(),
+            "hook-line record must be present"
+        );
+        assert!(
+            env.fs.exists(&contribution),
+            "diagnostic-capable trace should continue through pack contributions"
+        );
+        assert_eq!(
+            env.fs.read_to_string(&heartbeat).unwrap(),
+            heartbeat_contents
+        );
+        assert_eq!(
+            std::fs::metadata(&heartbeat).unwrap().modified().unwrap(),
+            heartbeat_mtime,
+            "trace must not refresh activation heartbeat evidence"
+        );
+        assert_eq!(
+            profile_snapshot(&env),
+            profiles_before,
+            "trace must not create or rewrite shell-init profiles"
+        );
     }
 
     /// The insertion is not free. A `case` pattern line is a shape
@@ -1954,5 +2490,23 @@ mod tests {
             ),
             Err(TraceError::SpawnFailed(_))
         ));
+    }
+
+    fn profile_snapshot(env: &TempEnvironment) -> Vec<(String, String)> {
+        let dir = env.paths.probes_shell_init_dir();
+        let Ok(mut entries) = env.fs.read_dir(&dir) else {
+            return Vec::new();
+        };
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        entries
+            .into_iter()
+            .filter(|entry| entry.is_file && entry.name.starts_with("profile-"))
+            .map(|entry| {
+                (
+                    entry.name,
+                    env.fs.read_to_string(&entry.path).unwrap_or_default(),
+                )
+            })
+            .collect()
     }
 }

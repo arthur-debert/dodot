@@ -14,14 +14,15 @@ mod types;
 pub use render::humanize_bytes;
 pub use shell_init::{
     format_unix_ts, humanize_us, shell_init, shell_init_aggregate, shell_init_errors,
-    shell_init_filter, shell_init_history,
+    shell_init_filter, shell_init_history, shell_init_trace,
 };
 pub use types::{
     AppProbeEntry, AppProbeView, DeploymentDisplayEntry, ProbeResult, ProbeSubcommandInfo,
     ShellInitAggregateRow, ShellInitAggregateView, ShellInitErrorsView, ShellInitFilterRun,
     ShellInitFilterTarget, ShellInitFilterView, ShellInitGroup, ShellInitHistoryRow,
-    ShellInitHistoryView, ShellInitRow, ShellInitTraceView, ShellInitView, TreeLine,
-    DEFAULT_FILTER_RUNS, DEFAULT_HISTORY_LIMIT, DEFAULT_SHOW_DATA_DIR_DEPTH, PROBE_SUBCOMMANDS,
+    ShellInitHistoryView, ShellInitRow, ShellInitTraceView, ShellInitVerificationView,
+    ShellInitView, TreeLine, DEFAULT_FILTER_RUNS, DEFAULT_HISTORY_LIMIT,
+    DEFAULT_SHOW_DATA_DIR_DEPTH, PROBE_SUBCOMMANDS,
 };
 
 use crate::packs::orchestration::ExecutionContext;

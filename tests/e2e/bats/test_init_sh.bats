@@ -17,6 +17,22 @@ teardown() {
     assert_output_contains "#!/bin/sh"
 }
 
+@test "init-sh targeted response bypasses root and ordinary init generation" {
+    local missing_root="$HOME/no-such-dotfiles-root"
+
+    run env DOTFILES_ROOT="$missing_root" DODOT_BIN="$DODOT_BIN" bash -c '
+export DODOT_INTERNAL_SHELL_INIT_PROBE=fresh-nonce
+export DODOT_INTERNAL_SHELL_INIT_PROBE_PARENT=$PPID
+eval "$("$DODOT_BIN" init-sh)"
+printf "ordinary init continued\n"
+'
+
+    [ "$status" -eq 0 ]
+    assert_output_contains "dodot-shell-init-probe:v1|fresh-nonce|"
+    assert_output_not_contains "ordinary init continued"
+    assert_output_not_contains "does not exist"
+}
+
 @test "init-sh includes shell file source lines after up" {
     create_pack_file "zsh" "aliases.sh" "alias ll='ls -la'"
     dodot up
@@ -26,6 +42,19 @@ teardown() {
     assert_output_contains "aliases.sh"
     # Should use `. "path"` or `source "path"` syntax
     assert_output_contains ". \""
+}
+
+@test "init-sh falls through to normal initialization when verifier vars leak" {
+    instrumented_shell "zsh" "aliases.sh"
+    dodot up
+
+    run bash -c "export DODOT_INTERNAL_SHELL_INIT_PROBE=stale
+export DODOT_INTERNAL_SHELL_INIT_PROBE_PARENT=0
+eval \"\$($DODOT_BIN init-sh)\"
+printf '%s\n' \"\${DODOT_LOADED_ZSH_ALIASES_SH:-}\""
+
+    [ "$status" -eq 0 ]
+    assert_output_contains "1"
 }
 
 @test "init-sh includes PATH additions after up" {

@@ -93,13 +93,30 @@ fn probe_deployment_map_json_mode_is_kind_tagged() {
 // ── probe shell-init (--runs / --history) ─────────────────────────
 
 fn write_fake_profile(env: &TempEnvironment, name: &str, lines: &[&str]) {
+    write_fake_profile_with_completion(env, name, lines, true);
+}
+
+fn write_incomplete_fake_profile(env: &TempEnvironment, name: &str, lines: &[&str]) {
+    write_fake_profile_with_completion(env, name, lines, false);
+}
+
+fn write_fake_profile_with_completion(
+    env: &TempEnvironment,
+    name: &str,
+    lines: &[&str],
+    complete: bool,
+) {
     let dir = env.paths.probes_shell_init_dir();
     env.fs.mkdir_all(&dir).unwrap();
-    let mut content =
-        String::from("# columns\tphase\tpack\thandler\ttarget\tstart_t\tend_t\texit_status\n");
+    let mut content = String::from(
+        "# dodot shell-init profile v1\n# shell\tbash 5.0\n# start_t\t1.000000\n# columns\tphase\tpack\thandler\ttarget\tstart_t\tend_t\texit_status\n",
+    );
     for l in lines {
         content.push_str(l);
         content.push('\n');
+    }
+    if complete {
+        content.push_str("# end_t\t1.010000\n");
     }
     env.fs
         .write_file(&dir.join(name), content.as_bytes())
@@ -207,6 +224,128 @@ fn probe_shell_init_history_renders_one_row_per_run_newest_first() {
     assert_eq!(rows[1]["failed_entries"].as_u64().unwrap(), 1);
     assert_eq!(rows[0]["failed_entries"].as_u64().unwrap(), 0);
     assert_eq!(rows[2]["failed_entries"].as_u64().unwrap(), 0);
+}
+
+#[test]
+fn probe_shell_init_default_uses_latest_complete_profile() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x/complete.sh\t1.000000\t1.000100\t0"],
+    );
+    write_incomplete_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/interrupted.sh\t1.000000\t1.000200\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["has_profile"], true);
+    assert_eq!(parsed["filename"], "profile-1714000000-1-1.tsv");
+    assert_eq!(parsed["latest_profile_incomplete"], false);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("complete.sh"),
+        "expected complete profile row; got:\n{text}"
+    );
+    assert!(
+        !text.contains("interrupted.sh"),
+        "default view must not render the newer incomplete profile; got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_default_explains_only_incomplete_profiles() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_incomplete_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/interrupted.sh\t1.000000\t1.000200\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["has_profile"], false);
+    assert_eq!(parsed["latest_profile_incomplete"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("no complete profile yet") && text.contains("latest profile is incomplete"),
+        "expected incomplete-profile hint; got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_default_explains_disabled_profiling_and_incomplete_profile() {
+    let env = TempEnvironment::builder().build();
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join(".dodot.toml"),
+            b"[profiling]\nenabled = false\n",
+        )
+        .unwrap();
+    let ctx = make_ctx(&env);
+    write_incomplete_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/interrupted.sh\t1.000000\t1.000200\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["profiling_enabled"], false);
+    assert_eq!(parsed["has_profile"], false);
+    assert_eq!(parsed["latest_profile_incomplete"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("profiling is disabled in config"),
+        "expected disabled-profiling remediation; got:\n{text}"
+    );
+    assert!(
+        text.contains("latest retained profile is incomplete") && text.contains("--history"),
+        "expected incomplete-profile note; got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_history_renders_incomplete_rows_with_unknown_total() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_incomplete_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/interrupted.sh\t1.000000\t1.000200\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x/complete.sh\t1.000000\t1.000100\t0"],
+    );
+
+    let result = commands::probe::shell_init_history(&ctx, 50).unwrap();
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("incomplete") && text.contains("unknown"),
+        "history should mark interrupted totals unknown; got:\n{text}"
+    );
+
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let rows = parsed["rows"].as_array().unwrap();
+    assert_eq!(rows[0]["complete"], false);
+    assert!(rows[0]["total_us"].is_null());
+    assert_eq!(rows[0]["user_total_us"], 200);
+    assert_eq!(rows[1]["complete"], true);
+    assert_eq!(rows[1]["total_us"], 10_000);
 }
 
 #[test]
@@ -1165,10 +1304,101 @@ fn probe_shell_init_without_trace_has_null_trace_field() {
 }
 
 #[test]
+fn probe_shell_init_skipped_verification_has_no_fake_elapsed_time() {
+    let env = TempEnvironment::builder().build();
+    let mut ctx = make_ctx(&env);
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/bash".into()),
+        zdotdir: None,
+    };
+
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["verification"]["outcome"], "skipped");
+    assert_eq!(parsed["verification"]["elapsed_us"], 0);
+    assert_eq!(parsed["verification"]["elapsed_label"], "");
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("elapsed:"),
+        "no shell was attempted:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_spawn_forbidden_has_no_fake_elapsed_time() {
+    let env = TempEnvironment::builder().build();
+    let script =
+        crate::shell::write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            format!(". \"{}\"\n", script.display()).as_bytes(),
+        )
+        .unwrap();
+    let mut ctx = make_ctx(&env);
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/bash".into()),
+        zdotdir: None,
+    };
+
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["verification"]["outcome"], "spawn-forbidden");
+    assert_eq!(parsed["verification"]["elapsed_us"], 0);
+    assert_eq!(parsed["verification"]["elapsed_label"], "");
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("elapsed:"),
+        "no shell was attempted:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_declines_unresolved_file_source_hooks() {
+    let env = TempEnvironment::builder().build();
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            b". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\"\n",
+        )
+        .unwrap();
+    let mut ctx = make_ctx(&env);
+    ctx.shell_env = crate::shell::ShellEnv {
+        shell: Some("/bin/bash".into()),
+        zdotdir: None,
+    };
+
+    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["verification"]["outcome"], "script-unresolved");
+    assert_eq!(parsed["verification"]["elapsed_us"], 0);
+    assert_eq!(parsed["verification"]["elapsed_label"], "");
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("could not tell which file the hook"),
+        "expected unresolved-hook warning; got:\n{text}"
+    );
+    assert!(
+        !text.contains("the hookup is sound"),
+        "an unresolved hook must not be certified; got:\n{text}"
+    );
+    assert!(
+        !text.contains("elapsed:"),
+        "an unresolved hook did not start a shell; got:\n{text}"
+    );
+}
+
+#[test]
 fn probe_shell_init_trace_reports_an_unsupported_shell_plainly() {
     let env = TempEnvironment::builder().build();
     let ctx = make_tracing_ctx(&env, "/usr/bin/fish");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "skipped");
@@ -1184,7 +1414,7 @@ fn probe_shell_init_trace_reports_a_missing_rc_plainly() {
     let env = TempEnvironment::builder().build();
     // A fresh home has no .bashrc: nothing to trace, no spawn.
     let ctx = make_tracing_ctx(&env, "/bin/bash");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "skipped");
@@ -1200,7 +1430,7 @@ fn probe_shell_init_trace_reports_an_absent_hook_plainly() {
         .write_file(&env.home.join(".bashrc"), b"alias ll='ls -l'\n")
         .unwrap();
     let ctx = make_tracing_ctx(&env, "/bin/bash");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "skipped");
@@ -1223,7 +1453,7 @@ fn probe_shell_init_trace_degrades_when_the_policy_forbids_spawning() {
         shell: Some("/bin/bash".into()),
         zdotdir: None,
     };
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "untraced");
@@ -1278,7 +1508,7 @@ fn probe_shell_init_trace_end_to_end_names_the_stale_binary_and_the_skips() {
         .unwrap();
 
     let ctx = make_tracing_ctx(&env, "/bin/bash");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
@@ -1300,6 +1530,130 @@ fn probe_shell_init_trace_end_to_end_names_the_stale_binary_and_the_skips() {
 }
 
 #[test]
+fn probe_shell_init_trace_runs_diagnostic_capable_eval_contributions() {
+    if !std::path::Path::new("/bin/bash").exists() {
+        return;
+    }
+    let env = TempEnvironment::builder().build();
+    let _home = crate::testing::EnvVarGuard::set("HOME", &env.home.display().to_string());
+
+    let bin_dir = env.home.join("bin");
+    env.fs.mkdir_all(&bin_dir).unwrap();
+    env.fs
+        .write_file_with_mode(
+            &bin_dir.join("dodot"),
+            br#"#!/bin/sh
+if [ "$1" = "init-sh" ]; then
+cat <<'SCRIPT'
+# dodot shell-init-trace v1
+_dodot_trace=0
+if [ -n "${DODOT_INTERNAL_SHELL_INIT_TRACE-}" ]; then
+  _dodot_trace=1
+fi
+if [ "${_dodot_trace:-0}" != "1" ]; then
+  echo mutated > "$HOME/eval-evidence"
+fi
+echo contribution > "$HOME/eval-contribution"
+unset _dodot_trace
+SCRIPT
+elif [ "$1" = "--version" ]; then
+  echo "dodot 5.6.0"
+fi
+"#,
+            0o755,
+        )
+        .unwrap();
+
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            format!(
+                "export PATH={}:$PATH\neval \"$(dodot init-sh)\"\n",
+                bin_dir.display()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+
+    let ctx = make_tracing_ctx(&env, "/bin/bash");
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(parsed["trace"]["status"], "verdict");
+    assert!(
+        env.fs.exists(&env.home.join("eval-contribution")),
+        "diagnostic-capable eval hook should continue through generated contributions"
+    );
+    assert!(
+        !env.fs.exists(&env.home.join("eval-evidence")),
+        "diagnostic-capable eval hook must not write activation evidence"
+    );
+    assert!(
+        parsed["trace"]["elapsed_us"].as_u64().unwrap() > 0,
+        "trace elapsed time must include the capability negotiation"
+    );
+}
+
+#[test]
+fn probe_shell_init_trace_elapsed_includes_legacy_eval_capability_negotiation() {
+    if !std::path::Path::new("/bin/bash").exists() {
+        return;
+    }
+    let env = TempEnvironment::builder().build();
+    let _home = crate::testing::EnvVarGuard::set("HOME", &env.home.display().to_string());
+
+    let bin_dir = env.home.join("bin");
+    env.fs.mkdir_all(&bin_dir).unwrap();
+    env.fs
+        .write_file_with_mode(
+            &bin_dir.join("dodot"),
+            br#"#!/bin/sh
+if [ "$1" = "init-sh" ]; then
+  sleep 1
+  cat <<'SCRIPT'
+echo legacy-evidence > "$HOME/legacy-evidence"
+SCRIPT
+elif [ "$1" = "--version" ]; then
+  echo "dodot 5.0.0"
+fi
+"#,
+            0o755,
+        )
+        .unwrap();
+
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            format!(
+                "export PATH={}:$PATH\neval \"$(dodot init-sh)\"\n",
+                bin_dir.display()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+
+    let ctx = make_tracing_ctx(&env, "/bin/bash");
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(parsed["trace"]["status"], "verdict");
+    assert!(
+        parsed["trace"]["used_fallback"].as_bool().unwrap(),
+        "legacy eval hooks must stay report-only"
+    );
+    assert!(
+        !env.fs.exists(&env.home.join("legacy-evidence")),
+        "report-only legacy eval trace must not execute the hook"
+    );
+    assert!(
+        parsed["trace"]["elapsed_us"].as_u64().unwrap() >= 900_000,
+        "trace elapsed time must include legacy eval capability negotiation"
+    );
+}
+
+#[test]
 fn probe_shell_init_trace_reports_a_hook_the_shell_never_reaches() {
     // The fourth verdict: the hook is in the file but inside a branch
     // that does not run — a static scan calls this fine; only the
@@ -1318,7 +1672,7 @@ fn probe_shell_init_trace_reports_a_hook_the_shell_never_reaches() {
         .unwrap();
 
     let ctx = make_tracing_ctx(&env, "/bin/bash");
-    let result = commands::probe::shell_init(&ctx, true).unwrap();
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["trace"]["status"], "verdict");

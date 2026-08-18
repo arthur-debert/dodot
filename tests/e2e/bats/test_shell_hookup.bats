@@ -27,6 +27,37 @@ teardown() {
     sandbox_teardown
 }
 
+assert_no_verification_side_effects() {
+    assert_not_exists "$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+
+    local profiles_dir="$XDG_DATA_HOME/dodot/probes/shell-init"
+    if [ -d "$profiles_dir" ]; then
+        local count
+        count=$(find "$profiles_dir" -name 'profile-*.tsv' -type f | wc -l | tr -d ' ')
+        if [ "$count" != "0" ]; then
+            echo "expected 0 shell-init profiles, got $count" >&2
+            return 1
+        fi
+    fi
+}
+
+append_slow_post_hook_work() {
+    local rc="$1"
+    cat >> "$rc" <<'SH'
+touch "$HOME/post-hook-ran"
+sleep 7
+SH
+}
+
+prepend_slow_pre_hook_work() {
+    local rc="$1"
+    {
+        printf '%s\n' 'sleep 7'
+        cat "$rc"
+    } > "$rc.new"
+    mv "$rc.new" "$rc"
+}
+
 # ── The acceptance story (spec §7) ──────────────────────────────
 
 @test "acceptance: up warns, install --write verifies, a new shell activates" {
@@ -169,6 +200,78 @@ echo tool output'
     assert_output_contains "never reached"
 }
 
+# ── Targeted verification after mutations (SIV01 WS02) ──────────
+
+@test "up verifies bash at the hook without running pack contributions or post-hook rc work" {
+    dodot install --write
+    append_slow_post_hook_work "$HOME/.bashrc"
+    create_pack_file "shell" "aliases.sh" 'touch "$HOME/pack-contribution-ran"
+sleep 7'
+
+    run dodot up
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell hookup: dodot is sourced in new shells."
+
+    assert_not_exists "$HOME/post-hook-ran"
+    assert_not_exists "$HOME/pack-contribution-ran"
+    assert_no_verification_side_effects
+}
+
+@test "up verifies zsh at the hook without running post-hook rc work" {
+    if ! command -v zsh >/dev/null 2>&1; then
+        skip "zsh not installed on this host"
+    fi
+    export SHELL
+    SHELL="$(command -v zsh)"
+
+    dodot install --write
+    append_slow_post_hook_work "$HOME/.zshrc"
+    create_pack_file "shell" "aliases.sh" 'touch "$HOME/pack-contribution-ran"
+sleep 7'
+
+    run dodot up
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell hookup: dodot is sourced in new shells."
+
+    assert_not_exists "$HOME/post-hook-ran"
+    assert_not_exists "$HOME/pack-contribution-ran"
+    assert_no_verification_side_effects
+}
+
+@test "install --write verifies the replaced bash block at the hook" {
+    create_pack_file "shell" "aliases.sh" 'touch "$HOME/pack-contribution-ran"
+sleep 7'
+    dodot up
+    cat > "$HOME/.bashrc" <<'SH'
+# >>> dodot shell hookup >>>
+[ -f "$HOME/old-dodot-init.sh" ] && . "$HOME/old-dodot-init.sh"
+# <<< dodot shell hookup <<<
+touch "$HOME/post-hook-ran"
+sleep 7
+SH
+
+    run dodot install --write
+    [ "$status" -eq 0 ]
+    assert_output_contains "replaced"
+    assert_output_contains "Shell hookup: dodot is sourced in new shells."
+
+    assert_not_exists "$HOME/post-hook-ran"
+    assert_not_exists "$HOME/pack-contribution-ran"
+    assert_no_verification_side_effects
+}
+
+@test "up reports a bash timeout when work before the capable hook never yields evidence" {
+    dodot install --write
+    prepend_slow_pre_hook_work "$HOME/.bashrc"
+    create_pack_file "shell" "aliases.sh" 'alias dodot_hookup_alias="echo activated"'
+
+    run dodot up
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell hookup: a new shell did not load dodot."
+    assert_output_contains "never reached"
+    assert_no_verification_side_effects
+}
+
 # ── The version-stamped footer (RCS01 WS01) ─────────────────────
 
 @test "the footer catches a heartbeat left by a different dodot version" {
@@ -239,7 +342,7 @@ echo tool output'
     printf 'export PATH=%s\neval "$(dodot init-sh)"\n' "$HOME/stale-bin" \
         > "$HOME/.bashrc"
 
-    run dodot probe shell-init
+    run dodot probe shell-init --trace-hook
     [ "$status" -eq 0 ]
     assert_output_contains "Hook resolution"
     # The right line…
@@ -248,6 +351,111 @@ echo tool output'
     assert_output_contains "different dodot"
     assert_output_contains "stale-bin/dodot"
     assert_output_contains "5.0.0"
+}
+
+_mtime_of() {
+    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"
+}
+
+_profiles_snapshot() {
+    local dir="$XDG_DATA_HOME/dodot/probes/shell-init"
+    if [[ ! -d "$dir" ]]; then
+        return 0
+    fi
+    while IFS= read -r file; do
+        printf '%s ' "${file#$dir/}"
+        cksum "$file"
+    done < <(find "$dir" -type f -name 'profile-*' | sort)
+}
+
+@test "trace-hook current file-source target leaves evidence untouched and runs contributions" {
+    create_pack_file "shell" "trace.sh" 'echo trace contribution > "$HOME/trace-contribution"'
+    dodot up
+    dodot install --write
+
+    bash -ic true
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    local hb_contents hb_mtime profiles_before
+    hb_contents="$(cat "$hb")"
+    hb_mtime="$(_mtime_of "$hb")"
+    profiles_before="$(_profiles_snapshot)"
+    rm -f "$HOME/trace-contribution"
+
+    run dodot probe shell-init --trace-hook
+    [ "$status" -eq 0 ]
+    assert_output_contains "Hook resolution"
+    assert_output_contains "the hookup is sound"
+    assert_output_contains "elapsed:"
+
+    assert_exists "$HOME/trace-contribution"
+    [ "$(cat "$hb")" = "$hb_contents" ]
+    [ "$(_mtime_of "$hb")" = "$hb_mtime" ]
+    [ "$(_profiles_snapshot)" = "$profiles_before" ]
+}
+
+@test "trace-hook keeps evidence suppression across duplicate init-script sources" {
+    create_pack_file "shell" "trace.sh" 'echo trace contribution > "$HOME/trace-contribution"'
+    dodot up
+    dodot install --write
+    local init_script="$XDG_DATA_HOME/dodot/shell/dodot-init.sh"
+    printf '[ -f "%s" ] && . "%s"\n' "$init_script" "$init_script" >> "$HOME/.bashrc"
+
+    bash -ic true
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    local hb_contents hb_mtime profiles_before
+    hb_contents="$(cat "$hb")"
+    hb_mtime="$(_mtime_of "$hb")"
+    profiles_before="$(_profiles_snapshot)"
+    rm -f "$HOME/trace-contribution"
+
+    run dodot probe shell-init --trace-hook
+    [ "$status" -eq 0 ]
+    assert_output_contains "the hookup is sound"
+    assert_exists "$HOME/trace-contribution"
+    [ "$(cat "$hb")" = "$hb_contents" ]
+    [ "$(_mtime_of "$hb")" = "$hb_mtime" ]
+    [ "$(_profiles_snapshot)" = "$profiles_before" ]
+}
+
+@test "trace-hook current eval target leaves evidence untouched and runs contributions" {
+    create_pack_file "shell" "trace.sh" 'echo trace contribution > "$HOME/trace-contribution"'
+    dodot up
+    printf 'export PATH=%s:$PATH\neval "$(dodot init-sh)"\n' "$(dirname "$DODOT_BIN")" \
+        > "$HOME/.bashrc"
+
+    bash -ic true
+    local hb="$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    local hb_contents hb_mtime profiles_before
+    hb_contents="$(cat "$hb")"
+    hb_mtime="$(_mtime_of "$hb")"
+    profiles_before="$(_profiles_snapshot)"
+    rm -f "$HOME/trace-contribution"
+
+    run dodot probe shell-init --trace-hook
+    [ "$status" -eq 0 ]
+    assert_output_contains "Hook resolution"
+    assert_output_contains "the hookup is sound"
+    assert_output_contains "elapsed:"
+
+    assert_exists "$HOME/trace-contribution"
+    [ "$(cat "$hb")" = "$hb_contents" ]
+    [ "$(_mtime_of "$hb")" = "$hb_mtime" ]
+    [ "$(_profiles_snapshot)" = "$profiles_before" ]
+}
+
+@test "trace-hook capability-unknown eval target uses copy and exits before the hook" {
+    dodot up
+    printf 'echo should-not-run > "$HOME/eval-hook-ran"; eval "$(dodot init-sh)"\n' \
+        > "$HOME/.bashrc"
+
+    run dodot probe shell-init --trace-hook
+    [ "$status" -eq 0 ]
+    assert_output_contains "Hook resolution"
+    assert_output_contains "temporary copy"
+    assert_output_contains "elapsed:"
+    assert_not_exists "$HOME/eval-hook-ran"
+    assert_not_exists "$XDG_DATA_HOME/dodot/probes/hookup/heartbeat"
+    [ -z "$(_profiles_snapshot)" ]
 }
 
 @test "probe shell-init --no-trace keeps the report passive" {
@@ -286,7 +494,7 @@ echo tool output'
     printf '[ -f "$HOME/old/dodot-init.sh" ] && . "$HOME/old/dodot-init.sh"\n' \
         > "$HOME/.bashrc"
 
-    run dodot probe shell-init
+    run dodot probe shell-init --trace-hook
     [ "$status" -eq 0 ]
     assert_output_contains ".bashrc:1"
     assert_output_contains "does not exist"
@@ -307,7 +515,7 @@ echo tool output'
     printf '[ -f "$HOME/old/dodot-init.sh" ] && . "$HOME/old/dodot-init.sh"\n' \
         > "$HOME/.bashrc"
 
-    run dodot probe shell-init
+    run dodot probe shell-init --trace-hook
     [ "$status" -eq 0 ]
     assert_output_contains "written by a different dodot"
     assert_output_contains "5.0.0"
