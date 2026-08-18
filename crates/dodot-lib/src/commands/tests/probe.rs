@@ -1537,6 +1537,64 @@ fi
 }
 
 #[test]
+fn probe_shell_init_trace_elapsed_includes_legacy_eval_capability_negotiation() {
+    if !std::path::Path::new("/bin/bash").exists() {
+        return;
+    }
+    let env = TempEnvironment::builder().build();
+    let _home = crate::testing::EnvVarGuard::set("HOME", &env.home.display().to_string());
+
+    let bin_dir = env.home.join("bin");
+    env.fs.mkdir_all(&bin_dir).unwrap();
+    env.fs
+        .write_file_with_mode(
+            &bin_dir.join("dodot"),
+            br#"#!/bin/sh
+if [ "$1" = "init-sh" ]; then
+  sleep 1
+  cat <<'SCRIPT'
+echo legacy-evidence > "$HOME/legacy-evidence"
+SCRIPT
+elif [ "$1" = "--version" ]; then
+  echo "dodot 5.0.0"
+fi
+"#,
+            0o755,
+        )
+        .unwrap();
+
+    env.fs
+        .write_file(
+            &env.home.join(".bashrc"),
+            format!(
+                "export PATH={}:$PATH\neval \"$(dodot init-sh)\"\n",
+                bin_dir.display()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+
+    let ctx = make_tracing_ctx(&env, "/bin/bash");
+    let result = commands::probe::shell_init_trace(&ctx).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(parsed["trace"]["status"], "verdict");
+    assert!(
+        parsed["trace"]["used_fallback"].as_bool().unwrap(),
+        "legacy eval hooks must stay report-only"
+    );
+    assert!(
+        !env.fs.exists(&env.home.join("legacy-evidence")),
+        "report-only legacy eval trace must not execute the hook"
+    );
+    assert!(
+        parsed["trace"]["elapsed_us"].as_u64().unwrap() >= 900_000,
+        "trace elapsed time must include legacy eval capability negotiation"
+    );
+}
+
+#[test]
 fn probe_shell_init_trace_reports_a_hook_the_shell_never_reaches() {
     // The fourth verdict: the hook is in the file but inside a branch
     // that does not run — a static scan calls this fine; only the

@@ -111,6 +111,9 @@ pub const RECORD_SUFFIX: &str = "|> ";
 /// shell continues through PATH and source work.
 pub const DIAGNOSTIC_TRACE_ENV: &str = "DODOT_INTERNAL_SHELL_INIT_TRACE";
 
+const REPORT_ONLY_TERMINATION: &str =
+    "\\command kill -KILL \"$$\" 2>/dev/null || \\builtin kill -KILL \"$$\" 2>/dev/null || kill -KILL \"$$\"";
+
 // ── The PS4 contract ────────────────────────────────────────────
 
 /// The `PS4` value handed to the spawned shell.
@@ -1013,9 +1016,9 @@ fn insert_report_line(
     exit_before_hook: bool,
 ) -> String {
     let maybe_exit = if exit_before_hook {
-        "/bin/kill -KILL \"$$\"\n"
+        format!("{REPORT_ONLY_TERMINATION}\n")
     } else {
-        ""
+        String::new()
     };
     let report = format!(
         "printf '+{TRACE_MARKER}%s|%s|%s|%s{RECORD_SUFFIX}\\n' {} {} \"$PWD\" \"$PATH\" >&2\n{maybe_exit}",
@@ -1673,7 +1676,7 @@ mod tests {
         let copy = insert_report_line(rc, Path::new("/home/u/.bashrc"), 1, true);
         let lines: Vec<&str> = copy.lines().collect();
         assert!(lines[0].starts_with("printf '+dodot-trace|"), "{copy}");
-        assert_eq!(lines[1], "/bin/kill -KILL \"$$\"");
+        assert_eq!(lines[1], REPORT_ONLY_TERMINATION);
         assert_eq!(lines[2], "eval \"$(dodot init-sh)\"");
         assert_eq!(lines[3], "echo after");
     }
@@ -1842,9 +1845,6 @@ mod tests {
         shell: HookupShell,
         rc_name: &str,
     ) {
-        if !Path::new("/bin/kill").exists() {
-            return;
-        }
         let env = TempEnvironment::builder().build();
         let _home = EnvVarGuard::set("HOME", &env.home.display().to_string());
         let rc = env.home.join(rc_name);

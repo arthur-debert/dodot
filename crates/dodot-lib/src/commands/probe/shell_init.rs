@@ -500,6 +500,8 @@ fn trace_view(ctx: &ExecutionContext) -> ShellInitTraceView {
                 run.elapsed_us = elapsed_since(trace_started);
                 run
             } else {
+                let mut path_run = path_run;
+                path_run.elapsed_us = elapsed_since(trace_started);
                 path_run
             }
         }
