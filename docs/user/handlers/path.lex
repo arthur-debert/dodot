@@ -1,7 +1,7 @@
 :: verified ::
 The path handler
 
-Adds a version-controlled directory from your pack to `$PATH`. The matched source directory is staged in the datastore; the generated `dodot-init.sh` (which you load with `eval "$(dodot init-sh)"`) emits an `export PATH=` line that prepends the source directory's live location to your shell's `$PATH`.
+Adds a version-controlled directory from your pack to `$PATH`. The matched source directory is staged in the datastore; every pack's staged directory is then composed, once per `dodot up`, into a single `export PATH=` line that the generated `dodot-init.sh` (loaded via `eval "$(dodot init-sh)"` or the managed hookup — see [./../shell-integration.lex]) prepends ahead of your shell's inherited `$PATH`. Where a given pack's directory lands in that composed line, and what wins when two collide, is a fixed rule — [#3].
 
 1. Default claim
 
@@ -38,7 +38,43 @@ Adds a version-controlled directory from your pack to `$PATH`. The matched sourc
 
     :: toml ::
 
-3. Live edits
+3. Precedence — where a pack's directory lands in the final `$PATH`
+
+    Composition happens once, in three fixed tiers, highest precedence first:
+
+    Packs:
+        Every pack's staged `path`-handler directory (this handler), plus any raw `export PATH=` mutation a pack's own shell script makes ([./shell.lex]) — see §3.3. Ranked purely by cross-pack lexicographic order, the same rule that orders everything else across packs ([./execution-order.lex] §2): no separate priority field, and the *last* pack on disk wins the front of `$PATH`. A pack you want to win, you name so it sorts last.
+
+    Homebrew / toolchains:
+        Homebrew's captured `shellenv` block, fixed below every pack unconditionally ([./../shell-integration.lex] §3).
+
+    System:
+        Whatever `$PATH` your shell inherited before dodot's init script ran, its own internal order preserved, placed as the floor.
+
+    3.1. Reading order runs backwards from precedence order
+
+        Ranking packs above the inherited system `$PATH` requires prepending, not appending — appending would leave system entries winning. Prepending means whichever pack composes *last* ends up *first* in the resulting string, so on-disk reading order and `$PATH`-precedence order run in opposite directions:
+
+            on disk (ascending):  001-foo  200-bar  baz
+            final $PATH:          baz : bar : foo : ...system
+
+        :: text ::
+
+        `001-foo` reads first in a directory listing and loses every collision to `baz`, which reads last — not the other way round.
+
+    3.2. Deduplication
+
+        A directory that appears more than once resolves to its first occurrence in the tier order above: the highest-precedence pack keeps the entry, and every lower-precedence repeat of the same directory is dropped. A pack directory that duplicates Homebrew's own `bin`/`sbin` collapses into Homebrew's single entry rather than adding a second — the same rule, one fewer special case.
+
+    3.3. Raw `$PATH` mutations are attributed, not dropped
+
+        A pack's own shell script can still run a raw `export PATH=...`; dodot does not detect, warn about, or discourage this. Composing `$PATH` once rather than by sequential runtime prepend means such a mutation has nowhere to land unless something captures it, so dodot diffs `$PATH` around each pack's shell-source lines and folds any new entry into the composed line immediately next to that pack's declared directories — tagged `raw` rather than `declared` — instead of silently dropping it.
+
+    3.4. Troubleshooting: where did this directory come from
+
+        `dodot probe shell-init` carries a `PATH provenance` block: every directory in the composed packs tier, which pack it came from, and whether it was `declared` (via this handler) or `raw` (§3.3), ordered the same way the composed `$PATH` places them ([./../commands/probe.lex] §4.4). It only attributes — it never warns or gates on a raw entry.
+
+4. Live edits
 
     Once a source `bin/` is staged by `dodot up`, new executables you drop into the source directory are immediately runnable from any shell that already has the directory on `$PATH` — the directory is staged, not the individual files inside it. Just make sure new files have the execute bit set; `auto_chmod_exec` handles this on the next `dodot up`, or `chmod +x` by hand.
 
