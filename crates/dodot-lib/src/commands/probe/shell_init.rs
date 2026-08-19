@@ -18,10 +18,11 @@
 //! history, filter, and error entry points remain passive (INS01 §9
 //! still binds).
 
+use crate::commands::probe::render::display_path;
 use crate::commands::probe::types::{
-    ProbeResult, ShellInitAggregateRow, ShellInitAggregateView, ShellInitErrorsView,
-    ShellInitFilterRun, ShellInitFilterTarget, ShellInitFilterView, ShellInitGroup,
-    ShellInitHistoryRow, ShellInitHistoryView, ShellInitRow, ShellInitTraceView,
+    PathProvenanceRow, ProbeResult, ShellInitAggregateRow, ShellInitAggregateView,
+    ShellInitErrorsView, ShellInitFilterRun, ShellInitFilterTarget, ShellInitFilterView,
+    ShellInitGroup, ShellInitHistoryRow, ShellInitHistoryView, ShellInitRow, ShellInitTraceView,
     ShellInitVerificationView, ShellInitView,
 };
 use crate::packs::orchestration::ExecutionContext;
@@ -92,6 +93,7 @@ fn shell_init_with_mode(ctx: &ExecutionContext, verify: bool, trace: bool) -> Re
                 last_up_when,
                 verification: None,
                 trace: None,
+                path_provenance: Vec::new(),
             }
         }
         None => ShellInitView {
@@ -110,6 +112,7 @@ fn shell_init_with_mode(ctx: &ExecutionContext, verify: bool, trace: bool) -> Re
             last_up_when,
             verification: None,
             trace: None,
+            path_provenance: Vec::new(),
         },
     };
     if verify {
@@ -118,8 +121,41 @@ fn shell_init_with_mode(ctx: &ExecutionContext, verify: bool, trace: bool) -> Re
     if trace {
         view.trace = Some(Box::new(trace_view(ctx)));
     }
+    view.path_provenance = path_provenance_rows(ctx)?;
 
     Ok(ProbeResult::ShellInit(view))
+}
+
+/// Build the `$PATH` provenance rows (`path-precedence.lex` §5.4):
+/// declared + raw, merged and ordered by [`crate::shell::path_provenance`].
+/// Independent of the profile above — this reads the live datastore and
+/// the most recent shell startup's raw-mutation capture, not a
+/// profiling TSV, so it's populated whether or not profiling is on and
+/// whether or not a profile has ever been recorded.
+///
+/// The homebrew dedup hint is read passively from the datastore cache
+/// ([`crate::shell::read_cached_blocks`]) rather than captured live: a
+/// probe command stays spawn-free (INS01 §9), the same discipline the
+/// other shell-init entry points in this file already hold to. A cold
+/// or absent cache just means one pack directory that happens to match
+/// Homebrew's own `bin`/`sbin` is (harmlessly) reported instead of
+/// deduped away — the next `dodot up` still computes the real answer.
+fn path_provenance_rows(ctx: &ExecutionContext) -> Result<Vec<PathProvenanceRow>> {
+    let homebrew = crate::shell::read_cached_blocks(ctx.fs.as_ref(), ctx.paths.as_ref());
+    let entries =
+        crate::shell::path_provenance(ctx.fs.as_ref(), ctx.paths.as_ref(), homebrew.as_ref())?;
+    let home = ctx.paths.home_dir();
+    Ok(entries
+        .into_iter()
+        .map(|e| PathProvenanceRow {
+            pack: e.pack,
+            dir: display_path(&e.dir, home),
+            origin: match e.origin {
+                crate::shell::PathOrigin::Declared => "declared",
+                crate::shell::PathOrigin::Raw => "raw",
+            },
+        })
+        .collect())
 }
 
 /// Decide whether a profile timestamp predates the last `dodot up`.

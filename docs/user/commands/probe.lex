@@ -152,6 +152,18 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
     :: shell ::
 
+    4.4. PATH provenance
+
+        The default report above also carries a `PATH provenance` block — the `--runs`, `--history`, `--errors-only`, and `<PACK>` views do not: every directory attributed to the pack it came from, tagged `declared` (staged via the [./../handlers/path.lex] handler, part of the composed packs tier) or `raw` (that pack's own shell script mutating `$PATH` directly, captured separately) — grouped by pack in the same pack order the composed `$PATH` places them, each pack's declared entries immediately followed by that same pack's raw entries. That grouping is for attribution; it isn't a claim that a raw entry sits where the mutation actually landed in the live `$PATH`:
+
+            PATH provenance
+              baz     declared   ~/.local/share/dodot/packs/baz/bin
+              bar     raw        ~/bin
+
+        :: text ::
+
+        Raw entries reflect the most recent shell startup, not this command's own run — a pack whose shell script hasn't sourced since the last `dodot up` shows no raw entries yet. The block only attributes; it never warns or gates on a raw mutation existing. Before a first `dodot up`, or once nothing has staged a directory, it reads: no PATH attribution recorded yet — run `dodot up`, then open a new shell. See [./../handlers/path.lex] §3 for the tier order and dedup rule this reflects.
+
 5. probe app (macOS)
 
     Shows the app-support folders a pack will deploy to, whether they exist on disk, the matching homebrew cask (if any), the `.app` bundle dodot found, and its bundle identifier. On macOS the data is enriched via `brew info` and Spotlight (`mdls` / `mdfind`); on other platforms only folder existence is reported.

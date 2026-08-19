@@ -125,6 +125,8 @@ Design Specification: Pack Ordering
 
         This sentence resolves the original feedback at zero implementation cost. Ship it before any code change.
 
+        *Shipped as:* [./../../user/handlers/execution-order.lex] §2, not `docs/reference/handlers.lex` as sketched above — the user-facing handler docs are where the rest of the per-handler contract already lived. `PAT01` extends this same lex-order rule to `$PATH` specifically — tiers below packs, dedup, and attribution for a pack's own raw `export PATH=` mutations — documented at [./../../user/handlers/path.lex] §3, cross-referenced from the execution-order page rather than repeated here.
+
     5.2. The Prefix Grammar
 
         A pack directory matching the regex `^(\d+)[-_](.+)$` has its prefix recognised as ordering metadata:

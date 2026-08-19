@@ -63,7 +63,7 @@ Shell integration
 
 3. What the init script contains
 
-    A flat shell script: one `source <path>` line per shell-handler source, one `export PATH="<dir>:$PATH"` line per path-handler source, with a `# [<pack>]` comment above each so you can tell what came from where.
+    A flat shell script: one `source <path>` line per shell-handler source, and a *single* composed `export PATH="<dir1>:<dir2>:...:$PATH"` line covering every pack's path-handler directory — computed once per `dodot up`, not rebuilt by runtime prepends — with one `# [<pack>]` comment per contributing pack above that line so you can tell what came from where. Which pack's directory ends up where in that composed line, what wins on a collision, and how a raw `export PATH=` inside a pack's own shell script is captured and attributed for provenance — without being folded into that composed line — is the precedence contract in [./handlers/path.lex] §3.
 
     On a macOS host with Homebrew installed, the script *opens* with Homebrew's environment — `brew shellenv` output captured verbatim at the last `dodot up` and cached in the datastore — so brew's `$PATH` entries exist before any pack script runs and your rc needs no bootstrap line of its own. It is emitted first so that dodot's own PATH additions below it win. This block is the one command dodot puts on the shell startup path; [./configuration.lex] §10 documents what it costs, how the capture is cached, and the `[shell] homebrew = "auto" | "off"` key that controls it.
 
@@ -278,6 +278,14 @@ Shell integration
 
     The probe surfaces stale data with a flag if the report predates the most recent `dodot up` — staleness is detected via `$XDG_DATA_HOME/dodot/last-up-at` (typically `~/.local/share/dodot/last-up-at`), written on every successful `up`.
 
+    Which pack put a given directory on `$PATH`, and whether it got there via the `path` handler or a raw `export PATH=` in that pack's own script:
+
+        dodot probe shell-init
+
+    :: shell ::
+
+    The default view of that command carries a `PATH provenance` block for this — see [./commands/probe.lex] §4.4 and the precedence contract it reflects, [./handlers/path.lex] §3.
+
 9. Watch out for
 
     - *Wire it once.* Putting the hookup in both `~/.bashrc` and `~/.bash_profile` (or in two layers of rc include, or as both a managed block and a manual eval) duplicates every `source` and `export PATH=` line in the resulting environment. Usually harmless; sometimes it re-triggers one-time setup snippets you wrote in your aliases.
@@ -285,6 +293,7 @@ Shell integration
     - *Failures are loud, not silent.* If a sourced script errors, the generated init prints `dodot: shell source exited <code>: <path>` to stderr — failures are not swallowed. Silently broken shell init is worse than a visible error.
     - *Shell-specific files require matching shells.* `*.zsh` files only parse cleanly under zsh; `*.bash` only under bash. `*.sh` is the portable bucket. A zsh-only file in a pack will surface as a visible source error in a bash shell.
     - *Recursion is depth-1.* Pack scanning is depth-1, so a nested `nested/scripts/foo.sh` is *not* picked up by the shell handler — it falls through to the symlink handler. That keeps window-manager helper scripts and similar nested `.sh` files from being auto-sourced.
+    - *`$PATH` order reads backwards from directory order.* The pack that sorts *last* on disk wins the front of `$PATH`, not the one that sorts first — prepending is what puts packs above the inherited system `$PATH`, and prepending means whichever pack composes last ends up first. `001-foo`, `200-bar`, `baz` on disk composes to `baz:bar:foo:...system`. If two packs stage the same directory, only the higher-precedence one's entry survives — the other is silently deduplicated, not appended twice. Full contract: [./handlers/path.lex] §3.
 
 10. Live edits
 

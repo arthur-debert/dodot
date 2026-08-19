@@ -27,6 +27,8 @@ The order in which handlers run within a pack, and the order in which packs run 
 
     The historically most common occasion for reaching for a prefix — a `001-homebrew` bootstrap pack, so brew's `shellenv` runs before anything that calls `brew` — is retired: the init script now opens with Homebrew's environment by itself, before any pack contribution ([./../configuration.lex] §10). The prefix grammar below is unchanged; it just has one less job.
 
+    This lex order is also what ranks packs against each other on `$PATH` specifically — but there it runs in the *opposite* direction from reading order (the last pack on disk wins the front of `$PATH`), and composes against a Homebrew tier and a system-`$PATH` floor beneath it. See [./path.lex] §3 for that contract, the worked example, and how a raw `export PATH=` mutation inside a pack's own shell script is attributed rather than dropped.
+
 3. The ordering-prefix grammar
 
     A pack directory name matching `^(\d+)[-_](.+)$` (digits, then `-` or `_`, then a non-empty name) is recognised as carrying an ordering prefix. Both forms are accepted; the choice is yours, dodot doesn't care.

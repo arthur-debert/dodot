@@ -5,6 +5,13 @@ file it sources, how long the source took and what exit code resulted.
 This subcommand surfaces those records and, in the default view, separately
 verifies that a fresh interactive shell reaches the dodot hook.
 
+The default view also carries a [item]PATH provenance[/item] block (the [item]--runs[/item],
+[item]--history[/item], [item]--errors-only[/item], and [item]<PACK>[/item] views do not): every directory
+in the composed [item]$PATH[/item], attributed to its pack and tagged [item]declared[/item] (via
+the [item]path[/item] handler) or [item]raw[/item] (a pack's own shell script mutating [item]$PATH[/item]
+directly). Raw entries reflect the most recent shell startup, not this
+command's own run.
+
 Views, by flag:
 
   [dim]•[/dim] [item]default[/item]               most recent run + fresh hook verification
