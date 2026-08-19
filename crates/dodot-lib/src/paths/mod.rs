@@ -173,6 +173,17 @@ pub trait Pather: Send + Sync {
         self.probes_hookup_dir().join("heartbeat")
     }
 
+    /// Where the generated init script records raw `$PATH` mutations it
+    /// caught live — one pack's before/after diff per line, rewritten
+    /// (truncated, header-only when nothing changed) on every shell
+    /// activation, sibling of the heartbeat for the same reason: it is
+    /// evidence of the last shell start, not an accumulating history.
+    /// See `docs/proposals/path-precedence.lex` §5.2, §5.4 and
+    /// [`crate::shell::path_attribution`].
+    fn path_attribution_path(&self) -> PathBuf {
+        self.probes_hookup_dir().join("path-attribution.tsv")
+    }
+
     /// On-disk cache for homebrew-cask probe data. One JSON file per
     /// cask token; TTL-based invalidation. See
     /// `docs/proposals/macos-paths.lex` §8.2.

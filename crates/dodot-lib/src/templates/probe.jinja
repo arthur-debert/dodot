@@ -57,7 +57,10 @@
 {% endfor %}{% if trace.used_fallback %}  [dim](traced via a temporary copy of your rc — your real files were not touched)[/dim]
 {% endif %}{% if trace.elapsed_label %}  [dim]elapsed:[/dim] {{ trace.elapsed_label }}
 {% endif %}
-{% endif %}
+{% endif %}{% if path_provenance %}
+[header]PATH provenance[/header]
+{% for p in path_provenance %}  [pack-name]{{ p.pack }}[/pack-name] [description]{{ p.origin }}[/description] {{ p.dir }}
+{% endfor %}{% endif %}
   [dim]profiles dir:[/dim] {{ profiles_dir }}
   [dim]for intra-file profiling, see `zprof` (zsh) or PS4 tracing (bash).[/dim]
 {%- elif kind == "shell-init-aggregate" -%}

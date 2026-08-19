@@ -914,6 +914,79 @@ fn probe_shell_init_errors_only_clean_window_says_so() {
     );
 }
 
+// ── probe shell-init PATH provenance (path-precedence.lex §5.4) ──
+
+#[test]
+fn probe_shell_init_surfaces_declared_and_raw_path_provenance() {
+    // Two packs, ascending on-disk order `aaa` then `zzz`: `aaa` only
+    // declares a `path`-handler directory, `zzz` declares one too. The
+    // raw row below simulates what a previous shell startup's live
+    // diff ([`crate::shell::generate_init_script`]'s per-pack wrap)
+    // would have captured for `zzz` — this test exercises the read
+    // side (parse + merge + render), not the shell diff itself, which
+    // has its own real-shell coverage in `crate::shell::tests`.
+    let env = TempEnvironment::builder()
+        .pack("aaa")
+        .file("bin/aaa-tool", "#!/bin/sh")
+        .done()
+        .pack("zzz")
+        .file("bin/zzz-tool", "#!/bin/sh")
+        .file("aliases.sh", "alias z=zzz")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let attribution_path = env.paths.path_attribution_path();
+    env.fs
+        .mkdir_all(attribution_path.parent().unwrap())
+        .unwrap();
+    env.fs
+        .write_file(
+            &attribution_path,
+            b"# dodot path attribution v1\nzzz\t/fake/raw/zzz-extra\n",
+        )
+        .unwrap();
+
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let rows = parsed["path_provenance"].as_array().unwrap();
+
+    // Last on-disk pack wins the front (§2.3): `zzz` before `aaa`. Each
+    // pack's declared entries are immediately followed by its own raw
+    // entries, one block per pack (§5.2).
+    let packs: Vec<&str> = rows.iter().map(|r| r["pack"].as_str().unwrap()).collect();
+    let origins: Vec<&str> = rows.iter().map(|r| r["origin"].as_str().unwrap()).collect();
+    assert_eq!(packs, vec!["zzz", "zzz", "aaa"], "rows:\n{rows:#?}");
+    assert_eq!(
+        origins,
+        vec!["declared", "raw", "declared"],
+        "rows:\n{rows:#?}"
+    );
+    assert!(
+        rows[1]["dir"].as_str().unwrap().contains("zzz-extra"),
+        "rows:\n{rows:#?}"
+    );
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(text.contains("PATH provenance"), "output:\n{text}");
+    assert!(text.contains("declared"), "output:\n{text}");
+    assert!(text.contains("raw"), "output:\n{text}");
+    assert!(text.contains("zzz-extra"), "output:\n{text}");
+}
+
+#[test]
+fn probe_shell_init_path_provenance_is_empty_before_any_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    let result = commands::probe::shell_init(&ctx, false).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["path_provenance"].as_array().unwrap().len(), 0);
+}
+
 // ── up command misc ─────────────────────────────────────────────
 
 #[test]
