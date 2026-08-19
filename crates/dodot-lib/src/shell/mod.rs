@@ -94,6 +94,7 @@
 //! for. We pay the price of a slightly longer script in exchange for
 //! semantic equivalence with the un-instrumented form.
 
+use std::collections::HashSet;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
@@ -207,11 +208,103 @@ fn append_empty_notice(script: &mut String) {
     .unwrap();
 }
 
+/// One directory in the composed `$PATH`'s "packs" tier, attributed to
+/// the pack that staged it.
+///
+/// The attribution is not cosmetic: it drives the `# [pack]` comments
+/// emitted above the composed line, and — when profiling is on — the
+/// `(pack, target)` columns of each profile row `probe::shell_init`
+/// reads back, even though every contribution now lands on `$PATH` via
+/// one shared `export`.
+struct PathContribution {
+    pack: String,
+    dir: PathBuf,
+}
+
+/// Compose the packs tier of the final `$PATH`
+/// (`docs/proposals/path-precedence.lex` §3.1, §3.2, §4.2) — the one
+/// place the cross-pack `$PATH` rule lives (§4.3).
+///
+/// `path_additions` is every pack's staged `path`-handler directory, in
+/// pack-scan order: ascending on-disk directory name ([`Fs::read_dir`]
+/// sorts), with each pack's own directories in their own scan order.
+/// The tiers contract ranks packs purely by that lex order with the
+/// *last* pack winning the front of the string — prepending above
+/// system `$PATH` is what forces that direction (§2.3), not a style
+/// choice — so this reverses the list one pack-group at a time: each
+/// pack's own directories keep their internal order, only the
+/// pack-to-pack order flips.
+///
+/// `known_lower_tier_dirs` is every directory a lower, fixed tier
+/// already places on `$PATH` before this composed line runs — today
+/// that is just Homebrew's `<prefix>/bin` and `<prefix>/sbin`
+/// ([`homebrew_known_dirs`]; §3.1 "homebrew / toolchains"). A pack
+/// directory that collides with one of these is dropped from the packs
+/// tier: the lower tier already puts it on `$PATH`, so re-adding it
+/// here would be the second of the two entries dedup exists to prevent
+/// (§3.2) — including the stale-`001-homebrew`-pack case the Spec names
+/// by name.
+///
+/// Deduplication within the packs tier itself resolves to first
+/// occurrence too — the highest-precedence pack (last on disk) wins the
+/// slot, and every lower-precedence repeat of the same directory is
+/// dropped.
+fn compose_path_tier(
+    path_additions: &[(String, PathBuf)],
+    known_lower_tier_dirs: &[PathBuf],
+) -> Vec<PathContribution> {
+    // Group consecutive entries by pack, preserving each pack's own
+    // internal (scan) order. `path_additions` already arrives grouped
+    // this way — the scan drains one pack fully before moving to the
+    // next — so a linear pass is enough; no sort needed.
+    let mut groups: Vec<(String, Vec<PathBuf>)> = Vec::new();
+    for (pack, dir) in path_additions {
+        match groups.last_mut() {
+            Some((last_pack, dirs)) if last_pack == pack => dirs.push(dir.clone()),
+            _ => groups.push((pack.clone(), vec![dir.clone()])),
+        }
+    }
+
+    let mut seen: HashSet<PathBuf> = known_lower_tier_dirs.iter().cloned().collect();
+    let mut out = Vec::new();
+    for (pack, dirs) in groups.into_iter().rev() {
+        for dir in dirs {
+            if seen.insert(dir.clone()) {
+                out.push(PathContribution {
+                    pack: pack.clone(),
+                    dir,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// The directories Homebrew's own captured bootstrap block already
+/// places on `$PATH` before the composed packs-tier line runs — used
+/// only to dedup the packs tier against that lower tier
+/// ([`compose_path_tier`]); the block itself is untouched
+/// (`docs/proposals/path-precedence.lex` note at the top: Homebrew's
+/// bootstrap is settled by RCS01 and not reopened here).
+///
+/// `brew shellenv` puts `<prefix>/bin` and `<prefix>/sbin` on `$PATH`;
+/// `None` (not macOS, no brew, or `[shell] homebrew = "off"`) yields no
+/// known directories to dedup against.
+fn homebrew_known_dirs(homebrew: Option<&BrewBlocks>) -> Vec<PathBuf> {
+    match homebrew {
+        Some(blocks) => vec![blocks.prefix.join("bin"), blocks.prefix.join("sbin")],
+        None => Vec::new(),
+    }
+}
+
 /// Generate the shell init script content from the current datastore state.
 ///
 /// Scans the datastore for:
-/// - `packs/*/shell/*` — symlinks to shell scripts → `source` lines
-/// - `packs/*/path/*` — symlinks to directories → `PATH=` lines
+/// - `packs/*/shell/*` — symlinks to shell scripts → one `source` line each
+/// - `packs/*/path/*` — symlinks to directories, composed by
+///   [`compose_path_tier`] into a single deduplicated, tiered
+///   `export PATH=…` line (`docs/proposals/path-precedence.lex` §3–§4)
+///   instead of one `export PATH=` per directory
 ///
 /// `generation` is stamped into the activation-evidence block (see the
 /// module docs), which is emitted unconditionally — before the
@@ -311,7 +404,13 @@ pub fn generate_init_script(
         }
     }
 
-    if path_additions.is_empty() && shell_sources.is_empty() {
+    // Compose the packs tier once here rather than at each of the two
+    // sites below that need it (the empty-datastore check and the
+    // emitter) — see [`compose_path_tier`] for the tier/dedup rule
+    // itself.
+    let path_contributions = compose_path_tier(&path_additions, &homebrew_known_dirs(homebrew));
+
+    if path_contributions.is_empty() && shell_sources.is_empty() {
         append_empty_notice(&mut script);
         emit_trace_mode_cleanup(&mut script);
         return Ok(script);
@@ -327,15 +426,20 @@ pub fn generate_init_script(
         );
     }
 
-    if !path_additions.is_empty() {
+    if !path_contributions.is_empty() {
         writeln!(script, "# PATH additions").unwrap();
-        for (pack, target) in &path_additions {
-            writeln!(script, "# [{pack}]").unwrap();
-            if profiling_active {
-                emit_timed_path(&mut script, pack, target);
-            } else {
-                writeln!(script, "export PATH=\"{}:$PATH\"", target.display()).unwrap();
-            }
+        for c in &path_contributions {
+            writeln!(script, "# [{}]", c.pack).unwrap();
+        }
+        if profiling_active {
+            emit_timed_path(&mut script, &path_contributions);
+        } else {
+            let joined = path_contributions
+                .iter()
+                .map(|c| c.dir.display().to_string())
+                .collect::<Vec<_>>()
+                .join(":");
+            writeln!(script, "export PATH=\"{joined}:$PATH\"").unwrap();
         }
         writeln!(script).unwrap();
     }
@@ -625,24 +729,35 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
     writeln!(script).unwrap();
 }
 
-/// One inline-timed `export PATH=…` row. The branch is one comparison
-/// at runtime — negligible on shells where the wrapper is inert.
-fn emit_timed_path(script: &mut String, pack: &str, target: &Path) {
-    let target_str = target.display().to_string();
-    let target_q = sh_quote(&target_str);
+/// One inline-timed `export PATH=…` row emitting the whole composed
+/// packs-tier line in a single shell statement — composition is one
+/// command now (§4.2 of the Spec), not one per directory — with one
+/// profiling record per contributing directory, all sharing that one
+/// timing window. The branch is one comparison at runtime — negligible
+/// on shells where the wrapper is inert.
+fn emit_timed_path(script: &mut String, contributions: &[PathContribution]) {
+    let joined = contributions
+        .iter()
+        .map(|c| c.dir.display().to_string())
+        .collect::<Vec<_>>()
+        .join(":");
     writeln!(script, "if [ \"$_dodot_prof\" = \"1\" ]; then").unwrap();
     writeln!(
         script,
-        "  _dodot_t0=$EPOCHREALTIME; export PATH=\"{target_str}:$PATH\"; _dodot_t1=$EPOCHREALTIME"
+        "  _dodot_t0=$EPOCHREALTIME; export PATH=\"{joined}:$PATH\"; _dodot_t1=$EPOCHREALTIME"
     )
     .unwrap();
-    writeln!(
-        script,
-        "  printf 'path\\t{pack}\\tpath\\t%s\\t%s\\t%s\\t0\\n' {target_q} \"$_dodot_t0\" \"$_dodot_t1\" >> \"$_dodot_prof_file\" 2>/dev/null"
-    )
-    .unwrap();
+    for c in contributions {
+        let pack = &c.pack;
+        let target_q = sh_quote(&c.dir.display().to_string());
+        writeln!(
+            script,
+            "  printf 'path\\t{pack}\\tpath\\t%s\\t%s\\t%s\\t0\\n' {target_q} \"$_dodot_t0\" \"$_dodot_t1\" >> \"$_dodot_prof_file\" 2>/dev/null"
+        )
+        .unwrap();
+    }
     writeln!(script, "else").unwrap();
-    writeln!(script, "  export PATH=\"{target_str}:$PATH\"").unwrap();
+    writeln!(script, "  export PATH=\"{joined}:$PATH\"").unwrap();
     writeln!(script, "fi").unwrap();
 }
 
@@ -1044,6 +1159,199 @@ mod tests {
             path_pos < shell_pos,
             "PATH additions should come before shell sources"
         );
+    }
+
+    // ── PATH composition (path-precedence.lex §3–§4) ─────────────────
+
+    /// The worked example from Spec §2.3, pinned as a fixture: three
+    /// packs staging one directory each, read off disk in ascending
+    /// order (`001-foo`, `200-bar`, `baz`), must compose into exactly
+    /// that final order — the pack read *last* wins the front of the
+    /// string, because prepending above system `$PATH` is what forces
+    /// the direction, not a style choice.
+    #[test]
+    fn pinned_three_pack_worked_example_from_spec_2_3() {
+        let env = TempEnvironment::builder().build();
+        let ds = make_datastore(&env);
+
+        let foo = env.home.join("dotfiles/001-foo/bin");
+        let bar = env.home.join("dotfiles/200-bar/bin");
+        let baz = env.home.join("dotfiles/baz/bin");
+        ds.create_data_link("001-foo", "path", &foo).unwrap();
+        ds.create_data_link("200-bar", "path", &bar).unwrap();
+        ds.create_data_link("baz", "path", &baz).unwrap();
+
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
+
+        assert!(
+            script.contains(&format!(
+                "export PATH=\"{}:{}:{}:$PATH\"",
+                baz.display(),
+                bar.display(),
+                foo.display()
+            )),
+            "on-disk ascending 001-foo, 200-bar, baz must compose to baz:bar:foo, script:\n{script}"
+        );
+        // One computed line, not one per directory.
+        assert_eq!(
+            script.matches("export PATH=\"").count(),
+            1,
+            "script:\n{script}"
+        );
+    }
+
+    /// Two packs staging the same directory must resolve to exactly one
+    /// entry in the composed line (§3.2) — the higher-precedence pack
+    /// (later on disk) keeps it, the earlier pack's repeat is dropped.
+    #[test]
+    fn two_packs_staging_the_same_directory_produce_one_entry() {
+        let env = TempEnvironment::builder().build();
+        let ds = make_datastore(&env);
+
+        let shared = env.home.join("shared/bin");
+        ds.create_data_link("aaa", "path", &shared).unwrap();
+        ds.create_data_link("zzz", "path", &shared).unwrap();
+
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
+
+        assert_eq!(
+            script.matches(&shared.display().to_string()).count(),
+            1,
+            "script:\n{script}"
+        );
+        assert!(script.contains("# [zzz]"), "script:\n{script}");
+        assert!(
+            !script.contains("# [aaa]"),
+            "the earlier pack's duplicate must not survive: script:\n{script}"
+        );
+    }
+
+    /// A stale `001-homebrew` pack (or any pack) that duplicates the
+    /// directory the built-in Homebrew capture already places on
+    /// `$PATH` collapses into that one entry rather than adding a
+    /// second — the exact case the Spec names by name (§3.2).
+    #[test]
+    fn stale_pack_duplicating_the_homebrew_bin_dir_is_dropped_from_the_packs_tier() {
+        let env = TempEnvironment::builder().build();
+        let ds = make_datastore(&env);
+
+        let blocks = sample_brew_blocks();
+        let stale_dir = blocks.prefix.join("bin");
+        ds.create_data_link("001-homebrew", "path", &stale_dir)
+            .unwrap();
+
+        let script = generate_init_script(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            TEST_GEN,
+            Some(&blocks),
+        )
+        .unwrap();
+
+        assert!(
+            !script.contains("# PATH additions"),
+            "the packs tier must have nothing left once its only entry dedups away: script:\n{script}"
+        );
+        assert!(
+            !script.contains("export PATH=\""),
+            "no composed PATH line should be emitted: script:\n{script}"
+        );
+        assert!(
+            script.contains("No shell scripts or PATH additions"),
+            "script:\n{script}"
+        );
+    }
+
+    /// The homebrew/toolchain tier is fixed below every pack regardless
+    /// of naming (§3.1) — a pack named to sort *before* anything
+    /// Homebrew-related still has its composed export line run after
+    /// Homebrew's block, because the ordering is structural (Homebrew's
+    /// block always emits first), not a function of on-disk names.
+    #[test]
+    fn homebrew_tier_stays_below_a_pack_even_when_the_pack_sorts_first() {
+        let env = TempEnvironment::builder().build();
+        let ds = make_datastore(&env);
+
+        let dir = env.home.join("early/bin");
+        ds.create_data_link("000-early", "path", &dir).unwrap();
+
+        let script = generate_init_script(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            TEST_GEN,
+            Some(&sample_brew_blocks()),
+        )
+        .unwrap();
+
+        let brew_pos = script.find("# ── Homebrew environment ──").unwrap();
+        let export_pos = script.find("export PATH=\"").unwrap();
+        assert!(
+            brew_pos < export_pos,
+            "a pack named to sort first must still lose to the fixed Homebrew tier: script:\n{script}"
+        );
+        assert!(
+            script.contains(&dir.display().to_string()),
+            "script:\n{script}"
+        );
+    }
+
+    /// The whole point of computing once in Rust: sourced for real, the
+    /// shell's resulting `$PATH` must match what [`compose_path_tier`]
+    /// computed — tiered, deduplicated, last-pack-wins — under both
+    /// bash and zsh.
+    #[test]
+    fn real_shell_composes_the_pinned_path_matching_the_rust_computed_value() {
+        let env = TempEnvironment::builder().build();
+        let ds = make_datastore(&env);
+
+        let foo = env.home.join("001-foo/bin");
+        let bar = env.home.join("200-bar/bin");
+        let baz = env.home.join("baz/bin");
+        ds.create_data_link("001-foo", "path", &foo).unwrap();
+        ds.create_data_link("200-bar", "path", &bar).unwrap();
+        ds.create_data_link("baz", "path", &baz).unwrap();
+
+        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+        let expected = format!(
+            "{}:{}:{}:/preexisting",
+            baz.display(),
+            bar.display(),
+            foo.display()
+        );
+
+        // `--noprofile --norc` (bash) / `-f` (zsh, same no-rc guard
+        // `trace.rs`'s `HookupShell::Zsh` uses) keep the host's own rc
+        // files — which may append their own PATH entries, e.g.
+        // `~/.cargo/bin` — from folding into what we're trying to
+        // measure here: the script's own composed line, in isolation.
+        let shells: &[(&str, &[&str])] = &[
+            ("/bin/bash", &["--noprofile", "--norc", "-c"]),
+            ("/bin/zsh", &["-f", "-c"]),
+        ];
+        for (shell, flags) in shells {
+            let shell_path = Path::new(shell);
+            if !shell_path.exists() {
+                continue;
+            }
+            let out = std::process::Command::new(shell_path)
+                .args(*flags)
+                .arg(format!(". '{}'; printf '%s' \"$PATH\"", path.display()))
+                .env("PATH", "/preexisting")
+                .output()
+                .expect("the shell runs");
+            assert!(out.status.success(), "{shell}: sourcing failed: {out:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&out.stdout),
+                expected,
+                "{shell}: composed $PATH did not match the Rust-computed value"
+            );
+        }
     }
 
     // ── Homebrew bootstrap (shell-hookup-ergonomics.lex §4) ─────────
