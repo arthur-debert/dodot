@@ -93,6 +93,24 @@
 //! in the sourced file, which is a behavioural surprise nobody asked
 //! for. We pay the price of a slightly longer script in exchange for
 //! semantic equivalence with the un-instrumented form.
+//!
+//! # PATH attribution (path-precedence.lex §5)
+//!
+//! The composed `export PATH=…` line ([`compose_path_tier`]) only knows
+//! about directories the `path` handler declared — it can't see a raw
+//! `export PATH=` a pack's own shell script issues, since that only
+//! happens once some shell actually sources the script. The generator
+//! closes that gap live: each pack's group of `source` lines is
+//! bracketed by a `$PATH` before/after capture, unconditionally,
+//! independent of the profiling wrapper above. When a pack's scripts
+//! changed `$PATH`, the run records `<pack>\t<raw dirs>` to
+//! [`Pather::path_attribution_path`] — truncated to header-only when
+//! nothing changed, so a pack that stops raw-mutating `$PATH` drops out
+//! of the report on its very next shell start. [`path_attribution`]
+//! owns the format on both ends: the constant the generator's emitters
+//! write and this doc describes, and the parser/reader `dodot probe
+//! shell-init`'s PATH-provenance block uses to merge it back with the
+//! declared tier.
 
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -104,13 +122,19 @@ use crate::Result;
 
 pub mod activation;
 pub mod homebrew;
+pub mod path_attribution;
 pub mod probe;
 pub mod rc;
 pub mod trace;
 pub mod validate;
 pub use activation::{ActivationNotice, ActivationState, INIT_GEN_ENV, INIT_VERSION_ENV};
 pub use homebrew::{
-    BrewBlocks, BrewBootstrapMode, BrewCapture, BrewHost, CaptureFailure, PersistedCapture,
+    read_cached_blocks, BrewBlocks, BrewBootstrapMode, BrewCapture, BrewHost, CaptureFailure,
+    PersistedCapture,
+};
+pub use path_attribution::{
+    parse_path_attribution, path_provenance, read_path_attribution, PathOrigin,
+    PathProvenanceEntry, RawPathEntry, PATH_ATTRIBUTION_MARKER,
 };
 pub use probe::ProbePolicy;
 pub use rc::ShellEnv;
@@ -215,10 +239,35 @@ fn append_empty_notice(script: &mut String) {
 /// emitted above the composed line, and — when profiling is on — the
 /// `(pack, target)` columns of each profile row `probe::shell_init`
 /// reads back, even though every contribution now lands on `$PATH` via
-/// one shared `export`.
-struct PathContribution {
-    pack: String,
-    dir: PathBuf,
+/// one shared `export`. `pub(crate)` (rather than module-private) so
+/// [`path_attribution::path_provenance`] can build the merged
+/// declared+raw provenance view `dodot probe shell-init` surfaces
+/// (`docs/proposals/path-precedence.lex` §5.4) without re-deriving the
+/// tier/dedup rule — [`compose_path_tier`] stays the one owner (§4.3).
+pub(crate) struct PathContribution {
+    pub(crate) pack: String,
+    pub(crate) dir: PathBuf,
+}
+
+/// Group consecutive `(pack, target)` entries by pack, preserving each
+/// pack's own internal (scan) order.
+///
+/// Both the packs-tier composer ([`compose_path_tier`]) and
+/// [`generate_init_script`]'s per-pack `$PATH` diff wrapper (which
+/// brackets each pack's shell-source lines with
+/// [`emit_pack_path_diff_open`] / [`emit_pack_path_diff_close`]) need
+/// this: the datastore scan ([`scan_pack_contributions`]) already
+/// produces entries grouped this way — one pack fully drained before
+/// the next begins — so a linear pass suffices; no sort needed.
+fn group_consecutive_by_pack(entries: &[(String, PathBuf)]) -> Vec<(String, Vec<PathBuf>)> {
+    let mut groups: Vec<(String, Vec<PathBuf>)> = Vec::new();
+    for (pack, dir) in entries {
+        match groups.last_mut() {
+            Some((last_pack, dirs)) if last_pack == pack => dirs.push(dir.clone()),
+            _ => groups.push((pack.clone(), vec![dir.clone()])),
+        }
+    }
+    groups
 }
 
 /// Compose the packs tier of the final `$PATH`
@@ -253,21 +302,11 @@ struct PathContribution {
 /// first occurrence in pack-precedence order — the highest-precedence
 /// pack (last on disk) wins the slot, and every lower-precedence repeat
 /// of the same directory is dropped.
-fn compose_path_tier(
+pub(crate) fn compose_path_tier(
     path_additions: &[(String, PathBuf)],
     known_lower_tier_dirs: &[PathBuf],
 ) -> Vec<PathContribution> {
-    // Group consecutive entries by pack, preserving each pack's own
-    // internal (scan) order. `path_additions` already arrives grouped
-    // this way — the scan drains one pack fully before moving to the
-    // next — so a linear pass is enough; no sort needed.
-    let mut groups: Vec<(String, Vec<PathBuf>)> = Vec::new();
-    for (pack, dir) in path_additions {
-        match groups.last_mut() {
-            Some((last_pack, dirs)) if last_pack == pack => dirs.push(dir.clone()),
-            _ => groups.push((pack.clone(), vec![dir.clone()])),
-        }
-    }
+    let groups = group_consecutive_by_pack(path_additions);
 
     let mut seen: HashSet<PathBuf> = known_lower_tier_dirs.iter().cloned().collect();
     let mut out = Vec::new();
@@ -294,17 +333,108 @@ fn compose_path_tier(
 /// `brew shellenv` puts `<prefix>/bin` and `<prefix>/sbin` on `$PATH`;
 /// `None` (not macOS, no brew, or `[shell] homebrew = "off"`) yields no
 /// known directories to dedup against.
-fn homebrew_known_dirs(homebrew: Option<&BrewBlocks>) -> Vec<PathBuf> {
+pub(crate) fn homebrew_known_dirs(homebrew: Option<&BrewBlocks>) -> Vec<PathBuf> {
     match homebrew {
         Some(blocks) => vec![blocks.prefix.join("bin"), blocks.prefix.join("sbin")],
         None => Vec::new(),
     }
 }
 
+/// The datastore scan both [`generate_init_script`] and
+/// [`path_attribution::path_provenance`] need: every pack's `path`- and
+/// `shell`-handler contributions, plus the on-disk pack order both
+/// derive their own orderings from.
+pub(crate) struct PackScan {
+    /// Pack display names in on-disk (ascending) scan order, one entry
+    /// per pack regardless of which handlers it uses — the canonical
+    /// ordering [`compose_path_tier`] and the provenance view both
+    /// reverse to get "last pack wins the front" (§2.3).
+    pub(crate) pack_order: Vec<String>,
+    /// (pack, target) — `path`-handler directories, pack-scan order.
+    pub(crate) path_additions: Vec<(String, PathBuf)>,
+    /// (pack, target) — `shell`-handler scripts, pack-scan order.
+    pub(crate) shell_sources: Vec<(String, PathBuf)>,
+}
+
+/// Scan `<data_dir>/packs` for every pack's `shell`- and `path`-handler
+/// contributions. `None` when the packs directory doesn't exist yet
+/// (fresh install, or after `dodot down`) — the caller's empty-notice
+/// path.
+pub(crate) fn scan_pack_contributions(fs: &dyn Fs, paths: &dyn Pather) -> Result<Option<PackScan>> {
+    let packs_dir = paths.data_dir().join("packs");
+    if !fs.exists(&packs_dir) {
+        return Ok(None);
+    }
+
+    let pack_entries = fs.read_dir(&packs_dir)?;
+
+    let mut pack_order: Vec<String> = Vec::new();
+    let mut shell_sources: Vec<(String, PathBuf)> = Vec::new();
+    let mut path_additions: Vec<(String, PathBuf)> = Vec::new();
+
+    for pack_entry in &pack_entries {
+        if !pack_entry.is_dir {
+            continue;
+        }
+        // The datastore subtree is keyed by the on-disk directory
+        // name (e.g. `010-nvim`), but the comment we emit in the
+        // generated init script uses the pack's display name
+        // (`nvim`) — that's what the user sees in `dodot status` and
+        // expects to recognise here.
+        let pack_dir = &pack_entry.name;
+        let pack_display = crate::packs::display_name_for(pack_dir).to_string();
+        pack_order.push(pack_display.clone());
+
+        // Shell handler: source scripts
+        let shell_dir = paths.handler_data_dir(pack_dir, "shell");
+        if fs.is_dir(&shell_dir) {
+            if let Ok(entries) = fs.read_dir(&shell_dir) {
+                for entry in entries {
+                    if !entry.is_symlink {
+                        continue;
+                    }
+                    let target = fs.readlink(&entry.path)?;
+                    shell_sources.push((pack_display.clone(), target));
+                }
+            }
+        }
+
+        // Path handler: add to PATH
+        let path_dir = paths.handler_data_dir(pack_dir, "path");
+        if fs.is_dir(&path_dir) {
+            if let Ok(entries) = fs.read_dir(&path_dir) {
+                for entry in entries {
+                    if !entry.is_symlink {
+                        continue;
+                    }
+                    let target = fs.readlink(&entry.path)?;
+                    path_additions.push((pack_display.clone(), target));
+                }
+            }
+        }
+    }
+
+    Ok(Some(PackScan {
+        pack_order,
+        path_additions,
+        shell_sources,
+    }))
+}
+
 /// Generate the shell init script content from the current datastore state.
 ///
 /// Scans the datastore for:
-/// - `packs/*/shell/*` — symlinks to shell scripts → one `source` line each
+/// - `packs/*/shell/*` — symlinks to shell scripts → one `source` line
+///   each, each pack's group bracketed by a `$PATH` before/after capture
+///   ([`emit_pack_path_diff_open`] / [`emit_pack_path_diff_close`]) so a
+///   raw `export PATH=` the script issues itself is attributed rather
+///   than silently lost (`docs/proposals/path-precedence.lex` §5) — the
+///   captured rows are written to
+///   [`Pather::path_attribution_path`] once sourcing finishes
+///   ([`emit_path_attribution_write`]; cleared to header-only via
+///   [`emit_path_attribution_clear`] on every path where no pack shell
+///   script could have raw-mutated `$PATH`, so stale attribution never
+///   lingers)
 /// - `packs/*/path/*` — symlinks to directories, composed by
 ///   [`compose_path_tier`] into a single deduplicated, tiered
 ///   `export PATH=…` line (`docs/proposals/path-precedence.lex` §3–§4)
@@ -353,60 +483,17 @@ pub fn generate_init_script(
         homebrew::emit_homebrew_block(&mut script, blocks);
     }
 
-    let packs_dir = paths.data_dir().join("packs");
-    if !fs.exists(&packs_dir) {
+    let Some(scan) = scan_pack_contributions(fs, paths)? else {
         append_empty_notice(&mut script);
+        emit_path_attribution_clear(&mut script, &paths.path_attribution_path());
         emit_trace_mode_cleanup(&mut script);
         return Ok(script);
-    }
-
-    let pack_entries = fs.read_dir(&packs_dir)?;
-
-    // Collect shell sources and path additions separately so we can
-    // group them in the output for readability.
-    let mut shell_sources: Vec<(String, PathBuf)> = Vec::new(); // (pack, target)
-    let mut path_additions: Vec<(String, PathBuf)> = Vec::new(); // (pack, target)
-
-    for pack_entry in &pack_entries {
-        if !pack_entry.is_dir {
-            continue;
-        }
-        // The datastore subtree is keyed by the on-disk directory
-        // name (e.g. `010-nvim`), but the comment we emit in the
-        // generated init script uses the pack's display name
-        // (`nvim`) — that's what the user sees in `dodot status` and
-        // expects to recognise here.
-        let pack_dir = &pack_entry.name;
-        let pack_display = crate::packs::display_name_for(pack_dir).to_string();
-
-        // Shell handler: source scripts
-        let shell_dir = paths.handler_data_dir(pack_dir, "shell");
-        if fs.is_dir(&shell_dir) {
-            if let Ok(entries) = fs.read_dir(&shell_dir) {
-                for entry in entries {
-                    if !entry.is_symlink {
-                        continue;
-                    }
-                    let target = fs.readlink(&entry.path)?;
-                    shell_sources.push((pack_display.clone(), target));
-                }
-            }
-        }
-
-        // Path handler: add to PATH
-        let path_dir = paths.handler_data_dir(pack_dir, "path");
-        if fs.is_dir(&path_dir) {
-            if let Ok(entries) = fs.read_dir(&path_dir) {
-                for entry in entries {
-                    if !entry.is_symlink {
-                        continue;
-                    }
-                    let target = fs.readlink(&entry.path)?;
-                    path_additions.push((pack_display.clone(), target));
-                }
-            }
-        }
-    }
+    };
+    let PackScan {
+        path_additions,
+        shell_sources,
+        ..
+    } = scan;
 
     // Compose the packs tier once here rather than at each of the two
     // sites below that need it (the empty-datastore check and the
@@ -416,6 +503,7 @@ pub fn generate_init_script(
 
     if path_contributions.is_empty() && shell_sources.is_empty() {
         append_empty_notice(&mut script);
+        emit_path_attribution_clear(&mut script, &paths.path_attribution_path());
         emit_trace_mode_cleanup(&mut script);
         return Ok(script);
     }
@@ -450,30 +538,44 @@ pub fn generate_init_script(
 
     if !shell_sources.is_empty() {
         writeln!(script, "# Shell scripts").unwrap();
-        for (pack, target) in &shell_sources {
-            writeln!(script, "# [{pack}]").unwrap();
-            if profiling_active {
-                emit_timed_source(&mut script, pack, target);
-            } else {
-                // Loud-failure wrapper: if the source command itself
-                // exits non-zero, print a dodot-attributed message to
-                // stderr alongside the shell's own error so the user
-                // can see *which* dodot-managed file failed. The
-                // shell's native message already carries the line
-                // number; we add the breadcrumb back to dodot.
-                writeln!(
-                    script,
-                    "[ -f \"{p}\" ] && {{ . \"{p}\" || echo \"dodot: shell source exited $?: {p}\" >&2; }}",
-                    p = target.display()
-                )
-                .unwrap();
+        emit_path_attribution_setup(&mut script);
+        for (pack, targets) in group_consecutive_by_pack(&shell_sources) {
+            emit_pack_path_diff_open(&mut script);
+            for target in &targets {
+                writeln!(script, "# [{pack}]").unwrap();
+                if profiling_active {
+                    emit_timed_source(&mut script, &pack, target);
+                } else {
+                    // Loud-failure wrapper: if the source command itself
+                    // exits non-zero, print a dodot-attributed message to
+                    // stderr alongside the shell's own error so the user
+                    // can see *which* dodot-managed file failed. The
+                    // shell's native message already carries the line
+                    // number; we add the breadcrumb back to dodot.
+                    writeln!(
+                        script,
+                        "[ -f \"{p}\" ] && {{ . \"{p}\" || echo \"dodot: shell source exited $?: {p}\" >&2; }}",
+                        p = target.display()
+                    )
+                    .unwrap();
+                }
             }
+            // Per-pack $PATH diff (path-precedence.lex §5.2): only a
+            // pack's own shell scripts can raw-mutate $PATH (the `path`
+            // handler never does), so the capture/diff brackets this
+            // group and only this group.
+            emit_pack_path_diff_close(&mut script, &pack);
         }
         writeln!(script).unwrap();
     }
 
     if profiling_active {
         emit_profiling_epilogue(&mut script);
+    }
+    if !shell_sources.is_empty() {
+        emit_path_attribution_write(&mut script, &paths.path_attribution_path());
+    } else {
+        emit_path_attribution_clear(&mut script, &paths.path_attribution_path());
     }
     emit_trace_mode_cleanup(&mut script);
 
@@ -861,6 +963,137 @@ fn emit_profiling_epilogue(script: &mut String) {
         "unset _dodot_prof _dodot_prof_dir _dodot_prof_file _dodot_err_file _dodot_err_tmp _dodot_prof_t0 _dodot_t0 _dodot_t1 _dodot_rc 2>/dev/null"
     )
     .unwrap();
+}
+
+// ── PATH attribution emitters (path-precedence.lex §5) ───────────────
+
+/// Declares the accumulator the per-pack diffs below append to, plus a
+/// literal-newline holder used to join rows without a portable `$'\n'`
+/// (a bashism zsh and dash don't share). Emitted once, right before the
+/// first pack's shell scripts, only when there is at least one shell
+/// script to wrap — a datastore with PATH additions but no shell
+/// scripts can never raw-mutate `$PATH`, so it never pays for this.
+fn emit_path_attribution_setup(script: &mut String) {
+    writeln!(
+        script,
+        "_dodot_pattr_buf=\"\" # path-precedence.lex §5.2: raw PATH mutations, one row per pack"
+    )
+    .unwrap();
+    writeln!(script, "_dodot_pattr_nl='").unwrap();
+    writeln!(script, "'").unwrap();
+}
+
+/// Captures `$PATH` immediately before a pack's shell scripts run —
+/// the "before" half of that pack's diff (§5.2).
+fn emit_pack_path_diff_open(script: &mut String) {
+    writeln!(script, "_dodot_pattr_before=\"$PATH\"").unwrap();
+}
+
+/// Diffs `$PATH` against the capture [`emit_pack_path_diff_open`] took,
+/// and — when it changed — appends one `<pack>\t<raw>` row to the
+/// accumulator.
+///
+/// Substring matching only (§5.3), never splitting on `:`: the common
+/// case is the pack's script prepending one or more directories
+/// (`export PATH="$dir:$PATH"`), which leaves the pre-capture value as
+/// a literal trailing suffix — `${PATH%":$before"}` strips that suffix
+/// (and its separating colon) to recover exactly what was prepended,
+/// still colon-joined if the script prepended more than one directory
+/// at once. Both `case` patterns here are fully quoted, so special
+/// characters in `$before` (or a directory name) are matched literally,
+/// never as glob syntax. A change that isn't a clean prepend (the
+/// script appended, or replaced `$PATH` outright) still gets attributed
+/// — to the whole current `$PATH` — rather than silently dropped,
+/// which keeps the diff a total function of the two captures without
+/// growing a parser for arbitrary shell mutation styles (bounded, per
+/// §5.2).
+fn emit_pack_path_diff_close(script: &mut String, pack: &str) {
+    let pack_q = sh_quote(pack);
+    writeln!(script, "case \"$PATH\" in").unwrap();
+    writeln!(script, "  \"$_dodot_pattr_before\") ;;").unwrap();
+    writeln!(script, "  *\":$_dodot_pattr_before\")").unwrap();
+    writeln!(
+        script,
+        "    _dodot_pattr_raw=\"${{PATH%\":$_dodot_pattr_before\"}}\""
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "    _dodot_pattr_row=$(printf '%s\\t%s' {pack_q} \"$_dodot_pattr_raw\")"
+    )
+    .unwrap();
+    emit_path_attribution_accumulate(script);
+    writeln!(script, "    ;;").unwrap();
+    writeln!(script, "  *)").unwrap();
+    writeln!(
+        script,
+        "    _dodot_pattr_row=$(printf '%s\\t%s' {pack_q} \"$PATH\")"
+    )
+    .unwrap();
+    emit_path_attribution_accumulate(script);
+    writeln!(script, "    ;;").unwrap();
+    writeln!(script, "esac").unwrap();
+}
+
+/// Appends `$_dodot_pattr_row` to the buffer, newline-separated once the
+/// buffer already holds a row. `${var:+word}` — POSIX parameter
+/// expansion, not a bashism — substitutes `word` only when `var` is set
+/// and non-empty, so a single assignment covers both "first row" and
+/// "nth row" without an `if`/`else`.
+fn emit_path_attribution_accumulate(script: &mut String) {
+    writeln!(
+        script,
+        "    _dodot_pattr_buf=\"${{_dodot_pattr_buf:+${{_dodot_pattr_buf}}${{_dodot_pattr_nl}}}}${{_dodot_pattr_row}}\""
+    )
+    .unwrap();
+}
+
+/// Writes the accumulated buffer to [`Pather::path_attribution_path`],
+/// truncating (header-only, when no pack raw-mutated `$PATH` this run —
+/// self-healing: a pack that stops mutating `$PATH` disappears from the
+/// report on the very next shell start). One write, like the heartbeat
+/// (§ activation evidence): a truncating redirect is a correct answer
+/// to concurrent shell startups racing, an append or read-modify-write
+/// would not be.
+///
+/// Guarded by the same `_dodot_trace` flag as the heartbeat and
+/// profiling writes — a diagnostic trace run still executes pack shell
+/// scripts (so the diff still runs, cheaply), but must not overwrite
+/// attribution evidence from real shell startups with a trace run's own
+/// transient state.
+fn emit_path_attribution_write(script: &mut String, attribution_path: &Path) {
+    let path_q = sh_quote(&attribution_path.display().to_string());
+    writeln!(script, "if [ \"${{_dodot_trace:-0}}\" != \"1\" ]; then").unwrap();
+    writeln!(
+        script,
+        "  printf '%s\\n%s\\n' {marker_q} \"$_dodot_pattr_buf\" >| {path_q} 2>/dev/null || :",
+        marker_q = sh_quote(PATH_ATTRIBUTION_MARKER)
+    )
+    .unwrap();
+    writeln!(script, "fi").unwrap();
+    writeln!(
+        script,
+        "unset _dodot_pattr_buf _dodot_pattr_nl _dodot_pattr_before _dodot_pattr_raw _dodot_pattr_row 2>/dev/null"
+    )
+    .unwrap();
+}
+
+/// Truncates the attribution file to its header alone — reached when
+/// this run's datastore has nothing that could raw-mutate `$PATH`
+/// (empty datastore, or packs with no shell scripts): stale attribution
+/// from a pack that used to raw-mutate `$PATH` and no longer does must
+/// not linger. Same trace guard and truncating-write reasoning as
+/// [`emit_path_attribution_write`].
+fn emit_path_attribution_clear(script: &mut String, attribution_path: &Path) {
+    let path_q = sh_quote(&attribution_path.display().to_string());
+    writeln!(script, "if [ \"${{_dodot_trace:-0}}\" != \"1\" ]; then").unwrap();
+    writeln!(
+        script,
+        "  printf '%s\\n' {marker_q} >| {path_q} 2>/dev/null || :",
+        marker_q = sh_quote(PATH_ATTRIBUTION_MARKER)
+    )
+    .unwrap();
+    writeln!(script, "fi").unwrap();
 }
 
 /// Single-quote a string for safe use in POSIX shell. Embedded single
@@ -1356,6 +1589,121 @@ mod tests {
                 "{shell}: composed $PATH did not match the Rust-computed value"
             );
         }
+    }
+
+    // ── PATH provenance (path-precedence.lex §5) ─────────────────────
+
+    /// The regression this WS exists to close (§5.1): once composition
+    /// stopped being sequential runtime prepend, a raw `export PATH=`
+    /// a pack's own shell script issues has nowhere to land unless
+    /// something captures it. Sourced for real, under both bash and
+    /// zsh, the raw entry must (a) still land in the final `$PATH`,
+    /// ahead of the declared entry — the same pack ran its shell
+    /// script *after* the composed PATH line, so its own prepend wins
+    /// the front, consistent with "last pack wins" (§2.3) — and (b) be
+    /// recorded to the attribution file, tagged to the pack that
+    /// caused it (§5.2).
+    #[test]
+    fn raw_path_mutation_survives_and_is_attributed_to_its_pack() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("bin/vim-tool", "#!/bin/sh")
+            .file("raw.sh", "export PATH=\"$HOME/rawbin:$PATH\"\n")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        let declared_dir = env.dotfiles_root.join("vim/bin");
+        ds.create_data_link("vim", "path", &declared_dir).unwrap();
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/raw.sh"))
+            .unwrap();
+
+        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+
+        let raw_dir = env.home.join("rawbin");
+        let expected = format!(
+            "{}:{}:/preexisting",
+            raw_dir.display(),
+            declared_dir.display()
+        );
+
+        let shells: &[(&str, &[&str])] = &[
+            ("/bin/bash", &["--noprofile", "--norc", "-c"]),
+            ("/bin/zsh", &["-f", "-c"]),
+        ];
+        let mut ran_any = false;
+        for (shell, flags) in shells {
+            let shell_path = Path::new(shell);
+            if !shell_path.exists() {
+                continue;
+            }
+            ran_any = true;
+            let out = std::process::Command::new(shell_path)
+                .args(*flags)
+                .arg(format!(". '{}'; printf '%s' \"$PATH\"", path.display()))
+                .env("PATH", "/preexisting")
+                .env("HOME", &env.home)
+                .output()
+                .expect("the shell runs");
+            assert!(out.status.success(), "{shell}: sourcing failed: {out:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&out.stdout),
+                expected,
+                "{shell}: raw PATH mutation did not survive into the final composed PATH"
+            );
+
+            let attribution = env
+                .fs
+                .read_to_string(&env.paths.path_attribution_path())
+                .unwrap();
+            assert!(
+                attribution.contains(&format!("vim\t{}", raw_dir.display())),
+                "{shell}: attribution file did not record the raw mutation:\n{attribution}"
+            );
+        }
+        assert!(
+            ran_any,
+            "neither /bin/bash nor /bin/zsh is available to test against"
+        );
+    }
+
+    /// A pack whose shell scripts never touch `$PATH` must leave no
+    /// attribution row — the common case, and the one this feature must
+    /// stay free on (§5.2's "bounded" claim would be hollow if every
+    /// ordinary shell script produced a row).
+    #[test]
+    fn shell_scripts_that_do_not_touch_path_produce_no_attribution_row() {
+        let bash = Path::new("/bin/bash");
+        if !bash.exists() {
+            return;
+        }
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim\n")
+            .done()
+            .build();
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        let path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap();
+        let status = std::process::Command::new(bash)
+            .args(["--noprofile", "--norc", "-c"])
+            .arg(format!(". '{}'", path.display()))
+            .env("HOME", &env.home)
+            .status()
+            .expect("bash runs");
+        assert!(status.success());
+
+        let attribution = env
+            .fs
+            .read_to_string(&env.paths.path_attribution_path())
+            .unwrap();
+        assert_eq!(
+            path_attribution::parse_path_attribution(&attribution),
+            Vec::new(),
+            "attribution:\n{attribution}"
+        );
     }
 
     // ── Homebrew bootstrap (shell-hookup-ergonomics.lex §4) ─────────

@@ -17,11 +17,11 @@ pub use shell_init::{
     shell_init_filter, shell_init_history, shell_init_trace,
 };
 pub use types::{
-    AppProbeEntry, AppProbeView, DeploymentDisplayEntry, ProbeResult, ProbeSubcommandInfo,
-    ShellInitAggregateRow, ShellInitAggregateView, ShellInitErrorsView, ShellInitFilterRun,
-    ShellInitFilterTarget, ShellInitFilterView, ShellInitGroup, ShellInitHistoryRow,
-    ShellInitHistoryView, ShellInitRow, ShellInitTraceView, ShellInitVerificationView,
-    ShellInitView, TreeLine, DEFAULT_FILTER_RUNS, DEFAULT_HISTORY_LIMIT,
+    AppProbeEntry, AppProbeView, DeploymentDisplayEntry, PathProvenanceRow, ProbeResult,
+    ProbeSubcommandInfo, ShellInitAggregateRow, ShellInitAggregateView, ShellInitErrorsView,
+    ShellInitFilterRun, ShellInitFilterTarget, ShellInitFilterView, ShellInitGroup,
+    ShellInitHistoryRow, ShellInitHistoryView, ShellInitRow, ShellInitTraceView,
+    ShellInitVerificationView, ShellInitView, TreeLine, DEFAULT_FILTER_RUNS, DEFAULT_HISTORY_LIMIT,
     DEFAULT_SHOW_DATA_DIR_DEPTH, PROBE_SUBCOMMANDS,
 };
 

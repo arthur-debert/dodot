@@ -407,6 +407,19 @@ fn load_cache(fs: &dyn Fs, path: &Path) -> Option<BrewBlocks> {
     serde_json::from_str(&text).ok()
 }
 
+/// Passive read of the persisted capture, with no host detection, no
+/// prefix validation, and no live-capture fallback — for read-only
+/// reporting (`dodot probe shell-init`'s PATH-provenance block, which
+/// only needs the dedup hint [`crate::shell::homebrew_known_dirs`]
+/// wants, not a faithful "what would `up` emit right now" answer).
+/// Every other reader ([`cached_or_capture`], generation itself) stays
+/// on [`load_cache`] via its own prefix-checked path; this exists so
+/// probe commands can stay spawn-free (INS01 §9) without duplicating
+/// the JSON parse.
+pub fn read_cached_blocks(fs: &dyn Fs, paths: &dyn Pather) -> Option<BrewBlocks> {
+    load_cache(fs, &paths.homebrew_cache_path())
+}
+
 /// Write the captured blocks to the cache, or remove the cache when
 /// there is nothing to emit. Only `up`/`down` reach this, via
 /// [`capture_and_persist`] — the emit side never writes (#121).

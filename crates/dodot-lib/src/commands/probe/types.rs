@@ -368,6 +368,27 @@ pub struct ShellInitView {
     /// Explicit hook-line resolution. Only `--trace-hook` populates
     /// this; the bare command uses targeted verification instead.
     pub trace: Option<Box<ShellInitTraceView>>,
+    /// `$PATH` provenance (`docs/proposals/path-precedence.lex` §5.4):
+    /// every directory in the composed packs tier, declared (via the
+    /// `path` handler) or raw (captured live from a pack's own shell
+    /// script mutating `$PATH`), grouped by pack in the same order the
+    /// composed `$PATH` places them. Independent of `has_profile` and
+    /// `profiling_enabled` — this reads the live datastore plus the
+    /// most recent shell startup's raw-mutation capture, not a
+    /// profiling TSV.
+    pub path_provenance: Vec<PathProvenanceRow>,
+}
+
+/// One row in the `$PATH` provenance block.
+#[derive(Debug, Clone, Serialize)]
+pub struct PathProvenanceRow {
+    pub pack: String,
+    /// Pre-shortened (`~/…`) directory path.
+    pub dir: String,
+    /// `"declared"` (via the `path` handler) or `"raw"` (a pack's own
+    /// shell script mutated `$PATH`). Matches the two `origin` values
+    /// `crate::shell::PathOrigin` serialises as.
+    pub origin: &'static str,
 }
 
 /// Display row for one entry in a shell-init group.
