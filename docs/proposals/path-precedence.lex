@@ -63,8 +63,6 @@ Design Specification: PATH Precedence
             system:
                 Whatever `$PATH` held immediately before dodot's init script ran. Captured once, its internal relative order preserved, placed as the fixed floor.
 
-        :: text ::
-
     3.2. Deduplication
 
         A directory that appears more than once resolves to its first occurrence in the tier order above. A stale `001-homebrew` pack that duplicates the built-in Homebrew capture collapses into one entry rather than two — no special-case code, no migration step, straight fallout of dedup existing at all.
@@ -118,7 +116,7 @@ Design Specification: PATH Precedence
 
     1. *Composition* — the core fix: §4's compute-once function, the tier order and dedup from §3, "last pack wins" as an explicit tested rule, the three-pack example from §2.3 as the pinning fixture. Touches `shell/mod.rs` only; no handler or datastore changes.
     2. *Provenance* — §5's per-pack diff and probe surface. The heaviest lift here, and the one piece this epic can ship without: land WS1, then decide separately whether this ships now or later as a standalone follow-up. Sequenced second-to-last on purpose, so that decision does not block documenting what shipped.
-    3. *Documentation* — a `pack-ordering.lex`-style contract section using the worked example from §2.3, updated `handlers.lex` / `shell-integration.lex` cross-references, and a troubleshooting note pointing at whatever probe surface WS2 produced — or, if WS2 did not ship, at what is available without it. Sequenced last so it documents what actually shipped, not what was planned.
+    3. *Documentation* — a `pack-ordering.lex`-style contract section using the worked example from §2.3, updated cross-references in [./../user/handlers.lex] and [./../user/shell-integration.lex], and a troubleshooting note pointing at whatever probe surface WS2 produced — or, if WS2 did not ship, at what is available without it. Sequenced last so it documents what actually shipped, not what was planned.
 
 
 8. Further Notes
