@@ -11,7 +11,7 @@ For terminology, see [./glossary/handler.lex].
 
     - [./handlers/symlink.lex] — link source files into deployed locations. The catch-all.
     - [./handlers/shell.lex] — source shell scripts at login.
-    - [./handlers/path.lex] — add a source `bin/` directory to `$PATH`.
+    - [./handlers/path.lex] — add a source `bin/` directory to `$PATH`; covers the compose-once precedence contract for where each pack's directory lands.
     - [./handlers/install.lex] — run a one-shot setup script, content-hashed.
     - [./handlers/homebrew.lex] — run `brew bundle` against a source `Brewfile`, content-hashed.
     - [./handlers/nix.lex] — run `nix profile install` against a source `packages.nix`, content-hashed.
@@ -23,7 +23,7 @@ For terminology, see [./glossary/handler.lex].
 2. The dispatch model
 
     - [./handlers/mappings.lex] — how source files map to handlers, the priority ladder, the default mappings table, and how to override them.
-    - [./handlers/execution-order.lex] — the order in which handlers run within a pack, plus cross-pack ordering with the `NNN-` prefix grammar.
+    - [./handlers/execution-order.lex] — the order in which handlers run within a pack, plus cross-pack ordering with the `NNN-` prefix grammar (and how that order composes into `$PATH` specifically, [./handlers/path.lex] §3).
 
 3. Concepts
 
