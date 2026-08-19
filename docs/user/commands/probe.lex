@@ -154,7 +154,7 @@ Reach for `probe` when `status` isn't enough — when something appears deployed
 
     4.4. PATH provenance
 
-        Every view above also carries a `PATH provenance` block: every directory in the composed packs tier of `$PATH`, attributed to the pack it came from and tagged `declared` (staged via the [./../handlers/path.lex] handler) or `raw` (that pack's own shell script mutating `$PATH` directly), in the same order the composed `$PATH` places them:
+        Every view above also carries a `PATH provenance` block: every directory attributed to the pack it came from, tagged `declared` (staged via the [./../handlers/path.lex] handler, part of the composed packs tier) or `raw` (that pack's own shell script mutating `$PATH` directly, captured separately) — grouped by pack in the same pack order the composed `$PATH` places them, each pack's declared entries immediately followed by that same pack's raw entries. That grouping is for attribution; it isn't a claim that a raw entry sits where the mutation actually landed in the live `$PATH`:
 
             PATH provenance
               baz     declared   ~/.local/share/dodot/packs/baz/bin

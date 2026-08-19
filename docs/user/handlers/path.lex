@@ -64,15 +64,15 @@ Adds a version-controlled directory from your pack to `$PATH`. The matched sourc
 
     3.2. Deduplication
 
-        A directory that appears more than once resolves to its first occurrence in the tier order above: the highest-precedence pack keeps the entry, and every lower-precedence repeat of the same directory is dropped. A pack directory that duplicates Homebrew's own `bin`/`sbin` collapses into Homebrew's single entry rather than adding a second — the same rule, one fewer special case.
+        A directory that appears more than once within the packs tier resolves to its first occurrence in pack-precedence order: the highest-precedence pack (last on disk) keeps the entry, and every lower-precedence repeat of the same directory is dropped. Homebrew's `bin`/`sbin` sit outside that ordering — they're excluded from the packs tier before any pack is even considered, so a pack directory that duplicates one of them is always dropped, regardless of that pack's own precedence. Homebrew's single entry at its own fixed tier position is what survives, never a second copy promoted into the packs tier.
 
     3.3. Raw `$PATH` mutations are attributed, not dropped
 
-        A pack's own shell script can still run a raw `export PATH=...`; dodot does not detect, warn about, or discourage this. Composing `$PATH` once rather than by sequential runtime prepend means such a mutation has nowhere to land unless something captures it, so dodot diffs `$PATH` around each pack's shell-source lines and folds any new entry into the composed line immediately next to that pack's declared directories — tagged `raw` rather than `declared` — instead of silently dropping it.
+        A pack's own shell script can still run a raw `export PATH=...`; dodot does not detect, warn about, or discourage this. Composing `$PATH` once rather than by sequential runtime prepend means the composed line itself never sees such a mutation — instead dodot diffs `$PATH` around each pack's shell-source lines and records what changed, attributing it to that pack (tagged `raw` rather than `declared`) in the provenance view (§3.4) instead of losing track of it.
 
     3.4. Troubleshooting: where did this directory come from
 
-        `dodot probe shell-init` carries a `PATH provenance` block: every directory in the composed packs tier, which pack it came from, and whether it was `declared` (via this handler) or `raw` (§3.3), ordered the same way the composed `$PATH` places them ([./../commands/probe.lex] §4.4). It only attributes — it never warns or gates on a raw entry.
+        `dodot probe shell-init` carries a `PATH provenance` block: every directory attributed to a pack, tagged `declared` (staged via this handler, part of the composed packs tier) or `raw` (§3.3, captured separately at shell startup) — grouped by pack in the same pack order the composed `$PATH` places them, each pack's declared entries immediately followed by that same pack's raw entries ([./../commands/probe.lex] §4.4). That grouping is for attribution; it isn't a claim that a raw entry's position matches where the mutation actually landed in the live `$PATH`. The block only attributes — it never warns or gates on a raw entry.
 
 4. Live edits
 
