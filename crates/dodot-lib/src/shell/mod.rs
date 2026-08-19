@@ -996,40 +996,25 @@ fn emit_pack_path_diff_open(script: &mut String) {
 /// and — when the pack introduced at least one new directory — appends
 /// one `<pack>\t<raw>` row to the accumulator.
 ///
-/// Two arms, both substring matching only (§5.3), never word-splitting
-/// on `:` and never forking:
+/// Unchanged `$PATH` is a no-op. Any other mutation — prepend, append,
+/// replacement, or mixed — walks the after-value's colon-separated
+/// components with `${var%%:*}` / `${var#*:}` and keeps those not
+/// present in `$before` (one ordered set-difference, first occurrence
+/// wins). A clean prepend of a directory already on `$PATH` is not
+/// new, so it produces no row; neither does a change that only removes
+/// entries. Pre-existing entries that remain are never attributed.
 ///
-/// - The common case is a clean prepend (`export PATH="$dir:$PATH"`):
-///   the pre-capture value is a literal trailing suffix, so
-///   `${PATH%":$before"}` recovers exactly what was prepended, still
-///   colon-joined if the script prepended more than one directory at
-///   once.
-/// - Any other mutation (append, replacement, mixed change) walks the
-///   after-value's colon-separated components with `${var%%:*}` /
-///   `${var#*:}` and keeps those not present in `$before` — ordered
-///   set-difference, first occurrence wins. Pre-existing entries that
-///   remain in `$PATH` are not attributed to the pack; a change that
-///   only removes entries produces no row, because there is nothing
-///   new to answer "where did this entry come from" with.
-///
-/// Both `case` patterns that match `$before` or a directory are fully
-/// quoted, so special characters are matched literally, never as glob
-/// syntax. The row is built by concatenating the quoted pack name, a
-/// literal-tab holder, and the raw dirs — no command substitution
-/// (`$(...)`) on this path, matching §5.2's "no forks, pure string
-/// comparison" bound.
+/// Substring matching only (§5.3), never word-splitting on `:` and
+/// never forking. `case` patterns that match `$before` or a directory
+/// are fully quoted, so special characters are matched literally,
+/// never as glob syntax. The row is built by concatenating the quoted
+/// pack name, a literal-tab holder, and the raw dirs — no command
+/// substitution (`$(...)`) on this path, matching §5.2's "no forks,
+/// pure string comparison" bound.
 fn emit_pack_path_diff_close(script: &mut String, pack: &str) {
     let pack_q = sh_quote(pack);
     writeln!(script, "case \"$PATH\" in").unwrap();
     writeln!(script, "  \"$_dodot_pattr_before\") ;;").unwrap();
-    writeln!(script, "  *\":$_dodot_pattr_before\")").unwrap();
-    writeln!(
-        script,
-        "    _dodot_pattr_raw=\"${{PATH%\":$_dodot_pattr_before\"}}\""
-    )
-    .unwrap();
-    emit_path_attribution_commit_row(script, &pack_q);
-    writeln!(script, "    ;;").unwrap();
     writeln!(script, "  *)").unwrap();
     writeln!(script, "    _dodot_pattr_raw=").unwrap();
     writeln!(script, "    _dodot_pattr_rest=\"$PATH\"").unwrap();
@@ -1920,10 +1905,7 @@ mod tests {
     fn raw_path_mixed_change_attributes_only_newly_introduced_entries() {
         let env = TempEnvironment::builder()
             .pack("vim")
-            .file(
-                "raw.sh",
-                "export PATH=\"$HOME/new1:/keep:$HOME/new2\"\n",
-            )
+            .file("raw.sh", "export PATH=\"$HOME/new1:/keep:$HOME/new2\"\n")
             .done()
             .build();
         let path = deploy_vim_raw_sh(&env);
@@ -1966,9 +1948,7 @@ mod tests {
         let script =
             generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
                 .unwrap();
-        let start = script
-            .find("_dodot_pattr_buf=")
-            .expect("attribution setup");
+        let start = script.find("_dodot_pattr_buf=").expect("attribution setup");
         let attribution = &script[start..];
         assert!(
             !attribution.contains("$("),
@@ -1978,6 +1958,62 @@ mod tests {
             !attribution.contains('`'),
             "attribution must not fork via backticks:\n{attribution}"
         );
+    }
+
+    /// Prepending a directory already on `$PATH` changes the live
+    /// string (a duplicate at the front) but introduces nothing new, so
+    /// it must not be attributed as a raw contribution.
+    #[test]
+    fn raw_path_prepend_of_already_present_entry_produces_no_attribution_row() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("raw.sh", "export PATH=\"/preexisting:$PATH\"\n")
+            .done()
+            .build();
+        let path = deploy_vim_raw_sh(&env);
+
+        for (shell, resulting, attribution) in
+            source_init_under_supported_shells(&env, &path, "/preexisting:/keep")
+        {
+            assert_eq!(
+                resulting, "/preexisting:/preexisting:/keep",
+                "{shell}: live $PATH"
+            );
+            assert_eq!(
+                path_attribution::parse_path_attribution(&attribution),
+                Vec::new(),
+                "{shell}: already-present prepend must not be attributed:\n{attribution}"
+            );
+        }
+    }
+
+    /// A clean multi-entry prepend mixing a new dir with one already on
+    /// `$PATH` attributes only the new dir.
+    #[test]
+    fn raw_path_prepend_of_mixed_new_and_existing_attributes_only_the_new_entry() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("raw.sh", "export PATH=\"$HOME/new:/preexisting:$PATH\"\n")
+            .done()
+            .build();
+        let path = deploy_vim_raw_sh(&env);
+        let new = env.home.join("new");
+        let expected_path = format!("{}:/preexisting:/preexisting:/keep", new.display());
+        let expected_row = format!("vim\t{}", new.display());
+
+        for (shell, resulting, attribution) in
+            source_init_under_supported_shells(&env, &path, "/preexisting:/keep")
+        {
+            assert_eq!(resulting, expected_path, "{shell}: live $PATH");
+            assert!(
+                attribution.contains(&expected_row),
+                "{shell}: attribution must record only the new dir:\n{attribution}"
+            );
+            assert!(
+                !attribution.contains("/preexisting") && !attribution.contains("/keep"),
+                "{shell}: already-present entries must not be attributed:\n{attribution}"
+            );
+        }
     }
 
     // ── Homebrew bootstrap (shell-hookup-ergonomics.lex §4) ─────────
