@@ -969,10 +969,12 @@ fn emit_profiling_epilogue(script: &mut String) {
 
 /// Declares the accumulator the per-pack diffs below append to, plus a
 /// literal-newline holder used to join rows without a portable `$'\n'`
-/// (a bashism zsh and dash don't share). Emitted once, right before the
-/// first pack's shell scripts, only when there is at least one shell
-/// script to wrap — a datastore with PATH additions but no shell
-/// scripts can never raw-mutate `$PATH`, so it never pays for this.
+/// (a bashism zsh and dash don't share) and a literal-tab holder used
+/// to build each `<pack>\t<raw>` row without a `$(printf …)` subshell.
+/// Emitted once, right before the first pack's shell scripts, only
+/// when there is at least one shell script to wrap — a datastore with
+/// PATH additions but no shell scripts can never raw-mutate `$PATH`,
+/// so it never pays for this.
 fn emit_path_attribution_setup(script: &mut String) {
     writeln!(
         script,
@@ -981,6 +983,7 @@ fn emit_path_attribution_setup(script: &mut String) {
     .unwrap();
     writeln!(script, "_dodot_pattr_nl='").unwrap();
     writeln!(script, "'").unwrap();
+    writeln!(script, "_dodot_pattr_tab='\t'").unwrap();
 }
 
 /// Captures `$PATH` immediately before a pack's shell scripts run —
@@ -990,23 +993,31 @@ fn emit_pack_path_diff_open(script: &mut String) {
 }
 
 /// Diffs `$PATH` against the capture [`emit_pack_path_diff_open`] took,
-/// and — when it changed — appends one `<pack>\t<raw>` row to the
-/// accumulator.
+/// and — when the pack introduced at least one new directory — appends
+/// one `<pack>\t<raw>` row to the accumulator.
 ///
-/// Substring matching only (§5.3), never splitting on `:`: the common
-/// case is the pack's script prepending one or more directories
-/// (`export PATH="$dir:$PATH"`), which leaves the pre-capture value as
-/// a literal trailing suffix — `${PATH%":$before"}` strips that suffix
-/// (and its separating colon) to recover exactly what was prepended,
-/// still colon-joined if the script prepended more than one directory
-/// at once. Both `case` patterns here are fully quoted, so special
-/// characters in `$before` (or a directory name) are matched literally,
-/// never as glob syntax. A change that isn't a clean prepend (the
-/// script appended, or replaced `$PATH` outright) still gets attributed
-/// — to the whole current `$PATH` — rather than silently dropped,
-/// which keeps the diff a total function of the two captures without
-/// growing a parser for arbitrary shell mutation styles (bounded, per
-/// §5.2).
+/// Two arms, both substring matching only (§5.3), never word-splitting
+/// on `:` and never forking:
+///
+/// - The common case is a clean prepend (`export PATH="$dir:$PATH"`):
+///   the pre-capture value is a literal trailing suffix, so
+///   `${PATH%":$before"}` recovers exactly what was prepended, still
+///   colon-joined if the script prepended more than one directory at
+///   once.
+/// - Any other mutation (append, replacement, mixed change) walks the
+///   after-value's colon-separated components with `${var%%:*}` /
+///   `${var#*:}` and keeps those not present in `$before` — ordered
+///   set-difference, first occurrence wins. Pre-existing entries that
+///   remain in `$PATH` are not attributed to the pack; a change that
+///   only removes entries produces no row, because there is nothing
+///   new to answer "where did this entry come from" with.
+///
+/// Both `case` patterns that match `$before` or a directory are fully
+/// quoted, so special characters are matched literally, never as glob
+/// syntax. The row is built by concatenating the quoted pack name, a
+/// literal-tab holder, and the raw dirs — no command substitution
+/// (`$(...)`) on this path, matching §5.2's "no forks, pure string
+/// comparison" bound.
 fn emit_pack_path_diff_close(script: &mut String, pack: &str) {
     let pack_q = sh_quote(pack);
     writeln!(script, "case \"$PATH\" in").unwrap();
@@ -1017,35 +1028,73 @@ fn emit_pack_path_diff_close(script: &mut String, pack: &str) {
         "    _dodot_pattr_raw=\"${{PATH%\":$_dodot_pattr_before\"}}\""
     )
     .unwrap();
-    writeln!(
-        script,
-        "    _dodot_pattr_row=$(printf '%s\\t%s' {pack_q} \"$_dodot_pattr_raw\")"
-    )
-    .unwrap();
-    emit_path_attribution_accumulate(script);
+    emit_path_attribution_commit_row(script, &pack_q);
     writeln!(script, "    ;;").unwrap();
     writeln!(script, "  *)").unwrap();
+    writeln!(script, "    _dodot_pattr_raw=").unwrap();
+    writeln!(script, "    _dodot_pattr_rest=\"$PATH\"").unwrap();
+    writeln!(script, "    while [ -n \"$_dodot_pattr_rest\" ]; do").unwrap();
+    writeln!(script, "      case \"$_dodot_pattr_rest\" in").unwrap();
+    writeln!(script, "        *:*)").unwrap();
     writeln!(
         script,
-        "    _dodot_pattr_row=$(printf '%s\\t%s' {pack_q} \"$PATH\")"
+        "          _dodot_pattr_dir=\"${{_dodot_pattr_rest%%:*}}\""
     )
     .unwrap();
-    emit_path_attribution_accumulate(script);
+    writeln!(
+        script,
+        "          _dodot_pattr_rest=\"${{_dodot_pattr_rest#*:}}\""
+    )
+    .unwrap();
+    writeln!(script, "          ;;").unwrap();
+    writeln!(script, "        *)").unwrap();
+    writeln!(script, "          _dodot_pattr_dir=\"$_dodot_pattr_rest\"").unwrap();
+    writeln!(script, "          _dodot_pattr_rest=").unwrap();
+    writeln!(script, "          ;;").unwrap();
+    writeln!(script, "      esac").unwrap();
+    writeln!(script, "      if [ -n \"$_dodot_pattr_dir\" ]; then").unwrap();
+    writeln!(script, "        case \":$_dodot_pattr_before:\" in").unwrap();
+    writeln!(script, "          *\":$_dodot_pattr_dir:\"*) ;;").unwrap();
+    writeln!(script, "          *)").unwrap();
+    writeln!(script, "            case \":$_dodot_pattr_raw:\" in").unwrap();
+    writeln!(script, "              *\":$_dodot_pattr_dir:\"*) ;;").unwrap();
+    writeln!(script, "              *)").unwrap();
+    writeln!(
+        script,
+        "                _dodot_pattr_raw=\"${{_dodot_pattr_raw:+${{_dodot_pattr_raw}}:}}${{_dodot_pattr_dir}}\""
+    )
+    .unwrap();
+    writeln!(script, "                ;;").unwrap();
+    writeln!(script, "            esac").unwrap();
+    writeln!(script, "            ;;").unwrap();
+    writeln!(script, "        esac").unwrap();
+    writeln!(script, "      fi").unwrap();
+    writeln!(script, "    done").unwrap();
+    emit_path_attribution_commit_row(script, &pack_q);
     writeln!(script, "    ;;").unwrap();
     writeln!(script, "esac").unwrap();
 }
 
-/// Appends `$_dodot_pattr_row` to the buffer, newline-separated once the
-/// buffer already holds a row. `${var:+word}` — POSIX parameter
-/// expansion, not a bashism — substitutes `word` only when `var` is set
-/// and non-empty, so a single assignment covers both "first row" and
-/// "nth row" without an `if`/`else`.
-fn emit_path_attribution_accumulate(script: &mut String) {
+/// When `$_dodot_pattr_raw` is non-empty, builds the `<pack>\t<raw>`
+/// row by concatenating the quoted pack name, the literal-tab holder,
+/// and the raw dirs — no `$(printf …)` — and appends it to the
+/// accumulator. `${var:+word}` — POSIX parameter expansion, not a
+/// bashism — substitutes `word` only when `var` is set and non-empty,
+/// so a single assignment covers both "first row" and "nth row"
+/// without a further `if`/`else`.
+fn emit_path_attribution_commit_row(script: &mut String, pack_q: &str) {
+    writeln!(script, "    if [ -n \"$_dodot_pattr_raw\" ]; then").unwrap();
     writeln!(
         script,
-        "    _dodot_pattr_buf=\"${{_dodot_pattr_buf:+${{_dodot_pattr_buf}}${{_dodot_pattr_nl}}}}${{_dodot_pattr_row}}\""
+        "      _dodot_pattr_row={pack_q}\"$_dodot_pattr_tab\"\"$_dodot_pattr_raw\""
     )
     .unwrap();
+    writeln!(
+        script,
+        "      _dodot_pattr_buf=\"${{_dodot_pattr_buf:+${{_dodot_pattr_buf}}${{_dodot_pattr_nl}}}}${{_dodot_pattr_row}}\""
+    )
+    .unwrap();
+    writeln!(script, "    fi").unwrap();
 }
 
 /// Writes the accumulated buffer to [`Pather::path_attribution_path`],
@@ -1082,7 +1131,7 @@ fn emit_path_attribution_write(script: &mut String, attribution_path: &Path) {
     writeln!(script, "fi").unwrap();
     writeln!(
         script,
-        "unset _dodot_pattr_buf _dodot_pattr_nl _dodot_pattr_before _dodot_pattr_raw _dodot_pattr_row 2>/dev/null"
+        "unset _dodot_pattr_buf _dodot_pattr_nl _dodot_pattr_tab _dodot_pattr_before _dodot_pattr_raw _dodot_pattr_row _dodot_pattr_rest _dodot_pattr_dir 2>/dev/null"
     )
     .unwrap();
 }
@@ -1720,6 +1769,214 @@ mod tests {
             attribution,
             format!("{}\n", path_attribution::PATH_ATTRIBUTION_MARKER),
             "attribution:\n{attribution:?}"
+        );
+    }
+
+    /// Source `init_script` under each of bash and zsh present on this
+    /// host, with `PATH` set to `path_env` and `HOME` to `env.home`.
+    /// Returns `(shell, resulting $PATH, attribution file)` per shell
+    /// that ran — attribution is read after each source because the
+    /// file is truncated per run.
+    fn source_init_under_supported_shells(
+        env: &TempEnvironment,
+        init_script: &Path,
+        path_env: &str,
+    ) -> Vec<(&'static str, String, String)> {
+        let shells: &[(&str, &[&str])] = &[
+            ("/bin/bash", &["--noprofile", "--norc", "-c"]),
+            ("/bin/zsh", &["-f", "-c"]),
+        ];
+        let mut results = Vec::new();
+        for (shell, flags) in shells {
+            let shell_path = Path::new(shell);
+            if !shell_path.exists() {
+                continue;
+            }
+            let out = std::process::Command::new(shell_path)
+                .args(*flags)
+                .arg(format!(
+                    ". '{}'; printf '%s' \"$PATH\"",
+                    init_script.display()
+                ))
+                .env("PATH", path_env)
+                .env("HOME", &env.home)
+                .output()
+                .expect("the shell runs");
+            assert!(out.status.success(), "{shell}: sourcing failed: {out:?}");
+            let attribution = env
+                .fs
+                .read_to_string(&env.paths.path_attribution_path())
+                .unwrap();
+            results.push((
+                *shell,
+                String::from_utf8_lossy(&out.stdout).into_owned(),
+                attribution,
+            ));
+        }
+        assert!(
+            !results.is_empty(),
+            "neither /bin/bash nor /bin/zsh is available to test against"
+        );
+        results
+    }
+
+    fn deploy_vim_raw_sh(env: &TempEnvironment) -> PathBuf {
+        let ds = make_datastore(env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/raw.sh"))
+            .unwrap();
+        write_init_script(env.fs.as_ref(), env.paths.as_ref(), false, None).unwrap()
+    }
+
+    /// Append (`PATH="$PATH:…"`) must attribute only the newly
+    /// introduced directory, not the pre-existing entries that remain
+    /// in `$PATH`. The previous fallback recorded the entire after-value.
+    #[test]
+    fn raw_path_append_attributes_only_the_new_entry() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("raw.sh", "export PATH=\"$PATH:$HOME/appended\"\n")
+            .done()
+            .build();
+        let path = deploy_vim_raw_sh(&env);
+        let appended = env.home.join("appended");
+        let expected_path = format!("/preexisting:{}", appended.display());
+        let expected_row = format!("vim\t{}", appended.display());
+
+        for (shell, resulting, attribution) in
+            source_init_under_supported_shells(&env, &path, "/preexisting")
+        {
+            assert_eq!(resulting, expected_path, "{shell}: live $PATH");
+            assert!(
+                attribution.contains(&expected_row),
+                "{shell}: attribution must record only the appended dir:\n{attribution}"
+            );
+            assert!(
+                !attribution.contains("/preexisting"),
+                "{shell}: pre-existing entries must not be attributed to the pack:\n{attribution}"
+            );
+        }
+    }
+
+    /// A full replacement attributes the new directory and does not
+    /// claim the dropped pre-existing ones.
+    #[test]
+    fn raw_path_replacement_attributes_only_the_new_entry() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("raw.sh", "export PATH=\"$HOME/replaced\"\n")
+            .done()
+            .build();
+        let path = deploy_vim_raw_sh(&env);
+        let replaced = env.home.join("replaced");
+        let expected_row = format!("vim\t{}", replaced.display());
+
+        for (shell, resulting, attribution) in
+            source_init_under_supported_shells(&env, &path, "/preexisting:/keep")
+        {
+            assert_eq!(
+                resulting,
+                replaced.display().to_string(),
+                "{shell}: live $PATH"
+            );
+            assert!(
+                attribution.contains(&expected_row),
+                "{shell}: attribution:\n{attribution}"
+            );
+            assert!(
+                !attribution.contains("/preexisting") && !attribution.contains("/keep"),
+                "{shell}: dropped entries must not be attributed:\n{attribution}"
+            );
+        }
+    }
+
+    /// A mutation that only removes entries introduces nothing, so it
+    /// leaves no attribution row — same on-disk header-only form as a
+    /// pack that never touched `$PATH`.
+    #[test]
+    fn raw_path_removal_produces_no_attribution_row() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("raw.sh", "export PATH=\"/keep\"\n")
+            .done()
+            .build();
+        let path = deploy_vim_raw_sh(&env);
+
+        for (shell, resulting, attribution) in
+            source_init_under_supported_shells(&env, &path, "/preexisting:/keep")
+        {
+            assert_eq!(resulting, "/keep", "{shell}: live $PATH");
+            assert_eq!(
+                path_attribution::parse_path_attribution(&attribution),
+                Vec::new(),
+                "{shell}: removal-only must not attribute leftover entries:\n{attribution}"
+            );
+        }
+    }
+
+    /// Mixed change: prepend one new dir, keep one pre-existing, append
+    /// another new dir, drop a third. Only the two new dirs are
+    /// attributed, in after-value order.
+    #[test]
+    fn raw_path_mixed_change_attributes_only_newly_introduced_entries() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file(
+                "raw.sh",
+                "export PATH=\"$HOME/new1:/keep:$HOME/new2\"\n",
+            )
+            .done()
+            .build();
+        let path = deploy_vim_raw_sh(&env);
+        let new1 = env.home.join("new1");
+        let new2 = env.home.join("new2");
+        let expected_path = format!("{}:/keep:{}", new1.display(), new2.display());
+        let expected_row = format!("vim\t{}:{}", new1.display(), new2.display());
+
+        for (shell, resulting, attribution) in
+            source_init_under_supported_shells(&env, &path, "/preexisting:/keep")
+        {
+            assert_eq!(resulting, expected_path, "{shell}: live $PATH");
+            assert!(
+                attribution.contains(&expected_row),
+                "{shell}: attribution must be the two new dirs in after-order:\n{attribution}"
+            );
+            assert!(
+                !attribution.contains("/preexisting")
+                    && !attribution.contains("\t/keep")
+                    && !attribution.contains(":/keep"),
+                "{shell}: kept/dropped pre-existing entries must not be attributed:\n{attribution}"
+            );
+        }
+    }
+
+    /// §5.2 constrains attribution to "no forks, pure string
+    /// comparison": the generated per-pack diff must not command-sub
+    /// (`$(...)`) or backtick to build a row.
+    #[test]
+    fn path_attribution_diff_does_not_use_command_substitution() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim\n")
+            .done()
+            .build();
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        let script =
+            generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false, TEST_GEN, None)
+                .unwrap();
+        let start = script
+            .find("_dodot_pattr_buf=")
+            .expect("attribution setup");
+        let attribution = &script[start..];
+        assert!(
+            !attribution.contains("$("),
+            "attribution must not fork via command substitution:\n{attribution}"
+        );
+        assert!(
+            !attribution.contains('`'),
+            "attribution must not fork via backticks:\n{attribution}"
         );
     }
 

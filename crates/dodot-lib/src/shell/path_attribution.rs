@@ -35,8 +35,11 @@ pub const PATH_ATTRIBUTION_MARKER: &str = "# dodot path attribution v1";
 
 /// One pack's raw `$PATH` mutation, captured live by the generated init
 /// script's before/after diff around that pack's shell scripts
-/// (§5.2). `dirs` preserves the order the pack's own script prepended
-/// them in — left to right, outermost-prepended first.
+/// (§5.2). `dirs` is the ordered set-difference: entries present in
+/// `$PATH` after the pack's scripts ran that were not present before,
+/// left to right as they appear in the after-value. Pre-existing
+/// entries that remain, and entries the pack only removed, are not
+/// listed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RawPathEntry {
     pub pack: String,
