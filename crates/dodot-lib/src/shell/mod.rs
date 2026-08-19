@@ -238,17 +238,21 @@ struct PathContribution {
 /// `known_lower_tier_dirs` is every directory a lower, fixed tier
 /// already places on `$PATH` before this composed line runs — today
 /// that is just Homebrew's `<prefix>/bin` and `<prefix>/sbin`
-/// ([`homebrew_known_dirs`]; §3.1 "homebrew / toolchains"). A pack
-/// directory that collides with one of these is dropped from the packs
-/// tier: the lower tier already puts it on `$PATH`, so re-adding it
-/// here would be the second of the two entries dedup exists to prevent
-/// (§3.2) — including the stale-`001-homebrew`-pack case the Spec names
-/// by name.
+/// ([`homebrew_known_dirs`]; §3.1 "homebrew / toolchains"). That tier's
+/// block is emitted verbatim and untouched (RCS01, out of scope here),
+/// so its entry can't itself be deduped away — a pack directory that
+/// collides with one is dropped from the packs tier instead, and the
+/// lower tier's already-emitted entry is what survives. The surviving
+/// copy therefore sits at the lower tier's fixed position, not the
+/// pack's — read literally, the opposite of "highest-precedence tier
+/// wins the slot" — but the outcome is still exactly one entry rather
+/// than two, which is what §3.2 requires and names by example: a stale
+/// `001-homebrew` pack collapses into Homebrew's own single entry.
 ///
-/// Deduplication within the packs tier itself resolves to first
-/// occurrence too — the highest-precedence pack (last on disk) wins the
-/// slot, and every lower-precedence repeat of the same directory is
-/// dropped.
+/// Deduplication within the packs tier itself is the ordinary case:
+/// first occurrence in pack-precedence order — the highest-precedence
+/// pack (last on disk) wins the slot, and every lower-precedence repeat
+/// of the same directory is dropped.
 fn compose_path_tier(
     path_additions: &[(String, PathBuf)],
     known_lower_tier_dirs: &[PathBuf],
