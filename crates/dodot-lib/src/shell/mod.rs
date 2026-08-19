@@ -1064,12 +1064,21 @@ fn emit_path_attribution_accumulate(script: &mut String) {
 fn emit_path_attribution_write(script: &mut String, attribution_path: &Path) {
     let path_q = sh_quote(&attribution_path.display().to_string());
     writeln!(script, "if [ \"${{_dodot_trace:-0}}\" != \"1\" ]; then").unwrap();
+    writeln!(script, "  if [ -n \"$_dodot_pattr_buf\" ]; then").unwrap();
     writeln!(
         script,
-        "  printf '%s\\n%s\\n' {marker_q} \"$_dodot_pattr_buf\" >| {path_q} 2>/dev/null || :",
+        "    printf '%s\\n%s\\n' {marker_q} \"$_dodot_pattr_buf\" >| {path_q} 2>/dev/null || :",
         marker_q = sh_quote(PATH_ATTRIBUTION_MARKER)
     )
     .unwrap();
+    writeln!(script, "  else").unwrap();
+    writeln!(
+        script,
+        "    printf '%s\\n' {marker_q} >| {path_q} 2>/dev/null || :",
+        marker_q = sh_quote(PATH_ATTRIBUTION_MARKER)
+    )
+    .unwrap();
+    writeln!(script, "  fi").unwrap();
     writeln!(script, "fi").unwrap();
     writeln!(
         script,
@@ -1704,6 +1713,14 @@ mod tests {
             Vec::new(),
             "attribution:\n{attribution}"
         );
+        // On-disk format matches the header-only truncation
+        // `emit_path_attribution_write`'s docstring promises — no extra
+        // blank line trailing the marker when nothing changed.
+        assert_eq!(
+            attribution,
+            format!("{}\n", path_attribution::PATH_ATTRIBUTION_MARKER),
+            "attribution:\n{attribution:?}"
+        );
     }
 
     // ── Homebrew bootstrap (shell-hookup-ergonomics.lex §4) ─────────
@@ -2102,9 +2119,14 @@ mod tests {
                 .unwrap();
 
         // Each entry has an if/else so unprofiled shells still source / set PATH.
-        // (One else per entry; the epilogue uses an if-only form, so counting
-        // `else` keeps us focused on the entry wrappers.)
-        let else_count = script.matches("else").count();
+        // (One else per entry; scoped to the section before the profiling
+        // epilogue, which has its own unrelated if/else for the attribution
+        // write's empty-buffer case.)
+        let entries_section = script
+            .split("dodot shell-init profiling epilogue")
+            .next()
+            .unwrap();
+        let else_count = entries_section.matches("else").count();
         assert_eq!(
             else_count, 2,
             "expected one else-branch per entry; script:\n{script}"

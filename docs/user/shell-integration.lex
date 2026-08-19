@@ -284,7 +284,7 @@ Shell integration
 
     :: shell ::
 
-    Every view of that command carries a `PATH provenance` block for this — see [./commands/probe.lex] §4.4 and the precedence contract it reflects, [./handlers/path.lex] §3.
+    The default view of that command carries a `PATH provenance` block for this — see [./commands/probe.lex] §4.4 and the precedence contract it reflects, [./handlers/path.lex] §3.
 
 9. Watch out for
 
