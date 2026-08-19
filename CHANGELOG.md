@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## 5.9.0 - 2026-08-19
+
 - feat: `$PATH` is now composed once, at `dodot up`, into a single deduplicated `export PATH=` line in the generated init script, instead of one runtime prepend per pack at every shell start. Three fixed tiers, highest first: pack directories (lexicographic pack order, last pack on disk wins the front of `$PATH`), then Homebrew/toolchains (fixed below every pack), then the inherited system `$PATH`. A leftover `001-homebrew` pack that duplicates brew's `bin` collapses into Homebrew's one entry at that lower tier, instead of a second copy at the front of `$PATH`. Reading a directory listing and reading `$PATH` run in opposite directions: packs `001-foo`, `200-bar`, `baz` on disk become `baz:bar:foo:…system` in `$PATH` (#340, #346).
 - feat: `dodot probe shell-init`'s default view now includes a PATH provenance block that answers where each pack-attributed directory came from — `declared` (a path-handler directory, part of the composed line) or `raw` (a mutation a pack's own shell script made, captured around that pack at shell start). Raw `export PATH=` lines are not warned about, classified, or blocked; they still take effect as the script wrote them. Only directories the pack actually introduced are attributed, so an append such as `PATH="$PATH:/opt/foo"` records `/opt/foo` and not the rest of `$PATH` (#341, #346).
 
