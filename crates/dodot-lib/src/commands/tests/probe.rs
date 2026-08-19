@@ -985,6 +985,12 @@ fn probe_shell_init_path_provenance_is_empty_before_any_up() {
     let json = render::render("probe", &result, OutputMode::Json).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["path_provenance"].as_array().unwrap().len(), 0);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("PATH provenance"),
+        "the section header must render even with no rows:\n{text}"
+    );
 }
 
 // ── up command misc ─────────────────────────────────────────────
