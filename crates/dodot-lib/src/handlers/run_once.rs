@@ -29,7 +29,12 @@
 //! `dodot status` renders this three-way result as `pending` /
 //! `deployed` / `older version (N lines added, M removed)` rows; the
 //! `--diff` flag dumps the underlying snapshot-vs-current unified
-//! diff for the third state.
+//! diff for the third state. The third row also carries a footnote
+//! naming `dodot up --provision-rerun`, since the label alone states
+//! the condition and leaves the user nothing to act on. A fourth row
+//! comes from outside this model: `--no-provision` drops the handler
+//! before it is consulted at all, and those files render as
+//! `skipped (--no-provision)`.
 //!
 //! # Snapshots
 //!

@@ -113,7 +113,7 @@ Storage
 
     The file content is `completed|{timestamp}` — one line, the literal string `completed`, a pipe, and a Unix epoch timestamp.
 
-    Because the checksum is part of the sentinel name, any change to the input content produces a new sentinel name, which causes the handler to re-run automatically. This is how dodot detects that an `install.sh` has been edited or that a preprocessor produced different output on a new machine.
+    Because the checksum is part of the sentinel name, any change to the input content produces a new sentinel name — which is how dodot detects that an `install.sh` has been edited or that a preprocessor produced different output on a new machine. For the run-once handlers (install, homebrew, nix) detection is not application: [`DataStore::did_run`] reports the mismatch as `RanDifferent`, the executor skips the command with a "ran older version" notice, and applying the edit takes `dodot up --provision-rerun`. The external handler is the exception — a changed signature re-fetches on the spot, since there is no user-authored code to hold back.
 
     Sentinels are cheap to inspect, cheap to delete, and contain no information you can't reproduce. Deleting one by hand is a supported way to force a re-run of its handler without using `--provision-rerun`.
 

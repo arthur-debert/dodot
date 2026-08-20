@@ -41,7 +41,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     Two flags interact with this split:
 
-    - `--no-provision` skips every code-execution handler on this run — the three above, plus `external`, whose `externals.toml` fetches are skipped along with them. Useful when you want a fast `up` that re-links configuration without paying for `brew bundle`, `nix profile install`, or your install script.
+    - `--no-provision` skips every code-execution handler on this run — the three above, plus `external`, whose `externals.toml` fetches are skipped along with them. Useful when you want a fast `up` that re-links configuration without paying for `brew bundle`, `nix profile install`, or your install script. Each skipped file still gets a row, labelled `skipped (--no-provision)` — the run reports the choice you made rather than the datastore state it never consulted, and the label stays distinct from a host-gated file's `gated out (…)`.
     - `--provision-rerun` forces provisioning handlers to run whatever their sentinel says. This is how you apply an edited `install.sh`, `Brewfile`, or `packages.nix`, since a plain `up` reports the edit and leaves it pending. It also re-executes an *unchanged* file — confirming `brew bundle` is still happy, or re-running an install script after manually undoing what it did.
 
 4. Flags

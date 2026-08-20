@@ -19,6 +19,11 @@
 //! Dry-run keeps the per-intent rendering since there's no
 //! post-execution state to verify.
 //!
+//! Both renderings additionally place a row for every file
+//! `--no-provision` dropped during planning. Those files produce no
+//! intent and no operation, so nothing else in either path would
+//! mention them — the user's own choice would read as an empty pack.
+//!
 //! ## Failures
 //!
 //! A failed operation is contained to the file it happened to: the
@@ -116,6 +121,11 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
 
     let mut pack_intents: Vec<(String, Vec<HandlerIntent>)> = Vec::with_capacity(packs.len());
     let mut intent_errors: Vec<PackResult> = Vec::new();
+    // Per-pack record of what `--no-provision` dropped. Only the
+    // dry-run renderer reads it: a real run renders through
+    // `status::status()`, which reads the same list off its own
+    // planning pass. Empty on every run without `--no-provision`.
+    let mut pack_skips: Vec<(String, Vec<orchestration::ProvisionSkip>)> = Vec::new();
 
     for pack in &packs {
         // Active when actually deploying; Passive on `--dry-run`. The
@@ -130,6 +140,9 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         match orchestration::plan_pack(pack, ctx, mode) {
             Ok(plan) => {
                 warnings.extend(plan.warnings);
+                if !plan.provision_skipped.is_empty() {
+                    pack_skips.push((pack.display_name.clone(), plan.provision_skipped));
+                }
                 pack_intents.push((pack.display_name.clone(), plan.intents));
             }
             Err(e) => {
@@ -162,11 +175,12 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // init script and the deployed user-side links — instead of
     // lingering as a stale entry that points at a now-missing source.
     //
-    // Provisioning handlers (install, homebrew) are deliberately left
-    // alone. Their sentinels record "did this run with this content?"
-    // independently of whether the source still exists right now;
-    // wiping them would force install scripts and `brew bundle` to
-    // re-execute on every up, defeating the sentinel mechanism.
+    // Provisioning handlers (install, homebrew, nix) are deliberately
+    // left alone. Their sentinels record "did this run with this
+    // content?" independently of whether the source still exists right
+    // now; wiping them would force install scripts, `brew bundle`, and
+    // `nix profile install` to re-execute on every up, defeating the
+    // sentinel mechanism.
     let mut pack_results: Vec<PackResult> = intent_errors;
     let config_handlers = if ctx.dry_run {
         Vec::new()
@@ -346,7 +360,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // post-execution state to verify, and the user wants to see the planned
     // changes, not the unchanged current state.
     let (display_packs, notes) = if ctx.dry_run {
-        render_intents(&pack_results, ctx.paths.home_dir())
+        render_intents(&pack_results, &pack_skips, ctx.paths.home_dir())
     } else {
         let pack_names: Vec<String> = packs.iter().map(|p| p.display_name.clone()).collect();
         let status_result = status::status(Some(&pack_names), ctx)?;
@@ -530,11 +544,18 @@ fn wipe_configuration_state(
 /// there's no executed state to verify and the user wants to see the
 /// planned changes rather than the unchanged status quo.
 ///
+/// `pack_skips` carries the files `--no-provision` dropped during
+/// planning, keyed by pack display name. They produced no intent and
+/// so no operation; without them the preview would simply omit the
+/// files the user asked to skip, which reads as "dodot found nothing
+/// here" rather than "you told me not to".
+///
 /// Returns (packs, notes). Failed operations keep their row but receive a
 /// `note_ref` into the command-wide notes list, keeping the column layout
 /// intact.
 fn render_intents(
     pack_results: &[PackResult],
+    pack_skips: &[(String, Vec<orchestration::ProvisionSkip>)],
     home: &std::path::Path,
 ) -> (Vec<DisplayPack>, Vec<DisplayNote>) {
     let mut notes: Vec<DisplayNote> = Vec::new();
@@ -567,6 +588,18 @@ fn render_intents(
                     }
                 })
                 .collect();
+
+            if let Some((_, skips)) = pack_skips.iter().find(|(name, _)| name == &pr.pack_name) {
+                files.extend(skips.iter().map(|skip| DisplayFile {
+                    name: skip.relative_path.clone(),
+                    symbol: handler_symbol(&skip.handler).into(),
+                    description: handler_description(&skip.handler, &skip.relative_path, None),
+                    status: "skipped".into(),
+                    status_label: crate::commands::PROVISION_SKIPPED_LABEL.into(),
+                    handler: skip.handler.clone(),
+                    note_ref: None,
+                }));
+            }
 
             if let Some(err) = &pr.error {
                 notes.push(DisplayNote::error(err.clone()));

@@ -45,7 +45,7 @@ Deploys content that isn't authored by you but comes from upstream and should be
 
 4. type = "git-repo"
 
-    A shallow clone (`git clone --depth=1 --filter=blob:none`) into the datastore. Per-run freshness is upstream-driven: each `dodot up` runs `git ls-remote` to see whether the remote SHA has moved, and only re-fetches when it has.
+    A shallow clone (`git clone --depth=1 --filter=blob:none`) into the datastore. Per-run freshness is upstream-driven by default: each `dodot up` runs `git ls-remote` to see whether the remote SHA has moved, and only re-fetches when it has. Pinning changes what gets polled — `ref` points `ls-remote` at a tag or branch, `commit` skips the poll entirely (both below).
 
     Minimal entry:
 

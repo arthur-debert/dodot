@@ -47,6 +47,13 @@ pub struct MessageResult {
 
 // ── Shared display types ────────────────────────────────────────
 
+/// Row label for a file whose handler `--no-provision` dropped from
+/// this run. Shared by the two renderers (`status`'s health labels and
+/// `up --dry-run`'s intent rendering) so the same skip never reads two
+/// ways. Deliberately names the flag: the condition is the user's own
+/// choice, and dropping the flag is the remedy.
+pub const PROVISION_SKIPPED_LABEL: &str = "skipped (--no-provision)";
+
 /// Handler symbols matching the Go implementation.
 pub fn handler_symbol(handler: &str) -> &'static str {
     match handler {
@@ -58,6 +65,7 @@ pub fn handler_symbol(handler: &str) -> &'static str {
         "nix" => "⚙",
         "skip" => "·",
         "gate" => "·",
+        "external" => "↓",
         _ => "?",
     }
 }
@@ -92,6 +100,7 @@ pub fn handler_description(handler: &str, rel_path: &str, user_target: Option<&s
         "nix" => "nix profile install".into(),
         "skip" => "not deployed".into(),
         "gate" => "not deployed".into(),
+        "external" => "fetch externals".into(),
         _ => String::new(),
     }
 }

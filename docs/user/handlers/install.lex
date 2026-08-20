@@ -28,8 +28,8 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
     Three flags interact with the gating:
 
-    - `--no-provision` — skip both install and homebrew handlers entirely on this run.
-    - `--provision-rerun` — the canonical "apply pending content edits" escape hatch for run-once handlers. Re-executes install / homebrew even when a sentinel exists. Use it after editing `install.sh` or `Brewfile` to opt back into running the new content.
+    - `--no-provision` — skip every code-execution handler entirely on this run: install, homebrew, nix, and external. The skipped files still get a row, labelled `skipped (--no-provision)`, so a run you asked to be partial doesn't look like a pack dodot found nothing in.
+    - `--provision-rerun` — the canonical "apply pending content edits" escape hatch for the run-once handlers: install, homebrew, and nix. Re-executes them even when a sentinel exists. Use it after editing `install.sh` to opt back into running the new content.
     - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does **not** trigger run-once re-execution.
 
 4. Editing an install script after it ran (the three states)

@@ -88,7 +88,7 @@ impl<'a> Executor<'a> {
                         relative_path,
                         previous_hash,
                         current_hash = content_hash,
-                        "older-version sentinel found, skipping (run with --force to apply)"
+                        "older-version sentinel found, skipping (run with --provision-rerun to apply)"
                     );
                     let op = Operation::CheckSentinel {
                         pack: pack.clone(),
@@ -98,7 +98,7 @@ impl<'a> Executor<'a> {
                     return Ok(vec![OperationResult::ok(
                         op,
                         format!(
-                            "ran older version of {relative_path} — run `dodot up --force` to apply current"
+                            "ran older version of {relative_path} — run `dodot up --provision-rerun` to apply the current one"
                         ),
                     )]);
                 }
@@ -211,7 +211,7 @@ impl<'a> Executor<'a> {
                         return vec![OperationResult::ok(
                             op,
                             format!(
-                                "[dry-run] would skip (ran older version of {relative_path}; --force to apply)"
+                                "[dry-run] would skip (ran older version of {relative_path}; run `dodot up --provision-rerun` to apply the current one)"
                             ),
                         )];
                     }
@@ -377,13 +377,69 @@ mod tests {
             results[0].message
         );
         assert!(
-            results[0].message.contains("--force"),
-            "msg: {}",
+            results[0].message.contains("--provision-rerun"),
+            "the notice must name the flag that actually re-runs a run-once \
+             handler; `--force` only overwrites pre-existing files at symlink \
+             targets. msg: {}",
             results[0].message
         );
         assert!(
             runner.calls.lock().unwrap().is_empty(),
             "command must not run on older-version detection"
+        );
+    }
+
+    /// `--dry-run` must name the same remedy the real run does. A
+    /// preview that points at a different flag than the command it
+    /// previews sends the user somewhere the real run won't honour.
+    #[test]
+    fn dry_run_older_version_notice_names_provision_rerun() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        let sentinel_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        env.fs
+            .write_file(
+                &sentinel_dir.join("install.sh-aaaaaaaaaaaaaaaa"),
+                b"completed|12345",
+            )
+            .unwrap();
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            true, // dry_run
+            false,
+            false,
+            true,
+        );
+        let results = executor
+            .execute(vec![run_intent(
+                "vim",
+                "install",
+                "echo",
+                &["new-content"],
+                "install.sh",
+                "bbbbbbbbbbbbbbbb",
+            )])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].message.contains("--provision-rerun"),
+            "msg: {}",
+            results[0].message
+        );
+        assert!(
+            !results[0].message.contains("--force"),
+            "msg: {}",
+            results[0].message
+        );
+        assert!(
+            runner.calls.lock().unwrap().is_empty(),
+            "dry-run must not execute anything"
         );
     }
 

@@ -1,6 +1,6 @@
 Handlers
 
-    A handler is the thing that decides what to do with a file once dodot has decided to process it. Each handler has exactly one job: link configs, source shell scripts, add directories to `$PATH`, run install scripts once, or install Brewfiles. This document describes the handlers dodot ships, the rules for how matches flow to them, and the distinction between handlers that always run and handlers that run once.
+    A handler is the thing that decides what to do with a file once dodot has decided to process it. Each handler has exactly one job: link configs, source shell scripts, add directories to `$PATH`, fetch external content, run install scripts once, or install packages from a Brewfile or `packages.nix`. This document describes the handlers dodot ships, the rules for how matches flow to them, and the distinction between handlers that always run and handlers that run once.
 
     See [./terms-and-concepts.lex] for terminology used throughout.
 
@@ -99,7 +99,7 @@ Handlers
 
 4. Cross-Pack Ordering
 
-    Within a pack, handlers run in the phase order above. *Across* packs, dodot processes packs in lexicographic order of their on-disk directory names — and that order determines every cross-pack effect: shell init source order, `$PATH` entry order, install and homebrew execution order.
+    Within a pack, handlers run in the phase order above. *Across* packs, dodot processes packs in lexicographic order of their on-disk directory names — and that order determines every cross-pack effect: shell init source order, `$PATH` entry order, code-execution order.
 
     Most users never have to think about this. The `nvim` pack and the `git` pack don't care whose shell snippets are sourced first, and lex order over readable names lands somewhere sensible.
 
@@ -137,7 +137,7 @@ Handlers
 
 5. Configuration vs Code Execution
 
-    Handlers fall into two categories that behave differently at deploy time. Category is derived from phase (`Provision` and `Setup` are Code Execution; the rest are Configuration).
+    Handlers fall into two categories that behave differently at deploy time. Category is derived from phase (`External`, `Provision`, and `Setup` are Code Execution; the rest are Configuration).
 
     5.1. Configuration handlers
 
@@ -145,14 +145,18 @@ Handlers
 
     5.2. Code execution handlers
 
-        install and homebrew. Their operations run user-authored shell commands. These are assumed _not_ to be idempotent in general — `install.sh` might install packages, write files, mutate the system — and re-running them on every `dodot up` would be slow, surprising, or both. Even Brewfile processing, though nominally idempotent, can take many seconds per pack.
+        install, homebrew, nix, and external. The first three run user-authored commands; the fourth pulls remote content into place. None are assumed idempotent — `install.sh` might install packages, write files, mutate the system — and repeating that work on every `dodot up` would be slow, surprising, or both. Even Brewfile processing, though nominally idempotent, can take many seconds per pack.
 
-        dodot solves this with sentinels. When a code-execution handler runs, it writes a small marker file to the datastore keyed by pack, handler, and a content hash of the command. On subsequent deploys, the presence of that sentinel causes the handler to skip. To override:
+        dodot solves this with sentinels. When a code-execution handler acts, it writes a small marker file to the datastore keyed by pack, handler, and a content signature. On subsequent deploys, that sentinel is what decides whether to act again. Two flags override the decision:
 
-        - `--no-provision` skips code-execution handlers entirely for this run. Configuration handlers still run.
-        - `--provision-rerun` forces code-execution handlers to run even when sentinels exist. Use after changing an install script, or to re-run `brew bundle` after adding a formula.
+        - `--no-provision` skips all four code-execution handlers entirely for this run. Configuration handlers still run. Each skipped file still gets a status row, labelled `skipped (--no-provision)`, so a run you asked to be partial doesn't read as an empty pack.
+        - `--provision-rerun` forces the run-once handlers — install, homebrew, nix — to run even when sentinels exist. Use after changing an install script, or to re-run `brew bundle` after adding a formula. It has no effect on external, which decides for itself.
 
-        When the content of a code-execution input changes (you edited `install.sh`, or the rendered output of `install.sh.tmpl` changed), the sentinel's content hash no longer matches, and the handler re-runs automatically. You only need `--provision-rerun` when you want to re-run without an input change.
+        The four split into two freshness rules, and the split is the thing to remember:
+
+        *Run-once — install, homebrew, nix.* When the content of a run-once input changes (you edited `install.sh`, or the rendered output of `install.sh.tmpl` changed), the sentinel's content hash no longer matches — but the handler does *not* re-run on its own. `dodot up` reports the file as `older version` and holds it; `--provision-rerun` is what applies the edit. Running code you edited is always an explicit request.
+
+        *External.* `externals.toml` entries refresh on their own, because there is no user-authored code to re-run — only content to keep current. Each entry's sentinel payload is its content signature, and what supplies that signature depends on the entry type. `file`, `archive`, and `archive-file` use the sha256 you wrote down, so editing the TOML is the only thing that can trigger a re-fetch. A `git-repo` tracks upstream instead, via a cheap `git ls-remote` on every `up` — against `HEAD`, or against the tag or branch in `ref` when the entry pins one — and refreshes when that SHA moves; an entry pinned to a `commit` polls nothing at all and refreshes only when you change the pin. Either way the decision is the handler's, and `--provision-rerun` has no say in it. See [./../user/handlers/external.lex] for the per-type detail.
 
 6. Quick Reference
 
@@ -161,7 +165,9 @@ Handlers
         | Handler  | Phase       | Category       | Default claims                                     | Effect                              |
         | ignore   | Filter      | Configuration  | None (user-configured via `[mappings] ignore`)     | Silently drop; no status entry      |
         | skip     | Filter      | Configuration  | `README.*`, `LICENSE.*`, `CHANGELOG.*`, etc.       | List in status as `skipped`         |
+        | external | External    | Code Execution | `externals.toml`                                   | Fetch when its signature changes    |
         | homebrew | Provision   | Code Execution | `Brewfile`                                         | `brew bundle` once per content hash |
+        | nix      | Provision   | Code Execution | `packages.nix`                                     | `nix profile install` once per hash |
         | install  | Setup       | Code Execution | `install.{sh,bash,zsh}`                            | Run once per content hash           |
         | path     | PathExport  | Configuration  | `bin/`                                             | Prepended to `$PATH`                |
         | shell    | ShellInit   | Configuration  | `*.{sh,bash,zsh}` at pack root                     | Sourced at shell login              |
