@@ -25,7 +25,9 @@ pub struct ExecutionContext {
     /// (spawns real `bash`/`zsh -n`); tests inject a mock.
     pub syntax_checker: Arc<dyn crate::shell::SyntaxChecker>,
     /// Subprocess runner for advisory probes (homebrew-cask lookup,
-    /// macOS `mdls`/`mdfind`). Production reuses the same
+    /// macOS `mdls`/`mdfind`, and `up`'s provisioner fitness probe —
+    /// [`fitness::probe`](crate::provisioners::fitness::probe)).
+    /// Production reuses the same
     /// [`ShellCommandRunner`](crate::datastore::ShellCommandRunner)
     /// the datastore uses for handler-driven commands; tests inject a
     /// mock that returns canned outputs without spawning processes.

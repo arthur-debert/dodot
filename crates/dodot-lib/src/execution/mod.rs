@@ -12,7 +12,7 @@
 
 mod fetch;
 mod link;
-mod run;
+pub(crate) mod run;
 mod stage;
 
 use tracing::debug;

@@ -7,7 +7,7 @@ Runs `brew bundle` against your source `Brewfile` once per content-hash, tracked
 
     A source file named `Brewfile` at the pack root. Single-string match — the homebrew handler claims one Brewfile per pack.
 
-    macOS-only in practice, since `brew` itself is macOS-and-linux-but-mostly-macOS. dodot does not gate the handler by OS; on a host without `brew` installed, the bundle simply fails. Use a `[pack] os` predicate or a `_darwin/` directory-gate if you need the pack itself to no-op on non-mac hosts.
+    macOS-only in practice, since `brew` itself is macOS-and-linux-but-mostly-macOS. dodot does not gate the handler by OS; on a host without `brew` installed, dodot skips the file and says where it looked, rather than running a bundle that cannot work. Use a `[pack] os` predicate or a `_darwin/` directory-gate if you need the pack itself to no-op on non-mac hosts.
 
 2. Sentinels
 
@@ -46,6 +46,18 @@ Runs `brew bundle` against your source `Brewfile` once per content-hash, tracked
 
     - *No upgrades.* `brew bundle` upgrades every outdated formula it encounters by default. dodot passes `--no-upgrade`, so a run installs what the Brewfile declares and leaves the rest of your machine's packages at the versions they were. Upgrading stays something you ask for, with `brew upgrade`.
     - *No auto-update.* The first brew invocation of a day normally runs a `brew update` first — a network round-trip that upgrades brew and its taps and takes seconds before your packages get a look in. dodot suppresses it, so `dodot up` costs what your Brewfile costs. Updating brew stays something you ask for, with `brew update`.
+
+    Suppressing the auto-update has one consequence dodot then has to cover for you. A `Brewfile` may declare `go`, `cargo`, `uv`, `npm`, and `krew` entries alongside `brew` and `cask`, and those entry types need Homebrew 5.1.2 or newer — brew's own auto-update would normally have carried an older installation past that line without you noticing. With auto-update off, an old brew stays old, so before running your `Brewfile` dodot asks `brew --version` and tells you if it is below 5.1.2, with `brew update` as the remedy:
+
+        homebrew at /opt/homebrew/bin/brew is 5.0.16, older than 5.1.2: `Brewfile` entries
+        for go, cargo, uv, npm, and krew fail to parse. Run `brew update` to update it.
+        dodot runs this file anyway — everything that does not need the newer brew still works.
+
+    :: console ::
+
+    It is a report, not a refusal: dodot does not read your `Brewfile`, so it does not know whether yours uses any of those entry types, and a `Brewfile` of plain `brew` lines runs perfectly on an older installation. The point is that if a line does fail afterwards, you are looking at a named condition with a remedy instead of a parse error out of `brew bundle`.
+
+    A brew at or above the floor says nothing at all, and the question is asked only by `dodot up`, only when a `Brewfile` is actually about to run, and once per machine per run however many packs declare one. `dodot status` and `dodot up --dry-run` never spawn brew.
 
     The variable is layered onto the environment dodot is running with, not substituted for it: the `brew` process still sees your `PATH`, `HOME`, and the rest of your `HOMEBREW_*` settings. The one exception is `HOMEBREW_NO_AUTO_UPDATE` itself — dodot's value wins for the bundle it runs, so a `HOMEBREW_NO_AUTO_UPDATE=0` you export does not re-enable auto-update here. Run `brew bundle` yourself if you want brew's defaults back for a particular run.
 
