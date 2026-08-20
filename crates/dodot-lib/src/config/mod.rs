@@ -314,9 +314,10 @@ pub struct ShellSection {
     /// regenerates the script.
     ///
     /// - `"auto"` (default) — emit the block whenever this host has an
-    ///   executable `brew` under a known prefix (macOS only). Nothing is
-    ///   emitted when brew is absent; the next `dodot up` picks it up
-    ///   once installed.
+    ///   executable `brew` under a known prefix, on macOS or on Linux
+    ///   (`/home/linuxbrew/.linuxbrew` and `~/.linuxbrew` are probed
+    ///   alongside the macOS prefixes). Nothing is emitted when brew is
+    ///   absent; the next `dodot up` picks it up once installed.
     /// - `"off"` — never emit it. Reach for this if you bootstrap
     ///   Homebrew yourself, or want nothing but dodot's own PATH lines
     ///   in the init script.
