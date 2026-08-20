@@ -72,7 +72,7 @@ Proposal: Provisioning Handlers
 
     1.4. The Nix Pillar Is Unsettled
 
-        The reason to support Nix is not Linux coverage — Homebrew already provides that. It is that Nix _can_ pin exact package versions on both platforms, where Homebrew installs whatever is current and offers no pin at all. The capability is Nix's; it is not yet dodot's, because the manifest shape dodot ships resolves `<nixpkgs>` from the user's mutable `NIX_PATH`. See [#7.4].
+        The reason to support Nix is not Linux coverage — Homebrew already provides that. It is that Nix _can_ pin exact package versions on both platforms, where a `Brewfile` installs whatever is current and cannot portably declare either an exact version or the tap snapshot it resolves against. The capability is Nix's; it is not yet dodot's, because the manifest shape dodot ships resolves `<nixpkgs>` from the user's mutable `NIX_PATH`. See [#7.4].
 
         That is a narrower claim than "Nix is the reproducible one", and deliberately so. dodot's use of Nix does not converge a machine on its manifest, and the routes to making it do so are either destructive to existing users or corrosive to the uniformity this proposal is built on. See [#7].
 
@@ -94,7 +94,7 @@ Proposal: Provisioning Handlers
 
     Per handler:
         | Handler | Axis 1 | Axis 3 |
-        | `install` | probe the interpreter the extension selected — `bash`, or `zsh` for `.zsh` | *unknowable* — dodot cannot know what the script wrote or where |
+        | `install` | probe the interpreter the extension selected — `bash`, or `zsh` for `.zsh` | _unknowable_ — dodot cannot know what the script wrote or where |
         | `homebrew` | probe fixed candidate prefixes | dodot owns the PATH entry, via `brew shellenv` — on macOS today, and a requirement rather than a fact on Linux; see [#3.2] |
         | `nix` | probe fixed candidate prefixes | the Nix installer owns it |
 
@@ -290,9 +290,11 @@ Proposal: Provisioning Handlers
         Not "Nix is the reproducible option and Homebrew is not". The distinction that survives is narrower and truer, and it is the one users feel:
 
         - _Nix can pin._ A derivation resolves to exact bits, so a manifest naming an explicitly pinned `nixpkgs` yields the same versions on every machine, now and later.
-        - _Homebrew cannot._ A `Brewfile` yields whatever is current when it runs, and offers no pin at any version.
+        - _A `Brewfile` cannot, portably._ It yields whatever is current when it runs.
 
-        The pin is Nix's to offer and not yet dodot's to deliver, and the difference matters enough to state rather than blur. The manifest shape dodot documents and its wrapper expression relies on — `{ pkgs ? import <nixpkgs> {} }` — resolves `<nixpkgs>` from the user's mutable `NIX_PATH`. A derivation is immutable once evaluated, but the manifest that produces it is not: two machines on different channels, or the same machine after `nix-channel --update`, evaluate the same `packages.nix` to different derivations. [./shipped/nix.lex] §9.2 already records pinned-`nixpkgs` injection as an unshipped v2 mode, and the user documentation lists the same gap. So today the honest form of the distinction is _Nix can be pinned and Homebrew cannot_, with the pinning itself a manifest the user writes and a mode dodot has yet to support.
+        Homebrew is not without version controls, and the distinction is worth drawing precisely rather than categorically. Two exist and neither closes the gap. A `Brewfile` can name a versioned formula — `postgresql@14` — where Homebrew publishes one, and that much travels between machines; verified by execution, `postgresql@14` resolves to 14.24, so what the manifest declares is a series and not a version. `brew pin` freezes an installed formula against `brew upgrade`, but it is machine-local state under the prefix that `brew bundle dump` does not emit, so no manifest carries it and a second machine does not inherit it. What a `Brewfile` cannot express is the thing being contrasted here: an arbitrary exact version, or a snapshot of the tap it resolves against.
+
+        The pin is Nix's to offer and not yet dodot's to deliver, and that difference matters enough to state rather than blur. The manifest shape dodot documents and its wrapper expression relies on — `{ pkgs ? import <nixpkgs> {} }` — resolves `<nixpkgs>` from the user's mutable `NIX_PATH`. A derivation is immutable once evaluated, but the manifest that produces it is not: two machines on different channels, or the same machine after `nix-channel --update`, evaluate the same `packages.nix` to different derivations. [./shipped/nix.lex] §9.2 already records pinned-`nixpkgs` injection as an unshipped v2 mode, and the user documentation lists the same gap. So the honest form of the distinction today is that Nix can express an exact, portable pin and a `Brewfile` cannot — with that pin a manifest the user writes and a mode dodot has yet to support.
 
         What neither provides through dodot is convergence: removing a line from either file uninstalls nothing. That is the same "ensure installed" position [./shipped/nix.lex] §4 already states, now stated for all three provisioners rather than for Nix alone.
 
