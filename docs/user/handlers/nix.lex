@@ -42,19 +42,29 @@ Runs `nix profile install` against your source `packages.nix` once per content-h
 
     Rather than dispatch on manifest shape, dodot wraps the manifest in a shape-normalizing Nix expression before installing. The install call is the same for every accepted shape:
 
-        nix profile install --expr '
-          let raw = import "<abs-path-to-packages.nix>";
+        nix profile install --impure \
+          --extra-experimental-features 'nix-command flakes' \
+          --argstr manifest <abs-path-to-packages.nix> \
+          --expr '{ manifest }:
+          let raw = import manifest;
               m = if builtins.isFunction raw then raw {} else raw;
           in
             if builtins.isList m then m
             else if builtins.isAttrs m && (m.type or null) == "derivation" then [ m ]
             else if builtins.isAttrs m then builtins.attrValues m
-            else throw "unsupported shape"' \
-          --extra-experimental-features 'nix-command flakes'
+            else throw "unsupported shape"'
 
     :: text ::
 
     The wrapper imports the manifest, applies the outer function with `{}` when present (resolving the `pkgs` default), collapses list / derivation / attrset to a single list, and `nix profile install` installs that list directly — no selector needed for any shape.
+
+    Two details of that command line are worth knowing, because neither is incidental:
+
+    `--argstr manifest <path>`:
+        Your manifest's path travels as an argument, and the wrapper reads it as an ordinary Nix function parameter. The expression above is therefore byte-for-byte identical for every pack on every machine. It is also what lets dodot name the file it ran — in the progress header, and in the `.snapshot` it writes beside the sentinel for `dodot status --diff`.
+
+    `--impure`:
+        `nix profile install --expr` evaluates in Nix's *pure* mode, which refuses to read an absolute path outside the store — and that covers both your `packages.nix` and the `<nixpkgs>` the recommended `{ pkgs ? import <nixpkgs> {} }:` wrapper resolves from your `NIX_PATH`. Without the flag, every manifest shape documented above fails to evaluate. It is the same impurity a `nix-shell` or a `nix-env -f` invocation already has: what your `NIX_PATH` points at determines what you get. Pinning `nixpkgs` inside the manifest is the way to control that, and §9 records why dodot does not do it for you yet.
 
     There is no planning-time content validation: a syntax error or an unsupported shape inside `packages.nix` surfaces at apply time as a `nix` error, the same way a broken `Brewfile` surfaces a `brew bundle` error and a broken `install.sh` surfaces a `bash` error. dodot stays out of the business of writing its own Nix linter.
 

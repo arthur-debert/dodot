@@ -81,6 +81,14 @@ pub trait DataStore: Send + Sync {
     /// Idempotent: if the sentinel already exists, the command is not
     /// re-run. The sentinel file stores `completed|{timestamp}`.
     ///
+    /// Alongside the sentinel this writes a `<sentinel>.snapshot`
+    /// sibling holding the bytes of the manifest that ran, and names
+    /// that manifest in the run's progress header. Which argument
+    /// carries the manifest is declared per handler in
+    /// [`crate::provisioners`] — a handler with no descriptor there
+    /// runs normally but names no file, so it gets no snapshot and a
+    /// header naming the executable.
+    ///
     /// **Edge case**: if the command succeeds but the sentinel write
     /// fails, a subsequent call will re-run the command. This is by
     /// design — re-running is safer than falsely marking as complete.

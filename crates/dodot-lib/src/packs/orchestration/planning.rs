@@ -1263,7 +1263,10 @@ mod tests {
                 ..
             } => (
                 sentinel.clone(),
-                std::path::PathBuf::from(arguments.last().unwrap()),
+                std::path::PathBuf::from(
+                    crate::provisioners::manifest_argument("install", arguments)
+                        .expect("the install descriptor names the script argument"),
+                ),
             ),
             other => panic!("expected Run intent, got: {other:?}"),
         };
