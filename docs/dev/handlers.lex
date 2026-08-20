@@ -90,7 +90,7 @@ Handlers
 
             pub enum HandlerCategory {
                 Configuration,   // symlink, shell, path
-                CodeExecution,   // install, homebrew
+                CodeExecution,   // install, homebrew, nix, external
             }
 
         :: rust ::
@@ -184,13 +184,13 @@ Handlers
 
         The arguments are `["--", "<absolute_path>"]`. The `--` ends option parsing so a script path that happens to start with `-` doesn't get interpreted as a flag.
 
-        Sentinel format: `<filename>-<checksum>`, where `<filename>` is the script's basename (e.g. `install.sh`) and `<checksum>` is the first 16 hex chars of `SHA-256(file_contents)`. Editing the script changes the checksum, which produces a new sentinel name, which causes the handler to re-run automatically.
+        Sentinel format: `<filename>-<checksum>`, where `<filename>` is the script's basename (e.g. `install.sh`) and `<checksum>` is the first 16 hex chars of `SHA-256(file_contents)`. Editing the script changes the checksum, and so the sentinel name dodot looks for — but a missing sentinel is not the same as a run. [`DataStore::did_run`] classifies three ways and only `NeverRan`, meaning no sentinel for this file under any checksum, falls through and executes. A sentinel recorded under a *different* checksum is `RanDifferent`, which skips with a "ran older version" notice rather than applying the edit. Getting edited content to run takes `dodot up --provision-rerun`, which bypasses both skip cases.
 
         Output handling lives in the runner, not the handler. [`ShellCommandRunner`] (`crates/dodot-lib/src/datastore/mod.rs`) spawns the child with piped stdio, drains stderr in a worker thread, and scans stdout line-by-line — surfacing `# status: <message>` lines as live progress markers, passing the rest through only when the runner is constructed with `verbose: true` (wired from the CLI `--verbose` flag through [`ExecutionContext::production`]). The leading comment block is read by [`FilesystemDataStore::run_and_record`] before the runner is invoked, via the `extract_header_block` helper. On non-zero exit, captured stderr is dumped to the user's stderr even when not verbose, so failures stay debuggable.
 
     4.5. `HomebrewHandler`
 
-        File: `handlers/homebrew.rs`. Same shape as install — holds an `&dyn Fs` for content hashing, emits `HandlerIntent::Run`. The executable is hardcoded to `"brew"` and the arguments are `["bundle", "--file", "<absolute_path>"]`. Sentinel format matches install (`<filename>-<checksum>`); editing the Brewfile re-runs `brew bundle`.
+        File: `handlers/homebrew.rs`. Same shape as install — holds an `&dyn Fs` for content hashing, emits `HandlerIntent::Run`. The executable is hardcoded to `"brew"` and the arguments are `["bundle", "--file", "<absolute_path>"]`. Sentinel format matches install (`<filename>-<checksum>`), and so does the changed-content policy: editing the `Brewfile` does not re-run `brew bundle` by itself — see `InstallHandler` above.
 
     4.6. `IgnoreHandler` and `SkipHandler` (filter)
 

@@ -1,13 +1,13 @@
 :: verified ::
 dodot up
 
-The "make my live config match what's in this repo" command. Discovers your packs, dispatches each source file to the right handler, materialises symlinks and shell-init state, and runs install scripts and Brewfiles whose source content has changed since the last run. The command you'll actually run a lot.
+The "make my live config match what's in this repo" command. Discovers your packs, dispatches each source file to the right handler, materialises symlinks and shell-init state, and runs the install scripts, Brewfiles, and Nix package lists it has not run before. The command you'll actually run a lot.
 
 1. When you reach for it
 
     - First setup on a new machine: `dodot up` from inside the dotfiles repo.
     - You added or renamed source files in a pack: `dodot up` to register the changes.
-    - You edited a source `install.sh` or `Brewfile`: `dodot up` re-runs it, since its content hash has changed.
+    - You edited a source `install.sh`, `Brewfile`, or `packages.nix`: `dodot up --provision-rerun` to apply it. Plain `dodot up` reports the change and skips, rather than re-running code you edited.
     - You're about to merge a branch in your dotfiles repo: `dodot up --dry-run` to preview the diff before pulling the trigger.
 
     For day-to-day edits to source files that are *already* deployed (config files you symlinked, shell scripts already sourced), you do not need `dodot up` — those edits go live at the deployed location through the symlink chain. See the "Live edits" sections in [./../handlers/symlink.lex], [./../handlers/shell.lex], and [./../handlers/path.lex] for the per-handler specifics.
@@ -28,7 +28,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     2.3. Execute
 
-        For each pack, dodot wipes that pack's stored configuration-handler state (symlink/shell/path) and re-applies from current source. Provisioning handlers (install/homebrew) are gated on content-hash sentinels — they re-run when the source script's bytes have changed, skip otherwise. After all packs are processed, the shell init script is regenerated and the deployment map is written.
+        For each pack, dodot wipes that pack's stored configuration-handler state (symlink/shell/path) and re-applies from current source. Provisioning handlers (install/homebrew/nix) are gated on content-hash sentinels, three ways: a file with no sentinel runs, a file whose sentinel matches its current bytes is skipped silently, and a file whose bytes have changed since the recorded run is skipped with a "ran older version" notice. dodot does not re-execute code you edited on its own; `--provision-rerun` applies the edit. After all packs are processed, the shell init script is regenerated and the deployment map is written.
 
         The reconciliation in this phase is what makes `up` idempotent: deleting a source file from a pack and running `up` cleans up its previously-deployed symlink — there is no separate "reconcile" step.
 
@@ -37,20 +37,20 @@ The "make my live config match what's in this repo" command. Discovers your pack
     Two categories of handler behave differently under `up`:
 
     - *Configuration handlers* (`symlink`, `shell`, `path`) produce idempotent filesystem work. They run in full on every `up`.
-    - *Provisioning handlers* (`install`, `homebrew`) run user-authored code. They are tracked by content-hash sentinels and skip on re-run unless the source content has changed.
+    - *Provisioning handlers* (`install`, `homebrew`, `nix`) run user-authored code. They are tracked by content-hash sentinels and skip on re-run — including when the source content has changed, which `up` reports rather than applies. Running code you edited is always an explicit request.
 
     Two flags interact with this split:
 
-    - `--no-provision` skips provisioning handlers entirely on this run. Useful when you want a fast `up` that re-links configuration without paying for `brew bundle` or your install script.
-    - `--provision-rerun` forces provisioning handlers to run even when their sentinel matches. Use when you want to re-execute without changing the source — e.g. confirming `brew bundle` is still happy, or re-running an install script after manually undoing what it did.
+    - `--no-provision` skips every code-execution handler on this run — the three above, plus `external`, whose `externals.toml` fetches are skipped along with them. Useful when you want a fast `up` that re-links configuration without paying for `brew bundle`, `nix profile install`, or your install script.
+    - `--provision-rerun` forces provisioning handlers to run whatever their sentinel says. This is how you apply an edited `install.sh`, `Brewfile`, or `packages.nix`, since a plain `up` reports the edit and leaves it pending. It also re-executes an *unchanged* file — confirming `brew bundle` is still happy, or re-running an install script after manually undoing what it did.
 
 4. Flags
 
     Flags:
         | Flag                  | Effect                                                                                       |
         | `--dry-run`           | Plan and detect conflicts without making filesystem changes. Skips secret-provider preflight too — Passive mode. |
-        | `--no-provision`      | Skip install + homebrew handlers this run.                                                   |
-        | `--provision-rerun`   | Force install + homebrew to re-run even when sentinels match.                                |
+        | `--no-provision`      | Skip every code-execution handler this run: install, homebrew, nix, external.                 |
+        | `--provision-rerun`   | Apply an edited install script / Brewfile / `packages.nix`, or re-run an unchanged one.      |
         | `--force`             | Overwrite pre-existing target files when their location is already occupied. *Not* a fix for cross-pack conflicts. |
 
     :: table align=ll ::
@@ -104,8 +104,8 @@ The "make my live config match what's in this repo" command. Discovers your pack
         dodot up --dry-run             # show what would change
 
         # Provisioning controls
-        dodot up --no-provision        # skip install/brew this run
-        dodot up --provision-rerun     # force install/brew to re-execute
+        dodot up --no-provision        # skip install/brew/nix/external this run
+        dodot up --provision-rerun     # apply edited install/brew/nix content
 
         # Conflict resolution at the deployed location
         dodot up --force git           # overwrite an existing ~/.gitconfig
