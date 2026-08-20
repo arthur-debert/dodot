@@ -27,10 +27,13 @@ manager to find out.
 The first — and so far only — fitness question is Homebrew's version floor. A
 `Brewfile` may declare `go`, `cargo`, `uv`, `npm`, and `krew` entries, and dodot's
 position that the language-bound package managers are Homebrew's job rather than
-dodot's rests on exactly that. Those five entry types arrived across five
-releases, the last of them (`npm`, `krew`) in Homebrew 5.1.2 on 2026-03-30. Below
-that, a line the user was entitled to write comes back as a parse error out of
-`brew bundle` that names neither the version nor the fix.
+dodot's rests on exactly that. Those five entry types arrived across four
+releases — `go` in 4.6.17, `cargo` in 5.0.7, `uv` in 5.0.16, and `npm` and `krew`
+in 5.1.2 on 2026-03-30. Below the release that introduced a given entry type, a
+line the user was entitled to write comes back as a parse error out of `brew
+bundle` that names neither the version nor the fix. dodot declares the highest of
+the four as one floor and says so in the conditional: a brew at 5.0.16 gets the
+warning and runs a `Brewfile` of `go` and `cargo` entries perfectly.
 
 This would normally self-correct: brew auto-updates before most commands, which
 carries a stale installation over the floor on its own. dodot sets
@@ -70,8 +73,13 @@ and dodot would be wrong most of the times it fired.
 
 So the condition is named, with `brew update` as its remedy, *before* the file
 runs, and then the file runs. If a `go` line does fail afterwards, the
-explanation is already on screen. A manager at or above its floor produces no
-output at all.
+explanation is already on screen. "On screen" is meant literally, and is the
+reason `up` prints the warning where it asks the question rather than only
+returning it: the run's warning list reaches the terminal after `up` returns,
+while a failing `brew bundle` writes its stderr during Phase 3 — a warning that
+was only collected would land after the parse error it exists to explain. It is
+returned as well, since that list is what `--output json` carries. A manager at
+or above its floor produces no output at all.
 
 `ProbeFailed` — a `--version` that exits non-zero, prints nothing, or answers
 `>=4.1.0 (shallow or no git repository)`, which is a lower bound rather than a
@@ -88,8 +96,9 @@ manager's version at that moment is not part of that claim, and recording it
 would mean a `brew update` invalidated receipts it has nothing to do with.
 
 Where ADR-0008 says nothing is cached — three `Brewfile`s are three `stat` calls
-— this module is the place that ADR pointed at for a cache, because here the cost
-is a subprocess. `up` asks once per (manager, executable) pair per run, and does
+— the fitness question is the one that ADR pointed at for a cache, because here
+the cost is a subprocess. The caching lives with the caller rather than in the
+probe: `commands::up` asks once per (manager, executable) pair per run, and does
 not ask at all about a file whose receipt is already current: on the second `up`
 of the day the `Brewfile` is not going to run, and a subprocess bought to warn
 about a run that is not happening is a subprocess wasted.

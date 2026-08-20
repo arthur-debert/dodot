@@ -456,14 +456,24 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
 }
 
 /// Ask each manager this run is about to spawn whether it is well
-/// enough to use, and return what to tell the user about the ones
-/// that are not.
+/// enough to use, print what to tell the user about the ones that are
+/// not, and return the same text for the run's warning list.
 ///
 /// Asked here rather than during planning because planning is shared
 /// with `--dry-run`, and asked before Phase 3 rather than inside the
-/// executor because the answer is a *warning*: it belongs in the
-/// run's warning list, next to every other thing `up` noticed, and it
-/// has to be on screen before the manager's own parse error is.
+/// executor because the answer has to be on screen before the
+/// manager's own parse error is.
+///
+/// That last part is why the warning is *printed here* rather than
+/// only returned. `PackStatusResult::warnings` is printed by the CLI
+/// after `up` has returned, and a failing `brew bundle` writes its
+/// stderr straight to the user's terminal while it runs — so a
+/// warning that was only collected would arrive after the parse error
+/// it exists to explain, which is the wrong way round. It is still
+/// collected as well: the end-of-run warning list is what `--output
+/// json` serializes and what an API caller reads, and repeating one
+/// line in the run's summary costs less than dropping it from the
+/// machine-readable output.
 ///
 /// One spawn per (manager, executable) pair per run, however many
 /// packs declare a file for it — three packs with a `Brewfile` ask
@@ -478,6 +488,8 @@ fn provisioner_fitness_warnings(
     pack_intents: &[(String, Vec<HandlerIntent>)],
     ctx: &ExecutionContext,
 ) -> Vec<String> {
+    use std::io::Write;
+
     let mut asked: HashSet<(&str, &str)> = HashSet::new();
     let mut warnings = Vec::new();
     for (_, intents) in pack_intents {
@@ -517,6 +529,18 @@ fn provisioner_fitness_warnings(
             );
             if let Some(warning) = fitness.warning(handler, executable) {
                 tracing::warn!(handler = %handler, "{warning}");
+                // Now, on the user's stderr, and not only in the
+                // returned list: Phase 3 is about to spawn this
+                // manager, and its output goes to the same terminal.
+                // Tracing is not a substitute — in the default quiet
+                // mode it reaches the log file and nothing else.
+                //
+                // Written through `std::io::stderr()` rather than
+                // `eprintln!` so it is the same handle
+                // `ShellCommandRunner` forwards a failing command's
+                // stderr through: one descriptor, two writers, and
+                // the order on screen is the order things happened.
+                let _ = writeln!(std::io::stderr(), "dodot: {warning}");
                 warnings.push(warning);
             }
         }

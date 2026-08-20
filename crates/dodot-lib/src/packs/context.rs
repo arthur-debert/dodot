@@ -26,7 +26,7 @@ pub struct ExecutionContext {
     pub syntax_checker: Arc<dyn crate::shell::SyntaxChecker>,
     /// Subprocess runner for advisory probes (homebrew-cask lookup,
     /// macOS `mdls`/`mdfind`, and `up`'s provisioner fitness probe —
-    /// [`fitness::probe`](crate::provisioners::fitness::probe)).
+    /// [`fitness::probe`](crate::provisioners::fitness::probe).
     /// Production reuses the same
     /// [`ShellCommandRunner`](crate::datastore::ShellCommandRunner)
     /// the datastore uses for handler-driven commands; tests inject a

@@ -22,11 +22,11 @@
 //! A `Brewfile` may declare `go`, `cargo`, `uv`, `npm`, and `krew`
 //! entries alongside `brew` and `cask`, and dodot's position on the
 //! language-bound package managers rests on it: they are Homebrew's
-//! job, not dodot's. Those entry types arrived over five releases and
-//! the last of them — `npm` and `krew` — in Homebrew 5.1.2. Below
-//! that, the line the user was entitled to write fails as a parse
-//! error out of `brew bundle`, which names neither the version nor
-//! the remedy.
+//! job, not dodot's. Those entry types arrived across four releases,
+//! the last of them — `npm` and `krew` — in Homebrew 5.1.2. Below a
+//! given entry type's release, the line the user was entitled to
+//! write fails as a parse error out of `brew bundle`, which names
+//! neither the version nor the remedy.
 //!
 //! Brew's own auto-update would carry a stale installation over the
 //! floor without dodot doing anything. dodot sets
@@ -105,12 +105,18 @@ pub struct VersionFloor {
 /// make the language-bound package managers Homebrew's problem rather
 /// than dodot's.
 ///
-/// The earlier four are `go` (4.6.17), `cargo` (5.0.7), and `uv`
-/// (5.0.16); one floor covers all five because dodot does not read
-/// the `Brewfile` to find out which of them a user wrote.
+/// Support is staggered: `go` landed in 4.6.17, `cargo` in 5.0.7,
+/// `uv` in 5.0.16, and `npm`/`krew` in 5.1.2. dodot declares the
+/// highest of those as one floor because it does not read the
+/// `Brewfile` to find out which entry types a user wrote — which is
+/// also why [`Fitness::warning`] says *one of them may* fail rather
+/// than naming a line it has not seen. A brew at 5.0.16 runs a
+/// `Brewfile` of `go` and `cargo` entries perfectly, and still gets
+/// the warning.
 pub const HOMEBREW_VERSION_FLOOR: VersionFloor = VersionFloor {
     minimum: "5.1.2",
-    below: "`Brewfile` entries for go, cargo, uv, npm, and krew fail to parse",
+    below: "not all of the `Brewfile` entry types go, cargo, uv, npm, \
+            and krew are supported, and one of them may fail to parse",
     remedy: "brew update",
 };
 

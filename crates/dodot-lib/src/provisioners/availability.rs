@@ -52,9 +52,11 @@
 //! Re-probing is a handful of `stat` calls, so nothing is cached
 //! within a run: the probe stays a pure function of `(fs, host,
 //! handler)`, which is what makes the planner and status agree
-//! trivially. The cache belongs with
-//! [`fitness`](crate::provisioners::fitness), where the cost is a
-//! subprocess rather than a `stat`, and that is where it lives.
+//! trivially. Caching belongs with the fitness question, where the
+//! cost is a subprocess rather than a `stat`, and that is where it
+//! happens: `commands::up` asks
+//! [`fitness::probe`](crate::provisioners::fitness::probe) once per
+//! (manager, executable) pair per run.
 //!
 //! See `docs/adr/0008-availability-is-three-outcomes-one-probe.md`.
 

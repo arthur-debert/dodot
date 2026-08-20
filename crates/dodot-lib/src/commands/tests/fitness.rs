@@ -118,6 +118,103 @@ impl CommandRunner for BrewSaying {
     }
 }
 
+/// What `brew bundle` says on a brew too old for an `npm` line —
+/// close enough to the real thing for a test about *when* the user
+/// reads it.
+const BUNDLE_PARSE_ERROR: &str = "Error: Unknown Brewfile method: npm";
+
+/// A brew below the floor that then fails the bundle, writing to the
+/// terminal as it goes.
+///
+/// The stderr write is the part that matters:
+/// [`ShellCommandRunner`](crate::datastore::ShellCommandRunner)
+/// forwards a failed provisioning command's stderr to the user's own
+/// stderr while the run is still in progress. A fake that only
+/// returned the text would make the ordering this test is about
+/// unobservable.
+struct BrewTooOldForTheBundle;
+
+impl CommandRunner for BrewTooOldForTheBundle {
+    fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+        use std::io::Write;
+
+        if command.arguments == ["--version"] {
+            return Ok(CommandOutput {
+                exit_code: 0,
+                stdout: "Homebrew 5.0.16\n".to_string(),
+                stderr: String::new(),
+            });
+        }
+        if command.arguments.first().map(String::as_str) == Some("bundle") {
+            // Through `std::io::stderr()`, as `ShellCommandRunner`
+            // does — a fake that used `eprintln!` would write
+            // somewhere the user's terminal is not.
+            let _ = writeln!(std::io::stderr(), "{BUNDLE_PARSE_ERROR}");
+            return Err(crate::DodotError::CommandFailed {
+                command: format!("{} bundle", command.executable),
+                exit_code: 1,
+                stderr: format!("{BUNDLE_PARSE_ERROR}\n"),
+            });
+        }
+        Ok(CommandOutput {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        })
+    }
+}
+
+/// Serializes the redirection below — fd 2 is process-wide, and two
+/// captures at once would each take half of the other's output.
+static STDERR_CAPTURE: Mutex<()> = Mutex::new(());
+
+/// Run `body` with the process's stderr pointed at a temp file, and
+/// return its result alongside everything written there.
+///
+/// The only way to answer the question this module's headline test
+/// asks. dodot's warning and brew's parse error are two writers to
+/// one terminal, and no return value can say which of them the user
+/// reads first; the file can. Output from a test running concurrently
+/// may land in the capture too — harmless, since the assertions look
+/// for two specific lines and compare their positions.
+///
+/// `body` runs on a thread of its own because the test harness
+/// installs its own stderr sink per test thread, which `eprintln!`
+/// finds before fd 2. A fresh thread has no such sink, so its output
+/// goes to the file descriptor — which is what the user has.
+fn capturing_stderr<T: Send>(body: impl FnOnce() -> T + Send) -> (T, String) {
+    use std::io::Write;
+    use std::os::unix::io::AsRawFd;
+
+    let _serialized = STDERR_CAPTURE.lock().unwrap_or_else(|e| e.into_inner());
+    let file = tempfile::NamedTempFile::new().expect("a file to capture stderr into");
+    let saved = unsafe { libc::dup(libc::STDERR_FILENO) };
+    assert!(saved >= 0, "could not duplicate stderr");
+    assert!(
+        unsafe { libc::dup2(file.as_file().as_raw_fd(), libc::STDERR_FILENO) } >= 0,
+        "could not redirect stderr"
+    );
+
+    // Restore fd 2 even if `body` panics — leaving the process's
+    // stderr pointed at a deleted temp file would silence every test
+    // that ran afterwards.
+    let outcome = std::thread::scope(|scope| scope.spawn(body).join());
+
+    let _ = std::io::stderr().flush();
+    unsafe {
+        libc::dup2(saved, libc::STDERR_FILENO);
+        libc::close(saved);
+    }
+    let printed = std::fs::read_to_string(file.path()).expect("the capture file reads back");
+    match outcome {
+        Ok(value) => (value, printed),
+        Err(panic) => {
+            eprint!("{printed}");
+            std::panic::resume_unwind(panic)
+        }
+    }
+}
+
 /// Panics on any `--version` spawn, and succeeds quietly at
 /// everything else.
 ///
@@ -197,11 +294,9 @@ fn a_brew_below_the_floor_is_named_with_its_remedy_and_the_file_still_runs() {
 }
 
 #[test]
-fn the_warning_lands_before_the_brewfile_runs() {
-    // The point of checking rather than assuming: when `brew bundle`
-    // does fail on an `npm` line, the explanation is already on
-    // screen instead of arriving as a parse error the user has to
-    // decode.
+fn the_version_question_is_asked_before_the_brewfile_runs() {
+    // Spawn order only — that the question precedes the work. What
+    // the *user* sees, and in which order, is the sibling test below.
     let env = env_with_a_brewfile();
     install_fake_brew(&env);
     let runner = BrewSaying::new("5.0.16");
@@ -218,6 +313,44 @@ fn the_warning_lands_before_the_brewfile_runs() {
         .position(|s| s.arguments.first().map(String::as_str) == Some("bundle"))
         .expect("the Brewfile ran");
     assert!(asked < ran, "the version question comes first");
+}
+
+#[test]
+fn the_warning_reaches_the_terminal_before_the_bundle_does() {
+    // The claim the whole feature rests on: when `brew bundle` fails
+    // on an `npm` line, the explanation is *already on screen*. That
+    // is a claim about output, not about spawn order — the warning
+    // also travels in `PackStatusResult::warnings`, which the CLI
+    // prints only after `up` has returned, long after brew has
+    // written its own diagnostics to the same terminal. So this test
+    // reads the terminal.
+    let env = env_with_a_brewfile();
+    install_fake_brew(&env);
+    let ctx = ctx_with(&env, Arc::new(BrewTooOldForTheBundle));
+
+    let (result, printed) = capturing_stderr(|| commands::up::up(None, &ctx).unwrap());
+
+    let warned = printed
+        .find("older than 5.1.2")
+        .unwrap_or_else(|| panic!("the version warning never reached stderr:\n{printed}"));
+    let failed = printed
+        .find(BUNDLE_PARSE_ERROR)
+        .unwrap_or_else(|| panic!("the bundle's own error never reached stderr:\n{printed}"));
+    assert!(
+        warned < failed,
+        "the warning must explain the parse error, not follow it:\n{printed}"
+    );
+    assert!(
+        printed.contains(&format!(
+            "dodot: {}",
+            warning_about_the_version(&result).expect("the warning is returned as well")
+        )),
+        "what is printed is the same warning the result carries:\n{printed}"
+    );
+    assert!(
+        result.failed,
+        "the bundle failed on its own terms; the warning does not change that"
+    );
 }
 
 #[test]
