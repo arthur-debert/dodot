@@ -38,7 +38,7 @@ skip these handlers entirely on a given run.[/desc]
   once per file and then stop; editing the content does not re-run
   them, it makes [item]up[/item] report [item]older version[/item] and wait for
   [item]--provision-rerun[/item]. [item]external[/item] decides for itself: it re-fetches when
-  the declared sha256 or the upstream commit moves. [item]--no-provision[/item]
+  its declared sha256 or its tracked upstream moves. [item]--no-provision[/item]
   drops all four for one run; their files still appear in the output,
   labelled [item]skipped (--no-provision)[/item].
 
