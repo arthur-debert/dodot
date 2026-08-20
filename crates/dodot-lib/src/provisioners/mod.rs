@@ -106,10 +106,11 @@ impl ManifestArgPosition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutableLocation {
     /// An ordered list of absolute candidate paths. The first that is
-    /// a regular file carrying an execute bit wins; the probe stats
-    /// and never spawns. This is how `homebrew` and `nix` are found,
-    /// and it is what lets an absent manager become a skip that names
-    /// the locations it looked in.
+    /// a regular file carrying an execute bit wins, and is the path
+    /// the run spawns; the probe stats and never spawns itself. This
+    /// is how `homebrew` and `nix` are found, and it is what lets an
+    /// absent manager become a skip that names the locations it
+    /// looked in.
     Candidates(&'static [CandidatePath]),
     /// Resolved by the OS through `PATH` at spawn time, with no
     /// pre-flight probe — the `install` exception.

@@ -28,6 +28,15 @@ impl RunOnceCommand for BrewfileCommand {
         ExecutionPhase::Provision
     }
 
+    /// `brew bundle --file <abs path>`.
+    ///
+    /// The program is the name a user would type. The planner
+    /// replaces it with the absolute path
+    /// [`provisioners::availability`](crate::provisioners::availability)
+    /// found before it emits the intent, so this stays a pure
+    /// function of the manifest path and the arguments — and the
+    /// manifest position declared in
+    /// [`crate::provisioners::PROVISIONERS`] — are unaffected.
     fn command_for(&self, path: &Path) -> (String, Vec<String>) {
         (
             "brew".to_string(),

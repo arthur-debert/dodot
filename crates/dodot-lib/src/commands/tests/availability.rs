@@ -483,3 +483,101 @@ fn status_spawns_nothing_and_writes_nothing_whether_the_manager_is_there_or_not(
         );
     }
 }
+
+// ── The run spawns the executable the probe found ───────────────
+
+/// Records every spawn so a test can assert on the *command*, not
+/// merely on whether a sentinel appeared afterwards.
+///
+/// [`MockCommandRunner`](super::support::MockCommandRunner) answers
+/// success to anything, which makes a sentinel a poor witness: it
+/// would be written just as happily for a `brew` the OS could never
+/// have resolved.
+#[derive(Default)]
+struct RecordingRunner {
+    spawns: std::sync::Mutex<Vec<(String, Vec<String>)>>,
+}
+
+impl CommandRunner for RecordingRunner {
+    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+        self.spawns
+            .lock()
+            .unwrap()
+            .push((executable.to_string(), arguments.to_vec()));
+        Ok(CommandOutput {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        })
+    }
+}
+
+#[test]
+fn the_run_spawns_the_absolute_path_the_probe_found() {
+    // The probe answers "brew is at <this exact path>". Spawning a
+    // bare `brew` afterwards asks the OS a different question — one
+    // that a host whose `PATH` omits the prefix answers with "no such
+    // command", turning a manager dodot just found into a failed run.
+    //
+    // The fake brew lives inside the test's temp tree, which no
+    // `PATH` entry names, so the argument is not merely equal to the
+    // located path: it is the only spelling that could work.
+    let env = env_with_a_brewfile();
+    install_fake_brew(&env);
+
+    let runner = Arc::new(RecordingRunner::default());
+    let mut ctx = super::support::make_ctx_with_runner(&env, runner.clone());
+    ctx.no_provision = false;
+    ctx.provision_host = Arc::new(ProvisionHost::with_candidates(
+        HANDLER_HOMEBREW,
+        vec![brew_path(&env)],
+    ));
+
+    commands::up::up(None, &ctx).unwrap();
+
+    let spawns = runner.spawns.lock().unwrap();
+    let (executable, arguments) = spawns
+        .iter()
+        .find(|(_, args)| args.first().map(String::as_str) == Some("bundle"))
+        .expect("the Brewfile ran");
+
+    assert_eq!(
+        Path::new(executable),
+        brew_path(&env),
+        "the run must spawn the brew the probe found, not a name for the OS to resolve"
+    );
+    // The arguments are the handler's own, untouched: substituting
+    // the program must not shift the manifest position the descriptor
+    // in `provisioners::PROVISIONERS` declares.
+    assert_eq!(arguments[0], "bundle");
+    assert_eq!(arguments[1], "--file");
+    assert!(arguments[2].ends_with("Brewfile"));
+}
+
+#[test]
+fn a_handler_dodot_does_not_locate_keeps_its_path_lookup() {
+    // `install` resolves its interpreter through `PATH` by design
+    // (ADR-0007) and probes present with no path, so nothing is
+    // substituted — the spawn stays the bare interpreter name.
+    let env = TempEnvironment::builder()
+        .pack("dev")
+        .file("install.sh", "echo hi\n")
+        .done()
+        .build();
+
+    let runner = Arc::new(RecordingRunner::default());
+    let mut ctx = super::support::make_ctx_with_runner(&env, runner.clone());
+    ctx.no_provision = false;
+
+    commands::up::up(None, &ctx).unwrap();
+
+    let spawns = runner.spawns.lock().unwrap();
+    let (executable, _) = spawns
+        .iter()
+        .find(|(_, args)| args.iter().any(|a| a.ends_with("install.sh")))
+        .expect("the install script ran");
+    assert!(
+        !executable.contains('/'),
+        "install\u{2019}s interpreter is a PATH lookup, not a located path: {executable}"
+    );
+}

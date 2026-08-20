@@ -75,6 +75,12 @@ pub enum Availability {
     /// `at` names the candidate that answered, or `None` for a
     /// provisioner dodot does not locate itself
     /// ([`ExecutableLocation::Path`]).
+    ///
+    /// The planner spawns that path: probing one brew and running
+    /// whichever brew `PATH` resolves later would make the answer
+    /// worthless on exactly the hosts the probe exists for — a
+    /// manager installed at a fixed prefix the user's `PATH` omits.
+    /// See `plan_pack`.
     Present { at: Option<PathBuf> },
     /// No candidate held an executable file. Skip: no receipt, no
     /// error, no effect on the exit code.

@@ -154,6 +154,12 @@ impl RunOnceCommand for NixCommand {
     /// The manifest path is argument 7. That position is declared in
     /// [`crate::provisioners::PROVISIONERS`] and pinned by a test
     /// there; reordering these arguments means updating the row.
+    ///
+    /// The program is the name a user would type. The planner
+    /// replaces it with the absolute path
+    /// [`provisioners::availability`](crate::provisioners::availability)
+    /// found before it emits the intent; the arguments, and so the
+    /// declared manifest position, are untouched.
     fn command_for(&self, path: &Path) -> (String, Vec<String>) {
         (
             "nix".into(),

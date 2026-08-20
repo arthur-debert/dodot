@@ -188,20 +188,33 @@ instrumented_brewfile() {
 # Install a mock `brew` script that logs all invocations.
 # Must be called during setup before `dodot up`.
 # Usage: install_brew_mock
-# Creates: $HOME/.dodot-markers/brew-mock/brew on PATH
+# Creates: $HOME/.dodot-markers/brew-mock/bin/brew
 # Logs to: $HOME/.dodot-markers/brew.log
+#
+# The mock is announced through $HOMEBREW_PREFIX rather than through
+# PATH. dodot locates a provisioner by testing a fixed list of
+# absolute candidates and spawns the path that answered (ADR-0007);
+# $HOMEBREW_PREFIX leads that list, so this both points dodot at the
+# mock and outranks any real brew on the host — a GitHub Linux runner
+# ships one at /home/linuxbrew/.linuxbrew/bin/brew, and a PATH-only
+# mock would leave `dodot up` running it for real.
+#
+# Leaving PATH alone is also what makes these tests a regression
+# guard: if dodot went back to resolving `brew` through PATH it would
+# find the sandbox's non-zero brew muzzle, the log would stay empty,
+# and `assert_brew_invoked` would fail.
 install_brew_mock() {
-	local mock_dir="$HOME/.dodot-markers/brew-mock"
-	mkdir -p "$mock_dir"
+	local prefix="$HOME/.dodot-markers/brew-mock"
+	mkdir -p "$prefix/bin"
 
-	cat >"$mock_dir/brew" <<'MOCK'
+	cat >"$prefix/bin/brew" <<'MOCK'
 #!/bin/sh
 mkdir -p "$HOME/.dodot-markers"
 echo "$@" >> "$HOME/.dodot-markers/brew.log"
 MOCK
-	chmod +x "$mock_dir/brew"
+	chmod +x "$prefix/bin/brew"
 
-	export PATH="$mock_dir:$PATH"
+	export HOMEBREW_PREFIX="$prefix"
 }
 
 # ── Eval helper ─────────────────────────────────────────────────

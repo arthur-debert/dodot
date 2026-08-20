@@ -121,6 +121,13 @@ pub trait RunOnceCommand: Send + Sync {
 
     /// Build the `(executable, arguments)` tuple for invoking the
     /// command against `path`.
+    ///
+    /// Name the executable the way a user would — `brew`, `nix`,
+    /// `bash`. For a handler dodot locates itself, the planner
+    /// substitutes the absolute path the availability probe found
+    /// before the intent leaves it (see
+    /// [`crate::provisioners::availability`]), so this stays a pure
+    /// function of `path` and never consults the environment.
     fn command_for(&self, path: &Path) -> (String, Vec<String>);
 
     /// Human-readable status message when a current-hash sentinel

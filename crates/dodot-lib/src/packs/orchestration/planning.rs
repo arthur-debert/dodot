@@ -11,6 +11,8 @@
 //! the runner functions there then take the resulting intents and feed
 //! them to the executor.
 
+use std::path::PathBuf;
+
 use tracing::{debug, info};
 
 use crate::gates::{GateTable, HostFacts};
@@ -509,12 +511,21 @@ fn plan_pack_inner(
         // reads, so the two agree by construction. `install` is not
         // located by dodot and always answers present; see
         // `provisioners::availability`.
+        //
+        // A present answer also names *which* executable answered,
+        // and that path is kept: the run has to spawn the brew the
+        // probe found, not whatever `PATH` resolves later. See
+        // `located_at` at its use below.
+        let mut located_at: Option<PathBuf> = None;
         if crate::provisioners::descriptor_for(handler_name).is_some() {
             let availability = crate::provisioners::availability::probe(
                 ctx.fs.as_ref(),
                 ctx.provision_host.as_ref(),
                 handler_name,
             );
+            if let crate::provisioners::availability::Availability::Present { at } = &availability {
+                located_at = at.clone();
+            }
             if !availability.is_present() {
                 debug!(
                     pack = %pack.name,
@@ -539,12 +550,38 @@ fn plan_pack_inner(
         }
 
         if let Some(handler_matches) = groups.get(handler_name) {
-            let intents = handler.to_intents(
+            let mut intents = handler.to_intents(
                 handler_matches,
                 &pack.config,
                 ctx.paths.as_ref(),
                 ctx.fs.as_ref(),
             )?;
+            // Run the executable the probe found, not the name.
+            //
+            // `command_for` names its program the way a user would
+            // (`brew`, `nix`), which leaves the OS to resolve it
+            // through `PATH` at spawn time — a second, different
+            // question from the one the probe just answered. A brew
+            // sitting at `/opt/homebrew/bin/brew` on a host whose
+            // `PATH` omits it would pass the probe and then fail to
+            // spawn, and the probe's whole promise is that a run
+            // dodot planned is a run dodot can make. Substituting the
+            // located path here keeps `command_for` a pure function
+            // of the manifest path and leaves the arguments — and so
+            // the manifest positions declared in
+            // `provisioners::PROVISIONERS` — untouched.
+            //
+            // `None` for `install`, whose interpreter is a `PATH`
+            // lookup by design (ADR-0007), and for any handler dodot
+            // does not locate.
+            if let Some(at) = &located_at {
+                let program = at.to_string_lossy().into_owned();
+                for intent in &mut intents {
+                    if let crate::operations::HandlerIntent::Run { executable, .. } = intent {
+                        *executable = program.clone();
+                    }
+                }
+            }
             debug!(
                 pack = %pack.name,
                 handler = %handler_name,
