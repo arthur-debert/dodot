@@ -411,7 +411,7 @@ Alternatives — how dodot compares to the rest of the space
 
         Shell integration / PATH / Brewfile. No first-class handlers. `actions:` (pre/post shell commands) cover everything beyond file deployment — package installs, sourcing setups, etc., all become custom action lines.
 
-        Install gating. `actions:` run on every install unless wired through state-checking shell logic by hand. dodot's install handler is content-hashed and skipped automatically when nothing changed.
+        Install gating. `actions:` run on every install unless wired through state-checking shell logic by hand. dodot's install handler is content-hashed and skipped automatically when nothing changed — and when something *has* changed, it reports the edit rather than running it, so applying an edited script stays an explicit `--provision-rerun`.
 
         macOS plists. None.
 
