@@ -46,7 +46,9 @@ Proposal: Provisioning Handlers
 
             :: table align=llr header=1 ::
 
-        The floor is therefore Homebrew 5.1.2, released 2026-03-30. Combined with brew's automatic `brew update` before most commands and its roughly weekly patch cadence, version availability is close to a non-issue for anyone who uses brew at all.
+        The floor is therefore Homebrew 5.1.2, released 2026-03-30 — five months old at the time of writing, against a patch cadence of roughly a week, so most live installations are already well past it.
+
+        That is a statement about the population, not a mechanism dodot can rely on. Brew's automatic `brew update` before most commands would carry a stale installation over the floor on its own, but [#8]'s defect 6 sets `HOMEBREW_NO_AUTO_UPDATE` precisely to stop it: once that lands, an old brew stays old, and a `Brewfile` using these entry types fails on a line the user was entitled to write. So the floor has to be checked rather than assumed. `brew --version` is already the natural probe for [#4]'s availability check, and a brew below 5.1.2 is a reportable condition with a named remedy — not a parse error the user has to decode.
 
         One consequence to document rather than discover: brew's detection resolves through `ORIGINAL_PATHS`, so a `cargo` supplied by rustup or an `npm` supplied by nvm is _adopted_ rather than replaced. Which side owns the toolchain depends on the machine's PATH.
 
@@ -70,7 +72,7 @@ Proposal: Provisioning Handlers
 
     1.4. The Nix Pillar Is Unsettled
 
-        The reason to support Nix is not Linux coverage — Homebrew already provides that. It is that Nix pins exact package versions where Homebrew installs whatever is current, and it does so on both platforms.
+        The reason to support Nix is not Linux coverage — Homebrew already provides that. It is that Nix _can_ pin exact package versions on both platforms, where Homebrew installs whatever is current and offers no pin at all. The capability is Nix's; it is not yet dodot's, because the manifest shape dodot ships resolves `<nixpkgs>` from the user's mutable `NIX_PATH`. See [#7.4].
 
         That is a narrower claim than "Nix is the reproducible one", and deliberately so. dodot's use of Nix does not converge a machine on its manifest, and the routes to making it do so are either destructive to existing users or corrosive to the uniformity this proposal is built on. See [#7].
 
@@ -81,24 +83,28 @@ Proposal: Provisioning Handlers
 
     What the code has not done is separate the three distinct questions that sameness contains. Naming them is most of this proposal.
 
-    Axis 1 — _Can we run it?_
-        Is the executable present on this machine? Answered per-manager, at planning time. Implemented for none of the three today.
+    Axis 1 — _Can we run it?_:
+        Is the executable this handler will actually spawn present on this machine? Answered per command, at planning time — which for `install` means the interpreter the matched file's extension selects, not "a shell". Implemented for none of the three today.
 
-    Axis 2 — _Should we run it?_
+    Axis 2 — _Should we run it?_:
         Has this exact file content already been applied? Answered by the sentinel, at execution time. Fully generic already, with no per-handler branching.
 
-    Axis 3 — _Is what it produced reachable later?_
+    Axis 3 — _Is what it produced reachable later?_:
         Will the binaries it installed be found in a shell the user opens tomorrow? Answered differently by each, and by none of them today.
 
     Per handler:
         | Handler | Axis 1 | Axis 3 |
-        | `install` | always available — a shell is always present | *unknowable* — dodot cannot know what the script wrote or where |
-        | `homebrew` | probe fixed candidate prefixes | dodot owns the PATH entry, via `brew shellenv` |
+        | `install` | probe the interpreter the extension selected — `bash`, or `zsh` for `.zsh` | *unknowable* — dodot cannot know what the script wrote or where |
+        | `homebrew` | probe fixed candidate prefixes | dodot owns the PATH entry, via `brew shellenv` — on macOS today, and a requirement rather than a fact on Linux; see [#3.2] |
         | `nix` | probe fixed candidate prefixes | the Nix installer owns it |
 
         :: table align=lll header=1 ::
 
-    The `install` row on axis 3 is the one worth stating explicitly. It is tempting to treat `install.sh` as trivially fine on every axis, since a shell is always there. That is right for axis 1 and wrong for axis 3: dodot has no idea what an arbitrary script installed or where it put it. _Unknowable_ is a real answer, distinct from _yes_, and collapsing the two would have dodot asserting something it cannot know.
+    The `install` row is the one worth stating explicitly, on both axes. It is tempting to treat `install.sh` as trivially fine everywhere, since a shell is always there. Neither half survives contact with the code.
+
+    On axis 1, `install` does not run "a shell". `interpreter_for` picks `zsh` for `.zsh` and `bash` for everything else, including unknown extensions, and the intent spawns that bare name through PATH. bash is absent from minimal container images and zsh is optional nearly everywhere, so what gets probed is the interpreter the extension selected — the same three outcomes as brew and nix, against a different executable.
+
+    On axis 3, dodot has no idea what an arbitrary script installed or where it put it. _Unknowable_ is a real answer, distinct from _yes_, and collapsing the two would have dodot asserting something it cannot know.
 
 
 3. The Descriptor
@@ -122,23 +128,28 @@ Proposal: Provisioning Handlers
 
         :: rust ::
 
-        Four of these go beyond the obvious set — a handler name, an argv template, a candidate list, and a trigger filename. Each is forced by something specific in the current implementation:
+        Three of the eight are the obvious ones and need no defense: a handler name, an argv template, and the status copy. The other five are each shaped by something specific in the current implementation:
 
-        `phase`
-            `install` runs at `Setup`, `homebrew` and `nix` at `Provision` — so install scripts run _after_ package managers. That ordering is load-bearing rather than accidental: it is what lets an `install.sh` assume brew has already run, which is what makes it a viable escape hatch for anything not supported here.
+        `availability`:
+            Not a constant per handler. `homebrew` and `nix` probe a fixed list of candidate prefixes, but `install` spawns whatever interpreter the matched file's extension selects, so the executable to probe depends on the file rather than on the row. The field names _how to resolve_ the executable, not the executable.
 
-        `env`
+        `phase`:
+            `install` runs at `Setup`, `homebrew` and `nix` at `Provision` — so install scripts run _after_ package managers. That ordering is deliberate rather than accidental: it is what lets an `install.sh` assume brew has already run, which is what makes it a viable escape hatch for anything not supported here.
+
+        `env`:
             There is no way to set an environment variable for a provisioning command at any layer — not on `RunOnceCommand`, not on `HandlerIntent::Run`, not on `Operation::RunCommand`, not on `CommandRunner::run`. The spawn site inherits dodot's entire environment and sets nothing. `HOMEBREW_NO_AUTO_UPDATE` and the other fixes in [#8] are unreachable without this field.
 
-        `manifest_arg`
+        `manifest_arg`:
             `run_and_record` identifies the file that was run as `arguments.last()`, by convention. `nix` violates the convention — its last argument is `"nix-command flakes"` — so nix runs write no snapshot and print the wrong name in their progress header. Declaring which argument carries the manifest replaces a positional assumption with a stated fact, and repairs that defect as a consequence rather than as a patch.
 
-        `reachability`
+        `reachability`:
             Axis 3 from [#2], with three values: `DodotOwns`, `InstallerOwns`, `Unknowable`.
 
     3.2. What Stays Code
 
         Homebrew's shell bootstrap. Brew's own documentation delegates PATH setup to the user, and no other manager here does — Nix's installer writes `/etc/zshrc` and `/etc/profile.d` itself. Generalizing the bootstrap into a descriptor field would imply a uniformity that does not exist, so `shell/homebrew.rs` stays a special case and stays special.
+
+        Staying a special case is not the same as staying as it is. Both entry points — `capture` and `cached_or_capture_at` — return early on `!host.is_macos`, so off macOS dodot emits nothing regardless of what is installed, and `DEFAULT_PREFIXES` holds `/opt/homebrew` and `/usr/local` only, neither of which is where Linux brew lands. [#1.3] makes Homebrew a supported Linux path, which turns [#2]'s reachability row into a requirement on Linux rather than a description of it: the macOS short-circuit has to go, `/home/linuxbrew/.linuxbrew` and its `~/.linuxbrew` fallback have to join the probe order, and Linux emission needs tests of its own. Until that lands, a Linux user owns their own brew PATH setup and the documentation should say so, rather than promise macOS behavior everywhere. Recorded as defect 12.
 
     3.3. Where The Descriptor Lives
 
@@ -148,7 +159,7 @@ Proposal: Provisioning Handlers
 
         Which _filename_ a handler claims is ordinary user configuration and stays in `MappingsSection` at rule priority 10 or higher. What gets executed is not.
 
-        This boundary has no ADR behind it. The three existing ADRs cover the Safety Lock and bind trust to a root's canonical path, not to pack content; [./spec/safety-lock.md] explicitly places content evaluation of install scripts, Brewfiles, and Nix manifests out of scope. The distinction this section draws — configuration may select _which file_, never _which executable_ — is new durable ground and should land as an ADR rather than as a paragraph in a proposal that is later marked historical.
+        This boundary has no ADR behind it. The three existing ADRs cover the Safety Lock and bind trust to a root's canonical path, not to pack content; [./../spec/safety-lock.md] explicitly places content evaluation of install scripts, Brewfiles, and Nix manifests out of scope. The distinction this section draws — configuration may select _which file_, never _which executable_ — is new durable ground and should land as an ADR rather than as a paragraph in a proposal that is later marked historical.
 
         A related inconsistency to settle in the same place: secret providers locate their binaries by spawning a bare name against dodot's inherited PATH, while the Homebrew bootstrap probes fixed absolute candidates. Provisioners follow the Homebrew model, for the reasons in [#4]. Two philosophies coexisting is acceptable; two philosophies coexisting unremarked is not.
 
@@ -172,17 +183,27 @@ Proposal: Provisioning Handlers
         Manager present:
             Proceed.
 
-        The hook to carry this is also already present and also unused. `RunOnceCommand::validate` exists, is called during intent generation, and is documented for exactly this purpose — "for shelling out to verify the tool is invokable — e.g. `nix --version`, `brew --version`". No shipped handler implements it. Its signature is the only thing that needs to change: `Result<()>` expresses two outcomes and its `Err` aborts intent generation, where absence must produce neither a receipt nor an error.
+        The hook to carry this is also already present and also unused. `RunOnceCommand::validate` exists, is called during intent generation, and is documented for exactly this purpose — "for shelling out to verify the tool is invokable — e.g. `nix --version`, `brew --version`". No shipped handler implements it. Its signature has to change: `Result<()>` expresses two outcomes and its `Err` aborts intent generation, where absence must produce neither a receipt nor an error.
 
-    4.2. Probing Is Scoped By What The Run Selected
+        Widening that signature is necessary and not sufficient. See [#4.2].
+
+    4.2. One Probe, Two Callers
+
+        `validate` is consumed inside `RunOnceHandler::to_intents`. If it reports absence there and the handler emits no intent, the finding dies with the intent: `commands/status.rs::run_once_health` derives a row's health independently — source file present, checksum, datastore receipt — and never calls `validate` at all. An absent manager would render as _never run_, indistinguishable from one nobody has run yet, with nothing naming the locations probed. The [#6.3] row this proposal promises has no data path to reach.
+
+        So availability is not a handler method. It is one shared module — the descriptor's `availability` field plus a single probe over it — that planning and status both reach through the same interface, and whose outcome travels as an ephemeral diagnostic on the plan and on the status row rather than as anything persisted. A receipt records that a file ran; absence is a fact about this machine right now, and re-probing is cheap.
+
+        Two callers agreeing is the requirement, and it is testable rather than a note: for each of absent, failed, and present, `dodot up`, `dodot status`, and a dry run must report the same outcome for the same machine.
+
+    4.3. Probing Is Scoped By What The Run Selected
 
         No new mechanism is needed to avoid probing managers nobody uses. `validate` is reached only for files a rule matched, in packs the current command selected, so a machine with no `Brewfile` never probes for brew.
 
-    4.3. Ordering Between Packs Is Not dodot's Problem
+    4.4. Ordering Between Packs Is Not dodot's Problem
 
         Because an absent manager skips without a receipt, a pack whose `Brewfile` installs a tool may run after a pack that needs it; the second pack skips and succeeds on the next run. dodot builds no dependency graph and pre-installs nothing.
 
-    4.4. dodot Never Installs A Package Manager
+    4.5. dodot Never Installs A Package Manager
 
         Both Homebrew and Nix ship pipe-to-shell as their official and only supported install path. dodot will not execute such an installer and will not offer to; doing so would make dodot worth compromising as a way to intercept one.
 
@@ -215,7 +236,7 @@ Proposal: Provisioning Handlers
 
     6.3. Absence Annotates, It Does Not Fail
 
-        The precedent exists: `Health::RecentFailures` attaches a warning-kind footnote to a row without changing that row's verdict. An absent manager takes the same shape — a row that reports the skip and a note naming the locations probed.
+        The precedent exists: `Health::RecentFailures` attaches a warning-kind footnote to a row without changing that row's verdict. An absent manager takes the same shape — a row that reports the skip and a note naming the locations probed. The probe result reaches that row through [#4.2]'s shared module; `run_once_health` builds the row and never sees `validate`.
 
         Adding a `Health` variant is compiler-checked; its `style`, `label`, and `footnote` arms are exhaustive matches. Adding a new _status string_ is not: the aggregation has a catch-all arm that silently drops unknown values from the summary counts, and the theme is defined twice — once in YAML in the library, once in CSS in the CLI — with no mechanism keeping them in step. Prefer the enum.
 
@@ -260,16 +281,18 @@ Proposal: Provisioning Handlers
 
         _A dodot-owned profile._ Pointing Nix at a profile dodot owns rather than the user's default. A fresh profile carries no incompatible manifest, so the obstruction in [#7.2] would not apply, `--remove-all` would become available, and `dodot down` would gain a real uninstall story.
 
-            Declined on two grounds. The first is a rule about what dodot may cost a user who leaves: a profile held inside dodot's data directory disappears when dodot does, taking its packages off PATH immediately and leaving their store paths to be collected by the next garbage collection. A tool must not make its own removal destructive.
+        Declined on two grounds. The first is a rule about what dodot may cost a user who leaves: a profile held inside dodot's data directory disappears when dodot does, taking its packages off PATH immediately and leaving their store paths to be collected by the next garbage collection. A tool must not make its own removal destructive.
 
-            Siting the profile at a durable Nix-managed location instead would avoid that specific harm — the profile would outlive dodot, still rooted, with only the PATH entry lost. It is declined on the second ground, which that variant does not escape: it makes Nix the one provisioner that does not fit the model. `homebrew` and `install` hand a file to a command and record the run. Any owned-profile variant additionally needs a profile path, a PATH contribution, and an uninstall story — descriptor fields that exist for exactly one row, and a permanent exception to the uniformity [#3] is built to obtain. Declarative removal does not buy that back.
+        Siting the profile at a durable Nix-managed location instead would avoid that specific harm — the profile would outlive dodot, still rooted, with only the PATH entry lost. It is declined on the second ground, which that variant does not escape: it makes Nix the one provisioner that does not fit the model. `homebrew` and `install` hand a file to a command and record the run. Any owned-profile variant additionally needs a profile path, a PATH contribution, and an uninstall story — descriptor fields that exist for exactly one row, and a permanent exception to the uniformity [#3] is built to obtain. Declarative removal does not buy that back.
 
     7.4. What The Claim Becomes
 
         Not "Nix is the reproducible option and Homebrew is not". The distinction that survives is narrower and truer, and it is the one users feel:
 
-        - _Nix pins._ A derivation resolves to exact bits, so the same `packages.nix` yields the same versions on every machine, now and later.
-        - _Homebrew floats._ A `Brewfile` yields whatever is current when it runs.
+        - _Nix can pin._ A derivation resolves to exact bits, so a manifest naming an explicitly pinned `nixpkgs` yields the same versions on every machine, now and later.
+        - _Homebrew cannot._ A `Brewfile` yields whatever is current when it runs, and offers no pin at any version.
+
+        The pin is Nix's to offer and not yet dodot's to deliver, and the difference matters enough to state rather than blur. The manifest shape dodot documents and its wrapper expression relies on — `{ pkgs ? import <nixpkgs> {} }` — resolves `<nixpkgs>` from the user's mutable `NIX_PATH`. A derivation is immutable once evaluated, but the manifest that produces it is not: two machines on different channels, or the same machine after `nix-channel --update`, evaluate the same `packages.nix` to different derivations. [./shipped/nix.lex] §9.2 already records pinned-`nixpkgs` injection as an unshipped v2 mode, and the user documentation lists the same gap. So today the honest form of the distinction is _Nix can be pinned and Homebrew cannot_, with the pinning itself a manifest the user writes and a mode dodot has yet to support.
 
         What neither provides through dodot is convergence: removing a line from either file uninstalls nothing. That is the same "ensure installed" position [./shipped/nix.lex] §4 already states, now stated for all three provisioners rather than for Nix alone.
 
@@ -288,7 +311,8 @@ Proposal: Provisioning Handlers
     8. Cask installs can trigger interactive `sudo` prompts written directly to `/dev/tty`. dodot pipes stdin and stdout, so such a prompt is invisible and the run hangs rather than failing. No flag disables it. Needs a timeout and a message naming the cask to run by hand.
     9. `brew shellenv` is captured without sanitizing dodot's own PATH. The consequence is milder than previously recorded — an empty capture is already treated as a failure rather than cached — so the result is a spurious warning and a retained previous capture, not silent loss. The fix is unchanged.
     10. On the passive `init-sh` path a failed capture drops the Homebrew block with no warning, because that path emits the script itself and has no warnings channel. Silent, and repeated on every shell start until the next `dodot up`.
-    11. `Brewfile` fires on Linux by default, requiring a hand-written gate. [#4] dissolves this: an absent manager becomes a skip, which is the correct behavior once Homebrew is a supported Linux path rather than an assumed-macOS one.
+    11. `Brewfile` fires on Linux by default, requiring a hand-written pattern to suppress it. [#4] dissolves this: an absent manager becomes a skip, which is the correct behavior once Homebrew is a supported Linux path rather than an assumed-macOS one.
+    12. The Homebrew shell bootstrap is macOS-only and cannot see a Linux brew: `capture` and `cached_or_capture_at` both return early on `!host.is_macos`, and `DEFAULT_PREFIXES` omits `/home/linuxbrew/.linuxbrew`. Not a live defect today, because Linux brew is not yet a supported path — a prerequisite for making it one, without which brew-installed tools stay unreachable in later Linux shells. See [#3.2].
 
     The taxonomy documentation is separately and pervasively stale: the reference, developer, glossary, and README handler tables all predate the `nix`, `external`, and `gate` handlers, several still say dodot ships eight handlers, and the execution-order document claims each phase holds a single handler. The same facts are transcribed into roughly eight places by hand, and the handler-authoring guide mandates updating four of them. Generating the table from the registry would retire that class of error.
 
@@ -297,19 +321,19 @@ Proposal: Provisioning Handlers
 
     9.1. Not Supported, And Why
 
-        `cargo`
+        `cargo`:
             No tool manifest and no bulk-install-from-file; the request [https://github.com/rust-lang/cargo/issues/9527] has been open since 2021 and remains open. Partial failure is not atomic and the exit code does not distinguish it from total failure. Use a `Brewfile` `cargo` entry, or `cargo install --locked` lines in an `install.sh`.
 
-        `uv`
+        `uv`:
             No declarative tool installation; [https://github.com/astral-sh/uv/issues/12533] remains open. Use a `Brewfile` `uv` entry.
 
-        `npm`
+        `npm`:
             No global manifest. Use a `Brewfile` `npm` entry.
 
-        `pipx`
+        `pipx`:
             Passes on its own merits — `pipx manifest sync` is a real manifest interface — and is declined anyway. Two Python installers writing to the same directory will collide over identical symlink names with no arbitration, and pipx has delegated to uv as its backend since 1.12.0 when uv is present.
 
-        `apt` and system managers
+        `apt` and system managers:
             See [#1.2].
 
     9.2. Overlap Is The User's Call
