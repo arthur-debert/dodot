@@ -18,6 +18,15 @@
 //!
 //! Dry-run keeps the per-intent rendering since there's no
 //! post-execution state to verify.
+//!
+//! ## Failures
+//!
+//! A failed operation is contained to the file it happened to: the
+//! rest of the pack still executes, and the failure flips that file's
+//! row to `error` with the failure text as its note. `up` reports
+//! whether the run left any failure behind in
+//! [`PackStatusResult::failed`], which the CLI turns into the process
+//! exit code — the signal a bootstrap script or an image build reads.
 
 use std::collections::HashMap;
 
@@ -28,7 +37,6 @@ use crate::commands::{
     DisplayNote, DisplayPack, PackStatusResult,
 };
 use crate::conflicts;
-use crate::datastore::format_command_for_display;
 use crate::handlers;
 use crate::operations::HandlerIntent;
 use crate::packs::orchestration::{self, ExecutionContext, PackResult};
@@ -44,6 +52,11 @@ use crate::Result;
 /// deployed and a `CrossPackConflict` error is returned — even if
 /// `--force` is set, because cross-pack conflicts are a configuration
 /// problem, not a deployment problem.
+///
+/// Operation failures do not abort the run: they are collected into
+/// the returned result, whose [`PackStatusResult::failed`] flag says
+/// whether anything failed. Only a dry run leaves that flag false
+/// regardless of what it reports.
 pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     info!(
         dry_run = ctx.dry_run,
@@ -368,6 +381,9 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         group_mode: ctx.group_mode.as_str().into(),
         diffs: Vec::new(),
         shell_hookup: activation_notice(ctx, pre_up_generation),
+        // A dry run attempted nothing, so it reports failures without
+        // being one — `dodot up --dry-run` in a script stays exit 0.
+        failed: has_failures && !ctx.dry_run,
     })
 }
 
@@ -435,6 +451,11 @@ pub fn up_or_status_for_conflict(
             base.message = Some("Cross-pack conflicts prevent deployment.".into());
             base.dry_run = ctx.dry_run;
             base.conflicts = display_conflicts;
+            // Nothing deployed, so an active run is a failed one: a
+            // script chaining off `dodot up` must not proceed against
+            // a machine where every pack was blocked. A dry run is a
+            // preview and stays exit 0.
+            base.failed = !ctx.dry_run;
             Ok(base)
         }
         Err(e) => Err(e),
@@ -592,9 +613,10 @@ pub(crate) fn overlay_errors(
 
             // Prefer to flip the existing status row so the file listing
             // stays one line per item. Match order:
-            //   1. (handler, name) — exact match by pack-relative basename.
-            //      Correct when the operation's source basename equals the
-            //      file row's pack-relative path (flat layout, common case).
+            //   1. (handler, name) — exact match. Status rows are keyed
+            //      by pack-relative path, and a RunCommand carries the
+            //      same pack-relative path, so this is the match for a
+            //      failed provisioning run at any depth.
             //   2. (handler, user_target) — covers the pre-link CreateUserLink
             //      conflict case where datastore_path is defaulted (empty)
             //      and the op's "name" comes from user_path.file_name(),
@@ -735,16 +757,20 @@ fn extract_op_info(
             };
             (handler.clone(), name, Some(target))
         }
+        // The run-once file, not the command line: this name is what
+        // `overlay_errors` matches against the status rows, and those
+        // are keyed by the pack-relative path of the file a rule
+        // matched (`install.sh`, `extras/install.sh`), never by the
+        // `bash -- /long/path` dodot built from it. Carrying the full
+        // relative path — not the basename — is what keeps two
+        // same-named run-once files in one pack from flipping each
+        // other's row. The command line still reaches the user, in
+        // the row's message.
         crate::operations::Operation::RunCommand {
             handler,
-            executable,
-            arguments,
+            relative_path,
             ..
-        } => (
-            handler.clone(),
-            format_command_for_display(executable, arguments),
-            None,
-        ),
+        } => (handler.clone(), relative_path.clone(), None),
         crate::operations::Operation::CheckSentinel {
             handler, sentinel, ..
         } => (handler.clone(), sentinel.clone(), None),

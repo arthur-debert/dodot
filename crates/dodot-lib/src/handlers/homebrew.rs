@@ -118,7 +118,7 @@ mod tests {
                 executable,
                 arguments,
                 sentinel,
-                filename,
+                relative_path,
                 content_hash,
             } => {
                 assert_eq!(pack, "dev");
@@ -129,9 +129,9 @@ mod tests {
                 assert!(arguments[2].ends_with("Brewfile"));
                 assert!(sentinel.starts_with("Brewfile-"));
                 assert_eq!(sentinel.len(), "Brewfile-".len() + 16);
-                assert_eq!(filename, "Brewfile");
+                assert_eq!(relative_path, "Brewfile");
                 assert_eq!(content_hash.len(), 16);
-                assert_eq!(*sentinel, format!("{filename}-{content_hash}"));
+                assert_eq!(*sentinel, format!("{relative_path}-{content_hash}"));
             }
             other => panic!("expected Run, got {other:?}"),
         }

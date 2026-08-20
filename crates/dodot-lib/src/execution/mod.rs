@@ -93,10 +93,11 @@ impl<'a> Executor<'a> {
     /// Execute a list of handler intents, returning one result per
     /// atomic operation performed.
     ///
-    /// Conflicts (pre-existing files at target paths) are returned as
-    /// failed `OperationResult`s — non-fatal, so other intents still
-    /// execute. Hard errors (I/O failures, command failures) stop
-    /// execution immediately via `?`.
+    /// Conflicts (pre-existing files at target paths) and failed
+    /// provisioning commands are returned as failed
+    /// `OperationResult`s — non-fatal, so other intents still execute
+    /// and the results of the ones that already succeeded survive.
+    /// Hard errors (I/O failures) stop execution immediately via `?`.
     /// In dry-run mode, all intents are simulated regardless of errors.
     pub fn execute(&self, intents: Vec<HandlerIntent>) -> Result<Vec<OperationResult>> {
         debug!(
@@ -194,7 +195,7 @@ mod tests {
                     executable: "echo".into(),
                     arguments: vec!["hi".into()],
                     sentinel: "install.sh-1111111111111111".into(),
-                    filename: "install.sh".into(),
+                    relative_path: "install.sh".into(),
                     content_hash: "1111111111111111".into(),
                 },
             ])

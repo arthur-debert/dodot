@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- fix: a failing provisioning command (`install.sh`, `Brewfile`, `packages.nix`) no longer takes the rest of its pack down with it. The failure is reported as an error row against the file that failed, carrying the command, its exit code, and the manager's own output — previously it propagated out of the executor, the whole pack was recorded as failed, and every operation that had already succeeded in it was discarded. Since provisioning runs before symlinks, `$PATH` export, and shell init, a single failing `Brewfile` used to cost a pack all three; now they deploy and report as usual. No sentinel is written for a file that failed, so the next `dodot up` retries it (#353).
+- feat: `dodot up` exits 1 when any operation failed and 0 otherwise, instead of always reporting success to the shell — so `dodot up && ./next-step.sh`, a bootstrap script, or an image build stops rather than continuing against a machine that was never set up. 1 is the code `dodot transform check` already uses for its findings. `dodot up --dry-run` attempted nothing and always exits 0 (#353).
+
 ## 5.9.0 - 2026-08-19
 
 - feat: `$PATH` is now composed once, at `dodot up`, into a single deduplicated `export PATH=` line in the generated init script, instead of one runtime prepend per pack at every shell start. Three fixed tiers, highest first: pack directories (lexicographic pack order, last pack on disk wins the front of `$PATH`), then Homebrew/toolchains (fixed below every pack), then the inherited system `$PATH`. A leftover `001-homebrew` pack that duplicates brew's `bin` collapses into Homebrew's one entry at that lower tier, instead of a second copy at the front of `$PATH`. Reading a directory listing and reading `$PATH` run in opposite directions: packs `001-foo`, `200-bar`, `baz` on disk become `baz:bar:foo:…system` in `$PATH` (#340, #346).

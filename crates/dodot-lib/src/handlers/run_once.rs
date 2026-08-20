@@ -251,13 +251,20 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 None => file_checksum(self.fs, &m.absolute_path)?,
             };
 
-            let filename = m
+            // Two names for the same file, and they are not
+            // interchangeable. The sentinel is keyed by the basename
+            // (`install.sh-<hash>`) because that is the datastore's
+            // on-disk shape; the intent carries the pack-relative
+            // path because that is what status rows are keyed by and
+            // what a failure has to be reported against.
+            let relative_path = m.relative_path.to_string_lossy().into_owned();
+            let basename = m
                 .relative_path
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned();
-            let sentinel = format!("{filename}-{checksum}");
+            let sentinel = format!("{basename}-{checksum}");
 
             let (executable, arguments) = self.cmd.command_for(&m.absolute_path);
 
@@ -267,7 +274,7 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 executable,
                 arguments,
                 sentinel,
-                filename,
+                relative_path,
                 content_hash: checksum,
             });
         }
@@ -559,7 +566,7 @@ mod tests {
                 executable,
                 arguments,
                 sentinel,
-                filename,
+                relative_path,
                 content_hash,
             } => {
                 assert_eq!(pack, "vim");
@@ -569,9 +576,9 @@ mod tests {
                 assert!(arguments[1].ends_with("vim/setup.sh"));
                 assert!(sentinel.starts_with("setup.sh-"));
                 assert_eq!(sentinel.len(), "setup.sh-".len() + 16);
-                assert_eq!(filename, "setup.sh");
+                assert_eq!(relative_path, "setup.sh");
                 assert_eq!(content_hash.len(), 16);
-                assert_eq!(*sentinel, format!("{filename}-{content_hash}"));
+                assert_eq!(*sentinel, format!("{relative_path}-{content_hash}"));
             }
             other => panic!("expected Run, got {other:?}"),
         }

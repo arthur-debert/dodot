@@ -157,10 +157,12 @@ fn main() {
                 handlers::maybe_prompt_install_ladder();
                 handlers::maybe_prompt_invalidate_cfprefsd();
             }
-            // `dodot transform check` may have set a non-zero exit code
-            // via PENDING_EXIT_CODE; the pre-commit hook counts on the
-            // process exiting 1. Read after print so the user still
-            // sees the rendered report when we're about to exit.
+            // `dodot up` (an operation failed) and `dodot transform
+            // check` (divergence found) may have set a non-zero exit
+            // code via PENDING_EXIT_CODE; the pre-commit hook and any
+            // script chaining off `up` count on the process exiting 1.
+            // Read after print so the user still sees the rendered
+            // report when we're about to exit.
             let pending = handlers::PENDING_EXIT_CODE.load(std::sync::atomic::Ordering::Relaxed);
             if pending != 0 {
                 std::process::exit(pending);

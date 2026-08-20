@@ -6,6 +6,7 @@ mod gating;
 mod hookup;
 mod install;
 mod probe;
+mod provisioning;
 mod reset;
 mod support;
 
@@ -2661,6 +2662,7 @@ fn full_mode_renders_80_column_rows_with_isolated_status_style() {
         group_mode: "name".into(),
         diffs: Vec::new(),
         shell_hookup: None,
+        failed: false,
     };
 
     let text = render::render("pack-status", &result, OutputMode::Text).unwrap();
@@ -2737,6 +2739,7 @@ fn diagnostics_render_severity_headings_plain_markers_and_muted_commands() {
         group_mode: "name".into(),
         diffs: Vec::new(),
         shell_hookup: None,
+        failed: false,
     };
 
     let output = render::render("pack-status", &result, OutputMode::TermDebug).unwrap();
@@ -2847,6 +2850,7 @@ fn multi_file_pack_and_ignored_pack_rendering() {
         group_mode: "name".into(),
         diffs: Vec::new(),
         shell_hookup: None,
+        failed: false,
     };
 
     let text = render::render("pack-status", &result, OutputMode::Text).unwrap();

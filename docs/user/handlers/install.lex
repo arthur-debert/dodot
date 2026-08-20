@@ -59,7 +59,9 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
     - *Header block.* The contiguous `#`-prefixed comment lines after the optional shebang are printed when the script starts, so you see what's about to run. Document the source script the way you'd want a teammate to read it.
     - *`# status:` markers.* Lines matching `# status: <message>` (or `#status: <message>`) on stdout are printed as live progress while the script runs. Sprinkle them at phase boundaries so a long-running script doesn't look hung.
-    - *Failure stderr.* If the script exits non-zero, captured stderr is dumped automatically.
+    - *Failure stderr.* If the script exits non-zero, captured stderr is dumped automatically, and the same text lands in the error note attached to the script's row.
+
+    A script that fails costs you that script and nothing else: the rest of the pack still deploys, `dodot up` exits 1, and no sentinel is written, so the next `dodot up` runs the script again. See [./../commands/up.lex] §9.
 
     Pass `--verbose` (or `--debug`) to `dodot up` to also stream the script's raw stdout/stderr in real time — useful when debugging.
 
