@@ -82,6 +82,22 @@ teardown() {
     assert_brew_invoked_with "bundle" "--file"
 }
 
+@test "brew is told not to upgrade unrelated formulae" {
+    dodot up
+
+    assert_brew_invoked_with "--no-upgrade"
+}
+
+@test "dodot sets HOMEBREW_NO_AUTO_UPDATE for the bundle, overriding the ambient value" {
+    # The sandbox exports this variable itself, so export the opposite
+    # first: what the mock sees can then only have come from dodot.
+    export HOMEBREW_NO_AUTO_UPDATE=0
+
+    dodot up
+
+    assert_brew_env "HOMEBREW_NO_AUTO_UPDATE" "1"
+}
+
 @test "brew skipped with --no-provision" {
     dodot up --no-provision
     assert_brew_not_invoked

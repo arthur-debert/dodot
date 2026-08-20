@@ -27,7 +27,7 @@
 
 use std::sync::Arc;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
 use crate::{DodotError, Result};
@@ -101,7 +101,10 @@ impl SecretProvider for BwProvider {
     fn probe(&self) -> ProbeResult {
         // `bw --version` doesn't hit the network and doesn't unlock
         // anything.
-        match self.runner.run("bw", &["--version".into()]) {
+        match self
+            .runner
+            .run(CommandSpec::new("bw", &["--version".into()]))
+        {
             Ok(out) if out.exit_code == 0 => {}
             Ok(_) => {
                 return ProbeResult::ProbeFailed {
@@ -125,7 +128,7 @@ impl SecretProvider for BwProvider {
         // on the substring rather than pulling in a JSON parser for
         // this single field — the status enum is tiny and stable
         // across bw versions.
-        match self.runner.run("bw", &["status".into()]) {
+        match self.runner.run(CommandSpec::new("bw", &["status".into()])) {
             Ok(out) if out.exit_code == 0 => {
                 let s = out.stdout.as_str();
                 if s.contains(r#""status":"unlocked""#) || s.contains("\"status\": \"unlocked\"") {
@@ -173,9 +176,10 @@ impl SecretProvider for BwProvider {
 
     fn resolve(&self, reference: &str) -> Result<SecretString> {
         let (item, field) = Self::parse_reference(reference)?;
-        let out = self
-            .runner
-            .run("bw", &["get".into(), field.into(), item.into()])?;
+        let out = self.runner.run(CommandSpec::new(
+            "bw",
+            &["get".into(), field.into(), item.into()],
+        ))?;
         if out.exit_code != 0 {
             let stderr = out.stderr.trim();
             let err_msg = if stderr.contains("Not found") || stderr.contains("More than one result")
@@ -251,7 +255,12 @@ mod tests {
         }
     }
     impl CommandRunner for ScriptedRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut r = self.responses.lock().unwrap();
             if r.is_empty() {
                 return Err(DodotError::Other(format!(

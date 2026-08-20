@@ -12,6 +12,7 @@
 use serde::Serialize;
 
 use crate::commands::MessageResult;
+use crate::datastore::CommandSpec;
 use crate::packs::orchestration::ExecutionContext;
 use crate::{DodotError, Result};
 
@@ -393,7 +394,7 @@ fn filter_is_installed(
     // runner translates non-zero exits into `CommandFailed`. We treat
     // exit_code == 1 (and "not a git repo") as "not installed", and
     // surface other failures (git missing, perm errors) as errors.
-    match runner.run(
+    match runner.run(CommandSpec::new(
         "git",
         &[
             "-C".into(),
@@ -402,7 +403,7 @@ fn filter_is_installed(
             "--get".into(),
             "filter.dodot-plist.clean".into(),
         ],
-    ) {
+    )) {
         Ok(out) => Ok(out.exit_code == 0 && !out.stdout.trim().is_empty()),
         Err(DodotError::CommandFailed { exit_code: 1, .. }) => Ok(false),
         Err(DodotError::CommandFailed { stderr, .. })
@@ -420,7 +421,7 @@ fn git_config_set(
     key: &str,
     value: &str,
 ) -> Result<()> {
-    let out = runner.run(
+    let out = runner.run(CommandSpec::new(
         "git",
         &[
             "-C".into(),
@@ -429,7 +430,7 @@ fn git_config_set(
             key.into(),
             value.into(),
         ],
-    )?;
+    ))?;
     if out.exit_code != 0 {
         return Err(DodotError::CommandFailed {
             command: format!("git -C {} config {} {}", root.display(), key, value),
@@ -455,14 +456,14 @@ mod tests {
 
     fn make_test_ctx(env: &crate::testing::TempEnvironment) -> ExecutionContext {
         use crate::config::ConfigManager;
-        use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+        use crate::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
         use crate::fs::Fs;
         use crate::paths::Pather;
         use std::sync::Arc;
 
         struct NoopRunner;
         impl CommandRunner for NoopRunner {
-            fn run(&self, _e: &str, _a: &[String]) -> Result<CommandOutput> {
+            fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
                 Ok(CommandOutput {
                     exit_code: 0,
                     stdout: String::new(),

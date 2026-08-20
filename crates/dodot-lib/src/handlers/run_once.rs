@@ -112,6 +112,25 @@ pub trait RunOnceCommand: Send + Sync {
     /// command against `path`.
     fn command_for(&self, path: &Path) -> (String, Vec<String>);
 
+    /// Environment variables the command is spawned with, layered
+    /// onto the environment dodot itself runs with — the child still
+    /// inherits everything else.
+    ///
+    /// The rows come from the handler's descriptor in
+    /// [`crate::provisioners`], so what a provisioner needs in its
+    /// environment is stated next to the argv it qualifies rather
+    /// than branched on at the spawn site. A handler with no rows
+    /// (and any command with no descriptor at all) returns an empty
+    /// vector and spawns exactly as it would with no seam here.
+    ///
+    /// Duplicate names are applied in order, so a later row wins.
+    fn environment(&self) -> Vec<(String, String)> {
+        crate::provisioners::environment_for(self.handler_name())
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect()
+    }
+
     /// Optional pre-flight check. Default: no-op.
     ///
     /// **Scope: environmental, not content** — see the
@@ -278,6 +297,7 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 handler: self.cmd.handler_name().into(),
                 executable,
                 arguments,
+                environment: self.cmd.environment(),
                 sentinel,
                 relative_path,
                 content_hash: checksum,
@@ -418,6 +438,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::datastore::CommandSpec;
     use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
     use crate::testing::TempEnvironment;
     use std::collections::HashMap;
@@ -429,7 +450,7 @@ mod tests {
 
     struct NoopRunner;
     impl CommandRunner for NoopRunner {
-        fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),
@@ -570,6 +591,7 @@ mod tests {
                 handler: h,
                 executable,
                 arguments,
+                environment,
                 sentinel,
                 relative_path,
                 content_hash,
@@ -577,6 +599,9 @@ mod tests {
                 assert_eq!(pack, "vim");
                 assert_eq!(h, "fake");
                 assert_eq!(executable, "bash");
+                // No descriptor row for a handler named "fake", so
+                // the shared default declares nothing.
+                assert!(environment.is_empty(), "got: {environment:?}");
                 assert_eq!(arguments[0], "--");
                 assert!(arguments[1].ends_with("vim/setup.sh"));
                 assert!(sentinel.starts_with("setup.sh-"));

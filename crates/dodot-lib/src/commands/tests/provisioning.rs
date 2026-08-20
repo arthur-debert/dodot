@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use crate::commands::{self, DisplayFile};
-use crate::datastore::{CommandOutput, CommandRunner};
+use crate::datastore::{CommandOutput, CommandRunner, CommandSpec};
 use crate::fs::Fs;
 use crate::packs::orchestration::ExecutionContext;
 use crate::testing::TempEnvironment;
@@ -25,7 +25,12 @@ struct FailingInstallRunner {
 }
 
 impl CommandRunner for FailingInstallRunner {
-    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+    fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+        let CommandSpec {
+            executable,
+            arguments,
+            ..
+        } = command;
         if arguments.iter().any(|a| a.ends_with("install.sh")) {
             return Err(crate::DodotError::CommandFailed {
                 command: crate::datastore::format_command_for_display(executable, arguments),
@@ -162,6 +167,7 @@ fn two_scripts_sharing_a_basename_each_keep_their_own_failure_row() {
         handler: "install".into(),
         executable: "bash".into(),
         arguments: vec!["--".into(), format!("/packs/tools/{relative_path}")],
+        environment: Vec::new(),
         sentinel: "install.sh-abc1234567890def".into(),
         relative_path: relative_path.into(),
     };
@@ -257,6 +263,7 @@ fn a_failure_does_not_flip_a_row_it_only_shares_a_basename_with() {
                 handler: "install".into(),
                 executable: "bash".into(),
                 arguments: vec!["--".into(), "/packs/tools/install.sh".into()],
+                environment: Vec::new(),
                 sentinel: "install.sh-abc1234567890def".into(),
                 relative_path: "install.sh".into(),
             },

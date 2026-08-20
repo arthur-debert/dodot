@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::config::ConfigManager;
-use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+use crate::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
 use crate::fs::Fs;
 use crate::packs::orchestration::ExecutionContext;
 use crate::paths::Pather;
@@ -13,7 +13,7 @@ use crate::Result;
 struct NoopRunner;
 
 impl CommandRunner for NoopRunner {
-    fn run(&self, _e: &str, _a: &[String]) -> Result<CommandOutput> {
+    fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
         Ok(CommandOutput {
             exit_code: 0,
             stdout: String::new(),

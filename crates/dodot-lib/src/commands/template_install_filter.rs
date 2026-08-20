@@ -24,6 +24,7 @@
 use serde::Serialize;
 
 use crate::commands::MessageResult;
+use crate::datastore::CommandSpec;
 use crate::packs::orchestration::ExecutionContext;
 use crate::{DodotError, Result};
 
@@ -162,7 +163,7 @@ fn filter_is_installed(
     runner: &dyn crate::datastore::CommandRunner,
     root: &std::path::Path,
 ) -> Result<bool> {
-    match runner.run(
+    match runner.run(CommandSpec::new(
         "git",
         &[
             "-C".into(),
@@ -171,7 +172,7 @@ fn filter_is_installed(
             "--get".into(),
             "filter.dodot-template.clean".into(),
         ],
-    ) {
+    )) {
         Ok(out) => Ok(out.exit_code == 0 && !out.stdout.trim().is_empty()),
         Err(DodotError::CommandFailed { exit_code: 1, .. }) => Ok(false),
         Err(DodotError::CommandFailed { stderr, .. })
@@ -189,7 +190,7 @@ fn git_config_set(
     key: &str,
     value: &str,
 ) -> Result<()> {
-    let out = runner.run(
+    let out = runner.run(CommandSpec::new(
         "git",
         &[
             "-C".into(),
@@ -198,7 +199,7 @@ fn git_config_set(
             key.into(),
             value.into(),
         ],
-    )?;
+    ))?;
     if out.exit_code != 0 {
         return Err(DodotError::CommandFailed {
             command: format!("git -C {} config {} {}", root.display(), key, value),
@@ -250,7 +251,7 @@ mod tests {
     /// observe the `git config` calls install_filter would issue.
     fn make_test_ctx(env: &crate::testing::TempEnvironment) -> ExecutionContext {
         use crate::config::ConfigManager;
-        use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+        use crate::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
         use crate::fs::Fs;
         use crate::paths::Pather;
         use std::sync::{Arc, Mutex};
@@ -265,7 +266,12 @@ mod tests {
             calls: Mutex<Vec<Vec<String>>>,
         }
         impl CommandRunner for MockRunner {
-            fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+            fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+                let CommandSpec {
+                    executable: exe,
+                    arguments: args,
+                    ..
+                } = command;
                 self.calls.lock().unwrap().push(
                     std::iter::once(exe.to_string())
                         .chain(args.iter().cloned())

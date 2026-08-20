@@ -34,7 +34,7 @@
 
 use std::sync::Arc;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
 use crate::{DodotError, Result};
@@ -97,7 +97,10 @@ impl SecretProvider for KeychainProvider {
         // On macOS `/usr/bin/security` is part of the base system,
         // so a missing binary is almost always "this is a non-macOS
         // host".
-        match self.runner.run("security", &["-h".into()]) {
+        match self
+            .runner
+            .run(CommandSpec::new("security", &["-h".into()]))
+        {
             Ok(_) => {}
             Err(_) => {
                 return ProbeResult::NotInstalled {
@@ -117,7 +120,10 @@ impl SecretProvider for KeychainProvider {
         // `security default-keychain` returns the user's default
         // keychain path on success and a diagnostic on failure.
         // Doesn't unlock anything, doesn't require pre-existing items.
-        match self.runner.run("security", &["default-keychain".into()]) {
+        match self
+            .runner
+            .run(CommandSpec::new("security", &["default-keychain".into()]))
+        {
             Ok(out) if out.exit_code == 0 => ProbeResult::Ok,
             Ok(_) => ProbeResult::ProbeFailed {
                 details: "`security default-keychain` returned non-zero — \
@@ -145,7 +151,7 @@ impl SecretProvider for KeychainProvider {
         // `security` dumps the full attribute table.
         args.push("-w".into());
 
-        let out = self.runner.run("security", &args)?;
+        let out = self.runner.run(CommandSpec::new("security", &args))?;
         if out.exit_code != 0 {
             let stderr = out.stderr.trim();
             // `security`'s exit codes for find-generic-password
@@ -239,7 +245,12 @@ mod tests {
         }
     }
     impl CommandRunner for ScriptedRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut r = self.responses.lock().unwrap();
             if r.is_empty() {
                 return Err(DodotError::Other(format!(

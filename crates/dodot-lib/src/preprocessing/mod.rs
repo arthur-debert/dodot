@@ -494,7 +494,10 @@ mod tests {
     /// runner that satisfies the trait works.
     struct NoopRunner;
     impl crate::datastore::CommandRunner for NoopRunner {
-        fn run(&self, _: &str, _: &[String]) -> Result<crate::datastore::CommandOutput> {
+        fn run(
+            &self,
+            _command: crate::datastore::CommandSpec<'_>,
+        ) -> Result<crate::datastore::CommandOutput> {
             unreachable!("default_registry tests do not invoke runners")
         }
     }

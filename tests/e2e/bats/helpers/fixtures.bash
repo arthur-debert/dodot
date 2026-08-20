@@ -189,7 +189,10 @@ instrumented_brewfile() {
 # Must be called during setup before `dodot up`.
 # Usage: install_brew_mock
 # Creates: $HOME/.dodot-markers/brew-mock/brew on PATH
-# Logs to: $HOME/.dodot-markers/brew.log
+# Logs to: $HOME/.dodot-markers/brew.log   (arguments, one line per call)
+#          $HOME/.dodot-markers/brew-env.log (the HOMEBREW_* environment
+#          the call was spawned with, so a test can check what dodot set
+#          rather than only what it passed on the command line)
 install_brew_mock() {
 	local mock_dir="$HOME/.dodot-markers/brew-mock"
 	mkdir -p "$mock_dir"
@@ -198,6 +201,7 @@ install_brew_mock() {
 #!/bin/sh
 mkdir -p "$HOME/.dodot-markers"
 echo "$@" >> "$HOME/.dodot-markers/brew.log"
+echo "HOMEBREW_NO_AUTO_UPDATE=${HOMEBREW_NO_AUTO_UPDATE-<unset>}" 	>> "$HOME/.dodot-markers/brew-env.log"
 MOCK
 	chmod +x "$mock_dir/brew"
 

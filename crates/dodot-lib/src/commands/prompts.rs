@@ -131,14 +131,14 @@ mod tests {
 
     use super::*;
     use crate::config::ConfigManager;
-    use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+    use crate::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
     use crate::fs::Fs;
     use crate::paths::Pather;
     use crate::testing::TempEnvironment;
 
     struct NoopRunner;
     impl CommandRunner for NoopRunner {
-        fn run(&self, _executable: &str, _arguments: &[String]) -> Result<CommandOutput> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),

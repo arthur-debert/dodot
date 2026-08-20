@@ -140,12 +140,12 @@ Types and Structure
             pub enum HandlerIntent {
                 Link { pack, handler, source, user_path },
                 Stage { pack, handler, source },
-                Run { pack, handler, executable, arguments, sentinel },
+                Run { pack, handler, executable, arguments, environment, sentinel, relative_path, content_hash },
             }
 
         :: rust ::
 
-        `Link` is a full double-link deployment (used by symlink). `Stage` adds a source file to the datastore without a user-side link (used by shell and path; the init script picks them up). `Run` is a tracked command execution (used by install and homebrew). The `force` flag that overrides sentinel checks lives on `DataStore::run_and_record`, not on the intent.
+        `Link` is a full double-link deployment (used by symlink). `Stage` adds a source file to the datastore without a user-side link (used by shell and path; the init script picks them up). `Run` is a tracked command execution (used by install, homebrew, and nix); its `environment` carries the variables the handler's `provisioners` row declares, layered onto dodot's own environment at spawn time. The `force` flag that overrides sentinel checks lives on `DataStore::run_and_record`, not on the intent.
 
     4.5. `Operation`
 
@@ -156,7 +156,7 @@ Types and Structure
             pub enum Operation {
                 CreateDataLink   { pack, handler, source },
                 CreateUserLink   { pack, handler, datastore_path, user_path },
-                RunCommand       { pack, handler, executable, arguments, sentinel },
+                RunCommand       { pack, handler, executable, arguments, environment, sentinel, relative_path },
                 CheckSentinel    { pack, handler, sentinel },
             }
 

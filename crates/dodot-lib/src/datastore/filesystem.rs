@@ -1,7 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use crate::datastore::{CommandRunner, DataStore, DidRunStatus};
+use crate::datastore::{CommandRunner, CommandSpec, DataStore, DidRunStatus};
 use crate::fs::Fs;
 use crate::paths::Pather;
 use crate::{DodotError, Result};
@@ -200,11 +200,15 @@ impl DataStore for FilesystemDataStore {
         &self,
         pack: &str,
         handler: &str,
-        executable: &str,
-        arguments: &[String],
+        command: CommandSpec<'_>,
         sentinel: &str,
         force: bool,
     ) -> Result<()> {
+        let CommandSpec {
+            executable,
+            arguments,
+            ..
+        } = command;
         if !force && self.has_sentinel(pack, handler, sentinel)? {
             return Ok(());
         }
@@ -255,7 +259,7 @@ impl DataStore for FilesystemDataStore {
             }
         }
 
-        let result = self.runner.run(executable, arguments);
+        let result = self.runner.run(command);
         match &result {
             Ok(_) => eprintln!("{header}  {green}OK{reset}"),
             Err(_) => eprintln!("{header}  {red}FAILED{reset}"),
@@ -568,10 +572,12 @@ mod tests {
         assert!(extract_header_block("#!/bin/bash\necho hi\n").is_empty());
     }
 
-    /// Mock command runner that records calls and can be configured to
+    /// Mock command runner that records the calls it was handed —
+    /// command line and environment both — and can be configured to
     /// succeed or fail.
     struct MockCommandRunner {
         calls: Mutex<Vec<String>>,
+        environments: Mutex<Vec<Vec<(String, String)>>>,
         should_fail: bool,
     }
 
@@ -579,6 +585,7 @@ mod tests {
         fn new() -> Self {
             Self {
                 calls: Mutex::new(Vec::new()),
+                environments: Mutex::new(Vec::new()),
                 should_fail: false,
             }
         }
@@ -586,6 +593,7 @@ mod tests {
         fn failing() -> Self {
             Self {
                 calls: Mutex::new(Vec::new()),
+                environments: Mutex::new(Vec::new()),
                 should_fail: true,
             }
         }
@@ -593,12 +601,23 @@ mod tests {
         fn calls(&self) -> Vec<String> {
             self.calls.lock().unwrap().clone()
         }
+
+        fn environments(&self) -> Vec<Vec<(String, String)>> {
+            self.environments.lock().unwrap().clone()
+        }
     }
 
     impl CommandRunner for MockCommandRunner {
-        fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable,
+                arguments,
+                environment,
+                ..
+            } = command;
             let cmd_str = format!("{} {}", executable, arguments.join(" "));
             self.calls.lock().unwrap().push(cmd_str.trim().to_string());
+            self.environments.lock().unwrap().push(environment.to_vec());
             if self.should_fail {
                 Err(crate::DodotError::CommandFailed {
                     command: cmd_str.trim().to_string(),
@@ -792,8 +811,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["hello".into()],
+            CommandSpec::new("echo", &["hello".into()]),
             "install.sh-abc",
             false,
         )
@@ -811,14 +829,72 @@ mod tests {
     }
 
     #[test]
+    fn run_and_record_hands_the_declared_environment_to_the_runner() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        ds.run_and_record(
+            "dev",
+            "homebrew",
+            CommandSpec::with_environment(
+                "brew",
+                &["bundle".into()],
+                &[("HOMEBREW_NO_AUTO_UPDATE".into(), "1".into())],
+            ),
+            "Brewfile-abc",
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            runner.environments(),
+            vec![vec![(
+                "HOMEBREW_NO_AUTO_UPDATE".to_string(),
+                "1".to_string()
+            )]]
+        );
+    }
+
+    #[test]
+    fn run_and_record_passes_no_environment_when_none_is_declared() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        ds.run_and_record(
+            "vim",
+            "install",
+            CommandSpec::new("echo", &["hi".into()]),
+            "s1",
+            false,
+        )
+        .unwrap();
+
+        // Empty, not absent: the child still inherits dodot's own
+        // environment — the runner just layers nothing onto it.
+        assert_eq!(runner.environments(), vec![Vec::new()]);
+    }
+
+    #[test]
     fn run_and_record_is_idempotent() {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
 
-        ds.run_and_record("vim", "install", "echo", &["first".into()], "s1", false)
-            .unwrap();
-        ds.run_and_record("vim", "install", "echo", &["second".into()], "s1", false)
-            .unwrap();
+        ds.run_and_record(
+            "vim",
+            "install",
+            CommandSpec::new("echo", &["first".into()]),
+            "s1",
+            false,
+        )
+        .unwrap();
+        ds.run_and_record(
+            "vim",
+            "install",
+            CommandSpec::new("echo", &["second".into()]),
+            "s1",
+            false,
+        )
+        .unwrap();
 
         assert_eq!(runner.calls(), vec!["echo first"]);
     }
@@ -830,7 +906,13 @@ mod tests {
         let ds = FilesystemDataStore::new(env.fs.clone(), env.paths.clone(), runner);
 
         let err = ds
-            .run_and_record("vim", "install", "bad-cmd", &[], "s1", false)
+            .run_and_record(
+                "vim",
+                "install",
+                CommandSpec::new("bad-cmd", &[]),
+                "s1",
+                false,
+            )
             .unwrap_err();
 
         assert!(
@@ -977,8 +1059,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["a".into()],
+            CommandSpec::new("echo", &["a".into()]),
             "install.sh-aaa",
             false,
         )
@@ -986,8 +1067,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["b".into()],
+            CommandSpec::new("echo", &["b".into()]),
             "install.sh-bbb",
             false,
         )
@@ -1214,8 +1294,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["hi".into()],
+            CommandSpec::new("echo", &["hi".into()]),
             "install.sh-abcdef0123456789",
             false,
         )
@@ -1239,17 +1318,18 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            // The install handler's argv shape — `<interpreter> --
-            // <script>` — because the snapshot comes from the
-            // manifest position the `install` descriptor declares.
-            &[
-                "--".into(),
-                env.dotfiles_root
-                    .join("vim/install.sh")
-                    .to_string_lossy()
-                    .into(),
-            ],
+            CommandSpec::new(
+                "echo", // The install handler's argv shape — `<interpreter> --
+                // <script>` — because the snapshot comes from the
+                // manifest position the `install` descriptor declares.
+                &[
+                    "--".into(),
+                    env.dotfiles_root
+                        .join("vim/install.sh")
+                        .to_string_lossy()
+                        .into(),
+                ],
+            ),
             "install.sh-aaaaaaaaaaaaaaaa",
             false,
         )
@@ -1425,8 +1505,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "bash",
-            &["--".into(), abs.to_string_lossy().into()],
+            CommandSpec::new("bash", &["--".into(), abs.to_string_lossy().into()]),
             "install.sh-abcdef0123456789",
             false,
         )
@@ -1472,8 +1551,7 @@ mod tests {
         ds.run_and_record(
             "tools",
             "nix",
-            &executable,
-            &arguments,
+            CommandSpec::new(&executable, &arguments),
             "packages.nix-abcdef0123456789",
             false,
         )
@@ -1526,8 +1604,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["--".into(), ghost.to_string_lossy().into()],
+            CommandSpec::new("echo", &["--".into(), ghost.to_string_lossy().into()]),
             "missing.sh-abcdef0123456789",
             false,
         )

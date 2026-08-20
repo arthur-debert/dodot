@@ -244,13 +244,15 @@ fn parse_row(line: &str) -> Option<DeploymentMapEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::datastore::{CommandOutput, CommandRunner, DataStore, FilesystemDataStore};
+    use crate::datastore::{
+        CommandOutput, CommandRunner, CommandSpec, DataStore, FilesystemDataStore,
+    };
     use crate::testing::TempEnvironment;
     use std::sync::Arc;
 
     struct NoopRunner;
     impl CommandRunner for NoopRunner {
-        fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),

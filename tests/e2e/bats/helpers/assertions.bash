@@ -318,6 +318,26 @@ assert_brew_invoked_with() {
 	done
 }
 
+# Assert that the brew mock saw a HOMEBREW_* variable with a given value.
+# Usage: assert_brew_env "HOMEBREW_NO_AUTO_UPDATE" "1"
+assert_brew_env() {
+	local name="$1" value="$2"
+	local log="$HOME/.dodot-markers/brew-env.log"
+
+	if [[ ! -f "$log" ]]; then
+		echo "expected brew env log at $log, but it does not exist" >&2
+		echo "  hint: did you call install_brew_mock before dodot up?" >&2
+		return 1
+	fi
+
+	if ! grep -q -F -- "$name=$value" "$log"; then
+		echo "expected brew to be spawned with '$name=$value'" >&2
+		echo "  actual env log:" >&2
+		cat "$log" >&2
+		return 1
+	fi
+}
+
 # Assert that the brew mock was NOT invoked.
 # Usage: assert_brew_not_invoked
 assert_brew_not_invoked() {
