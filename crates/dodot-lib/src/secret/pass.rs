@@ -22,7 +22,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
 use crate::{DodotError, Result};
@@ -97,7 +97,10 @@ impl SecretProvider for PassProvider {
     fn probe(&self) -> ProbeResult {
         // Cheap binary-on-PATH check: `pass version` returns 0 with
         // a banner.
-        match self.runner.run("pass", &["version".into()]) {
+        match self
+            .runner
+            .run(CommandSpec::new("pass", &["version".into()]))
+        {
             Ok(out) if out.exit_code == 0 => {}
             Ok(_) => {
                 return ProbeResult::ProbeFailed {
@@ -135,7 +138,7 @@ impl SecretProvider for PassProvider {
         Self::validate_reference(reference)?;
         let out = self
             .runner
-            .run("pass", &["show".into(), reference.into()])?;
+            .run(CommandSpec::new("pass", &["show".into(), reference.into()]))?;
         if out.exit_code != 0 {
             // `pass show missing/path` exits 1 and prints `Error:
             // missing/path is not in the password store.` to stderr.
@@ -221,7 +224,12 @@ mod tests {
     }
 
     impl CommandRunner for ScriptedRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             self.calls
                 .lock()
                 .unwrap()

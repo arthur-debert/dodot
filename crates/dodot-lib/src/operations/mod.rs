@@ -40,11 +40,17 @@ pub enum Operation {
     /// relative path and not the basename because status rows are
     /// keyed that way, so two same-named files in one pack
     /// (`install.sh` and `extras/install.sh`) stay distinguishable.
+    ///
+    /// `environment` holds the variables the command is spawned
+    /// with, layered onto the environment dodot itself runs with —
+    /// the child inherits everything else. It is empty for a command
+    /// that needs nothing set.
     RunCommand {
         pack: String,
         handler: String,
         executable: String,
         arguments: Vec<String>,
+        environment: Vec<(String, String)>,
         sentinel: String,
         relative_path: String,
     },
@@ -147,6 +153,10 @@ pub enum HandlerIntent {
     /// named `<basename>-<hash>`. `content_hash` is the 16-char hex
     /// digest of the current file contents, also embedded as the
     /// suffix of `sentinel`.
+    /// `environment` carries the variables the command is spawned
+    /// with — the handler's rows from [`crate::provisioners`],
+    /// layered onto dodot's own environment rather than replacing
+    /// it. Empty for a handler that declares none.
     Run {
         pack: String,
         handler: String,
@@ -160,6 +170,7 @@ pub enum HandlerIntent {
         /// `PATH` lookup by design, it is the bare program name.
         executable: String,
         arguments: Vec<String>,
+        environment: Vec<(String, String)>,
         sentinel: String,
         relative_path: String,
         content_hash: String,
@@ -274,6 +285,7 @@ mod tests {
             handler: "install".into(),
             executable: "echo".into(),
             arguments: vec!["hi".into()],
+            environment: vec![("DODOT_TEST".into(), "1".into())],
             sentinel: "s1".into(),
             relative_path: "install.sh".into(),
         };
@@ -281,5 +293,6 @@ mod tests {
         assert!(json.contains("RunCommand"));
         assert!(json.contains("echo"));
         assert!(json.contains("hi"));
+        assert!(json.contains("DODOT_TEST"));
     }
 }

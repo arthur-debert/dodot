@@ -117,7 +117,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::config::DodotConfig;
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::fs::Fs;
 use crate::paths::Pather;
 use crate::{DodotError, Result};
@@ -583,7 +583,7 @@ fn shellenv(
 ) -> std::result::Result<String, String> {
     let executable = brew.to_string_lossy().to_string();
     let args = vec!["shellenv".to_string(), shell.to_string()];
-    match runner.run(&executable, &args) {
+    match runner.run(CommandSpec::new(&executable, &args)) {
         Ok(out) if out.exit_code == 0 && !out.stdout.trim().is_empty() => Ok(out.stdout),
         Ok(out) => {
             debug!(
@@ -723,7 +723,12 @@ mod tests {
     }
 
     impl CommandRunner for FakeBrew {
-        fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable,
+                arguments,
+                ..
+            } = command;
             self.calls
                 .lock()
                 .unwrap()
@@ -761,7 +766,7 @@ mod tests {
     struct UnspawnableBrew;
 
     impl CommandRunner for UnspawnableBrew {
-        fn run(&self, _executable: &str, _arguments: &[String]) -> Result<CommandOutput> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
             Err(DodotError::Other("text file busy".to_string()))
         }
     }

@@ -40,7 +40,16 @@ Runs `brew bundle` against your source `Brewfile` once per content-hash, tracked
 
     Snapshots live alongside sentinels in the handler data dir: `<datastore>/packs/<pack>/homebrew/<filename>-<hash>.snapshot`. If you want to manage state directly, removing the sentinel + snapshot pair flips the file back to `brew packages not installed`.
 
-4. Configuration
+4. How dodot invokes brew
+
+    The command is `brew bundle --no-upgrade --file <your Brewfile>`, with `HOMEBREW_NO_AUTO_UPDATE=1` set for that invocation only. Both turn off a brew default that would do work you did not ask for in this run:
+
+    - *No upgrades.* `brew bundle` upgrades every outdated formula it encounters by default. dodot passes `--no-upgrade`, so a run installs what the Brewfile declares and leaves the rest of your machine's packages at the versions they were. Upgrading stays something you ask for, with `brew upgrade`.
+    - *No auto-update.* The first brew invocation of a day normally runs a `brew update` first — a network round-trip that upgrades brew and its taps and takes seconds before your packages get a look in. dodot suppresses it, so `dodot up` costs what your Brewfile costs. Updating brew stays something you ask for, with `brew update`.
+
+    The variable is layered onto the environment dodot is running with, not substituted for it: the `brew` process still sees your `PATH`, `HOME`, and the rest of your `HOMEBREW_*` settings. The one exception is `HOMEBREW_NO_AUTO_UPDATE` itself — dodot's value wins for the bundle it runs, so a `HOMEBREW_NO_AUTO_UPDATE=0` you export does not re-enable auto-update here. Run `brew bundle` yourself if you want brew's defaults back for a particular run.
+
+5. Configuration
 
     Under `[mappings]`:
 
@@ -51,7 +60,7 @@ Runs `brew bundle` against your source `Brewfile` once per content-hash, tracked
 
     Single string only — unlike `install`, the homebrew handler claims one filename. There's no dedicated `[homebrew]` section.
 
-5. Live edits
+6. Live edits
 
     Edits to the source Brewfile — adding or removing a `brew "..."` line, changing a `cask` — change its content hash. dodot detects the change but **does not re-run `brew bundle` automatically** — instead `dodot status` reports `brew packages older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 3 for the full three-state model and `--diff` workflow.
 

@@ -25,7 +25,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
 use crate::{DodotError, Result};
@@ -120,7 +120,10 @@ impl SecretProvider for SopsProvider {
     }
 
     fn probe(&self) -> ProbeResult {
-        match self.runner.run("sops", &["--version".into()]) {
+        match self
+            .runner
+            .run(CommandSpec::new("sops", &["--version".into()]))
+        {
             Ok(out) if out.exit_code == 0 => ProbeResult::Ok,
             Ok(_) => ProbeResult::ProbeFailed {
                 details: "`sops --version` returned non-zero — the binary is on PATH \
@@ -141,7 +144,7 @@ impl SecretProvider for SopsProvider {
 
     fn resolve(&self, reference: &str) -> Result<SecretString> {
         let (file_path, dot_path, extract) = self.parse_reference(reference)?;
-        let out = self.runner.run(
+        let out = self.runner.run(CommandSpec::new(
             "sops",
             &[
                 "--decrypt".into(),
@@ -149,7 +152,7 @@ impl SecretProvider for SopsProvider {
                 extract.clone(),
                 file_path.to_string_lossy().to_string(),
             ],
-        )?;
+        ))?;
         if out.exit_code != 0 {
             let stderr = out.stderr.trim();
             let err_msg = if stderr.contains("no such file")
@@ -252,7 +255,12 @@ mod tests {
         }
     }
     impl CommandRunner for ScriptedRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut r = self.responses.lock().unwrap();
             if r.is_empty() {
                 return Err(DodotError::Other(format!(

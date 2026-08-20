@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::commands::{self, DisplayFile, PackStatusResult};
-use crate::datastore::{CommandOutput, CommandRunner};
+use crate::datastore::{CommandOutput, CommandRunner, CommandSpec};
 use crate::fs::{DirEntry, Fs, FsMetadata, OsFs};
 use crate::handlers::HANDLER_HOMEBREW;
 use crate::packs::orchestration::ExecutionContext;
@@ -428,8 +428,11 @@ fn an_absent_manager_a_gate_and_no_provision_read_differently() {
 struct NeverSpawns;
 
 impl CommandRunner for NeverSpawns {
-    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
-        panic!("status spawned {executable} {arguments:?}");
+    fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+        panic!(
+            "status spawned {} {:?}",
+            command.executable, command.arguments
+        );
     }
 }
 
@@ -493,17 +496,25 @@ fn status_spawns_nothing_and_writes_nothing_whether_the_manager_is_there_or_not(
 /// success to anything, which makes a sentinel a poor witness: it
 /// would be written just as happily for a `brew` the OS could never
 /// have resolved.
+/// One spawn, as the runner saw it.
+struct Spawn {
+    executable: String,
+    arguments: Vec<String>,
+    environment: Vec<(String, String)>,
+}
+
 #[derive(Default)]
 struct RecordingRunner {
-    spawns: std::sync::Mutex<Vec<(String, Vec<String>)>>,
+    spawns: std::sync::Mutex<Vec<Spawn>>,
 }
 
 impl CommandRunner for RecordingRunner {
-    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
-        self.spawns
-            .lock()
-            .unwrap()
-            .push((executable.to_string(), arguments.to_vec()));
+    fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+        self.spawns.lock().unwrap().push(Spawn {
+            executable: command.executable.to_string(),
+            arguments: command.arguments.to_vec(),
+            environment: command.environment.to_vec(),
+        });
         Ok(CommandOutput {
             exit_code: 0,
             stdout: String::new(),
@@ -536,22 +547,32 @@ fn the_run_spawns_the_absolute_path_the_probe_found() {
     commands::up::up(None, &ctx).unwrap();
 
     let spawns = runner.spawns.lock().unwrap();
-    let (executable, arguments) = spawns
+    let bundle = spawns
         .iter()
-        .find(|(_, args)| args.first().map(String::as_str) == Some("bundle"))
+        .find(|s| s.arguments.first().map(String::as_str) == Some("bundle"))
         .expect("the Brewfile ran");
 
     assert_eq!(
-        Path::new(executable),
+        Path::new(&bundle.executable),
         brew_path(&env),
         "the run must spawn the brew the probe found, not a name for the OS to resolve"
     );
     // The arguments are the handler's own, untouched: substituting
     // the program must not shift the manifest position the descriptor
     // in `provisioners::PROVISIONERS` declares.
-    assert_eq!(arguments[0], "bundle");
-    assert_eq!(arguments[1], "--file");
-    assert!(arguments[2].ends_with("Brewfile"));
+    let manifest = crate::provisioners::manifest_argument(HANDLER_HOMEBREW, &bundle.arguments);
+    assert!(
+        manifest.is_some_and(|m| m.ends_with("Brewfile")),
+        "the declared manifest position must still find the Brewfile in {:?}",
+        bundle.arguments
+    );
+    // And the descriptor's environment still rides along: the program
+    // and the environment come from the same row, so substituting one
+    // must not drop the other.
+    assert_eq!(
+        bundle.environment.as_slice(),
+        [("HOMEBREW_NO_AUTO_UPDATE".to_string(), "1".to_string())]
+    );
 }
 
 #[test]
@@ -572,13 +593,14 @@ fn a_handler_dodot_does_not_locate_keeps_its_path_lookup() {
     commands::up::up(None, &ctx).unwrap();
 
     let spawns = runner.spawns.lock().unwrap();
-    let (executable, _) = spawns
+    let script = spawns
         .iter()
-        .find(|(_, args)| args.iter().any(|a| a.ends_with("install.sh")))
+        .find(|s| s.arguments.iter().any(|a| a.ends_with("install.sh")))
         .expect("the install script ran");
     assert!(
-        !executable.contains('/'),
-        "install\u{2019}s interpreter is a PATH lookup, not a located path: {executable}"
+        !script.executable.contains('/'),
+        "install\u{2019}s interpreter is a PATH lookup, not a located path: {}",
+        script.executable
     );
 }
 

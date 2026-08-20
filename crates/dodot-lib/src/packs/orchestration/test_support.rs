@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::config::ConfigManager;
-use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+use crate::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
 use crate::fs::Fs;
 use crate::operations::OperationResult;
 use crate::packs::context::ExecutionContext;
@@ -28,7 +28,12 @@ impl MockCommandRunner {
 }
 
 impl CommandRunner for MockCommandRunner {
-    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+    fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+        let CommandSpec {
+            executable,
+            arguments,
+            ..
+        } = command;
         let cmd_str = format!("{} {}", executable, arguments.join(" "));
         self.calls.lock().unwrap().push(cmd_str.trim().to_string());
         Ok(CommandOutput {

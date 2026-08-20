@@ -1165,7 +1165,10 @@ fn try_prompt_invalidate_cfprefsd() -> Result<(), anyhow::Error> {
             // prompt purposes (the cache is cleared either way: an
             // empty cache is the desired end state).
             let runner = ctx.command_runner.as_ref();
-            let result = runner.run("killall", &["cfprefsd".into()]);
+            let result = runner.run(dodot_lib::datastore::CommandSpec::new(
+                "killall",
+                &["cfprefsd".into()],
+            ));
             match result {
                 Ok(_) => eprintln!("Ran `killall cfprefsd`."),
                 Err(e) => eprintln!(

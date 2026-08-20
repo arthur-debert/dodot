@@ -194,6 +194,7 @@ mod tests {
                     handler: "install".into(),
                     executable: "echo".into(),
                     arguments: vec!["hi".into()],
+                    environment: Vec::new(),
                     sentinel: "install.sh-1111111111111111".into(),
                     relative_path: "install.sh".into(),
                     content_hash: "1111111111111111".into(),
