@@ -225,6 +225,77 @@ fn two_scripts_sharing_a_basename_each_keep_their_own_failure_row() {
     }
 }
 
+/// The other half of the same rule: a failure must never flip a row it
+/// only shares a basename with. `install.sh` failing does not make
+/// `extras/install.sh` the culprit — with no row of its own to flip,
+/// the failure gets a row of its own. This is what the deleted
+/// basename fallback got wrong.
+#[test]
+fn a_failure_does_not_flip_a_row_it_only_shares_a_basename_with() {
+    use crate::commands::{DisplayNote, DisplayPack};
+    use crate::operations::{Operation, OperationResult};
+    use crate::packs::types::PackResult;
+
+    let packs = vec![DisplayPack::new(
+        "tools".into(),
+        vec![DisplayFile {
+            name: "extras/install.sh".into(),
+            symbol: "→".into(),
+            description: "extras/install.sh".into(),
+            status: "pending".into(),
+            status_label: "pending".into(),
+            handler: "install".into(),
+            note_ref: None,
+        }],
+    )];
+    let pack_results = vec![PackResult {
+        pack_name: "tools".into(),
+        success: false,
+        operations: vec![OperationResult::fail(
+            Operation::RunCommand {
+                pack: "tools".into(),
+                handler: "install".into(),
+                executable: "bash".into(),
+                arguments: vec!["--".into(), "/packs/tools/install.sh".into()],
+                sentinel: "install.sh-abc1234567890def".into(),
+                relative_path: "install.sh".into(),
+            },
+            "top-level script blew up",
+        )],
+        error: None,
+    }];
+
+    let mut notes: Vec<DisplayNote> = Vec::new();
+    let packs = commands::up::overlay_errors(
+        packs,
+        &pack_results,
+        std::path::Path::new("/home/someone"),
+        &mut notes,
+    );
+
+    let innocent = packs[0]
+        .files
+        .iter()
+        .find(|f| f.name == "extras/install.sh")
+        .expect("the nested row is still there");
+    assert_eq!(
+        innocent.status, "pending",
+        "the nested script never ran and must not be blamed"
+    );
+    assert!(innocent.note_ref.is_none());
+
+    let blamed = packs[0]
+        .files
+        .iter()
+        .find(|f| f.name == "install.sh")
+        .expect("the failure needs a row of its own");
+    assert_eq!(blamed.status, "error");
+    assert_eq!(
+        notes[(blamed.note_ref.unwrap() - 1) as usize].body,
+        "top-level script blew up"
+    );
+}
+
 #[test]
 fn a_failed_run_writes_no_sentinel_so_the_next_up_retries() {
     let env = env_with_a_failing_script();
