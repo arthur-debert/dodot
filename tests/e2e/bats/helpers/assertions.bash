@@ -287,7 +287,10 @@ assert_install_not_ran() {
 	fi
 }
 
-# Assert that the brew mock was invoked.
+# Assert that the brew mock ran a `brew bundle`.
+#
+# The mock logs `bundle` and nothing else — see install_brew_mock for
+# why — so the log's existence is exactly "the Brewfile ran".
 # Usage: install_brew_mock; dodot up
 #        assert_brew_invoked
 assert_brew_invoked() {
@@ -318,7 +321,7 @@ assert_brew_invoked_with() {
 	done
 }
 
-# Assert that the brew mock was NOT invoked.
+# Assert that the brew mock ran no `brew bundle`.
 # Usage: assert_brew_not_invoked
 assert_brew_not_invoked() {
 	local log="$HOME/.dodot-markers/brew.log"

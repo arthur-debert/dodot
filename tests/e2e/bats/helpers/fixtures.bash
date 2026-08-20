@@ -185,11 +185,21 @@ instrumented_brewfile() {
 	create_pack_file "$pack" "Brewfile" "$contents"
 }
 
-# Install a mock `brew` script that logs all invocations.
+# Install a mock `brew` script that logs every `brew bundle` run.
 # Must be called during setup before `dodot up`.
 # Usage: install_brew_mock
 # Creates: $HOME/.dodot-markers/brew-mock/bin/brew
 # Logs to: $HOME/.dodot-markers/brew.log
+#
+# Only `bundle` is logged, because the provisioning handler is not the
+# only caller: naming a prefix hands the same brew to the shell
+# bootstrap, which runs `brew shellenv <shell>` on every `dodot up` to
+# capture the block it writes into the init script. Logging that too
+# would make `assert_brew_not_invoked` — "the Brewfile did not run" —
+# fail on a run where the Brewfile was correctly skipped. The mock
+# answers `shellenv` with nothing, so the bootstrap records a brew
+# that did not answer and writes no Homebrew block, which is the right
+# outcome for a fixture that is not a real Homebrew.
 #
 # The mock is announced through $HOMEBREW_PREFIX rather than through
 # PATH. dodot locates a provisioner by testing a fixed list of
@@ -209,8 +219,10 @@ install_brew_mock() {
 
 	cat >"$prefix/bin/brew" <<'MOCK'
 #!/bin/sh
-mkdir -p "$HOME/.dodot-markers"
-echo "$@" >> "$HOME/.dodot-markers/brew.log"
+if [ "$1" = "bundle" ]; then
+	mkdir -p "$HOME/.dodot-markers"
+	echo "$@" >>"$HOME/.dodot-markers/brew.log"
+fi
 MOCK
 	chmod +x "$prefix/bin/brew"
 
