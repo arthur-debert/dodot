@@ -8,6 +8,7 @@ mod install;
 mod probe;
 mod provisioning;
 mod reset;
+mod run_once_rows;
 mod support;
 
 #[allow(unused_imports)]

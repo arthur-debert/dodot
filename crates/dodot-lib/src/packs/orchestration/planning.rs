@@ -73,6 +73,21 @@ pub fn collect_pack_intents_with_preprocessors(
 pub struct PackPlan {
     pub intents: Vec<crate::operations::HandlerIntent>,
     pub warnings: Vec<String>,
+    /// Files whose handler `--no-provision` dropped before intent
+    /// generation. They produce no intent and therefore no operation,
+    /// so the renderers read this list to still give each one a row —
+    /// otherwise a `--no-provision` run silently omits the very files
+    /// the user chose to skip. Empty whenever `--no-provision` is off.
+    pub provision_skipped: Vec<ProvisionSkip>,
+}
+
+/// One file dropped from a run by `--no-provision`, carrying what the
+/// renderers need to place its row: the handler that would have
+/// claimed it and its pack-relative path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvisionSkip {
+    pub handler: String,
+    pub relative_path: String,
 }
 
 /// Like [`collect_pack_intents`], but returns both intents and any
@@ -313,6 +328,7 @@ fn plan_pack_inner(
         return Ok(PackPlan {
             intents: Vec::new(),
             warnings: Vec::new(),
+            provision_skipped: Vec::new(),
         });
     }
 
@@ -398,6 +414,7 @@ fn plan_pack_inner(
     // Generate intents from each handler
     let mut all_intents = Vec::new();
     let mut all_warnings = Vec::new();
+    let mut provision_skipped: Vec<ProvisionSkip> = Vec::new();
 
     // Surface preserved-divergent-file warnings from the preprocessing
     // pipeline. These are the §6.4 "deployed file edited" cases: dodot
@@ -434,6 +451,20 @@ fn plan_pack_inner(
 
         if ctx.no_provision && handler.category() == handlers::HandlerCategory::CodeExecution {
             debug!(pack = %pack.name, handler = %handler_name, "skipping code-execution handler (--no-provision)");
+            // Record what was dropped. No intent means no operation
+            // and, without this, no row at all — the user would be
+            // told nothing about the files they asked to skip.
+            if let Some(handler_matches) = groups.get(handler_name) {
+                for m in handler_matches {
+                    if m.is_dir {
+                        continue;
+                    }
+                    provision_skipped.push(ProvisionSkip {
+                        handler: handler_name.clone(),
+                        relative_path: m.relative_path.to_string_lossy().into_owned(),
+                    });
+                }
+            }
             continue;
         }
 
@@ -486,6 +517,7 @@ fn plan_pack_inner(
     Ok(PackPlan {
         intents: all_intents,
         warnings: all_warnings,
+        provision_skipped,
     })
 }
 
@@ -603,6 +635,76 @@ mod tests {
     use crate::packs::Pack;
     use crate::paths::Pather;
     use crate::testing::TempEnvironment;
+
+    // ── --no-provision bookkeeping ─────────────────────────────
+
+    /// The planner is the only place that knows a code-execution
+    /// handler was dropped: the drop happens before intent generation,
+    /// so nothing downstream can infer it from the intents. Both
+    /// renderers read this list to give the dropped files a row.
+    #[test]
+    fn no_provision_records_what_it_dropped() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .file("install.sh", "#!/bin/sh\necho setup")
+            .done()
+            .build();
+
+        let ctx = make_context(&env); // no_provision = true
+        let pack = Pack::new(
+            "vim".into(),
+            env.dotfiles_root.join("vim"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("vim"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        let plan = plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Passive).unwrap();
+
+        assert_eq!(
+            plan.provision_skipped,
+            vec![super::ProvisionSkip {
+                handler: "install".into(),
+                relative_path: "install.sh".into(),
+            }],
+        );
+        assert!(
+            plan.intents
+                .iter()
+                .any(|i| matches!(i, crate::operations::HandlerIntent::Link { .. })),
+            "configuration handlers must still plan normally"
+        );
+    }
+
+    #[test]
+    fn provisioning_runs_leave_the_skip_list_empty() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("install.sh", "#!/bin/sh\necho setup")
+            .done()
+            .build();
+
+        let mut ctx = make_context(&env);
+        ctx.no_provision = false;
+        let pack = Pack::new(
+            "vim".into(),
+            env.dotfiles_root.join("vim"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("vim"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        let plan = plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Passive).unwrap();
+
+        assert!(
+            plan.provision_skipped.is_empty(),
+            "nothing was skipped: {:?}",
+            plan.provision_skipped
+        );
+    }
 
     // ── Preprocessing integration tests ────────────────────────
 

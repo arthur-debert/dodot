@@ -571,13 +571,13 @@ fn build_clap_command() -> ClapCommand {
                 .arg(
                     Arg::new("no-provision")
                         .long("no-provision")
-                        .help("Skip install scripts and Brewfile")
+                        .help("Skip every code-execution handler for this run: install scripts, Brewfile, packages.nix, and externals.toml fetches")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(
                     Arg::new("provision-rerun")
                         .long("provision-rerun")
-                        .help("Force re-run of install scripts")
+                        .help("Re-run run-once handlers (install scripts, Brewfile, packages.nix) even when a sentinel records an earlier successful run")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(

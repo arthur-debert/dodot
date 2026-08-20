@@ -81,8 +81,20 @@ enum Health {
     /// until the user passes `--provision-rerun`. `label` is the
     /// short status-column text (carries the per-handler "older
     /// version" copy plus a `(N+ M-)` line summary when a snapshot is
-    /// on disk).
-    RanOlderVersion { label: String },
+    /// on disk); `remedy` is the footnote body naming the command
+    /// that applies the edit, because the label alone states the
+    /// condition and leaves the user with nothing to do about it.
+    RanOlderVersion { label: String, remedy: String },
+    /// A code-execution handler (install / homebrew / nix / external)
+    /// claimed this file, but `--no-provision` dropped the handler
+    /// before intent generation. The row reports the user's own
+    /// choice rather than the file's datastore state, which would
+    /// otherwise read as `never ran` with no hint that this run was
+    /// never going to run it. Deliberately distinct from
+    /// [`Health::Gated`] (the host doesn't match) and
+    /// [`Health::Skipped`] (a `mappings.skip` rule) — three
+    /// conditions with three different remedies.
+    ProvisionSkipped,
     /// File matched the `mappings.skip` list (README, LICENSE, …).
     /// No handler runs on it, but it surfaces in status so users can see
     /// the rule applied rather than wondering why the file is "missing."
@@ -126,6 +138,7 @@ impl Health {
             // pack with an older-version entry is one user action away
             // from being current.
             Health::RanOlderVersion { .. } => "stale",
+            Health::ProvisionSkipped => "skipped",
             Health::Skipped => "skipped",
             Health::Gated { .. } => "skipped",
         }
@@ -160,7 +173,8 @@ impl Health {
             }
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
-            Health::RanOlderVersion { label } => label.clone(),
+            Health::RanOlderVersion { label, .. } => label.clone(),
+            Health::ProvisionSkipped => crate::commands::PROVISION_SKIPPED_LABEL.into(),
             Health::Skipped => "skipped".into(),
             Health::Gated { label, .. } => format!("gated out ({label})"),
         }
@@ -168,13 +182,24 @@ impl Health {
 
     /// If this health carries a footnote, build the command-wide note
     /// for it. Hard failures (pending conflict, syntax error, gate
-    /// mismatch) are error-kind notes; run history is a warning-kind
-    /// note with a ✓/✗ timeline — recent instability annotates the
-    /// row, it must never present as a current error. `None` for
-    /// footnote-less healths.
+    /// mismatch) are error-kind notes; run history and the
+    /// older-version remedy are warning-kind notes — neither is a
+    /// current error, they annotate an otherwise-working row. `None`
+    /// for footnote-less healths.
     fn footnote(&self) -> Option<DisplayNote> {
         match self {
             Health::PendingConflict { reason } => Some(DisplayNote::error(reason.clone())),
+            // Warning, not error: the previous run succeeded and the
+            // machine is in a working state — the file has simply
+            // moved on. The body carries the remedy, which is the
+            // whole reason this footnote exists.
+            Health::RanOlderVersion { remedy, .. } => Some(DisplayNote {
+                body: remedy.clone(),
+                hint: None,
+                kind: "warning".into(),
+                timeline: None,
+                command: None,
+            }),
             Health::DeployedWithError { reason, .. } => Some(DisplayNote::error(reason.clone())),
             Health::Gated {
                 expected, actual, ..
@@ -502,6 +527,11 @@ fn verify_staged(
 /// `display_name` is the pack name used in the diff payload (display
 /// name, not on-disk name) so the JSON / text output mirrors the rest
 /// of the status row.
+///
+/// The `RanDifferent` health also carries the footnote body naming
+/// `--provision-rerun`. The label states the condition — the file has
+/// moved on — and the footnote is the only place the user is told what
+/// to do about it.
 fn run_once_health(
     file: &std::path::Path,
     pack: &str,
@@ -570,7 +600,12 @@ fn run_once_health(
                     format!("{} (no diff data)", messages.ran_different)
                 }
             };
-            Health::RanOlderVersion { label }
+            Health::RanOlderVersion {
+                label,
+                remedy: format!(
+                    "ran an older version of {filename} — run `dodot up --provision-rerun` to apply the current one"
+                ),
+            }
         }
     }
 }
@@ -828,6 +863,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // so it tracks the pack's display name rather than its raw
         // on-disk name. status is a Passive command — same §7.4
         // contract as the direct preprocess_pack call above.
+        // Files `--no-provision` dropped before intent generation.
+        // Their rows come from the planner's own decision rather than
+        // a second evaluation of the same predicate here, so the row
+        // can never disagree with what the run actually did. Empty on
+        // any run without `--no-provision`, and empty when planning
+        // failed — the pre-existing datastore-state rows stand in.
+        let mut provision_skipped: Vec<orchestration::ProvisionSkip> = Vec::new();
         let intents_for_pack: Vec<HandlerIntent> = match orchestration::plan_pack(
             &pack,
             ctx,
@@ -835,6 +877,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         ) {
             Ok(plan) => {
                 warnings.extend(plan.warnings);
+                provision_skipped = plan.provision_skipped;
                 let intents = plan.intents.clone();
                 pack_intents.push((pack.display_name.clone(), plan.intents));
                 intents
@@ -867,6 +910,27 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             }
 
             let rel_str = m.relative_path.to_string_lossy().into_owned();
+
+            // `--no-provision` wins over every datastore verdict below:
+            // this run was never going to touch the file, so reporting
+            // what the datastore remembers about it would answer a
+            // question the user did not ask.
+            if provision_skipped
+                .iter()
+                .any(|skip| skip.handler == m.handler && skip.relative_path == rel_str)
+            {
+                let health = Health::ProvisionSkipped;
+                files.push(DisplayFile {
+                    name: rel_str.clone(),
+                    symbol: handler_symbol(&m.handler).into(),
+                    description: handler_description(&m.handler, &rel_str, None),
+                    status: health.style().into(),
+                    status_label: health.label(&m.handler),
+                    handler: m.handler.clone(),
+                    note_ref: None,
+                });
+                continue;
+            }
 
             let health = match m.handler.as_str() {
                 h if h == HANDLER_SKIP => Health::Skipped,
@@ -1351,7 +1415,7 @@ mod tests {
         let mut diffs = Vec::new();
         let h = run_once_health(&abs, "vim", "vim", HANDLER_INSTALL, &ctx, false, &mut diffs);
         match h {
-            Health::RanOlderVersion { label } => {
+            Health::RanOlderVersion { label, remedy } => {
                 assert!(
                     label.contains("older version"),
                     "label should mention older version, got: {label}"
@@ -1359,6 +1423,10 @@ mod tests {
                 assert!(
                     label.contains("lines added") && label.contains("removed"),
                     "label should contain a (N+ M-) summary, got: {label}"
+                );
+                assert!(
+                    remedy.contains("--provision-rerun"),
+                    "the footnote must name the flag that applies the edit, got: {remedy}"
                 );
             }
             _ => panic!("expected RanOlderVersion"),
@@ -1385,10 +1453,14 @@ mod tests {
         let mut diffs = Vec::new();
         let h = run_once_health(&abs, "vim", "vim", HANDLER_INSTALL, &ctx, true, &mut diffs);
         match h {
-            Health::RanOlderVersion { label } => {
+            Health::RanOlderVersion { label, remedy } => {
                 assert!(
                     label.contains("older version") && label.contains("no diff data"),
                     "label should mention `no diff data`, got: {label}"
+                );
+                assert!(
+                    remedy.contains("--provision-rerun"),
+                    "a missing snapshot must not cost the user the remedy, got: {remedy}"
                 );
             }
             _ => panic!("expected RanOlderVersion"),
