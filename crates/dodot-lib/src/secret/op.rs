@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
 use crate::{DodotError, Result};
@@ -82,7 +82,10 @@ impl SecretProvider for OpProvider {
     fn probe(&self) -> ProbeResult {
         // `op --version` is fast and doesn't hit the network or
         // unlock anything.
-        match self.runner.run("op", &["--version".into()]) {
+        match self
+            .runner
+            .run(CommandSpec::new("op", &["--version".into()]))
+        {
             Ok(out) if out.exit_code == 0 => {}
             Ok(_) => {
                 return ProbeResult::ProbeFailed {
@@ -119,7 +122,7 @@ impl SecretProvider for OpProvider {
         // Service-account validity check. `op whoami` returns 0 when
         // the token can authenticate, non-zero otherwise. Cheap, no
         // vault reads, no items returned — safe to run on every probe.
-        match self.runner.run("op", &["whoami".into()]) {
+        match self.runner.run(CommandSpec::new("op", &["whoami".into()])) {
             Ok(out) if out.exit_code == 0 => ProbeResult::Ok,
             Ok(_) => ProbeResult::NotAuthenticated {
                 hint: "OP_SERVICE_ACCOUNT_TOKEN is set but `op whoami` failed; \
@@ -137,7 +140,9 @@ impl SecretProvider for OpProvider {
     fn resolve(&self, reference: &str) -> Result<SecretString> {
         Self::validate_reference(reference)?;
         let full = format!("op:{reference}");
-        let out = self.runner.run("op", &["read".into(), full.clone()])?;
+        let out = self
+            .runner
+            .run(CommandSpec::new("op", &["read".into(), full.clone()]))?;
         if out.exit_code != 0 {
             let stderr = out.stderr.trim();
             // Common shapes:
@@ -210,7 +215,12 @@ mod tests {
         }
     }
     impl CommandRunner for ScriptedRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut r = self.responses.lock().unwrap();
             if r.is_empty() {
                 return Err(DodotError::Other(format!(

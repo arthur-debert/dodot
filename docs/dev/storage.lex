@@ -52,8 +52,10 @@ Storage
 
     2.2. Code Execution
 
-        `run_and_record(pack, handler, executable, arguments, sentinel, force) -> Result<()>`:
+        `run_and_record(pack, handler, command, sentinel, force) -> Result<()>`:
             Runs a command, records a sentinel on success. If the sentinel already exists and `force` is false, the command is skipped. The sentinel file stores `completed|{timestamp}`. The `force` flag on this method is how `--provision-rerun` is implemented; it does not appear on `HandlerIntent::Run`.
+
+            `command` is a `CommandSpec` — executable, arguments, and the environment to spawn with. See section 4.
 
             Edge case: if the command succeeds but the sentinel write fails, a subsequent call re-runs the command. This is by design — re-running is safer than falsely marking as complete. Install scripts are expected to be idempotent for this reason.
 
@@ -99,13 +101,21 @@ Storage
 
     CommandRunner:
 
+        pub struct CommandSpec<'a> {
+            pub executable:  &'a str,
+            pub arguments:   &'a [String],
+            pub environment: &'a [(String, String)],
+        }
+
         pub trait CommandRunner: Send + Sync {
-            fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput>;
+            fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput>;
         }
 
     :: rust ::
 
     Production uses `ShellCommandRunner`, which spawns a real subprocess. Tests typically use a mock that records calls and returns scripted outputs.
+
+    A spec's `environment` is *layered* onto the environment dodot is running with — `ShellCommandRunner` calls `Command::envs` and never `env_clear`, so the child keeps the user's `PATH`, `HOME`, and everything else, with the spec's rows overriding or adding on top. `CommandSpec::new(executable, arguments)` carries no rows and is what every caller outside provisioning uses; `CommandSpec::with_environment` is how a provisioning handler's descriptor rows reach the process.
 
 5. Sentinel Format
 

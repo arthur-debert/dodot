@@ -265,12 +265,12 @@ mod tests {
 
     fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         use crate::config::ConfigManager;
-        use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+        use crate::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
         use std::sync::Arc;
 
         struct NoopRunner;
         impl CommandRunner for NoopRunner {
-            fn run(&self, _e: &str, _a: &[String]) -> Result<CommandOutput> {
+            fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
                 Ok(CommandOutput {
                     exit_code: 0,
                     stdout: String::new(),

@@ -845,7 +845,7 @@ mod tests {
     use super::*;
 
     use dodot_lib::config::ConfigManager;
-    use dodot_lib::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+    use dodot_lib::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
     use dodot_lib::shell::NoopSyntaxChecker;
     use dodot_lib::testing::TempEnvironment;
 
@@ -854,7 +854,7 @@ mod tests {
     /// shouldn't actually invoke external programs.
     struct NoopCommandRunner;
     impl CommandRunner for NoopCommandRunner {
-        fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput, dodot_lib::DodotError> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput, dodot_lib::DodotError> {
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),

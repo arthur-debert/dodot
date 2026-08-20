@@ -293,14 +293,13 @@ mod tests {
         // gatekeep planning on manifest content. validate uses the
         // trait's default no-op implementation; malformed content
         // surfaces at apply time.
-        use crate::datastore::CommandRunner;
+        use crate::datastore::{CommandRunner, CommandSpec};
         use crate::testing::TempEnvironment;
         struct NeverCalledRunner;
         impl CommandRunner for NeverCalledRunner {
             fn run(
                 &self,
-                _e: &str,
-                _a: &[String],
+                _command: CommandSpec<'_>,
             ) -> crate::Result<crate::datastore::CommandOutput> {
                 panic!("validate must not shell out — it's a no-op");
             }

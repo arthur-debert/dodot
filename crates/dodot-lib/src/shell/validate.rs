@@ -209,14 +209,16 @@ pub fn validate_shell_sources(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::datastore::{CommandOutput, CommandRunner, DataStore, FilesystemDataStore};
+    use crate::datastore::{
+        CommandOutput, CommandRunner, CommandSpec, DataStore, FilesystemDataStore,
+    };
     use crate::testing::TempEnvironment;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
     struct NoopRunner;
     impl CommandRunner for NoopRunner {
-        fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),

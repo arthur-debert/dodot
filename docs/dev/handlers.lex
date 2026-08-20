@@ -190,7 +190,11 @@ Handlers
 
     4.5. `HomebrewHandler`
 
-        File: `handlers/homebrew.rs`. Same shape as install — holds an `&dyn Fs` for content hashing, emits `HandlerIntent::Run`. The executable is hardcoded to `"brew"` and the arguments are `["bundle", "--file", "<absolute_path>"]`. Sentinel format matches install (`<filename>-<checksum>`), and so does the changed-content policy: editing the `Brewfile` does not re-run `brew bundle` by itself — see `InstallHandler` above.
+        File: `handlers/homebrew.rs`. Same shape as install — holds an `&dyn Fs` for content hashing, emits `HandlerIntent::Run`. The executable is hardcoded to `"brew"` and the arguments are `["bundle", "--no-upgrade", "--file", "<absolute_path>"]`. Sentinel format matches install (`<filename>-<checksum>`), and so does the changed-content policy: editing the `Brewfile` does not re-run `brew bundle` by itself — see `InstallHandler` above.
+
+        Two of brew's defaults are turned off, and each costs the user something otherwise. `--no-upgrade` keeps the run to what the `Brewfile` declares: `brew bundle` upgrades every outdated formula it meets by default, so an `up` could become a long mutating upgrade of packages the file never mentions. `HOMEBREW_NO_AUTO_UPDATE=1` stops the first brew invocation of the day from running a `brew update` first — several seconds of network traffic upgrading brew and its taps.
+
+        The variable is not set at the spawn site. It is declared in the handler's [`provisioners`] descriptor row and carried by the `environment` field that runs the length of the provisioning path — `RunOnceCommand::environment` → [`HandlerIntent::Run`] → [`Operation::RunCommand`] → [`DataStore::run_and_record`] → [`CommandRunner::run`], which receives it as part of a [`CommandSpec`] and layers it onto the environment dodot itself inherited. A handler declaring no variables (install, nix today) spawns a child with dodot's environment untouched.
 
     4.6. `IgnoreHandler` and `SkipHandler` (filter)
 

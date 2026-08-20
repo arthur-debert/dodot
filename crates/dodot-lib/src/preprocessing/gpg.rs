@@ -23,7 +23,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::fs::Fs;
 use crate::preprocessing::{ExpandedFile, Preprocessor, TransformType};
 use crate::{DodotError, Result};
@@ -98,7 +98,7 @@ impl Preprocessor for GpgPreprocessor {
         // `run_bytes` (not `run`) so binary plaintext (PGP-encrypted
         // tarballs, binary key material) round-trips verbatim. See
         // the matching note in `age.rs::expand`.
-        let out = self.runner.run_bytes(
+        let out = self.runner.run_bytes(CommandSpec::new(
             "gpg",
             &[
                 "--decrypt".into(),
@@ -106,7 +106,7 @@ impl Preprocessor for GpgPreprocessor {
                 "--batch".into(),
                 source.to_string_lossy().to_string(),
             ],
-        )?;
+        ))?;
         if out.exit_code != 0 {
             let stderr = out.stderr.trim();
             let msg = if stderr.contains("decryption failed") && stderr.contains("No secret key") {
@@ -209,7 +209,12 @@ mod tests {
         }
     }
     impl CommandRunner for ScriptedRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut r = self.responses.lock().unwrap();
             if r.is_empty() {
                 return Err(DodotError::Other(format!(

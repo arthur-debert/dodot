@@ -224,6 +224,7 @@ mod tests {
                 handler: h,
                 executable,
                 arguments,
+                environment,
                 sentinel,
                 relative_path,
                 content_hash,
@@ -231,6 +232,9 @@ mod tests {
                 assert_eq!(pack, "vim");
                 assert_eq!(h, HANDLER_INSTALL);
                 assert_eq!(executable, "bash");
+                // An install script declares nothing: the child gets
+                // dodot's environment and nothing layered on.
+                assert!(environment.is_empty(), "got: {environment:?}");
                 assert_eq!(arguments[0], "--");
                 assert!(arguments[1].ends_with("install.sh"));
                 assert!(sentinel.starts_with("install.sh-"));

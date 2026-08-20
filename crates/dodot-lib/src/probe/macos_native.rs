@@ -21,7 +21,7 @@
 
 use std::path::Path;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 
 /// Read the bundle identifier from a `.app` bundle's Spotlight
 /// metadata. Returns `None` on non-macOS, missing `mdls`, missing
@@ -37,14 +37,14 @@ pub fn bundle_id(app_path: &Path, runner: &dyn CommandRunner) -> Option<String> 
         return None;
     }
     let output = runner
-        .run(
+        .run(CommandSpec::new(
             "mdls",
             &[
                 "-name".into(),
                 "kMDItemCFBundleIdentifier".into(),
                 app_path.to_string_lossy().into_owned(),
             ],
-        )
+        ))
         .ok()?;
     if output.exit_code != 0 {
         return None;
@@ -67,7 +67,7 @@ pub fn find_app_bundle(display_name: &str, runner: &dyn CommandRunner) -> Option
         "kMDItemKind == 'Application' && kMDItemDisplayName == '{}'",
         display_name.replace('\'', "")
     );
-    let output = runner.run("mdfind", &[query]).ok()?;
+    let output = runner.run(CommandSpec::new("mdfind", &[query])).ok()?;
     if output.exit_code != 0 {
         return None;
     }
@@ -136,7 +136,12 @@ mod tests {
     }
 
     impl CommandRunner for MockRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut full = vec![exe.to_string()];
             full.extend(args.iter().cloned());
             let key: Vec<String> = full.iter().skip(1).cloned().collect();

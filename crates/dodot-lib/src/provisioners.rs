@@ -41,6 +41,21 @@
 //! mappings; which *executable* runs, and how the manifest reaches
 //! it, is not. See `docs/adr/0004-configuration-selects-files-never-executables.md`.
 //!
+//! # Why the environment is declared
+//!
+//! A provisioning command inherits dodot's environment, and until
+//! this field existed that was all it could ever get. Homebrew needs one
+//! variable set — `HOMEBREW_NO_AUTO_UPDATE`, so the first brew of the
+//! day does not turn `dodot up` into a multi-second network update of
+//! brew and its taps — and that variable belongs next to the argv it
+//! qualifies, not in a branch at the spawn site. The descriptor's
+//! `env` rows travel with the intent through
+//! [`HandlerIntent::Run`](crate::operations::HandlerIntent::Run) and
+//! [`Operation::RunCommand`](crate::operations::Operation::RunCommand)
+//! to [`CommandRunner::run`](crate::datastore::CommandRunner::run),
+//! which layers them onto the inherited environment. A handler with
+//! no rows spawns exactly as it did before.
+//!
 //! # Keeping the rows honest
 //!
 //! A declared index is a claim about argv that lives in a different
@@ -84,15 +99,19 @@ impl ManifestArgPosition {
 
 /// One provisioning handler, as data.
 ///
-/// Seeded here with the two fields the datastore needs. The
+/// Holds the fields the datastore and the spawn path need. The
 /// remaining fields the provisioning-handlers Spec calls for —
-/// availability, argv template, environment, status copy,
-/// reachability — land in later workstreams of the same epic.
+/// availability, argv template, status copy, reachability — land in
+/// later workstreams of the same epic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProvisionerDescriptor {
     /// Handler name, matching
     /// [`RunOnceCommand::handler_name`](crate::handlers::run_once::RunOnceCommand::handler_name).
     pub handler: &'static str,
+    /// Environment variables set for this handler's command, layered
+    /// onto the environment dodot itself runs with. Empty for a
+    /// handler that needs nothing beyond what it inherits.
+    pub env: &'static [(&'static str, &'static str)],
     /// Where the manifest path sits in the command's arguments.
     pub manifest_arg: ManifestArgPosition,
 }
@@ -104,20 +123,28 @@ pub struct ProvisionerDescriptor {
 /// [`crate::handlers::nix`]:
 ///
 /// - `install` — `<interpreter> -- <script>`
-/// - `homebrew` — `brew bundle --file <Brewfile>`
+/// - `homebrew` — `brew bundle --no-upgrade --file <Brewfile>`
 /// - `nix` — `nix profile install --impure --extra-experimental-features
 ///   <features> --argstr manifest <packages.nix> --expr <wrapper>`
 pub const PROVISIONERS: &[ProvisionerDescriptor] = &[
     ProvisionerDescriptor {
         handler: HANDLER_INSTALL,
+        env: &[],
         manifest_arg: ManifestArgPosition::at(1),
     },
     ProvisionerDescriptor {
         handler: HANDLER_HOMEBREW,
-        manifest_arg: ManifestArgPosition::at(2),
+        // Without this, the first brew invocation of any day runs a
+        // `brew update` first: several seconds of network traffic
+        // upgrading brew and its taps, charged to whoever happened to
+        // run `dodot up`. The Brewfile's own contents are what the
+        // user asked dodot to apply.
+        env: &[("HOMEBREW_NO_AUTO_UPDATE", "1")],
+        manifest_arg: ManifestArgPosition::at(3),
     },
     ProvisionerDescriptor {
         handler: HANDLER_NIX,
+        env: &[],
         manifest_arg: ManifestArgPosition::at(7),
     },
 ];
@@ -141,6 +168,16 @@ pub fn manifest_argument<'a>(handler: &str, arguments: &'a [String]) -> Option<&
     descriptor_for(handler)?.manifest_arg.resolve(arguments)
 }
 
+/// The environment variables a provisioning handler's command runs
+/// with, on top of the environment dodot inherited.
+///
+/// Empty for a handler with no descriptor and for a descriptor that
+/// declares no variables — both mean "spawn with dodot's own
+/// environment, unmodified".
+pub fn environment_for(handler: &str) -> &'static [(&'static str, &'static str)] {
+    descriptor_for(handler).map_or(&[], |d| d.env)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,6 +194,24 @@ mod tests {
     }
 
     #[test]
+    fn only_homebrew_declares_an_environment() {
+        assert_eq!(environment_for(HANDLER_INSTALL), &[]);
+        assert_eq!(environment_for(HANDLER_NIX), &[]);
+        assert_eq!(
+            environment_for(HANDLER_HOMEBREW),
+            &[("HOMEBREW_NO_AUTO_UPDATE", "1")]
+        );
+    }
+
+    #[test]
+    fn a_handler_with_no_descriptor_declares_no_environment() {
+        // Same answer as a descriptor with empty rows: spawn with
+        // dodot's own environment, unmodified.
+        assert_eq!(environment_for("symlink"), &[]);
+        assert_eq!(environment_for(""), &[]);
+    }
+
+    #[test]
     fn descriptor_for_is_none_outside_provisioning() {
         assert!(descriptor_for("symlink").is_none());
         assert!(descriptor_for("shell").is_none());
@@ -167,7 +222,9 @@ mod tests {
     /// The guard that keeps the registry honest: every declared
     /// position is checked against the argv the handler actually
     /// builds. If a `command_for` grows or reorders an argument
-    /// without its row moving with it, this fails.
+    /// without its row moving with it, this fails — which is what
+    /// `homebrew`'s `--no-upgrade` would otherwise have done
+    /// silently.
     #[test]
     fn descriptor_matches_command() {
         let manifest = Path::new("/dotfiles/tools/manifest");
@@ -207,6 +264,19 @@ mod tests {
                 "descriptor for {handler} does not point at the manifest in {arguments:?}"
             );
         }
+    }
+
+    /// The other half of keeping the rows honest: each command's
+    /// `environment()` is the descriptor's rows, so a variable
+    /// declared here is a variable the handler actually spawns with.
+    #[test]
+    fn descriptor_environment_reaches_each_command() {
+        assert!(InstallCommand.environment().is_empty());
+        assert!(NixCommand.environment().is_empty());
+        assert_eq!(
+            BrewfileCommand.environment(),
+            vec![("HOMEBREW_NO_AUTO_UPDATE".to_string(), "1".to_string())]
+        );
     }
 
     #[test]

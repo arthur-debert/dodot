@@ -37,7 +37,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::fs::Fs;
 use crate::Result;
 
@@ -161,10 +161,10 @@ pub fn list_installed_casks(runner: &dyn CommandRunner) -> Vec<String> {
     if !cfg!(target_os = "macos") {
         return Vec::new();
     }
-    let output = match runner.run(
+    let output = match runner.run(CommandSpec::new(
         "brew",
         &["list".into(), "--cask".into(), "--versions".into()],
-    ) {
+    )) {
         Ok(o) if o.exit_code == 0 => o,
         _ => return Vec::new(),
     };
@@ -258,7 +258,7 @@ fn write_cache(path: &Path, entry: &CacheEntry, fs: &dyn Fs) -> Result<()> {
 
 fn fetch_from_brew(token: &str, runner: &dyn CommandRunner) -> Option<CaskInfo> {
     let output = runner
-        .run(
+        .run(CommandSpec::new(
             "brew",
             &[
                 "info".into(),
@@ -266,7 +266,7 @@ fn fetch_from_brew(token: &str, runner: &dyn CommandRunner) -> Option<CaskInfo> 
                 "--cask".into(),
                 token.to_string(),
             ],
-        )
+        ))
         .ok()?;
     if output.exit_code != 0 {
         return None;
@@ -421,7 +421,12 @@ mod tests {
     }
 
     impl CommandRunner for MockRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut full = vec![exe.to_string()];
             full.extend(args.iter().cloned());
             self.calls.lock().unwrap().push(full.clone());

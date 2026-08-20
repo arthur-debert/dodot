@@ -27,7 +27,7 @@
 
 use tracing::info;
 
-use crate::datastore::DidRunStatus;
+use crate::datastore::{CommandSpec, DidRunStatus};
 use crate::operations::{HandlerIntent, Operation, OperationResult};
 use crate::{DodotError, Result};
 
@@ -52,6 +52,7 @@ impl<'a> Executor<'a> {
             handler,
             executable,
             arguments,
+            environment,
             sentinel,
             relative_path,
             content_hash,
@@ -116,6 +117,7 @@ impl<'a> Executor<'a> {
             handler: handler.clone(),
             executable: executable.clone(),
             arguments: arguments.clone(),
+            environment: environment.clone(),
             sentinel: sentinel.clone(),
             relative_path: relative_path.clone(),
         };
@@ -141,10 +143,13 @@ impl<'a> Executor<'a> {
         // written to. Everything that is not the user's script
         // failing still aborts the run, which is `Executor::execute`'s
         // standing contract for I/O errors.
-        match self
-            .datastore
-            .run_and_record(pack, handler, executable, arguments, sentinel, true)
-        {
+        match self.datastore.run_and_record(
+            pack,
+            handler,
+            CommandSpec::with_environment(executable, arguments, environment),
+            sentinel,
+            true,
+        ) {
             Ok(()) => {}
             Err(e @ DodotError::CommandFailed { .. }) => {
                 info!(
@@ -173,6 +178,7 @@ impl<'a> Executor<'a> {
             handler,
             executable,
             arguments,
+            environment,
             sentinel,
             relative_path,
             content_hash,
@@ -227,6 +233,7 @@ impl<'a> Executor<'a> {
                 handler: handler.clone(),
                 executable: executable.clone(),
                 arguments: arguments.clone(),
+                environment: environment.clone(),
                 sentinel: sentinel.clone(),
                 relative_path: relative_path.clone(),
             },
@@ -240,6 +247,7 @@ mod tests {
     use super::super::test_support::make_datastore;
     use super::super::Executor;
     use super::sentinel_key;
+    use crate::datastore::CommandSpec;
     use crate::fs::Fs;
     use crate::operations::HandlerIntent;
     use crate::paths::Pather;
@@ -258,10 +266,83 @@ mod tests {
             handler: handler.into(),
             executable: executable.into(),
             arguments: args.iter().map(|s| (*s).into()).collect(),
+            environment: Vec::new(),
             sentinel: format!("{}-{hash}", sentinel_key(relative_path)),
             relative_path: relative_path.into(),
             content_hash: hash.into(),
         }
+    }
+
+    /// The seam, end to end through the executor: what a handler
+    /// declared on the intent is what the spawn layer is handed.
+    #[test]
+    fn execute_run_hands_the_intents_environment_to_the_runner() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let mut intent = run_intent(
+            "dev",
+            "homebrew",
+            "echo",
+            &["bundle"],
+            "Brewfile",
+            "abc1234567890def",
+        );
+        let HandlerIntent::Run { environment, .. } = &mut intent else {
+            unreachable!("run_intent builds a Run intent");
+        };
+        environment.push(("HOMEBREW_NO_AUTO_UPDATE".into(), "1".into()));
+
+        let results = executor.execute(vec![intent]).unwrap();
+
+        assert!(results[0].success);
+        assert_eq!(
+            runner.environments.lock().unwrap().as_slice(),
+            &[vec![(
+                "HOMEBREW_NO_AUTO_UPDATE".to_string(),
+                "1".to_string()
+            )]]
+        );
+    }
+
+    #[test]
+    fn execute_run_passes_no_environment_when_the_intent_declares_none() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        executor
+            .execute(vec![run_intent(
+                "vim",
+                "install",
+                "echo",
+                &["hello"],
+                "install.sh",
+                "abc1234567890def",
+            )])
+            .unwrap();
+
+        assert_eq!(
+            runner.environments.lock().unwrap().as_slice(),
+            &[Vec::new()]
+        );
     }
 
     #[test]
@@ -536,11 +617,12 @@ mod tests {
     }
 
     impl crate::datastore::CommandRunner for FailingRunner {
-        fn run(
-            &self,
-            executable: &str,
-            arguments: &[String],
-        ) -> crate::Result<crate::datastore::CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> crate::Result<crate::datastore::CommandOutput> {
+            let CommandSpec {
+                executable,
+                arguments,
+                ..
+            } = command;
             Err(crate::DodotError::CommandFailed {
                 command: crate::datastore::format_command_for_display(executable, arguments),
                 exit_code: 3,
