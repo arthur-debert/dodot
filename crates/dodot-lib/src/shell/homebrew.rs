@@ -64,9 +64,9 @@
 //! # Verbatim, and first
 //!
 //! Captured output is emitted **byte-for-byte** — not reindented, not
-//! filtered. In particular the `path_helper` re-exec line stays. An
-//! older concern, that it demotes dodot's own PATH entries, no longer
-//! holds: brew now passes `PATH_HELPER_ROOT`, which only prepends
+//! filtered. In particular the `path_helper` re-exec line — which
+//! only a macOS capture carries — stays. An older concern, that it
+//! demotes dodot's own PATH entries, no longer holds: brew now passes `PATH_HELPER_ROOT`, which only prepends
 //! brew's own paths and leaves existing entries in order. Measured:
 //!
 //! ```text
@@ -88,10 +88,15 @@
 //! startup path — brew's choice, not dodot's, but ours to state
 //! plainly. Two costs, identical under both hook shapes:
 //!
-//! - *The emitted block*, paid by every shell that sources the script:
-//!   two process spawns (`env` plus `path_helper`). Measured on an
-//!   Apple-silicon mac over 200 iterations: ~3.1 ms wall per
+//! - *The emitted block*, paid by every shell that sources the script
+//!   — and only on macOS. There, brew's block ends in a `path_helper`
+//!   re-exec, two process spawns (`env` plus `path_helper`): measured
+//!   on an Apple-silicon mac over 200 iterations at ~3.1 ms wall per
 //!   invocation, ~2.7 ms net of the ~0.5 ms `$( )` subshell baseline.
+//!   A Linux capture carries no such line — `brew shellenv` there is
+//!   plain `export` statements (checked against Homebrew 4.6.20 on
+//!   linux/amd64) — so a Linux shell spawns nothing and the block
+//!   costs it nothing measurable.
 //! - *The capture itself*, two `brew shellenv` runs (`sh` and `zsh`),
 //!   ~10-20 ms each on the same machine — paid by `dodot up`/`down`
 //!   ([`capture_and_persist`]) and cached in the datastore, so a shell
@@ -177,12 +182,21 @@ pub struct BrewHost {
 
 impl BrewHost {
     /// Snapshot the running host: `$HOMEBREW_PREFIX` first when set,
-    /// then [`DEFAULT_PREFIXES`], then `$HOME/.linuxbrew`.
-    pub fn detect() -> Self {
-        Self::new(
-            std::env::var("HOMEBREW_PREFIX").ok(),
-            std::env::var("HOME").ok().map(PathBuf::from),
-        )
+    /// then [`DEFAULT_PREFIXES`], then `<home>/.linuxbrew`.
+    ///
+    /// `home` is the caller's [`Pather::home_dir`], dodot's single
+    /// source of truth for the home directory, rather than a fresh
+    /// `$HOME` reading of our own. An embedder or an isolated test that
+    /// supplies its own home therefore gets *that* user's
+    /// `.linuxbrew` probed, never the running process's — and a
+    /// non-UTF-8 home path survives, which `std::env::var` would have
+    /// dropped.
+    ///
+    /// `$HOMEBREW_PREFIX` stays a process-environment reading because
+    /// it is one: it is the user's own override of where brew lives,
+    /// and dodot has no other record of it.
+    pub fn detect(home: &Path) -> Self {
+        Self::new(std::env::var("HOMEBREW_PREFIX").ok(), home)
     }
 
     /// Build the candidate list from its two inputs.
@@ -193,14 +207,14 @@ impl BrewHost {
     /// instead of suppressing the block.
     ///
     /// `home` contributes the per-user [`HOME_RELATIVE_PREFIX`]
-    /// candidate last; an unset or empty `$HOME` just leaves it out.
-    pub fn new(prefix_env: Option<String>, home: Option<PathBuf>) -> Self {
+    /// candidate last; an empty home path just leaves it out.
+    pub fn new(prefix_env: Option<String>, home: &Path) -> Self {
         let mut prefix_candidates: Vec<PathBuf> = Vec::with_capacity(DEFAULT_PREFIXES.len() + 2);
         if let Some(prefix) = prefix_env.filter(|p| !p.trim().is_empty()) {
             prefix_candidates.push(PathBuf::from(prefix));
         }
         prefix_candidates.extend(DEFAULT_PREFIXES.iter().map(PathBuf::from));
-        if let Some(home) = home.filter(|h| !h.as_os_str().is_empty()) {
+        if !home.as_os_str().is_empty() {
             prefix_candidates.push(home.join(HOME_RELATIVE_PREFIX));
         }
         Self { prefix_candidates }
@@ -300,7 +314,7 @@ pub fn capture_and_persist(
         fs,
         runner,
         mode,
-        &BrewHost::detect(),
+        &BrewHost::detect(paths.home_dir()),
         &paths.homebrew_cache_path(),
     )
 }
@@ -378,7 +392,7 @@ pub fn cached_or_capture(
         fs,
         runner,
         mode,
-        &BrewHost::detect(),
+        &BrewHost::detect(paths.home_dir()),
         &paths.homebrew_cache_path(),
     ))
 }
@@ -792,10 +806,7 @@ mod tests {
 
     #[test]
     fn homebrew_prefix_env_leads_the_candidates() {
-        let host = BrewHost::new(
-            Some("/custom/brew".to_string()),
-            Some(PathBuf::from("/home/ada")),
-        );
+        let host = BrewHost::new(Some("/custom/brew".to_string()), Path::new("/home/ada"));
         assert_eq!(
             host.prefix_candidates,
             vec![
@@ -811,7 +822,7 @@ mod tests {
     #[test]
     fn unset_or_blank_prefix_env_leaves_the_defaults() {
         for env_value in [None, Some(String::new()), Some("   ".to_string())] {
-            let host = BrewHost::new(env_value, None);
+            let host = BrewHost::new(env_value, Path::new(""));
             assert_eq!(
                 host.prefix_candidates,
                 vec![
@@ -829,7 +840,7 @@ mod tests {
     /// brew is invisible even though it is installed (#355).
     #[test]
     fn both_linuxbrew_prefixes_are_probed_in_installer_order() {
-        let host = BrewHost::new(None, Some(PathBuf::from("/home/ada")));
+        let host = BrewHost::new(None, Path::new("/home/ada"));
         let shared = host
             .prefix_candidates
             .iter()
@@ -845,18 +856,50 @@ mod tests {
         );
     }
 
-    /// An empty `$HOME` would make the per-user candidate `/.linuxbrew`
-    /// — a path no brew is at, probed on every run. Leave it out.
+    /// An empty home path would make the per-user candidate
+    /// `/.linuxbrew` — a path no brew is at, probed on every run.
+    /// Leave it out.
     #[test]
     fn a_blank_home_contributes_no_per_user_candidate() {
-        for home in [None, Some(PathBuf::new())] {
-            let host = BrewHost::new(None, home);
-            assert_eq!(
-                host.prefix_candidates,
-                DEFAULT_PREFIXES
-                    .iter()
-                    .map(PathBuf::from)
-                    .collect::<Vec<_>>()
+        let host = BrewHost::new(None, Path::new(""));
+        assert_eq!(
+            host.prefix_candidates,
+            DEFAULT_PREFIXES
+                .iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// Detection takes its home from the caller's `Pather`, not from
+    /// the process's `$HOME`, so an isolated test or an embedder that
+    /// runs under a different home probes that home's `.linuxbrew` —
+    /// never the host user's.
+    #[test]
+    fn detection_probes_the_injected_home_not_the_process_env() {
+        let env = TempEnvironment::builder().build();
+        let injected = env.paths.home_dir();
+        assert_ne!(
+            Some(injected),
+            std::env::var("HOME").ok().map(PathBuf::from).as_deref(),
+            "the temp environment's home should differ from the process's"
+        );
+
+        let host = BrewHost::detect(injected);
+        assert!(
+            host.prefix_candidates
+                .contains(&injected.join(HOME_RELATIVE_PREFIX)),
+            "candidates were: {:?}",
+            host.prefix_candidates
+        );
+        let process_home = std::env::var("HOME").ok().map(PathBuf::from);
+        if let Some(process_home) = process_home {
+            assert!(
+                !host
+                    .prefix_candidates
+                    .contains(&process_home.join(HOME_RELATIVE_PREFIX)),
+                "candidates were: {:?}",
+                host.prefix_candidates
             );
         }
     }

@@ -525,9 +525,9 @@ Configuration
 
     The block lands _first_, above the PATH additions your packs contribute, so your own entries stay ahead of brew's. That is what makes a `001-homebrew` bootstrap pack unnecessary: brew's environment is available to every pack script without any ordering work on your part.
 
-    What this costs your shell is the same under either hookup shape (see [./shell-integration.lex] for the two): each shell start pays only the two process spawns of brew's own `path_helper` line, measured at 2-3 ms. The `brew shellenv` capture itself (twice — once for `sh`, once for `zsh`, 10-20 ms each on an Apple-silicon mac) is paid by `dodot up` and `dodot down`, never by a shell.
+    What this costs your shell is the same under either hookup shape (see [./shell-integration.lex] for the two). On macOS, each shell start pays the two process spawns of brew's own `path_helper` line, measured at 2-3 ms. On Linux it pays nothing measurable: `brew shellenv` emits plain `export` lines there, with no `path_helper` re-exec to spawn. The `brew shellenv` capture itself (twice — once for `sh`, once for `zsh`, 10-20 ms each on an Apple-silicon mac) is paid by `dodot up` and `dodot down`, never by a shell.
 
-    :: note :: This is the one thing dodot puts on your shell startup path that spends processes. `homebrew = "off"` removes it entirely, and is also the setting to reach for if you'd rather bootstrap Homebrew yourself or want the init script to carry nothing but dodot's own lines.
+    :: note :: On macOS this is the one thing dodot puts on your shell startup path that spends processes. `homebrew = "off"` removes it entirely, and is also the setting to reach for if you'd rather bootstrap Homebrew yourself or want the init script to carry nothing but dodot's own lines.
 
 11. Inheritance Model
 
