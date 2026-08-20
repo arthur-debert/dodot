@@ -104,6 +104,18 @@ pub struct ExecutionContext {
     /// a fabricated shell in `shell_env`. `status` never probes
     /// whatever this says (spec §9) — it reads evidence only.
     pub shell_probe: crate::shell::ProbePolicy,
+    /// Where this host keeps its provisioning managers — the
+    /// ordered absolute candidates
+    /// [`availability::probe`](crate::provisioners::availability::probe)
+    /// stats for `brew` and `nix`.
+    ///
+    /// Injected for the same reason [`Self::shell_probe`] is:
+    /// [`ProvisionHost::assume_present`] is the default everywhere
+    /// except [`Self::production`], so a test that has not opted in
+    /// cannot reach the developer's real `/opt/homebrew` and make CI
+    /// and a laptop disagree about what a `Brewfile` does. Tests that
+    /// exercise absence point it at a temp directory instead.
+    pub provision_host: Arc<crate::provisioners::availability::ProvisionHost>,
     /// The user's shell and `$ZDOTDIR`, snapshotted once.
     ///
     /// One source of truth for two consumers that must agree: the
@@ -158,6 +170,9 @@ impl ExecutionContext {
             }
         }
         let paths = Arc::new(paths_builder.build()?);
+        // The probe's home comes from the Pather, dodot's one source
+        // of truth for it, not from a second `$HOME` reading.
+        let paths_home = paths.home_dir().to_path_buf();
         let fs: Arc<dyn Fs> = Arc::new(crate::fs::OsFs::new());
         let runner: Arc<dyn crate::datastore::CommandRunner> =
             Arc::new(crate::datastore::ShellCommandRunner::new(verbose));
@@ -187,6 +202,9 @@ impl ExecutionContext {
             env_stamp: crate::shell::activation::EnvStamp::read(),
             tty: std::io::IsTerminal::is_terminal(&std::io::stderr()),
             shell_probe: crate::shell::ProbePolicy::production(),
+            provision_host: Arc::new(crate::provisioners::availability::ProvisionHost::detect(
+                &paths_home,
+            )),
             shell_env: crate::shell::ShellEnv::from_process(),
         })
     }

@@ -288,31 +288,18 @@ mod tests {
     }
 
     #[test]
-    fn validate_is_a_noop_inheriting_the_trait_default() {
+    fn the_command_is_the_whole_specialization() {
         // Per the RunOnceCommand lifecycle invariant: nix does not
-        // gatekeep planning on manifest content. validate uses the
-        // trait's default no-op implementation; malformed content
-        // surfaces at apply time.
-        use crate::datastore::CommandRunner;
-        use crate::testing::TempEnvironment;
-        struct NeverCalledRunner;
-        impl CommandRunner for NeverCalledRunner {
-            fn run(
-                &self,
-                _e: &str,
-                _a: &[String],
-            ) -> crate::Result<crate::datastore::CommandOutput> {
-                panic!("validate must not shell out — it's a no-op");
-            }
-        }
-        let env = TempEnvironment::builder()
-            .pack("tools")
-            .file("packages.nix", "anything at all — content is not checked")
-            .done()
-            .build();
-        let abs = env.dotfiles_root.join("tools/packages.nix");
-        NixCommand
-            .validate(env.fs.as_ref(), &NeverCalledRunner, &abs)
-            .expect("validate is a no-op for nix");
+        // gatekeep planning on manifest content, and the "is nix
+        // installed?" question is not a handler method at all — it is
+        // `provisioners::availability`, which the planner asks. What
+        // is left here is the command and its copy.
+        use crate::provisioners::{descriptor_for, ExecutableLocation};
+        let ExecutableLocation::Candidates(candidates) =
+            descriptor_for(HANDLER_NIX).unwrap().location
+        else {
+            panic!("nix is located at fixed candidates");
+        };
+        assert!(candidates.len() > 1);
     }
 }

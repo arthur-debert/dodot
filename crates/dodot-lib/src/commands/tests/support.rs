@@ -89,6 +89,9 @@ pub(super) fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         env_stamp: Default::default(),
         tty: false,
         shell_probe: crate::shell::ProbePolicy::Never,
+        provision_host: Arc::new(
+            crate::provisioners::availability::ProvisionHost::assume_present(),
+        ),
         shell_env: crate::shell::ShellEnv::default(),
     }
 }
@@ -123,6 +126,9 @@ pub(super) fn make_ctx_with_runner(
         env_stamp: Default::default(),
         tty: false,
         shell_probe: crate::shell::ProbePolicy::Never,
+        provision_host: Arc::new(
+            crate::provisioners::availability::ProvisionHost::assume_present(),
+        ),
         shell_env: crate::shell::ShellEnv::default(),
     }
 }

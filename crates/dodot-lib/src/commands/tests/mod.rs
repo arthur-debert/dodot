@@ -2,6 +2,7 @@
 
 mod activation;
 mod adopt;
+mod availability;
 mod gating;
 mod hookup;
 mod install;

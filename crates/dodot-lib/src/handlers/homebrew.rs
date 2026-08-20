@@ -82,8 +82,7 @@ mod tests {
             .done()
             .build();
 
-        let runner = crate::datastore::NoopCommandRunner;
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &runner, BrewfileCommand);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), BrewfileCommand);
         let matches = vec![RuleMatch {
             relative_path: "Brewfile".into(),
             absolute_path: env.dotfiles_root.join("dev/Brewfile"),

@@ -309,12 +309,8 @@ pub const HANDLER_EXTERNAL: &str = "external";
 /// re-executed every time.
 pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
     // This walk only reads `Handler::category()`, never invokes
-    // `to_intents` (which would need a real subprocess runner for the
-    // run-once handlers' pre-flight validators). A noop runner is
-    // therefore sufficient — the run-once handlers are only inspected,
-    // not exercised.
-    let runner = crate::datastore::NoopCommandRunner;
-    let registry = create_registry(fs, &runner);
+    // `to_intents`.
+    let registry = create_registry(fs);
     registry
         .iter()
         .filter(|(_, h)| h.category() == HandlerCategory::Configuration)
@@ -326,13 +322,12 @@ pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
 ///
 /// Returns a map from handler name to handler instance. The `fs`
 /// reference is needed by the run-once handlers (install, homebrew,
-/// nix) for checksum computation; `runner` is threaded in for any
-/// environmental pre-flight a `RunOnceCommand` may want to do at
-/// intent-production time.
-pub fn create_registry<'a>(
-    fs: &'a dyn Fs,
-    runner: &'a dyn crate::datastore::CommandRunner,
-) -> HashMap<String, Box<dyn Handler + 'a>> {
+/// nix) for checksum computation. No `CommandRunner`: building a
+/// registry spawns nothing, and the one environmental question a
+/// provisioning handler has — is the manager installed? — is answered
+/// by the planner through [`crate::provisioners::availability`],
+/// which stats rather than spawns.
+pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
     let mut registry: HashMap<String, Box<dyn Handler>> = HashMap::new();
     registry.insert(HANDLER_IGNORE.into(), Box::new(filter::IgnoreHandler));
     registry.insert(HANDLER_SKIP.into(), Box::new(filter::SkipHandler));
@@ -346,23 +341,15 @@ pub fn create_registry<'a>(
     registry.insert(HANDLER_PATH.into(), Box::new(path::PathHandler));
     registry.insert(
         HANDLER_INSTALL.into(),
-        Box::new(run_once::RunOnceHandler::new(
-            fs,
-            runner,
-            install::InstallCommand,
-        )),
+        Box::new(run_once::RunOnceHandler::new(fs, install::InstallCommand)),
     );
     registry.insert(
         HANDLER_HOMEBREW.into(),
-        Box::new(run_once::RunOnceHandler::new(
-            fs,
-            runner,
-            homebrew::BrewfileCommand,
-        )),
+        Box::new(run_once::RunOnceHandler::new(fs, homebrew::BrewfileCommand)),
     );
     registry.insert(
         HANDLER_NIX.into(),
-        Box::new(run_once::RunOnceHandler::new(fs, runner, nix::NixCommand)),
+        Box::new(run_once::RunOnceHandler::new(fs, nix::NixCommand)),
     );
     validate_registry(&registry);
     registry
@@ -458,7 +445,7 @@ mod tests {
     #[test]
     fn builtin_handler_phases() {
         let fs = crate::fs::OsFs::new();
-        let registry = create_registry(&fs, &crate::datastore::NoopCommandRunner);
+        let registry = create_registry(&fs);
         assert_eq!(registry[HANDLER_IGNORE].phase(), ExecutionPhase::Filter);
         assert_eq!(registry[HANDLER_SKIP].phase(), ExecutionPhase::Filter);
         assert_eq!(registry[HANDLER_GATE].phase(), ExecutionPhase::Filter);
@@ -496,7 +483,7 @@ mod tests {
     #[test]
     fn default_registry_has_exactly_one_exclusive_catchall() {
         let fs = crate::fs::OsFs::new();
-        let registry = create_registry(&fs, &crate::datastore::NoopCommandRunner);
+        let registry = create_registry(&fs);
         let exclusive_catchalls: Vec<&str> = registry
             .values()
             .filter(|h| {
@@ -543,7 +530,7 @@ mod tests {
             }
         }
         let fs = crate::fs::OsFs::new();
-        let mut registry = create_registry(&fs, &crate::datastore::NoopCommandRunner);
+        let mut registry = create_registry(&fs);
         registry.insert("fake".into(), Box::new(FakeCatchall));
         validate_registry(&registry);
     }

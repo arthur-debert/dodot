@@ -79,6 +79,18 @@ pub struct PackPlan {
     /// otherwise a `--no-provision` run silently omits the very files
     /// the user chose to skip. Empty whenever `--no-provision` is off.
     pub provision_skipped: Vec<ProvisionSkip>,
+    /// Files whose manager is not usable on this machine — absent, or
+    /// impossible to probe. Read by the dry-run renderer for the same
+    /// reason as `provision_skipped`: no intent means no operation
+    /// and, without a row, an absent manager reads as an empty pack.
+    ///
+    /// A real `up` renders through `status::status()`, which asks the
+    /// same probe on its own planning pass, so this list is the
+    /// dry-run half of an answer both paths compute identically.
+    ///
+    /// Ephemeral: an availability is a fact about this machine right
+    /// now and is never written to the datastore.
+    pub provision_unavailable: Vec<ProvisionUnavailable>,
 }
 
 /// One file dropped from a run by `--no-provision`, carrying what the
@@ -88,6 +100,23 @@ pub struct PackPlan {
 pub struct ProvisionSkip {
     pub handler: String,
     pub relative_path: String,
+}
+
+/// One file that produced no intent because its manager is not on
+/// this machine.
+///
+/// Deliberately distinct from [`ProvisionSkip`]: `--no-provision` is
+/// the user's own choice and absence is the machine's state, and the
+/// two have different remedies — one is a flag the user dropped, the
+/// other is a manager to install.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvisionUnavailable {
+    pub handler: String,
+    pub relative_path: String,
+    /// Absent (with the locations probed) or ProbeFailed (with the
+    /// detail). Never `Present` — a present manager produces intents
+    /// instead of a row here.
+    pub availability: crate::provisioners::availability::Availability,
 }
 
 /// Like [`collect_pack_intents`], but returns both intents and any
@@ -329,6 +358,7 @@ fn plan_pack_inner(
             intents: Vec::new(),
             warnings: Vec::new(),
             provision_skipped: Vec::new(),
+            provision_unavailable: Vec::new(),
         });
     }
 
@@ -407,7 +437,7 @@ fn plan_pack_inner(
     let groups = rules::group_by_handler(&matches);
 
     // Build handler registry (drives the phase-based execution order).
-    let registry = handlers::create_registry(ctx.fs.as_ref(), ctx.command_runner.as_ref());
+    let registry = handlers::create_registry(ctx.fs.as_ref());
     let order = rules::handler_execution_order(&groups, &registry);
     debug!(pack = %pack.name, handlers = ?order, "handler execution order");
 
@@ -415,6 +445,7 @@ fn plan_pack_inner(
     let mut all_intents = Vec::new();
     let mut all_warnings = Vec::new();
     let mut provision_skipped: Vec<ProvisionSkip> = Vec::new();
+    let mut provision_unavailable: Vec<ProvisionUnavailable> = Vec::new();
 
     // Surface preserved-divergent-file warnings from the preprocessing
     // pipeline. These are the §6.4 "deployed file edited" cases: dodot
@@ -468,6 +499,45 @@ fn plan_pack_inner(
             continue;
         }
 
+        // Is the manager there? Asked once per provisioning handler
+        // the pack actually matched files for — a machine with no
+        // `Brewfile` never probes for brew — and asked before any
+        // intent exists, because an absent manager must produce no
+        // intent, no receipt, and no error.
+        //
+        // The answer comes from the one shared module `status` also
+        // reads, so the two agree by construction. `install` is not
+        // located by dodot and always answers present; see
+        // `provisioners::availability`.
+        if crate::provisioners::descriptor_for(handler_name).is_some() {
+            let availability = crate::provisioners::availability::probe(
+                ctx.fs.as_ref(),
+                ctx.provision_host.as_ref(),
+                handler_name,
+            );
+            if !availability.is_present() {
+                debug!(
+                    pack = %pack.name,
+                    handler = %handler_name,
+                    ?availability,
+                    "skipping provisioning handler — manager unusable on this host"
+                );
+                if let Some(handler_matches) = groups.get(handler_name) {
+                    for m in handler_matches {
+                        if m.is_dir {
+                            continue;
+                        }
+                        provision_unavailable.push(ProvisionUnavailable {
+                            handler: handler_name.clone(),
+                            relative_path: m.relative_path.to_string_lossy().into_owned(),
+                            availability: availability.clone(),
+                        });
+                    }
+                }
+                continue;
+            }
+        }
+
         if let Some(handler_matches) = groups.get(handler_name) {
             let intents = handler.to_intents(
                 handler_matches,
@@ -518,6 +588,7 @@ fn plan_pack_inner(
         intents: all_intents,
         warnings: all_warnings,
         provision_skipped,
+        provision_unavailable,
     })
 }
 
