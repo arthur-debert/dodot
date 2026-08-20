@@ -41,7 +41,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     Two flags interact with this split:
 
-    - `--no-provision` skips provisioning handlers entirely on this run. Useful when you want a fast `up` that re-links configuration without paying for `brew bundle`, `nix profile install`, or your install script.
+    - `--no-provision` skips every code-execution handler on this run — the three above, plus `external`, whose `externals.toml` fetches are skipped along with them. Useful when you want a fast `up` that re-links configuration without paying for `brew bundle`, `nix profile install`, or your install script.
     - `--provision-rerun` forces provisioning handlers to run whatever their sentinel says. This is how you apply an edited `install.sh`, `Brewfile`, or `packages.nix`, since a plain `up` reports the edit and leaves it pending. It also re-executes an *unchanged* file — confirming `brew bundle` is still happy, or re-running an install script after manually undoing what it did.
 
 4. Flags
@@ -49,7 +49,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
     Flags:
         | Flag                  | Effect                                                                                       |
         | `--dry-run`           | Plan and detect conflicts without making filesystem changes. Skips secret-provider preflight too — Passive mode. |
-        | `--no-provision`      | Skip install + homebrew + nix handlers this run.                                             |
+        | `--no-provision`      | Skip every code-execution handler this run: install, homebrew, nix, external.                 |
         | `--provision-rerun`   | Apply an edited install script / Brewfile / `packages.nix`, or re-run an unchanged one.      |
         | `--force`             | Overwrite pre-existing target files when their location is already occupied. *Not* a fix for cross-pack conflicts. |
 
@@ -104,7 +104,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
         dodot up --dry-run             # show what would change
 
         # Provisioning controls
-        dodot up --no-provision        # skip install/brew/nix this run
+        dodot up --no-provision        # skip install/brew/nix/external this run
         dodot up --provision-rerun     # apply edited install/brew/nix content
 
         # Conflict resolution at the deployed location
