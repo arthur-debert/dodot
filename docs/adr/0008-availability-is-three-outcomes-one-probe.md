@@ -3,12 +3,14 @@
 Asking whether a provisioner's manager is on this machine has three answers, not
 two, and every caller reads them from the same function.
 
-**Present** proceeds. **Absent** skips: no receipt, no error, no effect on the
-exit code, and a row naming the manager and every location probed. **Probe
-failed** — a candidate that could not be examined at all — is a real error,
-surfaced with its detail and never absorbed into absence. Two outcomes would
-force a permission error on `/opt/homebrew` to report as "Homebrew is not
-installed", which is a different machine, a different remedy, and a lie.
+**Present** proceeds, and the run spawns the path that answered. **Absent**
+skips: no receipt, no error, no effect on the exit code, and a row naming the
+manager and every location probed. **Probe failed** — a candidate that could not
+be examined at all — is a real error, surfaced with its detail and never
+absorbed into absence: a real `dodot up` reports it in its exit code, while
+still deploying the rest of the pack. Two outcomes would force a permission
+error on `/opt/homebrew` to report as "Homebrew is not installed", which is a
+different machine, a different remedy, and a lie.
 
 Absence writing no receipt is what makes the skip self-healing. A receipt asserts
 *this exact file content ran successfully*; absence is a fact about this machine

@@ -581,3 +581,53 @@ fn a_handler_dodot_does_not_locate_keeps_its_path_lookup() {
         "install\u{2019}s interpreter is a PATH lookup, not a located path: {executable}"
     );
 }
+
+// ── A probe failure reaches the exit code ───────────────────────
+
+#[test]
+fn a_probe_failure_fails_the_run_without_costing_the_pack() {
+    // An absent manager is an ordinary machine state and leaves the
+    // exit code alone. A manager dodot could not *look for* is the
+    // other thing: the question went unanswered, so the run's report
+    // about that file is not to be trusted and `up` says so. The rest
+    // of the pack still deploys either way (ADR-0008).
+    let env = env_with_a_brewfile();
+    let ctx = ctx_for(&env, &Machine::Unprobeable);
+
+    let result = commands::up::up(None, &ctx).unwrap();
+
+    assert!(
+        result.failed,
+        "a probe dodot could not answer is a failure, and the only one that never \
+         reaches a pack result — no intent means no operation to carry the verdict"
+    );
+    assert_eq!(
+        result.message.as_deref(),
+        Some("Packs deployed with errors."),
+        "the message and the exit code must tell the same story"
+    );
+    assert_eq!(
+        row(&result, "home.vimrc").status,
+        "deployed",
+        "the rest of the pack still deploys"
+    );
+}
+
+#[test]
+fn an_absent_manager_and_a_dry_run_both_stay_out_of_the_exit_code() {
+    let env = env_with_a_brewfile();
+
+    assert!(
+        !commands::up::up(None, &ctx_for(&env, &Machine::Absent))
+            .unwrap()
+            .failed,
+        "absence is a skip, not a failure"
+    );
+
+    let mut dry = ctx_for(&env, &Machine::Unprobeable);
+    dry.dry_run = true;
+    assert!(
+        !commands::up::up(None, &dry).unwrap().failed,
+        "a dry run attempted nothing, so it reports the probe failure without being one"
+    );
+}

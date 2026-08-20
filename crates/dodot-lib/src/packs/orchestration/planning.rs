@@ -82,13 +82,18 @@ pub struct PackPlan {
     /// the user chose to skip. Empty whenever `--no-provision` is off.
     pub provision_skipped: Vec<ProvisionSkip>,
     /// Files whose manager is not usable on this machine — absent, or
-    /// impossible to probe. Read by the dry-run renderer for the same
-    /// reason as `provision_skipped`: no intent means no operation
-    /// and, without a row, an absent manager reads as an empty pack.
+    /// impossible to probe. The dry-run renderer places their rows for
+    /// the same reason as `provision_skipped`: no intent means no
+    /// operation and, without a row, an absent manager reads as an
+    /// empty pack.
     ///
     /// A real `up` renders through `status::status()`, which asks the
     /// same probe on its own planning pass, so this list is the
-    /// dry-run half of an answer both paths compute identically.
+    /// dry-run half of an answer both paths compute identically. Both
+    /// paths do read it for one thing: a
+    /// [`ProbeFailed`](crate::provisioners::availability::Availability::ProbeFailed)
+    /// entry is the only failure with no operation to carry its
+    /// verdict, so `up` counts it here (ADR-0008).
     ///
     /// Ephemeral: an availability is a fact about this machine right
     /// now and is never written to the datastore.

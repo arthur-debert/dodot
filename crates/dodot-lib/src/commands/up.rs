@@ -127,9 +127,11 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // planning pass. Empty on every run without `--no-provision`.
     let mut pack_skips: Vec<(String, Vec<orchestration::ProvisionSkip>)> = Vec::new();
     // Per-pack record of what an absent (or unprobeable) manager
-    // dropped. Read by the dry-run renderer for the same reason: a
-    // real run renders through `status::status()`, which asks the same
-    // probe on its own planning pass.
+    // dropped. The dry-run renderer places its rows — a real run
+    // renders through `status::status()`, which asks the same probe on
+    // its own planning pass — and both runs read it below for the one
+    // outcome that is a failure rather than a skip: a probe that could
+    // not answer at all.
     let mut pack_unavailable: Vec<(String, Vec<orchestration::ProvisionUnavailable>)> = Vec::new();
 
     for pack in &packs {
@@ -352,9 +354,30 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         }
     }
 
-    let has_failures = pack_results
+    // A manager dodot could not *look for* is a failure, and the only
+    // one that never reaches `pack_results`: a probe failure produces
+    // no intent, so it produces no operation to carry a verdict.
+    //
+    // Absence is not counted here. The two outcomes are separated
+    // precisely because they differ: a missing brew is an ordinary
+    // machine state with a remedy the user can act on, while a
+    // `/opt/homebrew` dodot cannot stat means the question went
+    // unanswered — the run's report about that file is not to be
+    // trusted, and `up` says so with its exit code. The rest of the
+    // pack still deploys either way (ADR-0008).
+    let unprobeable = pack_unavailable
         .iter()
-        .any(|pr| !pr.success || pr.operations.iter().any(|op| !op.success));
+        .flat_map(|(_, files)| files)
+        .any(|f| {
+            matches!(
+                f.availability,
+                crate::provisioners::availability::Availability::ProbeFailed { .. }
+            )
+        });
+    let has_failures = unprobeable
+        || pack_results
+            .iter()
+            .any(|pr| !pr.success || pr.operations.iter().any(|op| !op.success));
 
     // Build display packs.
     //
