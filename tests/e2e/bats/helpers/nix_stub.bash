@@ -3,14 +3,14 @@
 # can be exercised end-to-end without a real Nix install.
 #
 # The handler invokes a single nix subcommand at apply time:
-#   nix profile install --expr <wrapper-expr> \
-#     --extra-experimental-features 'nix-command flakes'
+#   nix profile install --impure \
+#     --extra-experimental-features 'nix-command flakes' \
+#     --argstr manifest /abs/path/packages.nix --expr <wrapper-expr>
 #
-# The wrapper expression embeds the absolute path of the manifest as
-# a Nix string literal (`import "/abs/path/packages.nix"`). The stub
-# greps that path out of the `--expr` argument so it can log which
-# manifest was installed — that's the assertion surface bats tests
-# care about (was install fired? against which manifest?).
+# The manifest travels as the value of `--argstr manifest`, so the
+# stub reads it straight off the command line to log which manifest
+# was installed — that's the assertion surface bats tests care about
+# (was install fired? against which manifest?).
 #
 # Real Nix is out of scope for the bats suite (no nix binary in CI;
 # expensive setup); tier-0 unit tests in
@@ -45,23 +45,21 @@ case "$1" in
     profile)
         if [[ "$2" == "install" ]]; then
             shift 2
-            expr=""
+            path=""
             while [[ $# -gt 0 ]]; do
                 case "$1" in
-                    --expr) expr="$2"; shift 2 ;;
+                    --argstr)
+                        if [[ "$2" == "manifest" ]]; then path="$3"; fi
+                        shift 3
+                        ;;
                     *) shift ;;
                 esac
             done
-            # The handler's wrapper expression embeds the manifest
-            # path as `import "/abs/path/packages.nix"`. Extract the
-            # first such path for logging — falls back to a literal
-            # `(expr)` marker if the format ever drifts.
-            path="$(printf '%s' "$expr" \
-                | grep -oE 'import "[^"]+"' \
-                | head -1 \
-                | sed -E 's/import "([^"]+)"/\1/')"
+            # No `--argstr manifest` means the handler stopped naming
+            # its manifest on the command line — log a marker rather
+            # than a path so the drift is visible in test failures.
             if [[ -z "$path" ]]; then
-                path="(expr)"
+                path="(no --argstr manifest)"
             fi
             printf '%s\n' "$path" >> "$LOG"
             exit 0
@@ -87,5 +85,12 @@ nix_stub_install_count() {
 		wc -l <"$DODOT_NIX_STUB_LOG" | tr -d ' '
 	else
 		echo 0
+	fi
+}
+
+# The manifest path from the most recent `nix profile install`.
+nix_stub_last_manifest() {
+	if [[ -f "$DODOT_NIX_STUB_LOG" ]]; then
+		tail -1 "$DODOT_NIX_STUB_LOG"
 	fi
 }

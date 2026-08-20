@@ -2,11 +2,14 @@
 # E2E tests for the nix handler against a stubbed `nix` binary.
 #
 # The stub (helpers/nix_stub.bash) covers the single subcommand the
-# handler invokes — `nix profile install --expr <wrapper>` — and
-# logs each install for assertion. Real Nix is out of scope for the
-# bats suite (no nix binary in CI; expensive setup); tier-0 unit
-# tests in `crates/dodot-lib/src/handlers/nix.rs` cover argv
-# construction and the wrapper expression itself.
+# handler invokes — `nix profile install ... --argstr manifest
+# <path> --expr <wrapper>` — and logs each install for assertion.
+# Real Nix is out of scope for the bats suite (no nix binary in CI;
+# expensive setup); tier-0 unit tests in
+# `crates/dodot-lib/src/handlers/nix.rs` cover argv construction and
+# the wrapper expression itself, and the wrapper was executed against
+# Nix 2.35.2 in a `nixos/nix` container — see
+# `docs/adr/0006-declare-the-manifest-argument-never-infer-it.md`.
 
 setup() {
     load helpers/setup
@@ -126,4 +129,60 @@ teardown() {
     # And `dodot up` (without --provision-rerun) does not re-run.
     dodot up
     [ "$(nix_stub_install_count)" = "1" ]
+}
+
+@test "a nix run names the manifest on the command line" {
+    # The manifest reaches nix as the value of `--argstr manifest`,
+    # not embedded in the wrapper expression — which is what lets
+    # dodot name the file it ran without parsing Nix source.
+    create_pack_file "tools" "packages.nix" '{ pkgs ? import <nixpkgs> {} }: with pkgs; [ ripgrep ]'
+
+    dodot up
+
+    [ "$(nix_stub_last_manifest)" = "$DOTFILES_ROOT/tools/packages.nix" ]
+}
+
+@test "a nix run writes a snapshot holding the manifest bytes" {
+    # Regression: nix's command ends in `--extra-experimental-features
+    # 'nix-command flakes'`, so snapshotting the last argument
+    # snapshotted nothing at all and left `status --diff` unavailable
+    # for packages.nix.
+    local manifest='{ pkgs ? import <nixpkgs> {} }: with pkgs; [ ripgrep ]'
+    create_pack_file "tools" "packages.nix" "$manifest"
+
+    dodot up
+
+    local snapshot
+    snapshot="$(find "$XDG_DATA_HOME/dodot/packs/tools/nix" -maxdepth 1 -name 'packages.nix-*.snapshot')"
+    [ -n "$snapshot" ] || {
+        echo "no snapshot sibling next to the nix sentinel" >&2
+        ls -la "$XDG_DATA_HOME/dodot/packs/tools/nix" >&2
+        false
+    }
+    [ "$(cat "$snapshot")" = "$manifest" ]
+}
+
+@test "the progress header names the manifest, not the nix flags" {
+    create_pack_file "tools" "packages.nix" '{ pkgs ? import <nixpkgs> {} }: with pkgs; [ ripgrep ]'
+
+    run dodot up
+
+    assert_output_contains "tools → nix → packages.nix"
+    assert_output_not_contains "nix-command flakes"
+}
+
+@test "status --diff shows what changed in an edited packages.nix" {
+    create_pack_file "tools" "packages.nix" '{ pkgs ? import <nixpkgs> {} }: with pkgs; [ ripgrep ]'
+    dodot up
+
+    create_pack_file "tools" "packages.nix" '{ pkgs ? import <nixpkgs> {} }: with pkgs; [ ripgrep fd ]'
+
+    run dodot status tools --diff
+
+    # The snapshot is the previously-run manifest, so the diff has
+    # both sides — and the row counts the change rather than
+    # reporting `no diff data`.
+    assert_output_contains "packages.nix"
+    assert_output_contains "ripgrep fd"
+    assert_output_not_contains "no diff data"
 }

@@ -16,6 +16,7 @@ pub mod plists;
 pub mod preprocessing;
 pub mod probe;
 pub mod prompts;
+pub mod provisioners;
 pub mod render;
 pub mod rules;
 pub mod safety_lock;
