@@ -95,7 +95,7 @@ Proposal: Provisioning Handlers
     Per handler:
         | Handler | Axis 1 | Axis 3 |
         | `install` | probe the interpreter the extension selected — `bash`, or `zsh` for `.zsh` | _unknowable_ — dodot cannot know what the script wrote or where |
-        | `homebrew` | probe fixed candidate prefixes | dodot owns the PATH entry, via `brew shellenv` — on macOS today, and a requirement rather than a fact on Linux; see [#3.2] |
+        | `homebrew` | probe fixed candidate prefixes | dodot owns the PATH entry, via `brew shellenv` — on macOS and on Linux alike; see [#3.2] |
         | `nix` | probe fixed candidate prefixes | the Nix installer owns it |
 
         :: table align=lll header=1 ::
@@ -149,7 +149,7 @@ Proposal: Provisioning Handlers
 
         Homebrew's shell bootstrap. Brew's own documentation delegates PATH setup to the user, and no other manager here does — Nix's installer writes `/etc/zshrc` and `/etc/profile.d` itself. Generalizing the bootstrap into a descriptor field would imply a uniformity that does not exist, so `shell/homebrew.rs` stays a special case and stays special.
 
-        Staying a special case is not the same as staying as it is. Both entry points — `capture` and `cached_or_capture_at` — return early on `!host.is_macos`, so off macOS dodot emits nothing regardless of what is installed, and `DEFAULT_PREFIXES` holds `/opt/homebrew` and `/usr/local` only, neither of which is where Linux brew lands. [#1.3] makes Homebrew a supported Linux path, which turns [#2]'s reachability row into a requirement on Linux rather than a description of it: the macOS short-circuit has to go, `/home/linuxbrew/.linuxbrew` and its `~/.linuxbrew` fallback have to join the probe order, and Linux emission needs tests of its own. Until that lands, a Linux user owns their own brew PATH setup and the documentation should say so, rather than promise macOS behavior everywhere. Recorded as defect 12.
+        Staying a special case is not the same as staying as it is. What [#1.3] required of the bootstrap has since landed (#355), and defect 12 is closed. `capture` and `cached_or_capture_at` no longer test the platform at all — `BrewHost` dropped its `is_macos` field, so an executable `bin/brew` under a candidate prefix is the whole question — and the probe order gained `/home/linuxbrew/.linuxbrew` plus the per-user `~/.linuxbrew` fallback that brew's Linux installer uses when it cannot write the shared prefix. Linux emission has tests of its own, and the user documentation promises the cross-platform behaviour it now has.
 
     3.3. Where The Descriptor Lives
 
@@ -314,7 +314,7 @@ Proposal: Provisioning Handlers
     9. `brew shellenv` is captured without sanitizing dodot's own PATH. The consequence is milder than previously recorded — an empty capture is already treated as a failure rather than cached — so the result is a spurious warning and a retained previous capture, not silent loss. The fix is unchanged.
     10. On the passive `init-sh` path a failed capture drops the Homebrew block with no warning, because that path emits the script itself and has no warnings channel. Silent, and repeated on every shell start until the next `dodot up`.
     11. `Brewfile` fires on Linux by default, requiring a hand-written pattern to suppress it. [#4] dissolves this: an absent manager becomes a skip, which is the correct behavior once Homebrew is a supported Linux path rather than an assumed-macOS one.
-    12. The Homebrew shell bootstrap is macOS-only and cannot see a Linux brew: `capture` and `cached_or_capture_at` both return early on `!host.is_macos`, and `DEFAULT_PREFIXES` omits `/home/linuxbrew/.linuxbrew`. Not a live defect today, because Linux brew is not yet a supported path — a prerequisite for making it one, without which brew-installed tools stay unreachable in later Linux shells. See [#3.2].
+    12. *Fixed (#355).* The Homebrew shell bootstrap was macOS-only and could not see a Linux brew: `capture` and `cached_or_capture_at` both returned early on `!host.is_macos`, and `DEFAULT_PREFIXES` omitted `/home/linuxbrew/.linuxbrew`. The platform test is gone — what is installed decides — and both Linuxbrew prefixes are probed, so brew-installed tools are reachable in later Linux shells. See [#3.2].
 
     The taxonomy documentation is separately and pervasively stale: the reference, developer, glossary, and README handler tables all predate the `nix`, `external`, and `gate` handlers, several still say dodot ships eight handlers, and the execution-order document claims each phase holds a single handler. The same facts are transcribed into roughly eight places by hand, and the handler-authoring guide mandates updating four of them. Generating the table from the registry would retire that class of error.
 

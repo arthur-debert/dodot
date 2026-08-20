@@ -330,9 +330,10 @@ pub(crate) fn compose_path_tier(
 /// (`docs/proposals/path-precedence.lex` note at the top: Homebrew's
 /// bootstrap is settled by RCS01 and not reopened here).
 ///
-/// `brew shellenv` puts `<prefix>/bin` and `<prefix>/sbin` on `$PATH`;
-/// `None` (not macOS, no brew, or `[shell] homebrew = "off"`) yields no
-/// known directories to dedup against.
+/// `brew shellenv` puts `<prefix>/bin` and `<prefix>/sbin` on `$PATH`,
+/// whichever prefix answered — a Linuxbrew one as readily as a macOS
+/// one; `None` (no brew, or `[shell] homebrew = "off"`) yields no known
+/// directories to dedup against.
 pub(crate) fn homebrew_known_dirs(homebrew: Option<&BrewBlocks>) -> Vec<PathBuf> {
     match homebrew {
         Some(blocks) => vec![blocks.prefix.join("bin"), blocks.prefix.join("sbin")],
@@ -448,8 +449,8 @@ pub(crate) fn scan_pack_contributions(fs: &dyn Fs, paths: &dyn Pather) -> Result
 /// `homebrew` is the bootstrap block captured from `brew shellenv` —
 /// by [`homebrew::capture_and_persist`] in `up`/`down`, or served from
 /// the datastore cache by [`homebrew::cached_or_capture`] in passive
-/// generation paths — or `None` when there is nothing to emit (not
-/// macOS, no brew, or `[shell] homebrew = "off"`). Like
+/// generation paths — or `None` when there is nothing to emit (no
+/// brew, or `[shell] homebrew = "off"`). Like
 /// the evidence it lands ahead of the empty-datastore early return: it
 /// is a function of config and the host, not of what any pack deployed,
 /// and a user whose rc file is empty still needs brew's environment.
@@ -2071,6 +2072,59 @@ mod tests {
         );
     }
 
+    /// The same ordering guarantee for a Linux capture: a block from
+    /// the Linuxbrew prefix is emitted verbatim and still lands above
+    /// the packs PATH tier, so dodot's own entries stay the last word
+    /// (#355). Generation is prefix-agnostic, and this is what holds it
+    /// that way.
+    #[test]
+    fn a_linuxbrew_block_is_emitted_first_and_verbatim() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("bin/myscript", "#!/bin/sh")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
+            .unwrap();
+
+        let prefix = "/home/linuxbrew/.linuxbrew";
+        let blocks = BrewBlocks {
+            prefix: PathBuf::from(prefix),
+            sh: format!("export HOMEBREW_PREFIX=\"{prefix}\";\nexport PATH=\"{prefix}/bin:{prefix}/sbin:$PATH\";\n"),
+            zsh: format!("export HOMEBREW_PREFIX=\"{prefix}\";\nfpath[1,0]=\"{prefix}/share/zsh/site-functions\";\nexport FPATH;\n"),
+        };
+
+        let script = generate_init_script(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            TEST_GEN,
+            Some(&blocks),
+        )
+        .unwrap();
+
+        assert!(
+            script.contains(&blocks.sh),
+            "sh block verbatim, script:\n{script}"
+        );
+        assert!(
+            script.contains(&blocks.zsh),
+            "zsh block verbatim, script:\n{script}"
+        );
+        // The packs tier is found by its own header, not by
+        // `export PATH=`: brew's captured block carries a line of that
+        // shape itself, so searching for it would match inside the
+        // block and assert nothing.
+        let brew_pos = script.find("# ── Homebrew environment ──").unwrap();
+        let path_pos = script.find("# PATH additions").unwrap();
+        assert!(
+            brew_pos < path_pos,
+            "Homebrew block must precede the packs PATH tier, script:\n{script}"
+        );
+    }
+
     /// The whole emission order in one script, read back as text.
     ///
     /// The version stamp (`shell-hookup-ergonomics.lex` §2.1) and the
@@ -2157,8 +2211,8 @@ mod tests {
         assert!(script.contains("No shell scripts or PATH additions"));
     }
 
-    /// `off`, a non-macOS host and a brew-less mac all arrive here as
-    /// `None`, and none of them may leave a trace in the script.
+    /// `off` and a brew-less host both arrive here as `None`, and
+    /// neither may leave a trace in the script.
     #[test]
     fn no_capture_means_no_homebrew_lines_at_all() {
         let env = TempEnvironment::builder().build();

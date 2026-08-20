@@ -186,7 +186,7 @@ Design Specification: Shell Hookup Ergonomics
 
         :: text ::
 
-        Only brew's own paths are prepended; existing entries keep their order. (Plain `path_helper`, which `/etc/zprofile` runs, *does* reorder — the source of the older advice.) The cost is two process spawns per shell start, measured at ~2.3ms, which buys immunity from brew's bootstrap changing under us.
+        Only brew's own paths are prepended; existing entries keep their order. (Plain `path_helper`, which `/etc/zprofile` runs, *does* reorder — the source of the older advice.) The cost is two process spawns per shell start on macOS, measured at ~2.3ms, which buys immunity from brew's bootstrap changing under us. `path_helper` is macOS's, so a Linux capture carries no such line and costs a shell no spawns at all.
 
     4.3. What This Does and Does Not Close
 

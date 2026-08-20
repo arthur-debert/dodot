@@ -1,10 +1,16 @@
 //! Built-in Homebrew bootstrap for the generated init script
 //! (`shell-hookup-ergonomics.lex` §4).
 //!
-//! On macOS essentially every pack downstream needs Homebrew's
-//! environment, and `/opt/homebrew/bin` is not on `PATH` until
-//! *something* puts it there. dodot owns that bootstrap so the user's
-//! rc file can stay empty and no `001-homebrew` pack is required.
+//! Wherever Homebrew is installed — macOS, where essentially every
+//! pack downstream needs its environment, and Linux, where brew is a
+//! supported path all the same — the prefix's `bin` directory is not on
+//! `PATH` until *something* puts it there. dodot owns that bootstrap so
+//! the user's rc file can stay empty and no `001-homebrew` pack is
+//! required.
+//!
+//! What is installed decides, not what platform is running: detection
+//! is the prefix probe below and nothing else, so a Linux brew gets the
+//! same block a mac brew does (#355).
 //!
 //! # Ask brew, don't guess
 //!
@@ -58,9 +64,9 @@
 //! # Verbatim, and first
 //!
 //! Captured output is emitted **byte-for-byte** — not reindented, not
-//! filtered. In particular the `path_helper` re-exec line stays. An
-//! older concern, that it demotes dodot's own PATH entries, no longer
-//! holds: brew now passes `PATH_HELPER_ROOT`, which only prepends
+//! filtered. In particular the `path_helper` re-exec line — which
+//! only a macOS capture carries — stays. An older concern, that it
+//! demotes dodot's own PATH entries, no longer holds: brew now passes `PATH_HELPER_ROOT`, which only prepends
 //! brew's own paths and leaves existing entries in order. Measured:
 //!
 //! ```text
@@ -82,10 +88,15 @@
 //! startup path — brew's choice, not dodot's, but ours to state
 //! plainly. Two costs, identical under both hook shapes:
 //!
-//! - *The emitted block*, paid by every shell that sources the script:
-//!   two process spawns (`env` plus `path_helper`). Measured on an
-//!   Apple-silicon mac over 200 iterations: ~3.1 ms wall per
+//! - *The emitted block*, paid by every shell that sources the script
+//!   — and only on macOS. There, brew's block ends in a `path_helper`
+//!   re-exec, two process spawns (`env` plus `path_helper`): measured
+//!   on an Apple-silicon mac over 200 iterations at ~3.1 ms wall per
 //!   invocation, ~2.7 ms net of the ~0.5 ms `$( )` subshell baseline.
+//!   A Linux capture carries no such line — `brew shellenv` there is
+//!   plain `export` statements (checked against Homebrew 4.6.20 on
+//!   linux/amd64) — so a Linux shell spawns nothing and the block
+//!   costs it nothing measurable.
 //! - *The capture itself*, two `brew shellenv` runs (`sh` and `zsh`),
 //!   ~10-20 ms each on the same machine — paid by `dodot up`/`down`
 //!   ([`capture_and_persist`]) and cached in the datastore, so a shell
@@ -112,8 +123,22 @@ use crate::paths::Pather;
 use crate::{DodotError, Result};
 
 /// Standard Homebrew install prefixes, in probe order: Apple silicon
-/// first, then the Intel/`/usr/local` layout.
-pub const DEFAULT_PREFIXES: [&str; 2] = ["/opt/homebrew", "/usr/local"];
+/// first, then Homebrew-on-Linux's shared prefix, then the
+/// Intel-macOS (and old-Linuxbrew) `/usr/local` layout.
+///
+/// Order only decides which brew answers on a host carrying more than
+/// one — every candidate still has to hold an executable `bin/brew` —
+/// and each platform's current installer location leads.
+pub const DEFAULT_PREFIXES: [&str; 3] =
+    ["/opt/homebrew", "/home/linuxbrew/.linuxbrew", "/usr/local"];
+
+/// Homebrew-on-Linux's per-user prefix, relative to `$HOME`.
+///
+/// Probed after [`DEFAULT_PREFIXES`] because brew's Linux installer
+/// falls back to `~/.linuxbrew` only when it cannot write the shared
+/// `/home/linuxbrew/.linuxbrew`, so on a host holding both the shared
+/// install is the one brew would use.
+pub const HOME_RELATIVE_PREFIX: &str = ".linuxbrew";
 
 /// The `[shell] homebrew` config key — the gate on the whole mechanism.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -145,22 +170,33 @@ impl BrewBootstrapMode {
 /// from the process so tests never need brew installed — or a mac.
 #[derive(Debug, Clone)]
 pub struct BrewHost {
-    /// Homebrew's bootstrap is a macOS concern; off the platform we
-    /// emit nothing regardless of what is installed.
-    pub is_macos: bool,
     /// Prefix candidates in probe order. The first whose `bin/brew` is
     /// an executable file wins.
+    ///
+    /// This is the whole host input. A platform test alongside it would
+    /// only refuse to bootstrap a brew that is sitting right there:
+    /// Homebrew runs on Linux, and a Linux user who installed it wants
+    /// its `bin` on `PATH` for the same reason a mac user does (#355).
     pub prefix_candidates: Vec<PathBuf>,
 }
 
 impl BrewHost {
     /// Snapshot the running host: `$HOMEBREW_PREFIX` first when set,
-    /// then [`DEFAULT_PREFIXES`].
-    pub fn detect() -> Self {
-        Self::new(
-            cfg!(target_os = "macos"),
-            std::env::var("HOMEBREW_PREFIX").ok(),
-        )
+    /// then [`DEFAULT_PREFIXES`], then `<home>/.linuxbrew`.
+    ///
+    /// `home` is the caller's [`Pather::home_dir`], dodot's single
+    /// source of truth for the home directory, rather than a fresh
+    /// `$HOME` reading of our own. An embedder or an isolated test that
+    /// supplies its own home therefore gets *that* user's
+    /// `.linuxbrew` probed, never the running process's — and a
+    /// non-UTF-8 home path survives, which `std::env::var` would have
+    /// dropped.
+    ///
+    /// `$HOMEBREW_PREFIX` stays a process-environment reading because
+    /// it is one: it is the user's own override of where brew lives,
+    /// and dodot has no other record of it.
+    pub fn detect(home: &Path) -> Self {
+        Self::new(std::env::var("HOMEBREW_PREFIX").ok(), home)
     }
 
     /// Build the candidate list from its two inputs.
@@ -169,16 +205,19 @@ impl BrewHost {
     /// each candidate still has to hold an executable `bin/brew`, so a
     /// stale or mistyped export falls through to the standard prefixes
     /// instead of suppressing the block.
-    pub fn new(is_macos: bool, prefix_env: Option<String>) -> Self {
-        let mut prefix_candidates: Vec<PathBuf> = Vec::with_capacity(3);
+    ///
+    /// `home` contributes the per-user [`HOME_RELATIVE_PREFIX`]
+    /// candidate last; an empty home path just leaves it out.
+    pub fn new(prefix_env: Option<String>, home: &Path) -> Self {
+        let mut prefix_candidates: Vec<PathBuf> = Vec::with_capacity(DEFAULT_PREFIXES.len() + 2);
         if let Some(prefix) = prefix_env.filter(|p| !p.trim().is_empty()) {
             prefix_candidates.push(PathBuf::from(prefix));
         }
         prefix_candidates.extend(DEFAULT_PREFIXES.iter().map(PathBuf::from));
-        Self {
-            is_macos,
-            prefix_candidates,
+        if !home.as_os_str().is_empty() {
+            prefix_candidates.push(home.join(HOME_RELATIVE_PREFIX));
         }
+        Self { prefix_candidates }
     }
 }
 
@@ -203,9 +242,9 @@ pub struct BrewBlocks {
 /// `capture` measures and its callers must not collapse (#301).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BrewCapture {
-    /// Nothing to emit and nothing to say: the mode is `off`, the host
-    /// is not macOS, or no candidate prefix holds an executable
-    /// `bin/brew`. A missing brew is not a broken deployment; the next
+    /// Nothing to emit and nothing to say: the mode is `off`, or no
+    /// candidate prefix holds an executable `bin/brew`. A missing brew
+    /// is not a broken deployment; the next
     /// `dodot up` heals the script once brew is installed.
     Absent,
     /// Brew answered; both dialect blocks are in hand.
@@ -249,7 +288,7 @@ pub struct PersistedCapture {
 /// result lands at [`Pather::homebrew_cache_path`] so passive
 /// generation paths ([`cached_or_capture`]) emit without spawning
 /// brew. A capture with nothing to emit because brew is truly absent —
-/// mode `off`, not macOS, no executable `bin/brew` — *removes* the
+/// mode `off`, no executable `bin/brew` — *removes* the
 /// cache, keeping it in lockstep with what the written script carries:
 /// a host that lost its brew can never serve a stale block.
 ///
@@ -275,7 +314,7 @@ pub fn capture_and_persist(
         fs,
         runner,
         mode,
-        &BrewHost::detect(),
+        &BrewHost::detect(paths.home_dir()),
         &paths.homebrew_cache_path(),
     )
 }
@@ -353,7 +392,7 @@ pub fn cached_or_capture(
         fs,
         runner,
         mode,
-        &BrewHost::detect(),
+        &BrewHost::detect(paths.home_dir()),
         &paths.homebrew_cache_path(),
     ))
 }
@@ -367,7 +406,7 @@ fn cached_or_capture_at(
     host: &BrewHost,
     cache_path: &Path,
 ) -> Option<BrewBlocks> {
-    if mode == BrewBootstrapMode::Off || !host.is_macos {
+    if mode == BrewBootstrapMode::Off {
         return None;
     }
     let prefix = detect_prefix(fs, host)?;
@@ -454,8 +493,8 @@ fn persist_cache(fs: &dyn Fs, path: &Path, blocks: Option<&BrewBlocks>) -> Resul
 /// and "brew is here but did not answer" distinct (#301).
 ///
 /// [`BrewCapture::Absent`] — never an error — for every genuinely-no-
-/// brew case: the mode is `off`, the host is not macOS, or no candidate
-/// prefix holds an executable `bin/brew`. A missing brew is not a
+/// brew case: the mode is `off`, or no candidate prefix holds an
+/// executable `bin/brew`. A missing brew is not a
 /// broken deployment, and the next `dodot up` heals the script once
 /// brew is installed. A *detected* brew whose `shellenv` fails is
 /// [`BrewCapture::Failed`] instead — that distinction is already
@@ -468,9 +507,6 @@ pub fn capture(
     host: &BrewHost,
 ) -> BrewCapture {
     if mode == BrewBootstrapMode::Off {
-        return BrewCapture::Absent;
-    }
-    if !host.is_macos {
         return BrewCapture::Absent;
     }
 
@@ -748,7 +784,6 @@ mod tests {
 
     fn host_with(prefixes: &[&Path]) -> BrewHost {
         BrewHost {
-            is_macos: true,
             prefix_candidates: prefixes.iter().map(PathBuf::from).collect(),
         }
     }
@@ -771,13 +806,15 @@ mod tests {
 
     #[test]
     fn homebrew_prefix_env_leads_the_candidates() {
-        let host = BrewHost::new(true, Some("/custom/brew".to_string()));
+        let host = BrewHost::new(Some("/custom/brew".to_string()), Path::new("/home/ada"));
         assert_eq!(
             host.prefix_candidates,
             vec![
                 PathBuf::from("/custom/brew"),
                 PathBuf::from("/opt/homebrew"),
+                PathBuf::from("/home/linuxbrew/.linuxbrew"),
                 PathBuf::from("/usr/local"),
+                PathBuf::from("/home/ada/.linuxbrew"),
             ]
         );
     }
@@ -785,10 +822,84 @@ mod tests {
     #[test]
     fn unset_or_blank_prefix_env_leaves_the_defaults() {
         for env_value in [None, Some(String::new()), Some("   ".to_string())] {
-            let host = BrewHost::new(true, env_value);
+            let host = BrewHost::new(env_value, Path::new(""));
             assert_eq!(
                 host.prefix_candidates,
-                vec![PathBuf::from("/opt/homebrew"), PathBuf::from("/usr/local")]
+                vec![
+                    PathBuf::from("/opt/homebrew"),
+                    PathBuf::from("/home/linuxbrew/.linuxbrew"),
+                    PathBuf::from("/usr/local"),
+                ]
+            );
+        }
+    }
+
+    /// Homebrew on Linux lands in one of two places, and both are
+    /// probed: the shared prefix its installer prefers, and the
+    /// per-user `~/.linuxbrew` it falls back to. Without these a Linux
+    /// brew is invisible even though it is installed (#355).
+    #[test]
+    fn both_linuxbrew_prefixes_are_probed_in_installer_order() {
+        let host = BrewHost::new(None, Path::new("/home/ada"));
+        let shared = host
+            .prefix_candidates
+            .iter()
+            .position(|p| p == Path::new("/home/linuxbrew/.linuxbrew"));
+        let per_user = host
+            .prefix_candidates
+            .iter()
+            .position(|p| p == Path::new("/home/ada/.linuxbrew"));
+        assert!(
+            matches!((shared, per_user), (Some(shared), Some(per_user)) if shared < per_user),
+            "candidates were: {:?}",
+            host.prefix_candidates
+        );
+    }
+
+    /// An empty home path would make the per-user candidate
+    /// `/.linuxbrew` — a path no brew is at, probed on every run.
+    /// Leave it out.
+    #[test]
+    fn a_blank_home_contributes_no_per_user_candidate() {
+        let host = BrewHost::new(None, Path::new(""));
+        assert_eq!(
+            host.prefix_candidates,
+            DEFAULT_PREFIXES
+                .iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// Detection takes its home from the caller's `Pather`, not from
+    /// the process's `$HOME`, so an isolated test or an embedder that
+    /// runs under a different home probes that home's `.linuxbrew` —
+    /// never the host user's.
+    #[test]
+    fn detection_probes_the_injected_home_not_the_process_env() {
+        let env = TempEnvironment::builder().build();
+        let injected = env.paths.home_dir();
+        assert_ne!(
+            Some(injected),
+            std::env::var("HOME").ok().map(PathBuf::from).as_deref(),
+            "the temp environment's home should differ from the process's"
+        );
+
+        let host = BrewHost::detect(injected);
+        assert!(
+            host.prefix_candidates
+                .contains(&injected.join(HOME_RELATIVE_PREFIX)),
+            "candidates were: {:?}",
+            host.prefix_candidates
+        );
+        let process_home = std::env::var("HOME").ok().map(PathBuf::from);
+        if let Some(process_home) = process_home {
+            assert!(
+                !host
+                    .prefix_candidates
+                    .contains(&process_home.join(HOME_RELATIVE_PREFIX)),
+                "candidates were: {:?}",
+                host.prefix_candidates
             );
         }
     }
@@ -880,22 +991,35 @@ mod tests {
         assert!(runner.calls().is_empty(), "`off` must not run brew at all");
     }
 
+    /// A brew under a Linuxbrew prefix is captured exactly like a brew
+    /// under a macOS one — the platform never enters the decision
+    /// (#355). Before this, `capture` returned `Absent` off macOS and a
+    /// Linux user got no Homebrew block at all.
     #[test]
-    fn non_macos_emits_nothing() {
+    fn a_linuxbrew_install_is_captured_like_any_other() {
         let env = TempEnvironment::builder().build();
-        let prefix = env.dotfiles_root.join("opt/homebrew");
+        let prefix = env.dotfiles_root.join("home/linuxbrew/.linuxbrew");
         install_brew(&env, &prefix);
         let runner = FakeBrew::new();
-        let host = BrewHost {
-            is_macos: false,
-            prefix_candidates: vec![prefix],
-        };
 
+        let BrewCapture::Captured(blocks) = capture(
+            env.fs.as_ref(),
+            &runner,
+            BrewBootstrapMode::Auto,
+            &host_with(&[&prefix]),
+        ) else {
+            panic!("a brew under the Linuxbrew prefix answers like any other");
+        };
+        assert_eq!(blocks.prefix, prefix);
+
+        let brew = brew_binary(&prefix).display().to_string();
         assert_eq!(
-            capture(env.fs.as_ref(), &runner, BrewBootstrapMode::Auto, &host),
-            BrewCapture::Absent
+            runner.calls(),
+            vec![
+                format!("{brew} shellenv sh"),
+                format!("{brew} shellenv zsh"),
+            ]
         );
-        assert!(runner.calls().is_empty());
     }
 
     /// A truly absent brew — no executable `bin/brew` at any candidate
@@ -1234,11 +1358,11 @@ mod tests {
         assert_eq!(runner.calls().len(), 2);
     }
 
-    /// `off` and a non-macOS host ignore even a warm cache: the gate
+    /// `off` ignores even a warm cache: the gate
     /// runs before the cache is consulted, exactly as it runs before a
     /// live capture.
     #[test]
-    fn off_and_non_macos_ignore_a_warm_cache() {
+    fn off_ignores_a_warm_cache() {
         let env = TempEnvironment::builder().build();
         let prefix = env.dotfiles_root.join("opt/homebrew");
         install_brew(&env, &prefix);
@@ -1263,19 +1387,37 @@ mod tests {
             &cache,
         )
         .is_none());
-        let non_mac = BrewHost {
-            is_macos: false,
-            prefix_candidates: vec![prefix],
-        };
-        assert!(cached_or_capture_at(
-            env.fs.as_ref(),
-            &runner,
-            BrewBootstrapMode::Auto,
-            &non_mac,
-            &cache,
-        )
-        .is_none());
         assert!(runner.calls().is_empty());
+    }
+
+    /// The emit-side entry point serves a Linuxbrew capture from the
+    /// cache without spawning brew, the same as on a mac — the second
+    /// half of the platform gate #355 removed.
+    #[test]
+    fn a_warm_linuxbrew_cache_is_served_without_spawning_brew() {
+        let env = TempEnvironment::builder().build();
+        let prefix = env.dotfiles_root.join("home/linuxbrew/.linuxbrew");
+        install_brew(&env, &prefix);
+        let cache = env.paths.homebrew_cache_path();
+        let blocks = BrewBlocks {
+            prefix: prefix.clone(),
+            sh: SH_BLOCK.to_string(),
+            zsh: ZSH_BLOCK.to_string(),
+        };
+        persist_cache(env.fs.as_ref(), &cache, Some(&blocks)).unwrap();
+        let runner = FakeBrew::new();
+
+        assert_eq!(
+            cached_or_capture_at(
+                env.fs.as_ref(),
+                &runner,
+                BrewBootstrapMode::Auto,
+                &host_with(&[&prefix]),
+                &cache,
+            ),
+            Some(blocks)
+        );
+        assert!(runner.calls().is_empty(), "a warm cache must not run brew");
     }
 
     /// A capture with nothing to emit clears the cache, keeping it in
