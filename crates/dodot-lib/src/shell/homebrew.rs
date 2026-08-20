@@ -170,8 +170,8 @@ impl BrewBootstrapMode {
 /// from the process so tests never need brew installed — or a mac.
 #[derive(Debug, Clone)]
 pub struct BrewHost {
-    /// Prefix candidates in probe order. The first whose `bin/brew` is
-    /// an executable file wins.
+    /// Prefix candidates in probe order, every one absolute. The
+    /// first whose `bin/brew` is an executable file wins.
     ///
     /// This is the whole host input. A platform test alongside it would
     /// only refuse to bootstrap a brew that is sitting right there:
@@ -214,6 +214,14 @@ impl BrewHost {
     ///
     /// `home` contributes the per-user [`HOME_RELATIVE_PREFIX`]
     /// candidate last; an empty home path just leaves it out.
+    ///
+    /// A candidate that does not come out absolute is dropped. Both
+    /// inputs arrive from outside this module — the user's own export
+    /// and the caller's home — and a relative one would be resolved
+    /// against whatever directory dodot was invoked from, so the
+    /// emitted block would depend on the caller's `cwd`. The
+    /// provisioner probe drops relative candidates for the same
+    /// reason, and ADR-0007 requires the two lists to agree.
     pub fn new(prefix_env: Option<std::ffi::OsString>, home: &Path) -> Self {
         let mut prefix_candidates: Vec<PathBuf> = Vec::with_capacity(DEFAULT_PREFIXES.len() + 2);
         // Blank means unset: an empty prefix resolves to a bare
@@ -232,6 +240,7 @@ impl BrewHost {
         if !home.as_os_str().is_empty() {
             prefix_candidates.push(home.join(HOME_RELATIVE_PREFIX));
         }
+        prefix_candidates.retain(|prefix| prefix.is_absolute());
         Self { prefix_candidates }
     }
 }
@@ -848,6 +857,23 @@ mod tests {
                 PathBuf::from("/home/linuxbrew/.linuxbrew"),
                 PathBuf::from("/usr/local"),
                 PathBuf::from("/home/ada/.linuxbrew"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_relative_prefix_or_home_is_dropped_rather_than_resolved_against_the_cwd() {
+        // Both inputs come from outside this module, and a relative
+        // one would make the emitted block depend on the directory
+        // dodot was invoked from.
+        let host = BrewHost::new(Some("opt/brew".into()), Path::new("relative/home"));
+
+        assert_eq!(
+            host.prefix_candidates,
+            vec![
+                PathBuf::from("/opt/homebrew"),
+                PathBuf::from("/home/linuxbrew/.linuxbrew"),
+                PathBuf::from("/usr/local"),
             ]
         );
     }

@@ -283,6 +283,17 @@ impl ProvisionHost {
 /// home-anchored ones the same way. Environment values are read as
 /// [`OsString`](std::ffi::OsString), so a non-UTF-8 prefix keeps its
 /// candidate.
+///
+/// A candidate that does not resolve to an absolute path is dropped,
+/// which is [`CandidatePath`]'s stated contract enforced rather than
+/// assumed. The two inputs that can break it come from outside the
+/// registry: `$HOMEBREW_PREFIX` is whatever the user exported, and
+/// `home` is whatever the caller supplied. A relative one would be
+/// resolved by `stat` against the current working directory — so
+/// dodot would probe, and then run, a `bin/brew` belonging to
+/// whichever directory `dodot up` happened to be invoked from. That
+/// is the pack-chooses-your-executable failure ADR-0007 exists to
+/// prevent, arriving through the back door.
 fn resolve_candidates(candidates: &[CandidatePath], home: &Path) -> Vec<PathBuf> {
     let mut resolved = Vec::with_capacity(candidates.len());
     for candidate in candidates {
@@ -320,6 +331,7 @@ fn resolve_candidates(candidates: &[CandidatePath], home: &Path) -> Vec<PathBuf>
             }
         }
     }
+    resolved.retain(|candidate| candidate.is_absolute());
     resolved
 }
 
@@ -759,6 +771,29 @@ mod tests {
             );
             assert_eq!(resolved, vec![PathBuf::from("/usr/local/bin/brew")]);
         }
+    }
+
+    #[test]
+    fn a_relative_candidate_is_dropped_rather_than_resolved_against_the_cwd() {
+        // `CandidatePath` promises an absolute path or nothing. The
+        // two inputs that can break that promise arrive from outside
+        // the registry — the user's own `$HOMEBREW_PREFIX` and the
+        // caller's home — and a relative one would make `stat`, and
+        // then the spawn, depend on where `dodot up` was invoked from.
+        let _guard = crate::testing::EnvVarGuard::set("DODOT_TEST_RELATIVE_PREFIX", "opt/brew");
+        let resolved = resolve_candidates(
+            &[
+                CandidatePath::UnderEnv {
+                    var: "DODOT_TEST_RELATIVE_PREFIX",
+                    suffix: "bin/brew",
+                },
+                CandidatePath::UnderHome(".linuxbrew/bin/brew"),
+                CandidatePath::Absolute("/usr/local/bin/brew"),
+            ],
+            Path::new("relative/home"),
+        );
+
+        assert_eq!(resolved, vec![PathBuf::from("/usr/local/bin/brew")]);
     }
 
     #[test]
