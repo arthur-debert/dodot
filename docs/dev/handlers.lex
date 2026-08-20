@@ -90,7 +90,7 @@ Handlers
 
             pub enum HandlerCategory {
                 Configuration,   // symlink, shell, path
-                CodeExecution,   // install, homebrew
+                CodeExecution,   // install, homebrew, nix, external
             }
 
         :: rust ::
