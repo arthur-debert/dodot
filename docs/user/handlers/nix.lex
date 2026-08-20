@@ -65,7 +65,7 @@ Runs `nix profile install` against your source `packages.nix` once per content-h
     Same flag set as install / homebrew:
 
     - `--no-provision` — skip every code-execution handler entirely on this run: install, homebrew, nix, and external. The skipped files still get a row, labelled `skipped (--no-provision)`.
-    - `--provision-rerun` — the canonical "apply pending content edits" escape hatch for run-once handlers. Re-executes nix even when a sentinel exists. Use it after editing `packages.nix` to opt back into running the new content.
+    - `--provision-rerun` — the canonical "apply pending content edits" escape hatch for the run-once handlers: install, homebrew, and nix. Re-executes them even when a sentinel exists. Use it after editing `packages.nix` to opt back into running the new content.
     - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does **not** trigger run-once re-execution.
 
 5. Editing `packages.nix` after it ran (the three states)

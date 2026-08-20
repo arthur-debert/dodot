@@ -3,12 +3,14 @@
 [desc]Reads each pack, claims files according to the handler conventions, and
 materializes the result on disk: symlinks for configs, [item]source[/item] lines
 queued for the shell init script, [item]bin/[/item] directories registered on [item]$PATH[/item],
-and one-shot [item]install[/item] / [item]Brewfile[/item] scripts run when their content has changed.
+and one-shot [item]install[/item] / [item]Brewfile[/item] / [item]packages.nix[/item] commands run the first
+time dodot sees them.
 
-The pack you deployed yesterday will skip its install script today —
-[item]up[/item] tracks each install / Brewfile by content hash and only re-runs when
-the script changes. Use [item]--provision-rerun[/item] to force a re-run, or
-[item]--no-provision[/item] to skip them entirely on a given run.[/desc]
+The pack you deployed yesterday will skip its install script today — a
+recorded run keeps it from running again. Editing the script does not
+change that: [item]up[/item] reports the file as [item]older version[/item] and holds it. Use
+[item]--provision-rerun[/item] to apply the new content, or [item]--no-provision[/item] to
+skip these handlers entirely on a given run.[/desc]
 
 [header]USAGE[/header]
   [usage]dodot up [OPTIONS] [PACKS...][/usage]
@@ -27,16 +29,18 @@ the script changes. Use [item]--provision-rerun[/item] to force a re-run, or
   dodot up git nvim              [dim]# deploy specific packs[/dim]
   dodot up --dry-run             [dim]# show what would change[/dim]
   dodot up --no-provision        [dim]# skip install, brew, nix and external fetches[/dim]
-  dodot up --provision-rerun     [dim]# force install / brew to re-run[/dim]
+  dodot up --provision-rerun     [dim]# apply edited install / brew / nix content[/dim]
   dodot up --force git           [dim]# overwrite conflicting target files[/dim][/example]
 
 [header]NOTES[/header]
   [desc]Configuration handlers ([item]symlink[/item], [item]shell[/item], [item]path[/item]) are idempotent and
-  always run in full. Code-execution handlers ([item]install[/item], [item]homebrew[/item],
-  [item]nix[/item], [item]external[/item]) are tracked by content-hash sentinels and skip on
-  re-run unless their content has changed. [item]--no-provision[/item] drops all
-  four for one run; their files still appear in the output, labelled
-  [item]skipped (--no-provision)[/item].
+  always run in full. Run-once handlers ([item]install[/item], [item]homebrew[/item], [item]nix[/item]) run
+  once per file and then stop; editing the content does not re-run
+  them, it makes [item]up[/item] report [item]older version[/item] and wait for
+  [item]--provision-rerun[/item]. [item]external[/item] decides for itself: it re-fetches when
+  the declared sha256 or the upstream commit moves. [item]--no-provision[/item]
+  drops all four for one run; their files still appear in the output,
+  labelled [item]skipped (--no-provision)[/item].
 
   After [item]up[/item], shell snippets and PATH additions take effect in shells
   that re-source the init script. Open a new shell, or source it

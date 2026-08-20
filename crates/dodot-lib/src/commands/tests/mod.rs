@@ -1420,7 +1420,7 @@ fn up_reconciles_deleted_path_dir() {
     );
 }
 
-/// Provisioning handlers (install, homebrew) must NOT be wiped — their
+/// Provisioning handlers (install, homebrew, nix) must NOT be wiped — their
 /// sentinels record "did this run with this content?" and re-running
 /// would defeat the point of sentinels (reinstall on every up).
 #[test]

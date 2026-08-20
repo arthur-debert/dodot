@@ -150,9 +150,9 @@ Handlers
         dodot solves this with sentinels. When a code-execution handler runs, it writes a small marker file to the datastore keyed by pack, handler, and a content hash of the command. On subsequent deploys, the presence of that sentinel causes the handler to skip. To override:
 
         - `--no-provision` skips code-execution handlers entirely for this run. Configuration handlers still run.
-        - `--provision-rerun` forces code-execution handlers to run even when sentinels exist. Use after changing an install script, or to re-run `brew bundle` after adding a formula.
+        - `--provision-rerun` forces the run-once handlers (install, homebrew, nix) to run even when sentinels exist. Use after changing an install script, or to re-run `brew bundle` after adding a formula.
 
-        When the content of a code-execution input changes (you edited `install.sh`, or the rendered output of `install.sh.tmpl` changed), the sentinel's content hash no longer matches, and the handler re-runs automatically. You only need `--provision-rerun` when you want to re-run without an input change.
+        When the content of a code-execution input changes (you edited `install.sh`, or the rendered output of `install.sh.tmpl` changed), the sentinel's content hash no longer matches — but the handler does *not* re-run on its own. `dodot up` reports the file as `older version` and holds it; `--provision-rerun` is what applies the edit. Running code you edited is always an explicit request.
 
 6. Quick Reference
 

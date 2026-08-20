@@ -175,11 +175,12 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // init script and the deployed user-side links — instead of
     // lingering as a stale entry that points at a now-missing source.
     //
-    // Provisioning handlers (install, homebrew) are deliberately left
-    // alone. Their sentinels record "did this run with this content?"
-    // independently of whether the source still exists right now;
-    // wiping them would force install scripts and `brew bundle` to
-    // re-execute on every up, defeating the sentinel mechanism.
+    // Provisioning handlers (install, homebrew, nix) are deliberately
+    // left alone. Their sentinels record "did this run with this
+    // content?" independently of whether the source still exists right
+    // now; wiping them would force install scripts, `brew bundle`, and
+    // `nix profile install` to re-execute on every up, defeating the
+    // sentinel mechanism.
     let mut pack_results: Vec<PackResult> = intent_errors;
     let config_handlers = if ctx.dry_run {
         Vec::new()

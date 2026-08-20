@@ -74,7 +74,7 @@ enum Health {
     /// Data link exists and is healthy, but the user link is not at the
     /// path that current config would produce. A re-deploy would move it.
     Stale(String),
-    /// Run-once handler (install / homebrew) recorded a successful run
+    /// Run-once handler (install / homebrew / nix) recorded a successful run
     /// for a *different* content hash than the file currently has on
     /// disk. The script has not been re-run automatically — the
     /// notify-don't-rerun policy leaves the prior state in place
@@ -516,8 +516,8 @@ fn verify_staged(
     Health::Deployed
 }
 
-/// Classify a run-once handler row (install / homebrew) by consulting
-/// the datastore's three-way [`DidRunStatus`] for the file.
+/// Classify a run-once handler row (install / homebrew / nix) by
+/// consulting the datastore's three-way [`DidRunStatus`] for the file.
 ///
 /// On `RanDifferent`, `out_diffs` accumulates a unified-diff entry for
 /// the row when `show_diff` is set AND the previous-run snapshot is on
@@ -528,10 +528,10 @@ fn verify_staged(
 /// name, not on-disk name) so the JSON / text output mirrors the rest
 /// of the status row.
 ///
-/// The `RanDifferent` health also carries the footnote body naming
-/// `--provision-rerun`. The label states the condition — the file has
-/// moved on — and the footnote is the only place the user is told what
-/// to do about it.
+/// [`DidRunStatus::RanDifferent`] maps to [`Health::RanOlderVersion`],
+/// which also carries the footnote body naming `--provision-rerun`. The
+/// label states the condition — the file has moved on — and the
+/// footnote is the only place the user is told what to do about it.
 fn run_once_health(
     file: &std::path::Path,
     pack: &str,
@@ -895,7 +895,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         // Pass 1: filter / non-deployable handlers (skip, gate) and the
         // remaining deployable handlers that we still verify match-side
-        // (shell, path, install, homebrew). Symlink rows are emitted
+        // (shell, path, install, homebrew, nix). Symlink rows are emitted
         // below, off the planner's intents, so they correctly expand
         // escape-prefix dirs and never re-derive a target.
         for m in &matches {
@@ -1294,7 +1294,7 @@ mod tests {
         );
     }
 
-    // ── run_once_health (three-state for install / homebrew) ──
+    // ── run_once_health (three-state for install / homebrew / nix) ──
 
     use super::{run_once_health, Health};
     use crate::commands::DisplayDiff;
