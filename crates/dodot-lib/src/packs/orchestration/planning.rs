@@ -11,6 +11,8 @@
 //! the runner functions there then take the resulting intents and feed
 //! them to the executor.
 
+use std::path::PathBuf;
+
 use tracing::{debug, info};
 
 use crate::gates::{GateTable, HostFacts};
@@ -79,6 +81,23 @@ pub struct PackPlan {
     /// otherwise a `--no-provision` run silently omits the very files
     /// the user chose to skip. Empty whenever `--no-provision` is off.
     pub provision_skipped: Vec<ProvisionSkip>,
+    /// Files whose manager is not usable on this machine — absent, or
+    /// impossible to probe. The dry-run renderer places their rows for
+    /// the same reason as `provision_skipped`: no intent means no
+    /// operation and, without a row, an absent manager reads as an
+    /// empty pack.
+    ///
+    /// A real `up` renders through `status::status()`, which asks the
+    /// same probe on its own planning pass, so this list is the
+    /// dry-run half of an answer both paths compute identically. Both
+    /// paths do read it for one thing: a
+    /// [`ProbeFailed`](crate::provisioners::availability::Availability::ProbeFailed)
+    /// entry is the only failure with no operation to carry its
+    /// verdict, so `up` counts it here (ADR-0008).
+    ///
+    /// Ephemeral: an availability is a fact about this machine right
+    /// now and is never written to the datastore.
+    pub provision_unavailable: Vec<ProvisionUnavailable>,
 }
 
 /// One file dropped from a run by `--no-provision`, carrying what the
@@ -88,6 +107,23 @@ pub struct PackPlan {
 pub struct ProvisionSkip {
     pub handler: String,
     pub relative_path: String,
+}
+
+/// One file that produced no intent because its manager is not on
+/// this machine.
+///
+/// Deliberately distinct from [`ProvisionSkip`]: `--no-provision` is
+/// the user's own choice and absence is the machine's state, and the
+/// two have different remedies — one is a flag the user dropped, the
+/// other is a manager to install.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvisionUnavailable {
+    pub handler: String,
+    pub relative_path: String,
+    /// Absent (with the locations probed) or ProbeFailed (with the
+    /// detail). Never `Present` — a present manager produces intents
+    /// instead of a row here.
+    pub availability: crate::provisioners::availability::Availability,
 }
 
 /// Like [`collect_pack_intents`], but returns both intents and any
@@ -329,6 +365,7 @@ fn plan_pack_inner(
             intents: Vec::new(),
             warnings: Vec::new(),
             provision_skipped: Vec::new(),
+            provision_unavailable: Vec::new(),
         });
     }
 
@@ -407,7 +444,7 @@ fn plan_pack_inner(
     let groups = rules::group_by_handler(&matches);
 
     // Build handler registry (drives the phase-based execution order).
-    let registry = handlers::create_registry(ctx.fs.as_ref(), ctx.command_runner.as_ref());
+    let registry = handlers::create_registry(ctx.fs.as_ref());
     let order = rules::handler_execution_order(&groups, &registry);
     debug!(pack = %pack.name, handlers = ?order, "handler execution order");
 
@@ -415,6 +452,7 @@ fn plan_pack_inner(
     let mut all_intents = Vec::new();
     let mut all_warnings = Vec::new();
     let mut provision_skipped: Vec<ProvisionSkip> = Vec::new();
+    let mut provision_unavailable: Vec<ProvisionUnavailable> = Vec::new();
 
     // Surface preserved-divergent-file warnings from the preprocessing
     // pipeline. These are the §6.4 "deployed file edited" cases: dodot
@@ -468,13 +506,117 @@ fn plan_pack_inner(
             continue;
         }
 
+        // Is the manager there? Asked once per provisioning handler
+        // the pack actually matched files for — a machine with no
+        // `Brewfile` never probes for brew — and asked before any
+        // intent exists, because an absent manager must produce no
+        // intent, no receipt, and no error.
+        //
+        // The answer comes from the one shared module `status` also
+        // reads, so the two agree by construction. `install` is not
+        // located by dodot and always answers present; see
+        // `provisioners::availability`.
+        //
+        // A present answer also names *which* executable answered,
+        // and that path is kept: the run has to spawn the brew the
+        // probe found, not whatever `PATH` resolves later. See
+        // `located_at` at its use below.
+        let mut located_at: Option<PathBuf> = None;
+        if crate::provisioners::descriptor_for(handler_name).is_some() {
+            let availability = crate::provisioners::availability::probe(
+                ctx.fs.as_ref(),
+                ctx.provision_host.as_ref(),
+                handler_name,
+            );
+            if let crate::provisioners::availability::Availability::Present { at } = &availability {
+                located_at = at.clone();
+            }
+            if !availability.is_present() {
+                debug!(
+                    pack = %pack.name,
+                    handler = %handler_name,
+                    ?availability,
+                    "skipping provisioning handler — manager unusable on this host"
+                );
+                if let Some(handler_matches) = groups.get(handler_name) {
+                    for m in handler_matches {
+                        if m.is_dir {
+                            continue;
+                        }
+                        provision_unavailable.push(ProvisionUnavailable {
+                            handler: handler_name.clone(),
+                            relative_path: m.relative_path.to_string_lossy().into_owned(),
+                            availability: availability.clone(),
+                        });
+                    }
+                }
+                continue;
+            }
+        }
+
         if let Some(handler_matches) = groups.get(handler_name) {
-            let intents = handler.to_intents(
+            let mut intents = handler.to_intents(
                 handler_matches,
                 &pack.config,
                 ctx.paths.as_ref(),
                 ctx.fs.as_ref(),
             )?;
+            // Run the executable the probe found, not the name.
+            //
+            // `command_for` names its program the way a user would
+            // (`brew`, `nix`), which leaves the OS to resolve it
+            // through `PATH` at spawn time — a second, different
+            // question from the one the probe just answered. A brew
+            // sitting at `/opt/homebrew/bin/brew` on a host whose
+            // `PATH` omits it would pass the probe and then fail to
+            // spawn, and the probe's whole promise is that a run
+            // dodot planned is a run dodot can make. Substituting the
+            // located path here keeps `command_for` a pure function
+            // of the manifest path and leaves the arguments — and so
+            // the manifest positions declared in
+            // `provisioners::PROVISIONERS` — untouched.
+            //
+            // `None` for `install`, whose interpreter is a `PATH`
+            // lookup by design (ADR-0007), and for any handler dodot
+            // does not locate.
+            //
+            // Substituted only when the path can be *named* in the
+            // `String` an intent's executable is. A lossy conversion
+            // would be the worst of the three outcomes: the probe
+            // read `$HOMEBREW_PREFIX` as bytes precisely so a
+            // non-UTF-8 prefix keeps its candidate, and replacing
+            // those bytes with U+FFFD here would hand the spawn a
+            // path that names nothing — dodot would find brew and
+            // then fail to run it, reporting "not found" about a file
+            // it had just stat'd. Leaving the handler's own name
+            // instead puts the row back where every provisioning row
+            // was before the probe existed: the OS resolves it
+            // through `PATH`, which is what `install` does by design.
+            // Carrying the bytes through to the spawn means an
+            // OS-native executable type across `HandlerIntent`,
+            // `Operation`, `CommandSpec`, and every `CommandRunner` —
+            // an epic-wide change, not this handler's to make.
+            if let Some(at) = &located_at {
+                match at.to_str() {
+                    Some(program) => {
+                        for intent in &mut intents {
+                            if let crate::operations::HandlerIntent::Run { executable, .. } = intent
+                            {
+                                *executable = program.to_string();
+                            }
+                        }
+                    }
+                    None => {
+                        let warning = format!(
+                            "{handler_name} was found at {}, a path dodot cannot name exactly. \
+                             Running `{handler_name}` as your shell would resolve it instead.",
+                            at.display()
+                        );
+                        tracing::warn!(pack = %pack.name, handler = %handler_name, "{warning}");
+                        all_warnings.push(warning);
+                    }
+                }
+            }
             debug!(
                 pack = %pack.name,
                 handler = %handler_name,
@@ -518,6 +660,7 @@ fn plan_pack_inner(
         intents: all_intents,
         warnings: all_warnings,
         provision_skipped,
+        provision_unavailable,
     })
 }
 

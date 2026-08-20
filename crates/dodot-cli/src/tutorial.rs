@@ -338,6 +338,12 @@ impl TutorialEnv {
             // that script. Evidence only here — the user's next real
             // `dodot up` measures.
             shell_probe: ProbePolicy::Never,
+            // A real host: the sandbox's `install.sh` step runs for
+            // real, so what is installed on this machine is what
+            // decides.
+            provision_host: std::sync::Arc::new(
+                dodot_lib::provisioners::availability::ProvisionHost::detect(self.paths.home_dir()),
+            ),
             shell_env: self.shell_env.clone(),
         }
     }

@@ -154,6 +154,12 @@ impl RunOnceCommand for NixCommand {
     /// The manifest path is argument 7. That position is declared in
     /// [`crate::provisioners::PROVISIONERS`] and pinned by a test
     /// there; reordering these arguments means updating the row.
+    ///
+    /// The program is the name a user would type. The planner
+    /// replaces it with the absolute path
+    /// [`provisioners::availability`](crate::provisioners::availability)
+    /// found before it emits the intent; the arguments, and so the
+    /// declared manifest position, are untouched.
     fn command_for(&self, path: &Path) -> (String, Vec<String>) {
         (
             "nix".into(),
@@ -288,30 +294,18 @@ mod tests {
     }
 
     #[test]
-    fn validate_is_a_noop_inheriting_the_trait_default() {
+    fn the_command_is_the_whole_specialization() {
         // Per the RunOnceCommand lifecycle invariant: nix does not
-        // gatekeep planning on manifest content. validate uses the
-        // trait's default no-op implementation; malformed content
-        // surfaces at apply time.
-        use crate::datastore::{CommandRunner, CommandSpec};
-        use crate::testing::TempEnvironment;
-        struct NeverCalledRunner;
-        impl CommandRunner for NeverCalledRunner {
-            fn run(
-                &self,
-                _command: CommandSpec<'_>,
-            ) -> crate::Result<crate::datastore::CommandOutput> {
-                panic!("validate must not shell out — it's a no-op");
-            }
-        }
-        let env = TempEnvironment::builder()
-            .pack("tools")
-            .file("packages.nix", "anything at all — content is not checked")
-            .done()
-            .build();
-        let abs = env.dotfiles_root.join("tools/packages.nix");
-        NixCommand
-            .validate(env.fs.as_ref(), &NeverCalledRunner, &abs)
-            .expect("validate is a no-op for nix");
+        // gatekeep planning on manifest content, and the "is nix
+        // installed?" question is not a handler method at all — it is
+        // `provisioners::availability`, which the planner asks. What
+        // is left here is the command and its copy.
+        use crate::provisioners::{descriptor_for, ExecutableLocation};
+        let ExecutableLocation::Candidates(candidates) =
+            descriptor_for(HANDLER_NIX).unwrap().location
+        else {
+            panic!("nix is located at fixed candidates");
+        };
+        assert!(candidates.len() > 1);
     }
 }

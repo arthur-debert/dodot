@@ -120,8 +120,7 @@ mod tests {
             .done()
             .build();
 
-        let runner = crate::datastore::NoopCommandRunner;
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &runner, InstallCommand);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), InstallCommand);
         let make_match = |name: &str| RuleMatch {
             relative_path: name.into(),
             absolute_path: env.dotfiles_root.join(format!("vim/{name}")),
@@ -189,8 +188,7 @@ mod tests {
             .done()
             .build();
 
-        let runner = crate::datastore::NoopCommandRunner;
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &runner, InstallCommand);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), InstallCommand);
         let matches = vec![RuleMatch {
             relative_path: "install.sh".into(),
             absolute_path: env.dotfiles_root.join("vim/install.sh"),

@@ -379,6 +379,9 @@ mod tests {
             env_stamp: Default::default(),
             tty: false,
             shell_probe: crate::shell::ProbePolicy::Never,
+            provision_host: Arc::new(
+                crate::provisioners::availability::ProvisionHost::assume_present(),
+            ),
             shell_env: crate::shell::ShellEnv::default(),
         }
     }

@@ -160,6 +160,14 @@ pub enum HandlerIntent {
     Run {
         pack: String,
         handler: String,
+        /// The program to spawn.
+        ///
+        /// For a handler dodot locates itself (`homebrew`, `nix`)
+        /// this is the absolute path the availability probe found,
+        /// substituted by the planner — the run spawns the manager
+        /// the probe answered for rather than re-asking the OS
+        /// through `PATH`. For `install`, whose interpreter is a
+        /// `PATH` lookup by design, it is the bare program name.
         executable: String,
         arguments: Vec<String>,
         environment: Vec<(String, String)>,

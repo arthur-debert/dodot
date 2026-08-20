@@ -126,6 +126,13 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // `status::status()`, which reads the same list off its own
     // planning pass. Empty on every run without `--no-provision`.
     let mut pack_skips: Vec<(String, Vec<orchestration::ProvisionSkip>)> = Vec::new();
+    // Per-pack record of what an absent (or unprobeable) manager
+    // dropped. The dry-run renderer places its rows — a real run
+    // renders through `status::status()`, which asks the same probe on
+    // its own planning pass — and both runs read it below for the one
+    // outcome that is a failure rather than a skip: a probe that could
+    // not answer at all.
+    let mut pack_unavailable: Vec<(String, Vec<orchestration::ProvisionUnavailable>)> = Vec::new();
 
     for pack in &packs {
         // Active when actually deploying; Passive on `--dry-run`. The
@@ -142,6 +149,9 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
                 warnings.extend(plan.warnings);
                 if !plan.provision_skipped.is_empty() {
                     pack_skips.push((pack.display_name.clone(), plan.provision_skipped));
+                }
+                if !plan.provision_unavailable.is_empty() {
+                    pack_unavailable.push((pack.display_name.clone(), plan.provision_unavailable));
                 }
                 pack_intents.push((pack.display_name.clone(), plan.intents));
             }
@@ -344,9 +354,30 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         }
     }
 
-    let has_failures = pack_results
+    // A manager dodot could not *look for* is a failure, and the only
+    // one that never reaches `pack_results`: a probe failure produces
+    // no intent, so it produces no operation to carry a verdict.
+    //
+    // Absence is not counted here. The two outcomes are separated
+    // precisely because they differ: a missing brew is an ordinary
+    // machine state with a remedy the user can act on, while a
+    // `/opt/homebrew` dodot cannot stat means the question went
+    // unanswered — the run's report about that file is not to be
+    // trusted, and `up` says so with its exit code. The rest of the
+    // pack still deploys either way (ADR-0008).
+    let unprobeable = pack_unavailable
         .iter()
-        .any(|pr| !pr.success || pr.operations.iter().any(|op| !op.success));
+        .flat_map(|(_, files)| files)
+        .any(|f| {
+            matches!(
+                f.availability,
+                crate::provisioners::availability::Availability::ProbeFailed { .. }
+            )
+        });
+    let has_failures = unprobeable
+        || pack_results
+            .iter()
+            .any(|pr| !pr.success || pr.operations.iter().any(|op| !op.success));
 
     // Build display packs.
     //
@@ -360,7 +391,12 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // post-execution state to verify, and the user wants to see the planned
     // changes, not the unchanged current state.
     let (display_packs, notes) = if ctx.dry_run {
-        render_intents(&pack_results, &pack_skips, ctx.paths.home_dir())
+        render_intents(
+            &pack_results,
+            &pack_skips,
+            &pack_unavailable,
+            ctx.paths.home_dir(),
+        )
     } else {
         let pack_names: Vec<String> = packs.iter().map(|p| p.display_name.clone()).collect();
         let status_result = status::status(Some(&pack_names), ctx)?;
@@ -550,12 +586,19 @@ fn wipe_configuration_state(
 /// files the user asked to skip, which reads as "dodot found nothing
 /// here" rather than "you told me not to".
 ///
+/// `pack_unavailable` carries the files whose manager is not on this
+/// machine, for the same reason and with a different story: not "you
+/// told me not to" but "brew is not here, and here is where I
+/// looked". Its rows are worded by the availability module, so a
+/// preview and the `status` row for the same machine match.
+///
 /// Returns (packs, notes). Failed operations keep their row but receive a
 /// `note_ref` into the command-wide notes list, keeping the column layout
 /// intact.
 fn render_intents(
     pack_results: &[PackResult],
     pack_skips: &[(String, Vec<orchestration::ProvisionSkip>)],
+    pack_unavailable: &[(String, Vec<orchestration::ProvisionUnavailable>)],
     home: &std::path::Path,
 ) -> (Vec<DisplayPack>, Vec<DisplayNote>) {
     let mut notes: Vec<DisplayNote> = Vec::new();
@@ -599,6 +642,37 @@ fn render_intents(
                     handler: skip.handler.clone(),
                     note_ref: None,
                 }));
+            }
+
+            if let Some((_, unavailable)) = pack_unavailable
+                .iter()
+                .find(|(name, _)| name == &pr.pack_name)
+            {
+                for entry in unavailable {
+                    let Some(row) = entry.availability.unavailable_row(&entry.handler) else {
+                        continue;
+                    };
+                    notes.push(DisplayNote {
+                        body: row.note,
+                        hint: None,
+                        kind: row.note_kind.into(),
+                        timeline: None,
+                        command: None,
+                    });
+                    files.push(DisplayFile {
+                        name: entry.relative_path.clone(),
+                        symbol: handler_symbol(&entry.handler).into(),
+                        description: handler_description(
+                            &entry.handler,
+                            &entry.relative_path,
+                            None,
+                        ),
+                        status: row.style.into(),
+                        status_label: row.label,
+                        handler: entry.handler.clone(),
+                        note_ref: Some(notes.len() as u32),
+                    });
+                }
             }
 
             if let Some(err) = &pr.error {

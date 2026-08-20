@@ -105,19 +105,33 @@ impl Drop for ShellEnvGuard {
 /// variable: the shell-hookup probe scrubbing `DODOT_INIT_*` out of
 /// the shell it spawns, for instance, can only be tested by first
 /// putting one there.
+///
+/// The previous value is remembered as an [`OsString`]: a variable
+/// worth guarding is usually a path, and reading it back as `String`
+/// would let the guard itself drop a non-UTF-8 value it was only
+/// supposed to borrow.
 pub struct EnvVarGuard {
     _lock: MutexGuard<'static, ()>,
     key: String,
-    prev: Option<String>,
+    prev: Option<std::ffi::OsString>,
 }
 
 impl EnvVarGuard {
     /// Sets `key` while holding the lock and restores it on drop.
     pub fn set(key: &str, value: &str) -> Self {
+        Self::set_os(key, std::ffi::OsStr::new(value))
+    }
+
+    /// [`EnvVarGuard::set`] for a value that is not necessarily text.
+    ///
+    /// The form a path-valued variable deserves — `$HOMEBREW_PREFIX`
+    /// on a host whose directory names are not valid UTF-8 is a real
+    /// prefix, and the code reading it is expected to survive that.
+    pub fn set_os(key: &str, value: &std::ffi::OsStr) -> Self {
         let lock = SHELL_ENV_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let prev = std::env::var(key).ok();
+        let prev = std::env::var_os(key);
         std::env::set_var(key, value);
         Self {
             _lock: lock,

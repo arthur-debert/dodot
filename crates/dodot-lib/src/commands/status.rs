@@ -95,6 +95,37 @@ enum Health {
     /// [`Health::Skipped`] (a `mappings.skip` rule) — three
     /// conditions with three different remedies.
     ProvisionSkipped,
+    /// A provisioning handler's manager is not usable on this
+    /// machine: absent (nothing at any candidate path) or
+    /// unprobeable (a candidate that could not be examined).
+    ///
+    /// The row is the whole point. Because the planner skips an
+    /// absent manager without writing a receipt or recording an
+    /// error, nothing else in the output would mention the file, and
+    /// its datastore state (`never ran`) would answer a question the
+    /// user did not ask. The carried
+    /// [`UnavailableRow`](crate::provisioners::availability::UnavailableRow)
+    /// holds the style, label, and footnote — built in the
+    /// availability module so `up --dry-run` and `status` cannot word
+    /// the same machine state differently.
+    ///
+    /// Deliberately distinct from [`Health::ProvisionSkipped`] (the
+    /// user passed `--no-provision`) and [`Health::Gated`] (the host
+    /// does not match the file's gate label): three conditions, three
+    /// remedies.
+    ManagerUnavailable {
+        row: crate::provisioners::availability::UnavailableRow,
+    },
+    /// A run-once file whose receipt is current, but whose manager is
+    /// no longer installed — brew ran this `Brewfile`, and brew has
+    /// since been removed.
+    ///
+    /// The receipt wins the verdict: the file *did* run, and the
+    /// manager leaving afterwards does not undo that. Absence
+    /// annotates instead, the same shape as
+    /// [`Health::RecentFailures`] — a warning footnote on a row that
+    /// stays deployed.
+    RanWithManagerAbsent { label: String, note: String },
     /// File matched the `mappings.skip` list (README, LICENSE, …).
     /// No handler runs on it, but it surfaces in status so users can see
     /// the rule applied rather than wondering why the file is "missing."
@@ -138,6 +169,10 @@ impl Health {
             // pack with an older-version entry is one user action away
             // from being current.
             Health::RanOlderVersion { .. } => "stale",
+            Health::ManagerUnavailable { row } => row.style,
+            // The receipt decides, not the manager's current
+            // whereabouts: this file ran.
+            Health::RanWithManagerAbsent { .. } => "deployed",
             Health::ProvisionSkipped => "skipped",
             Health::Skipped => "skipped",
             Health::Gated { .. } => "skipped",
@@ -174,6 +209,8 @@ impl Health {
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
             Health::RanOlderVersion { label, .. } => label.clone(),
+            Health::ManagerUnavailable { row } => row.label.clone(),
+            Health::RanWithManagerAbsent { label, .. } => label.clone(),
             Health::ProvisionSkipped => crate::commands::PROVISION_SKIPPED_LABEL.into(),
             Health::Skipped => "skipped".into(),
             Health::Gated { label, .. } => format!("gated out ({label})"),
@@ -201,6 +238,23 @@ impl Health {
                 command: None,
             }),
             Health::DeployedWithError { reason, .. } => Some(DisplayNote::error(reason.clone())),
+            // Absence is a warning (nothing is broken, a manager is
+            // simply not here); a probe failure is an error (dodot
+            // could not answer the question it was asked).
+            Health::ManagerUnavailable { row } => Some(DisplayNote {
+                body: row.note.clone(),
+                hint: None,
+                kind: row.note_kind.into(),
+                timeline: None,
+                command: None,
+            }),
+            Health::RanWithManagerAbsent { note, .. } => Some(DisplayNote {
+                body: note.clone(),
+                hint: None,
+                kind: "warning".into(),
+                timeline: None,
+                command: None,
+            }),
             Health::Gated {
                 expected, actual, ..
             } => Some(DisplayNote::error(format!(
@@ -532,6 +586,29 @@ fn verify_staged(
 /// which also carries the footnote body naming `--provision-rerun`. The
 /// label states the condition — the file has moved on — and the
 /// footnote is the only place the user is told what to do about it.
+///
+/// # The manager itself
+///
+/// Crossed with all three of those states is a fourth question the
+/// datastore cannot answer: *is the manager still installed?* This
+/// asks [`availability::probe`](crate::provisioners::availability::probe)
+/// — the same function, with the same inputs, that the pack planner
+/// asks before generating intents, which is what makes a `status` row
+/// and the `up` that produced it agree by construction rather than by
+/// review. The probe stats candidate paths and spawns nothing, so
+/// `status` stays passive.
+///
+/// The three states rank as follows:
+///
+/// - A **probe failure** wins every verdict. dodot could not answer
+///   the question at all, and a row that quietly reported something
+///   else would be inventing an answer.
+/// - **Absence with no receipt** is the skip: the file will not run
+///   on this machine, and the row names the manager and every
+///   location probed.
+/// - **Absence with a receipt** annotates without changing the
+///   verdict. The file ran; a manager removed afterwards does not
+///   undo that.
 fn run_once_health(
     file: &std::path::Path,
     pack: &str,
@@ -567,12 +644,48 @@ fn run_once_health(
         Err(e) => return Health::Broken(format!("broken: datastore error: {e}")),
     };
 
+    let availability = crate::provisioners::availability::probe(
+        ctx.fs.as_ref(),
+        ctx.provision_host.as_ref(),
+        handler,
+    );
+    let probe_failed = matches!(
+        availability,
+        crate::provisioners::availability::Availability::ProbeFailed { .. }
+    );
+    // `None` whenever the manager is present, which is every row on a
+    // machine that has its managers installed.
+    let unavailable = availability.unavailable_row(handler);
+
     match status {
-        DidRunStatus::NeverRan => Health::Pending,
-        DidRunStatus::RanCurrent => Health::Deployed,
+        DidRunStatus::NeverRan => match unavailable {
+            Some(row) => Health::ManagerUnavailable { row },
+            None => Health::Pending,
+        },
+        DidRunStatus::RanCurrent => match unavailable {
+            Some(row) if probe_failed => Health::ManagerUnavailable { row },
+            Some(_) => Health::RanWithManagerAbsent {
+                label: messages.deployed.clone(),
+                // Not the skip's copy: that one ends in "nothing was
+                // recorded, so the next `dodot up` runs this file",
+                // and something was recorded.
+                note: format!(
+                    "{handler} is not installed ({}) — the receipt stands: {filename} ran when it was",
+                    availability
+                        .probed_locations()
+                        .expect("an absent manager names where it was looked for")
+                ),
+            },
+            None => Health::Deployed,
+        },
         DidRunStatus::RanDifferent {
             previous_snapshot, ..
         } => {
+            if probe_failed {
+                return Health::ManagerUnavailable {
+                    row: unavailable.expect("a probe failure always renders a row"),
+                };
+            }
             // Pull the current source bytes for both the line summary
             // and the (optional) full diff. A read error here drops us
             // back to the no-snapshot label rather than failing the
@@ -600,10 +713,17 @@ fn run_once_health(
                     format!("{} (no diff data)", messages.ran_different)
                 }
             };
+            // An absent manager makes `--provision-rerun` a promise
+            // dodot cannot keep, so the remedy says so rather than
+            // sending the user at a flag that would skip.
+            let absence = availability
+                .probed_locations()
+                .map(|probed| format!(" — {handler} is not installed ({probed}), so that re-run skips until it is back"))
+                .unwrap_or_default();
             Health::RanOlderVersion {
                 label,
                 remedy: format!(
-                    "ran an older version of {filename} — run `dodot up --provision-rerun` to apply the current one"
+                    "ran an older version of {filename} — run `dodot up --provision-rerun` to apply the current one{absence}"
                 ),
             }
         }
@@ -723,7 +843,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         ignored_packs.retain(|p| names.iter().any(|n| n == &p.name || n == &p.display_name));
     }
 
-    let registry = handlers::create_registry(ctx.fs.as_ref(), ctx.command_runner.as_ref());
+    let registry = handlers::create_registry(ctx.fs.as_ref());
     let host = ctx.host_facts.as_ref();
     let mut display_packs = Vec::new();
     let mut notes: Vec<DisplayNote> = Vec::new();
@@ -1347,6 +1467,9 @@ mod tests {
             env_stamp: Default::default(),
             tty: false,
             shell_probe: crate::shell::ProbePolicy::Never,
+            provision_host: Arc::new(
+                crate::provisioners::availability::ProvisionHost::assume_present(),
+            ),
             shell_env: crate::shell::ShellEnv::default(),
         }
     }

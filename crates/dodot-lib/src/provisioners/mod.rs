@@ -63,6 +63,21 @@
 //! in this module's tests pins every row against the argv its
 //! handler's [`RunOnceCommand::command_for`](crate::handlers::run_once::RunOnceCommand::command_for)
 //! actually produces, so the two cannot drift apart silently.
+//!
+//! The same guard covers the candidate paths: `homebrew`'s rows are
+//! pinned against [`crate::shell::homebrew::DEFAULT_PREFIXES`], so
+//! the provisioner probe and the shell bootstrap cannot come to
+//! disagree about where brew lives.
+//!
+//! # Where the executable is
+//!
+//! [`ProvisionerDescriptor::location`] states how dodot resolves the
+//! program a row runs, and [`availability`] turns that into the
+//! present / absent / probe-failed answer both `dodot up`'s planner
+//! and `dodot status` read. See
+//! `docs/adr/0007-locate-a-provisioner-at-fixed-paths.md`.
+
+pub mod availability;
 
 use crate::handlers::{HANDLER_HOMEBREW, HANDLER_INSTALL, HANDLER_NIX};
 
@@ -97,12 +112,68 @@ impl ManifestArgPosition {
     }
 }
 
+/// Where dodot looks for the program a provisioning row runs.
+///
+/// The field names *how to resolve* the executable, not the
+/// executable: `install` picks its interpreter from the matched
+/// file's extension, so its program is a property of the file rather
+/// than of the row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutableLocation {
+    /// An ordered list of absolute candidate paths. The first that is
+    /// a regular file carrying an execute bit wins, and is the path
+    /// the run spawns; the probe stats and never spawns itself. This
+    /// is how `homebrew` and `nix` are found, and it is what lets an
+    /// absent manager become a skip that names the locations it
+    /// looked in.
+    Candidates(&'static [CandidatePath]),
+    /// Resolved by the OS through `PATH` at spawn time, with no
+    /// pre-flight probe — the `install` exception.
+    ///
+    /// `install` spawns the bare `bash` or `zsh` its script's
+    /// extension selects. The trust argument for fixed candidates is
+    /// about a *pack* choosing which executable runs, and a pack
+    /// cannot choose your shell: shells legitimately live in `/bin`,
+    /// `/usr/bin`, `/opt/homebrew/bin`, and nix profiles, and dodot
+    /// enumerating that list would refuse to run scripts on hosts
+    /// where the interpreter is sitting right there. See
+    /// `docs/adr/0007-locate-a-provisioner-at-fixed-paths.md`.
+    Path,
+}
+
+/// One place a provisioner's executable may live, before the caller's
+/// home directory and environment are known.
+///
+/// Resolved into a concrete absolute path by
+/// [`availability::ProvisionHost::detect`]. Every variant produces an
+/// absolute path or nothing — there is no relative candidate and no
+/// `PATH` search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CandidatePath {
+    /// An absolute path, taken verbatim.
+    Absolute(&'static str),
+    /// `<home>/<suffix>`, against the caller's
+    /// [`Pather::home_dir`](crate::paths::Pather::home_dir) rather
+    /// than a fresh `$HOME` reading — an embedder or an isolated test
+    /// that supplies its own home gets *that* user's paths probed.
+    UnderHome(&'static str),
+    /// `<$var>/<suffix>`, dropped when the variable is unset or
+    /// empty. The user's own record of where they put a manager;
+    /// dodot has no other. A stale value does not short-circuit —
+    /// the candidate simply fails to hold an executable and the next
+    /// one gets its turn.
+    UnderEnv {
+        var: &'static str,
+        suffix: &'static str,
+    },
+}
+
 /// One provisioning handler, as data.
 ///
-/// Holds the fields the datastore and the spawn path need. The
-/// remaining fields the provisioning-handlers Spec calls for —
-/// availability, argv template, status copy, reachability — land in
-/// later workstreams of the same epic.
+/// Holds the fields the datastore and the spawn path need, plus the
+/// two the availability probe needs. The remaining fields the
+/// provisioning-handlers Spec calls for — argv template, status copy,
+/// reachability — land in later workstreams of the same epic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProvisionerDescriptor {
     /// Handler name, matching
@@ -114,7 +185,76 @@ pub struct ProvisionerDescriptor {
     pub env: &'static [(&'static str, &'static str)],
     /// Where the manifest path sits in the command's arguments.
     pub manifest_arg: ManifestArgPosition,
+    /// How dodot resolves the program this row runs.
+    pub location: ExecutableLocation,
+    /// The manager's canonical project page — the *only* install
+    /// instruction dodot ever gives, and a compile-time constant
+    /// precisely so it can never come from configuration, from a
+    /// pack, or from the network. dodot does not run a third-party
+    /// installer and does not offer to; see
+    /// `docs/adr/0009-never-execute-a-third-party-installer.md`.
+    ///
+    /// `None` for `install`, which has no manager to install.
+    pub project_url: Option<&'static str>,
 }
+
+/// Where `brew` lives, in probe order — the Homebrew shell
+/// bootstrap's prefix list with `bin/brew` appended to each entry.
+///
+/// Deliberately the same list as
+/// [`crate::shell::homebrew::DEFAULT_PREFIXES`] plus the
+/// `$HOMEBREW_PREFIX` override and the per-user
+/// [`HOME_RELATIVE_PREFIX`](crate::shell::homebrew::HOME_RELATIVE_PREFIX)
+/// fallback: a host whose brew the bootstrap emits a block for is a
+/// host whose `Brewfile` must run, and the reverse. The two lists are
+/// pinned against each other by
+/// `tests::homebrew_candidates_track_the_bootstrap_prefixes`.
+pub const HOMEBREW_CANDIDATES: &[CandidatePath] = &[
+    CandidatePath::UnderEnv {
+        var: "HOMEBREW_PREFIX",
+        suffix: "bin/brew",
+    },
+    CandidatePath::Absolute("/opt/homebrew/bin/brew"),
+    CandidatePath::Absolute("/home/linuxbrew/.linuxbrew/bin/brew"),
+    CandidatePath::Absolute("/usr/local/bin/brew"),
+    CandidatePath::UnderHome(".linuxbrew/bin/brew"),
+];
+
+/// Where `nix` lives, in probe order.
+///
+/// Nix has no `$NIX_PREFIX` equivalent and its installers write to
+/// fixed locations, so this list is enumerated outright. Verified
+/// against `nixos/nix:latest` (Nix 2.35.2): the image holds
+/// `/nix/var/nix/profiles/default/bin/nix` and a `~/.nix-profile`
+/// symlink onto that same profile, and holds neither of the last two
+/// entries — which is why they are here rather than assumed.
+///
+/// - `~/.nix-profile/bin/nix` — the per-user profile, and what a
+///   login shell resolves `nix` to on both install flavours. It leads
+///   because it is the nix the user's own shell would run.
+/// - `/nix/var/nix/profiles/default/bin/nix` — the multi-user
+///   (daemon) install's default profile, where the official installer
+///   puts it.
+/// - `~/.local/state/nix/profiles/profile/bin/nix` — the profile
+///   location Nix ≥ 2.14 uses, which `~/.nix-profile` normally points
+///   at; probed directly for a home whose symlink is missing.
+/// - `/run/current-system/sw/bin/nix` — NixOS, where nix arrives with
+///   the system closure rather than with a profile.
+///
+/// [`Fs::stat`](crate::fs::Fs::stat) follows symlinks, which every
+/// one of these paths is: each resolves into `/nix/store`.
+pub const NIX_CANDIDATES: &[CandidatePath] = &[
+    CandidatePath::UnderHome(".nix-profile/bin/nix"),
+    CandidatePath::Absolute("/nix/var/nix/profiles/default/bin/nix"),
+    CandidatePath::UnderHome(".local/state/nix/profiles/profile/bin/nix"),
+    CandidatePath::Absolute("/run/current-system/sw/bin/nix"),
+];
+
+/// Homebrew's canonical project page.
+pub const HOMEBREW_PROJECT_URL: &str = "https://brew.sh";
+
+/// Nix's canonical download page.
+pub const NIX_PROJECT_URL: &str = "https://nixos.org/download";
 
 /// Every provisioning handler dodot ships.
 ///
@@ -131,6 +271,8 @@ pub const PROVISIONERS: &[ProvisionerDescriptor] = &[
         handler: HANDLER_INSTALL,
         env: &[],
         manifest_arg: ManifestArgPosition::at(1),
+        location: ExecutableLocation::Path,
+        project_url: None,
     },
     ProvisionerDescriptor {
         handler: HANDLER_HOMEBREW,
@@ -141,11 +283,15 @@ pub const PROVISIONERS: &[ProvisionerDescriptor] = &[
         // user asked dodot to apply.
         env: &[("HOMEBREW_NO_AUTO_UPDATE", "1")],
         manifest_arg: ManifestArgPosition::at(3),
+        location: ExecutableLocation::Candidates(HOMEBREW_CANDIDATES),
+        project_url: Some(HOMEBREW_PROJECT_URL),
     },
     ProvisionerDescriptor {
         handler: HANDLER_NIX,
         env: &[],
         manifest_arg: ManifestArgPosition::at(7),
+        location: ExecutableLocation::Candidates(NIX_CANDIDATES),
+        project_url: Some(NIX_PROJECT_URL),
     },
 ];
 
@@ -222,9 +368,7 @@ mod tests {
     /// The guard that keeps the registry honest: every declared
     /// position is checked against the argv the handler actually
     /// builds. If a `command_for` grows or reorders an argument
-    /// without its row moving with it, this fails — which is what
-    /// `homebrew`'s `--no-upgrade` would otherwise have done
-    /// silently.
+    /// without its row moving with it, this fails.
     #[test]
     fn descriptor_matches_command() {
         let manifest = Path::new("/dotfiles/tools/manifest");
@@ -293,6 +437,89 @@ mod tests {
         assert_eq!(
             manifest_argument(HANDLER_NIX, &arguments),
             Some("/dotfiles/tools/packages.nix")
+        );
+    }
+
+    /// The candidate list and the shell bootstrap's prefix list are
+    /// two statements about one fact: where brew is installed. A brew
+    /// the bootstrap emits a block for must be a brew a `Brewfile`
+    /// runs against, so a prefix added to one list and not the other
+    /// fails here rather than at a user's next `dodot up`.
+    #[test]
+    fn homebrew_candidates_track_the_bootstrap_prefixes() {
+        use crate::shell::homebrew::{DEFAULT_PREFIXES, HOME_RELATIVE_PREFIX};
+
+        let mut expected: Vec<String> = vec!["$HOMEBREW_PREFIX/bin/brew".to_string()];
+        expected.extend(DEFAULT_PREFIXES.iter().map(|p| format!("{p}/bin/brew")));
+        expected.push(format!("~/{HOME_RELATIVE_PREFIX}/bin/brew"));
+
+        let actual: Vec<String> = HOMEBREW_CANDIDATES
+            .iter()
+            .map(|c| match c {
+                CandidatePath::Absolute(p) => (*p).to_string(),
+                CandidatePath::UnderHome(suffix) => format!("~/{suffix}"),
+                CandidatePath::UnderEnv { var, suffix } => format!("${var}/{suffix}"),
+            })
+            .collect();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn every_probed_candidate_is_absolute_or_anchored() {
+        // No relative path, and nothing that could turn into a PATH
+        // lookup: a candidate is either absolute or anchored to the
+        // caller's home / an explicit environment variable.
+        for descriptor in PROVISIONERS {
+            let ExecutableLocation::Candidates(candidates) = descriptor.location else {
+                continue;
+            };
+            assert!(
+                !candidates.is_empty(),
+                "{} declares Candidates with an empty list, which probes as present",
+                descriptor.handler
+            );
+            for candidate in candidates {
+                match candidate {
+                    CandidatePath::Absolute(p) => {
+                        assert!(Path::new(p).is_absolute(), "{p} is not an absolute path")
+                    }
+                    CandidatePath::UnderHome(suffix) | CandidatePath::UnderEnv { suffix, .. } => {
+                        assert!(
+                            !Path::new(suffix).is_absolute(),
+                            "{suffix} is anchored and must not also be absolute"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /// dodot names the manager and prints its project page; it never
+    /// runs an installer. Every row that can report absence therefore
+    /// has a URL to print, and `install` — which has no manager —
+    /// has none.
+    #[test]
+    fn every_probed_provisioner_names_its_project_page() {
+        for descriptor in PROVISIONERS {
+            match descriptor.location {
+                ExecutableLocation::Candidates(_) => assert!(
+                    descriptor.project_url.is_some(),
+                    "{} can report absence and must name where to get it",
+                    descriptor.handler
+                ),
+                ExecutableLocation::Path => {
+                    assert_eq!(descriptor.project_url, None, "{}", descriptor.handler)
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn install_is_the_path_exception() {
+        assert_eq!(
+            descriptor_for(HANDLER_INSTALL).unwrap().location,
+            ExecutableLocation::Path
         );
     }
 

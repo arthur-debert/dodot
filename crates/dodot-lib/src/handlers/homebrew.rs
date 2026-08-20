@@ -49,6 +49,15 @@ impl RunOnceCommand for BrewfileCommand {
         ExecutionPhase::Provision
     }
 
+    /// `brew bundle --no-upgrade --file <abs path>`.
+    ///
+    /// The program is the name a user would type. The planner
+    /// replaces it with the absolute path
+    /// [`provisioners::availability`](crate::provisioners::availability)
+    /// found before it emits the intent, so this stays a pure
+    /// function of the manifest path and the arguments — and the
+    /// manifest position declared in
+    /// [`crate::provisioners::PROVISIONERS`] — are unaffected.
     fn command_for(&self, path: &Path) -> (String, Vec<String>) {
         (
             "brew".to_string(),
@@ -127,8 +136,7 @@ mod tests {
             .done()
             .build();
 
-        let runner = crate::datastore::NoopCommandRunner;
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &runner, BrewfileCommand);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), BrewfileCommand);
         let matches = vec![RuleMatch {
             relative_path: "Brewfile".into(),
             absolute_path: env.dotfiles_root.join("dev/Brewfile"),
