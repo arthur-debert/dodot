@@ -274,7 +274,9 @@ impl ProvisionHost {
 ///
 /// An unset or blank environment variable drops its candidate rather
 /// than producing a garbage path; an empty `home` drops the
-/// home-anchored ones the same way.
+/// home-anchored ones the same way. Environment values are read as
+/// [`OsString`](std::ffi::OsString), so a non-UTF-8 prefix keeps its
+/// candidate.
 fn resolve_candidates(candidates: &[CandidatePath], home: &Path) -> Vec<PathBuf> {
     let mut resolved = Vec::with_capacity(candidates.len());
     for candidate in candidates {
@@ -286,7 +288,27 @@ fn resolve_candidates(candidates: &[CandidatePath], home: &Path) -> Vec<PathBuf>
                 }
             }
             CandidatePath::UnderEnv { var, suffix } => {
-                if let Some(prefix) = std::env::var(var).ok().filter(|v| !v.trim().is_empty()) {
+                // `var_os`, not `var`: a prefix is a path, and a path
+                // is bytes rather than text. `$HOMEBREW_PREFIX` on a
+                // host whose directory name is not valid UTF-8 names a
+                // real brew, and `var` would drop it silently — taking
+                // the candidate with it and reporting the manager
+                // absent from the one location the user configured.
+                // The rest of this module preserves non-UTF-8 paths
+                // (`home` arrives as an `OsStr`), and this was the one
+                // place that did not.
+                let Some(prefix) = std::env::var_os(var) else {
+                    continue;
+                };
+                // Blank means unset here: an empty value would resolve
+                // to a bare `/bin/brew`-style path the user never
+                // meant, and a whitespace-only one is the same typo
+                // wearing a space. Only a value dodot can read as text
+                // can be trimmed; anything else is judged empty or not.
+                let blank = prefix
+                    .to_str()
+                    .map_or_else(|| prefix.is_empty(), |v| v.trim().is_empty());
+                if !blank {
                     resolved.push(PathBuf::from(prefix).join(suffix));
                 }
             }
@@ -676,7 +698,7 @@ mod tests {
     fn a_set_environment_variable_leads_the_candidate_list() {
         // `PATH` stands in for `$HOMEBREW_PREFIX` — it is always set,
         // so the test needs no environment mutation of its own.
-        let expected = PathBuf::from(std::env::var("PATH").unwrap()).join("bin/brew");
+        let expected = PathBuf::from(std::env::var_os("PATH").unwrap()).join("bin/brew");
         let resolved = resolve_candidates(
             &[
                 CandidatePath::UnderEnv {
@@ -688,6 +710,49 @@ mod tests {
             Path::new("/home/ada"),
         );
         assert_eq!(resolved.first(), Some(&expected));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_non_utf8_environment_prefix_keeps_its_candidate() {
+        // A directory name is bytes. Reading the variable as text
+        // dropped this prefix silently and reported the manager
+        // absent from the one location the user had configured.
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let prefix = OsStr::from_bytes(b"/opt/br\xff/prefix");
+        let _guard = crate::testing::EnvVarGuard::set_os("DODOT_TEST_ODD_PREFIX", prefix);
+
+        let resolved = resolve_candidates(
+            &[CandidatePath::UnderEnv {
+                var: "DODOT_TEST_ODD_PREFIX",
+                suffix: "bin/brew",
+            }],
+            Path::new("/home/ada"),
+        );
+
+        assert_eq!(resolved, vec![PathBuf::from(prefix).join("bin/brew")]);
+    }
+
+    #[test]
+    fn a_blank_environment_variable_drops_its_candidate() {
+        // Empty resolves to a bare `/bin/brew` the user never meant;
+        // whitespace-only is the same typo wearing a space.
+        for value in ["", "   "] {
+            let _guard = crate::testing::EnvVarGuard::set("DODOT_TEST_BLANK_PREFIX", value);
+            let resolved = resolve_candidates(
+                &[
+                    CandidatePath::UnderEnv {
+                        var: "DODOT_TEST_BLANK_PREFIX",
+                        suffix: "bin/brew",
+                    },
+                    CandidatePath::Absolute("/usr/local/bin/brew"),
+                ],
+                Path::new("/home/ada"),
+            );
+            assert_eq!(resolved, vec![PathBuf::from("/usr/local/bin/brew")]);
+        }
     }
 
     #[test]
