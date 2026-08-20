@@ -224,7 +224,7 @@ Alternatives — how dodot compares to the rest of the space
 
         Package install. `shell:` entry running `brew bundle`, `apt-get install`, etc. The plugin ecosystem covers most package managers — `dotbot-brew`, `dotbot-apt`, `dotbot-dnf`, `dotbot-pip` — but you pick and wire.
 
-        One-shot semantics. `shell:` runs every time. You make it idempotent by hand (`command -v fzf || install`). dodot's install handler is content-hashed: edit the script, and it re-runs; leave it alone, and it doesn't.
+        One-shot semantics. `shell:` runs every time. You make it idempotent by hand (`command -v fzf || install`). dodot's install handler is content-hashed: leave the script alone and it never runs twice; edit it and dodot notices, reports "older version", and waits for `dodot up --provision-rerun` rather than re-running edited code on its own.
 
         macOS plists. None. `defaults write` from a `shell:` entry is the documented approach.
 

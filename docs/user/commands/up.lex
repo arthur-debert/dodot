@@ -7,7 +7,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     - First setup on a new machine: `dodot up` from inside the dotfiles repo.
     - You added or renamed source files in a pack: `dodot up` to register the changes.
-    - You edited a source `install.sh` or `Brewfile`: `dodot up` re-runs it, since its content hash has changed.
+    - You edited a source `install.sh` or `Brewfile`: `dodot up --provision-rerun` to apply it. Plain `dodot up` reports the change and skips, rather than re-running code you edited.
     - You're about to merge a branch in your dotfiles repo: `dodot up --dry-run` to preview the diff before pulling the trigger.
 
     For day-to-day edits to source files that are *already* deployed (config files you symlinked, shell scripts already sourced), you do not need `dodot up` — those edits go live at the deployed location through the symlink chain. See the "Live edits" sections in [./../handlers/symlink.lex], [./../handlers/shell.lex], and [./../handlers/path.lex] for the per-handler specifics.
