@@ -5,6 +5,14 @@
 //! Policy: run on `NeverRan`, skip silently on `RanCurrent`, skip with
 //! a "ran older version" notice on `RanDifferent`. `provision_rerun =
 //! true` (the `--provision-rerun` flag) bypasses both skip cases.
+//!
+//! A command that fails is a **failed operation, not an aborted pack**.
+//! The failure comes back as an `OperationResult::fail` against the
+//! run-once file, carrying the command line, its exit code, and the
+//! manager's own stderr. The executor keeps going, so the rest of the
+//! pack — symlinks, `$PATH` entries, shell init, all of which run in
+//! later phases than provisioning — still deploys and still reports.
+//! No sentinel is written, so the next `dodot up` retries the file.
 
 use tracing::info;
 
@@ -78,21 +86,40 @@ impl<'a> Executor<'a> {
         let cmd_str = format!("{} {}", executable, arguments.join(" "));
         info!(pack, handler = handler.as_str(), command = %cmd_str.trim(), "running command");
 
-        // `force=true` here tells run_and_record to skip its own
-        // internal has_sentinel pre-check — we've already made the
-        // policy decision above via did_run.
-        self.datastore
-            .run_and_record(pack, handler, executable, arguments, sentinel, true)?;
-
-        info!(pack, sentinel, "command completed, sentinel recorded");
-
         let op = Operation::RunCommand {
             pack: pack.clone(),
             handler: handler.clone(),
             executable: executable.clone(),
             arguments: arguments.clone(),
             sentinel: sentinel.clone(),
+            filename: filename.clone(),
         };
+
+        // `force=true` here tells run_and_record to skip its own
+        // internal has_sentinel pre-check — we've already made the
+        // policy decision above via did_run.
+        //
+        // A failing command is reported, not propagated: `?` here
+        // would abort the executor's intent loop, and `up` would
+        // record the whole pack as failed and drop every operation
+        // that already succeeded in it. The error text carries the
+        // command, its exit code, and the manager's stderr, which is
+        // what the failure row's note shows.
+        if let Err(e) = self
+            .datastore
+            .run_and_record(pack, handler, executable, arguments, sentinel, true)
+        {
+            info!(
+                pack,
+                handler = handler.as_str(),
+                filename,
+                error = %e,
+                "command failed; no sentinel written, remaining intents continue"
+            );
+            return Ok(vec![OperationResult::fail(op, e.to_string())]);
+        }
+
+        info!(pack, sentinel, "command completed, sentinel recorded");
 
         Ok(vec![OperationResult::ok(
             op,
@@ -161,6 +188,7 @@ impl<'a> Executor<'a> {
                 executable: executable.clone(),
                 arguments: arguments.clone(),
                 sentinel: sentinel.clone(),
+                filename: filename.clone(),
             },
             format!("[dry-run] would execute: {}", cmd_str.trim()),
         )]
@@ -400,5 +428,135 @@ mod tests {
         assert!(results[0].success);
         assert!(results[0].message.contains("executed"));
         assert_eq!(runner.calls.lock().unwrap().as_slice(), &["echo forced"]);
+    }
+
+    // ── A failing command is contained ──────────────────────
+
+    /// A runner whose commands all fail the way a real manager does:
+    /// non-zero exit, with its own diagnostics on stderr.
+    struct FailingRunner {
+        stderr: String,
+    }
+
+    impl crate::datastore::CommandRunner for FailingRunner {
+        fn run(
+            &self,
+            executable: &str,
+            arguments: &[String],
+        ) -> crate::Result<crate::datastore::CommandOutput> {
+            Err(crate::DodotError::CommandFailed {
+                command: crate::datastore::format_command_for_display(executable, arguments),
+                exit_code: 3,
+                stderr: self.stderr.clone(),
+            })
+        }
+    }
+
+    fn failing_datastore(
+        env: &TempEnvironment,
+        stderr: &str,
+    ) -> crate::datastore::FilesystemDataStore {
+        crate::datastore::FilesystemDataStore::new(
+            env.fs.clone(),
+            env.paths.clone(),
+            std::sync::Arc::new(FailingRunner {
+                stderr: stderr.into(),
+            }),
+        )
+    }
+
+    #[test]
+    fn a_failed_command_is_a_failed_operation_carrying_the_managers_output() {
+        let env = TempEnvironment::builder().build();
+        let ds = failing_datastore(&env, "Error: Cask 'ghostty' is unavailable.");
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let results = executor
+            .execute(vec![run_intent(
+                "tools",
+                "homebrew",
+                "brew",
+                &["bundle", "--file", "/packs/tools/Brewfile"],
+                "Brewfile",
+                "abc1234567890def",
+            )])
+            .expect("a failing command must not error out of the executor");
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "msg: {}", results[0].message);
+        assert!(
+            results[0].message.contains("Cask 'ghostty' is unavailable"),
+            "the manager's own output has to reach the row: {}",
+            results[0].message
+        );
+        assert!(
+            results[0].message.contains("exit code 3"),
+            "msg: {}",
+            results[0].message
+        );
+        env.assert_no_handler_state("tools", "homebrew");
+    }
+
+    /// The reason failure containment matters: provisioning runs
+    /// before symlinks, `$PATH`, and shell init, so a `Brewfile` that
+    /// fails used to cost its pack all three.
+    #[test]
+    fn work_after_a_failed_command_still_executes_and_still_reports() {
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("vimrc", "set nocompatible")
+            .done()
+            .build();
+        let ds = failing_datastore(&env, "boom");
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let results = executor
+            .execute(vec![
+                run_intent(
+                    "tools",
+                    "install",
+                    "bash",
+                    &["--", "/packs/tools/install.sh"],
+                    "install.sh",
+                    "abc1234567890def",
+                ),
+                HandlerIntent::Link {
+                    pack: "tools".into(),
+                    handler: "symlink".into(),
+                    source: env.dotfiles_root.join("tools/vimrc"),
+                    user_path: env.home.join(".vimrc"),
+                },
+            ])
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert!(!results[0].success);
+        assert!(
+            results[1..].iter().all(|r| r.success),
+            "the symlink must deploy despite the earlier failure: {results:?}"
+        );
+        env.assert_double_link(
+            "tools",
+            "symlink",
+            "vimrc",
+            &env.dotfiles_root.join("tools/vimrc"),
+            &env.home.join(".vimrc"),
+        );
     }
 }

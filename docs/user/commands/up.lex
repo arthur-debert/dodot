@@ -112,7 +112,24 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     :: shell ::
 
-9. Watch out for
+9. Exit code, and what a failure costs
+
+    `dodot up` exits 0 when every operation succeeded and 1 when any of them failed — a provisioning command that exited non-zero, a symlink whose target was already occupied, or a cross-pack conflict that blocked the deploy. That is the same 1 `dodot transform check` returns for its findings, and it is what makes `dodot up && ./next-step.sh` stop instead of continuing against a machine that was never set up.
+
+    `--dry-run` always exits 0. It attempted nothing, so it has nothing to have failed; a preview reports a failing script without becoming a failure itself.
+
+    A failure is contained to the file that caused it. A `Brewfile` that fails is a failure row against `Brewfile`, carrying brew's own output — the pack's symlinks, `$PATH` entries, and shell init still deploy and still report, even though provisioning runs before all three. No sentinel is written for a file that failed, so the next `dodot up` runs it again with no flag needed.
+
+        # Only proceed if the machine is actually set up
+        dodot up && ./post-setup.sh
+
+        # In a script that should stop at the first problem
+        set -e
+        dodot up
+
+    :: shell ::
+
+10. Watch out for
 
     - *`--force` is local, not cross-pack.* It overwrites a file at the target location, but cross-pack conflicts (two packs pointing at the same path) ignore `--force` — the fix is in your packs, not in flag-twiddling.
     - *`.dodotignore`'d packs aren't reconciled.* Adding a `.dodotignore` marker to a previously-deployed pack stops it from being discovered, but `up` only reconciles discovered packs, so the previous deployment's symlinks are *not* cleaned up. Run `dodot down <pack>` *before* dropping the marker. See [./../handlers/controlling-activation.lex] §4.

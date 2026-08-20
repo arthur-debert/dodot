@@ -30,12 +30,20 @@ pub enum Operation {
     },
 
     /// Execute a command and record a sentinel on success.
+    ///
+    /// `filename` is the run-once file the command was built from
+    /// (`install.sh`, `Brewfile`, `packages.nix`) — the file this
+    /// operation's outcome is reported against. A failed run flips
+    /// that file's status row to `error`; without the filename the
+    /// report could only name the command line, which matches no row
+    /// the user recognizes.
     RunCommand {
         pack: String,
         handler: String,
         executable: String,
         arguments: Vec<String>,
         sentinel: String,
+        filename: String,
     },
 
     /// Check whether a sentinel exists (query, not mutation).
@@ -253,6 +261,7 @@ mod tests {
             executable: "echo".into(),
             arguments: vec!["hi".into()],
             sentinel: "s1".into(),
+            filename: "install.sh".into(),
         };
         let json = serde_json::to_string(&op).unwrap();
         assert!(json.contains("RunCommand"));

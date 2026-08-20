@@ -1039,6 +1039,9 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         group_mode: ctx.group_mode.as_str().into(),
         diffs,
         shell_hookup: shell_hookup_notice(ctx),
+        // `status` reports the world; it attempts nothing that could
+        // fail, and carries no exit-code contract.
+        failed: false,
     })
 }
 

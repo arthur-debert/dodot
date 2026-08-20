@@ -377,6 +377,35 @@ pub struct PackStatusResult {
     /// have yet.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell_hookup: Option<crate::shell::ActivationNotice>,
+    /// True when this run left at least one operation failed — a
+    /// provisioning command that exited non-zero, a symlink that hit
+    /// an occupied target, a pack that failed as a whole. This is the
+    /// data behind [`PackStatusResult::exit_code`].
+    ///
+    /// Set by `up` on an active run only. A `--dry-run` leaves it
+    /// false however much it reports as failing: nothing was attempted,
+    /// so a preview must not fail a script that runs it. `status` and
+    /// `down` leave it false — they report, and neither has an
+    /// exit-code contract of its own.
+    pub failed: bool,
+}
+
+impl PackStatusResult {
+    /// Process exit code: 1 when the run failed at least one
+    /// operation, 0 otherwise.
+    ///
+    /// 1 is dodot's existing "the command ran and found something
+    /// wrong" code — the same one `dodot transform check` returns for
+    /// its findings. Hard errors (a pack that doesn't exist, a
+    /// refused root) never reach here; those propagate as `Err` and
+    /// the CLI exits on the error's own status.
+    pub fn exit_code(&self) -> i32 {
+        if self.failed {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 /// Build the shell-hookup footer for a `pack-status` render.

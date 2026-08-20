@@ -257,6 +257,9 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
             pre_down_generation,
             &crate::shell::ProbePolicy::Never,
         ),
+        // `down` has no exit-code contract: a removal that fails
+        // surfaces as a row, and nothing reads this flag for `down`.
+        failed: false,
     })
 }
 
