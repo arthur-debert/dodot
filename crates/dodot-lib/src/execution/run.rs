@@ -13,14 +13,37 @@
 //! pack — symlinks, `$PATH` entries, shell init, all of which run in
 //! later phases than provisioning — still deploys and still reports.
 //! No sentinel is written, so the next `dodot up` retries the file.
+//!
+//! Only the command failing is contained this way. A datastore I/O
+//! error — notably the sentinel write that happens *after* a
+//! successful command — still aborts the run, as it does everywhere
+//! else in the executor.
+//!
+//! Two names for the run-once file appear here and mean different
+//! things: `relative_path` identifies the file for reporting (status
+//! rows are keyed by pack-relative path), and its basename is the
+//! sentinel key `did_run` looks up, since sentinels are named
+//! `<basename>-<hash>`.
 
 use tracing::info;
 
 use crate::datastore::DidRunStatus;
 use crate::operations::{HandlerIntent, Operation, OperationResult};
-use crate::Result;
+use crate::{DodotError, Result};
 
 use super::Executor;
+
+/// The sentinel key for a run-once file: its basename.
+///
+/// Sentinels are written as `<basename>-<hash>` in the handler's data
+/// directory, so `did_run` matches on the basename even though the
+/// intent identifies the file by its pack-relative path.
+fn sentinel_key(relative_path: &str) -> &str {
+    std::path::Path::new(relative_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(relative_path)
+}
 
 impl<'a> Executor<'a> {
     pub(super) fn execute_run(&self, intent: &HandlerIntent) -> Result<Vec<OperationResult>> {
@@ -30,7 +53,7 @@ impl<'a> Executor<'a> {
             executable,
             arguments,
             sentinel,
-            filename,
+            relative_path,
             content_hash,
         } = intent
         else {
@@ -38,10 +61,12 @@ impl<'a> Executor<'a> {
         };
 
         if !self.provision_rerun {
-            match self
-                .datastore
-                .did_run(pack, handler, filename, content_hash)?
-            {
+            match self.datastore.did_run(
+                pack,
+                handler,
+                sentinel_key(relative_path),
+                content_hash,
+            )? {
                 DidRunStatus::RanCurrent => {
                     info!(
                         pack,
@@ -60,7 +85,7 @@ impl<'a> Executor<'a> {
                     info!(
                         pack,
                         handler = handler.as_str(),
-                        filename,
+                        relative_path,
                         previous_hash,
                         current_hash = content_hash,
                         "older-version sentinel found, skipping (run with --force to apply)"
@@ -73,7 +98,7 @@ impl<'a> Executor<'a> {
                     return Ok(vec![OperationResult::ok(
                         op,
                         format!(
-                            "ran older version of {filename} — run `dodot up --force` to apply current"
+                            "ran older version of {relative_path} — run `dodot up --force` to apply current"
                         ),
                     )]);
                 }
@@ -92,7 +117,7 @@ impl<'a> Executor<'a> {
             executable: executable.clone(),
             arguments: arguments.clone(),
             sentinel: sentinel.clone(),
-            filename: filename.clone(),
+            relative_path: relative_path.clone(),
         };
 
         // `force=true` here tells run_and_record to skip its own
@@ -105,18 +130,33 @@ impl<'a> Executor<'a> {
         // that already succeeded in it. The error text carries the
         // command, its exit code, and the manager's stderr, which is
         // what the failure row's note shows.
-        if let Err(e) = self
+        //
+        // Only `CommandFailed` is contained. `run_and_record` also
+        // creates the sentinel directory and writes the sentinel
+        // *after* the command has already succeeded, and those
+        // failures come back as `Fs` errors. Demoting one of those to
+        // a failure row would misreport a command that ran fine as a
+        // command that failed, and would keep mutating the pack
+        // through a datastore that has just proved it cannot be
+        // written to. Everything that is not the user's script
+        // failing still aborts the run, which is `Executor::execute`'s
+        // standing contract for I/O errors.
+        match self
             .datastore
             .run_and_record(pack, handler, executable, arguments, sentinel, true)
         {
-            info!(
-                pack,
-                handler = handler.as_str(),
-                filename,
-                error = %e,
-                "command failed; no sentinel written, remaining intents continue"
-            );
-            return Ok(vec![OperationResult::fail(op, e.to_string())]);
+            Ok(()) => {}
+            Err(e @ DodotError::CommandFailed { .. }) => {
+                info!(
+                    pack,
+                    handler = handler.as_str(),
+                    relative_path,
+                    error = %e,
+                    "command failed; no sentinel written, remaining intents continue"
+                );
+                return Ok(vec![OperationResult::fail(op, e.to_string())]);
+            }
+            Err(e) => return Err(e),
         }
 
         info!(pack, sentinel, "command completed, sentinel recorded");
@@ -134,7 +174,7 @@ impl<'a> Executor<'a> {
             executable,
             arguments,
             sentinel,
-            filename,
+            relative_path,
             content_hash,
         } = intent
         else {
@@ -146,9 +186,9 @@ impl<'a> Executor<'a> {
         // real run. We don't error on lookup failures — fall through
         // to "would execute" if did_run fails.
         if !self.provision_rerun {
-            if let Ok(status) = self
-                .datastore
-                .did_run(pack, handler, filename, content_hash)
+            if let Ok(status) =
+                self.datastore
+                    .did_run(pack, handler, sentinel_key(relative_path), content_hash)
             {
                 match status {
                     DidRunStatus::RanCurrent => {
@@ -171,7 +211,7 @@ impl<'a> Executor<'a> {
                         return vec![OperationResult::ok(
                             op,
                             format!(
-                                "[dry-run] would skip (ran older version of {filename}; --force to apply)"
+                                "[dry-run] would skip (ran older version of {relative_path}; --force to apply)"
                             ),
                         )];
                     }
@@ -188,7 +228,7 @@ impl<'a> Executor<'a> {
                 executable: executable.clone(),
                 arguments: arguments.clone(),
                 sentinel: sentinel.clone(),
-                filename: filename.clone(),
+                relative_path: relative_path.clone(),
             },
             format!("[dry-run] would execute: {}", cmd_str.trim()),
         )]
@@ -199,6 +239,7 @@ impl<'a> Executor<'a> {
 mod tests {
     use super::super::test_support::make_datastore;
     use super::super::Executor;
+    use super::sentinel_key;
     use crate::fs::Fs;
     use crate::operations::HandlerIntent;
     use crate::paths::Pather;
@@ -209,7 +250,7 @@ mod tests {
         handler: &str,
         executable: &str,
         args: &[&str],
-        filename: &str,
+        relative_path: &str,
         hash: &str,
     ) -> HandlerIntent {
         HandlerIntent::Run {
@@ -217,8 +258,8 @@ mod tests {
             handler: handler.into(),
             executable: executable.into(),
             arguments: args.iter().map(|s| (*s).into()).collect(),
-            sentinel: format!("{filename}-{hash}"),
-            filename: filename.into(),
+            sentinel: format!("{}-{hash}", sentinel_key(relative_path)),
+            relative_path: relative_path.into(),
             content_hash: hash.into(),
         }
     }
@@ -503,6 +544,55 @@ mod tests {
             results[0].message
         );
         env.assert_no_handler_state("tools", "homebrew");
+    }
+
+    /// Containment stops at the command. `run_and_record` writes the
+    /// sentinel *after* the command has succeeded, so a datastore
+    /// that cannot be written to surfaces here as an `Fs` error —
+    /// dodot malfunctioning, not the user's script failing. It has to
+    /// abort the run rather than become a failure row that claims the
+    /// command failed when it did not.
+    #[test]
+    fn a_sentinel_write_failure_aborts_instead_of_becoming_a_failure_row() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        // Occupy the sentinel's own path with a directory, so the
+        // sentinel write fails after the command has already run.
+        // `did_run` still reports NeverRan (it only considers files),
+        // so the command is reached exactly as in a healthy run.
+        let handler_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs
+            .mkdir_all(&handler_dir.join("install.sh-abc1234567890def"))
+            .unwrap();
+
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let err = executor
+            .execute(vec![run_intent(
+                "vim",
+                "install",
+                "echo",
+                &["hello"],
+                "install.sh",
+                "abc1234567890def",
+            )])
+            .expect_err("a datastore that cannot record the run must abort execution");
+
+        assert!(
+            !matches!(err, crate::DodotError::CommandFailed { .. }),
+            "a lost sentinel is not a failed command: {err}"
+        );
+        // The command itself ran fine — the failure is dodot's, after it.
+        assert_eq!(runner.calls.lock().unwrap().as_slice(), &["echo hello"]);
     }
 
     /// The reason failure containment matters: provisioning runs

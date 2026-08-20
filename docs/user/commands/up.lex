@@ -116,7 +116,7 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     `dodot up` exits 0 when every operation succeeded and 1 when any of them failed — a provisioning command that exited non-zero, a symlink whose target was already occupied, or a cross-pack conflict that blocked the deploy. That is the same 1 `dodot transform check` returns for its findings, and it is what makes `dodot up && ./next-step.sh` stop instead of continuing against a machine that was never set up.
 
-    `--dry-run` always exits 0. It attempted nothing, so it has nothing to have failed; a preview reports a failing script without becoming a failure itself.
+    `--dry-run` always exits 0. It attempted nothing, so it has nothing to have failed. It also cannot tell you a script *would* fail: a preview never runs your scripts, so it lists what would run and stops there. Only a real `dodot up` can report that a script didn't work.
 
     A failure is contained to the file that caused it. A `Brewfile` that fails is a failure row against `Brewfile`, carrying brew's own output — the pack's symlinks, `$PATH` entries, and shell init still deploy and still report, even though provisioning runs before all three. No sentinel is written for a file that failed, so the next `dodot up` runs it again with no flag needed.
 

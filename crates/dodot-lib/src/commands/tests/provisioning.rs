@@ -138,6 +138,93 @@ fn the_failure_is_reported_against_the_file_that_failed() {
     );
 }
 
+/// Rule patterns match on the basename, so nothing about the rule set
+/// stops one pack from holding two run-once files that share one —
+/// `install.sh` and `extras/install.sh`. Status rows are keyed by
+/// pack-relative path, so `Operation::RunCommand` has to carry that
+/// same path: matching on the basename would land both failures on
+/// whichever row came first, and the second would overwrite the
+/// first's note.
+///
+/// Driven through `overlay_errors` directly rather than through `up`,
+/// because today's flat pack scan (`Scanner::list_top_level`) only
+/// ever hands run-once handlers a bare basename. This pins the
+/// matching rule now, so a scan that does surface a nested run-once
+/// file can't reintroduce the collision.
+#[test]
+fn two_scripts_sharing_a_basename_each_keep_their_own_failure_row() {
+    use crate::commands::{DisplayNote, DisplayPack};
+    use crate::operations::{Operation, OperationResult};
+    use crate::packs::types::PackResult;
+
+    let run_op = |relative_path: &str| Operation::RunCommand {
+        pack: "tools".into(),
+        handler: "install".into(),
+        executable: "bash".into(),
+        arguments: vec!["--".into(), format!("/packs/tools/{relative_path}")],
+        sentinel: "install.sh-abc1234567890def".into(),
+        relative_path: relative_path.into(),
+    };
+    let status_row = |name: &str| DisplayFile {
+        name: name.into(),
+        symbol: "→".into(),
+        description: name.into(),
+        status: "pending".into(),
+        status_label: "pending".into(),
+        handler: "install".into(),
+        note_ref: None,
+    };
+
+    let packs = vec![DisplayPack::new(
+        "tools".into(),
+        vec![status_row("install.sh"), status_row("extras/install.sh")],
+    )];
+    let pack_results = vec![PackResult {
+        pack_name: "tools".into(),
+        success: false,
+        operations: vec![
+            OperationResult::fail(run_op("install.sh"), "top-level script blew up"),
+            OperationResult::fail(run_op("extras/install.sh"), "nested script blew up"),
+        ],
+        error: None,
+    }];
+
+    let mut notes: Vec<DisplayNote> = Vec::new();
+    let packs = commands::up::overlay_errors(
+        packs,
+        &pack_results,
+        std::path::Path::new("/home/someone"),
+        &mut notes,
+    );
+
+    let row_named = |name: &str| {
+        packs[0]
+            .files
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("no row for `{name}`"))
+    };
+
+    // No third row was synthesized: each failure found its own.
+    assert_eq!(packs[0].files.len(), 2, "rows: {:?}", packs[0].files);
+
+    for (name, expected) in [
+        ("install.sh", "top-level script blew up"),
+        ("extras/install.sh", "nested script blew up"),
+    ] {
+        let row = row_named(name);
+        assert_eq!(row.status, "error", "row `{name}` must be the failure");
+        let note = row
+            .note_ref
+            .map(|n| notes[(n - 1) as usize].body.clone())
+            .unwrap_or_else(|| panic!("row `{name}` must carry its own note"));
+        assert_eq!(
+            note, expected,
+            "row `{name}` got the other script's failure"
+        );
+    }
+}
+
 #[test]
 fn a_failed_run_writes_no_sentinel_so_the_next_up_retries() {
     let env = env_with_a_failing_script();
@@ -178,8 +265,11 @@ fn a_clean_run_reports_exit_code_zero() {
     assert_eq!(row(&result, "install.sh").status, "deployed");
 }
 
+/// A dry run never executes the command, so it cannot know the script
+/// would fail — it only records that the script *would* run. What is
+/// asserted here is that it stayed a preview and exited 0.
 #[test]
-fn a_dry_run_reports_the_failure_without_becoming_one() {
+fn a_dry_run_runs_nothing_and_exits_zero_even_for_a_script_that_would_fail() {
     let env = env_with_a_failing_script();
     let mut ctx = failing_ctx(&env);
     ctx.dry_run = true;

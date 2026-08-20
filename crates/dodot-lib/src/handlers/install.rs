@@ -225,7 +225,7 @@ mod tests {
                 executable,
                 arguments,
                 sentinel,
-                filename,
+                relative_path,
                 content_hash,
             } => {
                 assert_eq!(pack, "vim");
@@ -235,9 +235,9 @@ mod tests {
                 assert!(arguments[1].ends_with("install.sh"));
                 assert!(sentinel.starts_with("install.sh-"));
                 assert_eq!(sentinel.len(), "install.sh-".len() + 16);
-                assert_eq!(filename, "install.sh");
+                assert_eq!(relative_path, "install.sh");
                 assert_eq!(content_hash.len(), 16);
-                assert_eq!(*sentinel, format!("{filename}-{content_hash}"));
+                assert_eq!(*sentinel, format!("{relative_path}-{content_hash}"));
             }
             other => panic!("expected Run, got {other:?}"),
         }
