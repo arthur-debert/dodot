@@ -17,6 +17,13 @@ manager and the locations tried, before anything runs. A row that says
 installed" from "installed somewhere dodot does not look"; a failed spawn
 distinguishes nothing.
 
+One case runs a name rather than the path: an intent's executable is a `String`,
+so a candidate whose path is not valid UTF-8 cannot reach the spawn as the file
+it is. dodot warns and runs the manager's own name, the way it did before the
+probe existed, rather than converting lossily into a path that names nothing.
+Carrying those bytes through would mean an OS-native executable type across
+`HandlerIntent`, `Operation`, `CommandSpec`, and every `CommandRunner`.
+
 The list is also the same list the Homebrew shell bootstrap already probes.
 `shell/homebrew.rs` has resolved brew this way since it was written, and a brew
 that bootstrap emits a block for must be a brew a `Brewfile` runs against — so

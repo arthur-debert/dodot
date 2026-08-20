@@ -168,30 +168,50 @@ fn installing_the_manager_runs_the_file_on_the_next_up() {
 
 // ── The agreement matrix ────────────────────────────────────────
 
-/// Fails `stat` on one path with a permission error, and delegates
+/// Answers `stat` for one path with a staged reply, and delegates
 /// everything else to the real filesystem.
 ///
-/// A probe failure is otherwise hard to stage without running as a
-/// user who cannot read a directory, which is not a property a test
-/// suite can rely on.
-struct StatDenied {
+/// Two machine states in this file cannot be staged on a real disk: a
+/// directory the test user cannot read is not a property a suite can
+/// rely on, and macOS refuses to create a file whose name is not valid
+/// UTF-8 at all. Both are one `stat` answer, so both are this.
+struct StagedStat {
     inner: OsFs,
-    denied: PathBuf,
+    path: PathBuf,
+    answer: StagedAnswer,
 }
 
-impl StatDenied {
-    fn denial(&self, path: &Path) -> crate::DodotError {
-        crate::DodotError::Fs {
-            path: path.to_path_buf(),
-            source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+/// What [`StagedStat`] reports for its path.
+enum StagedAnswer {
+    /// A permission error — the probe cannot examine the candidate.
+    Denied,
+    /// A regular file carrying an execute bit — a brew, as far as the
+    /// probe can tell.
+    Executable,
+}
+
+impl StagedStat {
+    fn staged(&self, path: &Path) -> Result<FsMetadata> {
+        match self.answer {
+            StagedAnswer::Denied => Err(crate::DodotError::Fs {
+                path: path.to_path_buf(),
+                source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+            }),
+            StagedAnswer::Executable => Ok(FsMetadata {
+                is_file: true,
+                is_dir: false,
+                is_symlink: false,
+                len: 0,
+                mode: 0o755,
+            }),
         }
     }
 }
 
-impl Fs for StatDenied {
+impl Fs for StagedStat {
     fn stat(&self, path: &Path) -> Result<FsMetadata> {
-        if path == self.denied {
-            return Err(self.denial(path));
+        if path == self.path {
+            return self.staged(path);
         }
         self.inner.stat(path)
     }
@@ -261,9 +281,10 @@ fn ctx_for(env: &TempEnvironment, machine: &Machine) -> ExecutionContext {
         Machine::Present => install_fake_brew(env),
         Machine::Absent => {}
         Machine::Unprobeable => {
-            ctx.fs = Arc::new(StatDenied {
+            ctx.fs = Arc::new(StagedStat {
                 inner: OsFs::new(),
-                denied: brew_path(env),
+                path: brew_path(env),
+                answer: StagedAnswer::Denied,
             });
         }
     }
@@ -601,6 +622,75 @@ fn a_handler_dodot_does_not_locate_keeps_its_path_lookup() {
         !script.executable.contains('/'),
         "install\u{2019}s interpreter is a PATH lookup, not a located path: {}",
         script.executable
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_located_path_dodot_cannot_name_is_never_handed_over_corrupted() {
+    // The probe reads `$HOMEBREW_PREFIX` as bytes so a non-UTF-8
+    // prefix keeps its candidate. An intent's executable is a
+    // `String`, so such a path cannot be carried through to the
+    // spawn — and replacing its bytes with U+FFFD would be the one
+    // unacceptable answer: dodot would stat a real brew, then spawn a
+    // path naming no file and report "not found" about it.
+    //
+    // What must hold is that nothing corrupted reaches the runner.
+    // The row falls back to the handler's own name, which is where
+    // every provisioning row was before the probe existed, and says
+    // so in a warning.
+    //
+    // The candidate is staged rather than created: macOS refuses to
+    // write a filename that is not valid UTF-8, so a test that made
+    // the file would only ever run on Linux.
+    use std::os::unix::ffi::OsStrExt;
+
+    let env = env_with_a_brewfile();
+    let brew = env
+        .home
+        .join(std::ffi::OsStr::from_bytes(b"pre\xffix"))
+        .join("bin/brew");
+    assert!(
+        brew.to_str().is_none(),
+        "the fixture only tests anything if the path is genuinely unnameable"
+    );
+
+    let runner = Arc::new(RecordingRunner::default());
+    let mut ctx = super::support::make_ctx_with_runner(&env, runner.clone());
+    ctx.no_provision = false;
+    ctx.fs = Arc::new(StagedStat {
+        inner: OsFs::new(),
+        path: brew.clone(),
+        answer: StagedAnswer::Executable,
+    });
+    ctx.provision_host = Arc::new(ProvisionHost::with_candidates(
+        HANDLER_HOMEBREW,
+        vec![brew.clone()],
+    ));
+
+    let result = commands::up::up(None, &ctx).unwrap();
+
+    let spawns = runner.spawns.lock().unwrap();
+    let bundle = spawns
+        .iter()
+        .find(|s| s.arguments.first().map(String::as_str) == Some("bundle"))
+        .expect("the Brewfile still runs — an unnameable path is not an absent manager");
+    assert!(
+        !bundle.executable.contains(char::REPLACEMENT_CHARACTER),
+        "a lossy path would name no file at all: {}",
+        bundle.executable
+    );
+    assert_eq!(
+        bundle.executable, "brew",
+        "what dodot cannot name, it does not pretend to have named"
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("cannot name exactly")),
+        "the substitution dodot did not make has to be visible: {:?}",
+        result.warnings
     );
 }
 

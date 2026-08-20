@@ -80,7 +80,13 @@ pub enum Availability {
     /// whichever brew `PATH` resolves later would make the answer
     /// worthless on exactly the hosts the probe exists for — a
     /// manager installed at a fixed prefix the user's `PATH` omits.
-    /// See `plan_pack`.
+    ///
+    /// One exception, and it is a property of the intent rather than
+    /// of the answer: an intent's executable is a `String`, so a
+    /// candidate whose path is not valid UTF-8 cannot be carried
+    /// through to the spawn. `plan_pack` leaves the handler's own
+    /// name there and warns, rather than converting lossily into a
+    /// path that names no file.
     Present { at: Option<PathBuf> },
     /// No candidate held an executable file. Skip: no receipt, no
     /// error, no effect on the exit code.

@@ -579,11 +579,41 @@ fn plan_pack_inner(
             // `None` for `install`, whose interpreter is a `PATH`
             // lookup by design (ADR-0007), and for any handler dodot
             // does not locate.
+            //
+            // Substituted only when the path can be *named* in the
+            // `String` an intent's executable is. A lossy conversion
+            // would be the worst of the three outcomes: the probe
+            // read `$HOMEBREW_PREFIX` as bytes precisely so a
+            // non-UTF-8 prefix keeps its candidate, and replacing
+            // those bytes with U+FFFD here would hand the spawn a
+            // path that names nothing — dodot would find brew and
+            // then fail to run it, reporting "not found" about a file
+            // it had just stat'd. Leaving the handler's own name
+            // instead puts the row back where every provisioning row
+            // was before the probe existed: the OS resolves it
+            // through `PATH`, which is what `install` does by design.
+            // Carrying the bytes through to the spawn means an
+            // OS-native executable type across `HandlerIntent`,
+            // `Operation`, `CommandSpec`, and every `CommandRunner` —
+            // an epic-wide change, not this handler's to make.
             if let Some(at) = &located_at {
-                let program = at.to_string_lossy().into_owned();
-                for intent in &mut intents {
-                    if let crate::operations::HandlerIntent::Run { executable, .. } = intent {
-                        *executable = program.clone();
+                match at.to_str() {
+                    Some(program) => {
+                        for intent in &mut intents {
+                            if let crate::operations::HandlerIntent::Run { executable, .. } = intent
+                            {
+                                *executable = program.to_string();
+                            }
+                        }
+                    }
+                    None => {
+                        let warning = format!(
+                            "{handler_name} was found at {}, a path dodot cannot name exactly. \
+                             Running `{handler_name}` as your shell would resolve it instead.",
+                            at.display()
+                        );
+                        tracing::warn!(pack = %pack.name, handler = %handler_name, "{warning}");
+                        all_warnings.push(warning);
                     }
                 }
             }

@@ -194,9 +194,15 @@ impl BrewHost {
     ///
     /// `$HOMEBREW_PREFIX` stays a process-environment reading because
     /// it is one: it is the user's own override of where brew lives,
-    /// and dodot has no other record of it.
+    /// and dodot has no other record of it. It is read as an
+    /// [`OsString`](std::ffi::OsString) for the same reason `home` is
+    /// a `Path` — a prefix is a directory name, and a directory name
+    /// is bytes. `provisioners::availability` resolves the same
+    /// variable the same way, and ADR-0007 requires the two candidate
+    /// lists to agree: a prefix one of them probed and the other
+    /// dropped is exactly the disagreement it forbids.
     pub fn detect(home: &Path) -> Self {
-        Self::new(std::env::var("HOMEBREW_PREFIX").ok(), home)
+        Self::new(std::env::var_os("HOMEBREW_PREFIX"), home)
     }
 
     /// Build the candidate list from its two inputs.
@@ -208,9 +214,18 @@ impl BrewHost {
     ///
     /// `home` contributes the per-user [`HOME_RELATIVE_PREFIX`]
     /// candidate last; an empty home path just leaves it out.
-    pub fn new(prefix_env: Option<String>, home: &Path) -> Self {
+    pub fn new(prefix_env: Option<std::ffi::OsString>, home: &Path) -> Self {
         let mut prefix_candidates: Vec<PathBuf> = Vec::with_capacity(DEFAULT_PREFIXES.len() + 2);
-        if let Some(prefix) = prefix_env.filter(|p| !p.trim().is_empty()) {
+        // Blank means unset: an empty prefix resolves to a bare
+        // `/bin/brew` the user never meant, and a whitespace-only one
+        // is the same typo wearing a space. Only a value dodot can
+        // read as text can be trimmed; anything else is judged empty
+        // or not.
+        let named = prefix_env.filter(|p| {
+            p.to_str()
+                .map_or_else(|| !p.is_empty(), |v| !v.trim().is_empty())
+        });
+        if let Some(prefix) = named {
             prefix_candidates.push(PathBuf::from(prefix));
         }
         prefix_candidates.extend(DEFAULT_PREFIXES.iter().map(PathBuf::from));
@@ -581,7 +596,20 @@ fn shellenv(
     brew: &Path,
     shell: &str,
 ) -> std::result::Result<String, String> {
-    let executable = brew.to_string_lossy().to_string();
+    // A command's executable is a `String`, so a brew whose path is
+    // not valid UTF-8 cannot be spawned as the file it is. Say that,
+    // rather than lossily converting: the replacement characters would
+    // name no file, and `brew shellenv` would fail with a "not found"
+    // about a path dodot had just stat'd. Carrying the bytes through
+    // means an OS-native executable across `CommandSpec` and every
+    // `CommandRunner`, which is a change of its own.
+    let Some(executable) = brew.to_str().map(str::to_string) else {
+        return Err(format!(
+            "brew at {} sits at a path dodot cannot name exactly, so it cannot be asked for its \
+             environment",
+            brew.display()
+        ));
+    };
     let args = vec!["shellenv".to_string(), shell.to_string()];
     match runner.run(CommandSpec::new(&executable, &args)) {
         Ok(out) if out.exit_code == 0 && !out.stdout.trim().is_empty() => Ok(out.stdout),
@@ -811,7 +839,7 @@ mod tests {
 
     #[test]
     fn homebrew_prefix_env_leads_the_candidates() {
-        let host = BrewHost::new(Some("/custom/brew".to_string()), Path::new("/home/ada"));
+        let host = BrewHost::new(Some("/custom/brew".into()), Path::new("/home/ada"));
         assert_eq!(
             host.prefix_candidates,
             vec![
@@ -824,9 +852,30 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_non_utf8_prefix_env_still_leads_the_candidates() {
+        // The bootstrap and `provisioners::availability` probe the
+        // same variable, and ADR-0007 requires their lists to agree.
+        // Reading it as text dropped the candidate here while the
+        // provisioner kept it — a host whose brew the bootstrap
+        // refused to emit a block for while a `Brewfile` ran against
+        // it.
+        use std::os::unix::ffi::OsStrExt;
+
+        let prefix = std::ffi::OsStr::from_bytes(b"/opt/br\xffew");
+        let host = BrewHost::new(Some(prefix.to_os_string()), Path::new("/home/ada"));
+
+        assert_eq!(host.prefix_candidates.first(), Some(&PathBuf::from(prefix)));
+    }
+
     #[test]
     fn unset_or_blank_prefix_env_leaves_the_defaults() {
-        for env_value in [None, Some(String::new()), Some("   ".to_string())] {
+        for env_value in [
+            None,
+            Some(std::ffi::OsString::new()),
+            Some(std::ffi::OsString::from("   ")),
+        ] {
             let host = BrewHost::new(env_value, Path::new(""));
             assert_eq!(
                 host.prefix_candidates,
