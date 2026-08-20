@@ -91,6 +91,6 @@ nix_stub_install_count() {
 # The manifest path from the most recent `nix profile install`.
 nix_stub_last_manifest() {
 	if [[ -f "$DODOT_NIX_STUB_LOG" ]]; then
-		tail -1 "$DODOT_NIX_STUB_LOG"
+		tail -n 1 "$DODOT_NIX_STUB_LOG"
 	fi
 }
