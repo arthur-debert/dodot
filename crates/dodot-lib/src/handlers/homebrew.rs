@@ -18,8 +18,11 @@
 //!   update` first.
 //!
 //! They interact: with auto-update suppressed a stale brew stays
-//! stale, which is why brew's own version is probed rather than
-//! assumed.
+//! stale, so nothing downstream may assume a brew recent enough for
+//! the newer `Brewfile` entry types. Checking brew's own version
+//! before the bundle runs is a separate workstream's job and is not
+//! implemented here: this handler still does no pre-flight
+//! validation, and a too-old brew surfaces as brew's own parse error.
 
 use std::path::Path;
 

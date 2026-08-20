@@ -95,7 +95,7 @@ teardown() {
 
     dodot up
 
-    assert_brew_env "HOMEBREW_NO_AUTO_UPDATE" "1"
+    assert_brew_env "HOMEBREW_NO_AUTO_UPDATE" "1" "bundle"
 }
 
 @test "brew skipped with --no-provision" {
