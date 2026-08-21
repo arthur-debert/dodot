@@ -4,10 +4,9 @@
 //! All three of these handlers do the same job: run a program on a
 //! user-provided file, hash the file, write a sentinel so we know not
 //! to run again unnecessarily. This module owns that logic once.
-//! Per-handler specialization (program name, argument shape, optional
-//! pre-flight validation, status copy) lives in a small
-//! [`RunOnceCommand`] trait, with [`RunOnceHandler`] handling the
-//! rest.
+//! Per-handler specialization (program name, argument shape, status
+//! copy) lives in a small [`RunOnceCommand`] trait, with
+//! [`RunOnceHandler`] handling the rest.
 //!
 //! # Three-state run-once semantics
 //!
@@ -29,7 +28,15 @@
 //! `dodot status` renders this three-way result as `pending` /
 //! `deployed` / `older version (N lines added, M removed)` rows; the
 //! `--diff` flag dumps the underlying snapshot-vs-current unified
-//! diff for the third state.
+//! diff for the third state. The third row also carries a footnote
+//! naming `dodot up --provision-rerun`, since the label alone states
+//! the condition and leaves the user nothing to act on. A fourth row
+//! comes from outside this model: `--no-provision` drops the handler
+//! before it is consulted at all, and those files render as
+//! `skipped (--no-provision)`. A fifth comes from the machine rather
+//! than from the user — an absent manager, which the planner skips
+//! before any of this is consulted
+//! ([`crate::provisioners::availability`]).
 //!
 //! # Snapshots
 //!
@@ -43,15 +50,17 @@
 //!
 //! Snapshots live at
 //! `<datastore>/packs/<pack>/<handler>/<filename>-<hash>.snapshot`;
-//! users who want to manage state directly can delete the sentinel +
-//! snapshot pair to roll a file back to `never ran`.
+//! users who want to manage state directly can delete sentinel +
+//! snapshot pairs to roll a file back to `never ran` — all of the
+//! pairs for that filename, since earlier runs' sentinels are kept
+//! and any one of them still reads as `older version`.
 
 use std::io::Read;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use crate::datastore::{CommandRunner, DataStore};
+use crate::datastore::DataStore;
 use crate::fs::Fs;
 use crate::handlers::{ExecutionPhase, Handler, HandlerConfig, HandlerStatus};
 use crate::operations::HandlerIntent;
@@ -61,11 +70,10 @@ use crate::Result;
 
 /// Per-handler specialization for a run-once handler.
 ///
-/// Implementations declare the handler's identity (name, phase) and
-/// how a matched file becomes a command invocation. They may
-/// optionally provide a pre-flight check ([`Self::validate`]) and
-/// customize status messages for the three-state run-once model
-/// described at the module level — `pending` /
+/// Implementations declare the handler's identity (name, phase), how
+/// a matched file becomes a command invocation, and the status
+/// messages for the three-state run-once model described at the
+/// module level — `pending` /
 /// `deployed` / `ran older version`. Everything else (hashing,
 /// sentinel construction, `did_run` lookup, intent emission) is
 /// shared via [`RunOnceHandler`].
@@ -81,10 +89,20 @@ use crate::Result;
 /// specializations are limited to:
 ///
 /// - the executable + arguments to run ([`Self::command_for`]),
-/// - status-message copy ([`Self::status_pending`] etc.),
-/// - **environmental** pre-flight checks ([`Self::validate`]) —
-///   things that fail consistently per-environment (tool present,
-///   file readable), not per-content.
+/// - status-message copy ([`Self::status_pending`] etc.).
+///
+/// # Where the "is the tool there?" check lives
+///
+/// Not here. This trait once carried a `validate` hook documented for
+/// exactly that, with no implementor. It could not have worked: a
+/// finding raised inside intent generation dies with the intent, and
+/// `commands/status.rs::run_once_health` derives its row from the
+/// source file and the datastore without ever calling the handler,
+/// so an absent manager would have rendered as `never ran`. The check
+/// is now [`crate::provisioners::availability`], read by the pack
+/// planner and by status from one shared module — which is also the
+/// only place a skip can be *reported*, since `to_intents` returns
+/// intents and nothing else.
 ///
 /// **Per-content gatekeeping at planning time is explicitly out
 /// of scope.** Content errors (malformed manifest, syntax error,
@@ -105,28 +123,32 @@ pub trait RunOnceCommand: Send + Sync {
 
     /// Build the `(executable, arguments)` tuple for invoking the
     /// command against `path`.
+    ///
+    /// Name the executable the way a user would — `brew`, `nix`,
+    /// `bash`. For a handler dodot locates itself, the planner
+    /// substitutes the absolute path the availability probe found
+    /// before the intent leaves it (see
+    /// [`crate::provisioners::availability`]), so this stays a pure
+    /// function of `path` and never consults the environment.
     fn command_for(&self, path: &Path) -> (String, Vec<String>);
 
-    /// Optional pre-flight check. Default: no-op.
+    /// Environment variables the command is spawned with, layered
+    /// onto the environment dodot itself runs with — the child still
+    /// inherits everything else.
     ///
-    /// **Scope: environmental, not content** — see the
-    /// "Lifecycle invariant" section in the trait docs. Use
-    /// `validate` only for environment-level prerequisites that
-    /// fail consistently regardless of the file's current
-    /// contents.
+    /// The rows come from the handler's descriptor in
+    /// [`crate::provisioners`], so what a provisioner needs in its
+    /// environment is stated next to the argv it qualifies rather
+    /// than branched on at the spawn site. A handler with no rows
+    /// (and any command with no descriptor at all) returns an empty
+    /// vector and spawns exactly as it would with no seam here.
     ///
-    /// Returning `Err` aborts intent generation for the matched
-    /// file and propagates the error.
-    ///
-    /// Implementations receive both `fs` (for reading the matched
-    /// file's bytes without re-entering the executor) and `runner`
-    /// (for shelling out to verify the tool is invokable —
-    /// e.g. `nix --version`, `brew --version`). The runner is the
-    /// same `CommandRunner` the executor uses for the install
-    /// path, so a validator's subprocess output is captured the
-    /// same way as the eventual install command's.
-    fn validate(&self, _fs: &dyn Fs, _runner: &dyn CommandRunner, _path: &Path) -> Result<()> {
-        Ok(())
+    /// Duplicate names are applied in order, so a later row wins.
+    fn environment(&self) -> Vec<(String, String)> {
+        crate::provisioners::environment_for(self.handler_name())
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect()
     }
 
     /// Human-readable status message when a current-hash sentinel
@@ -161,25 +183,23 @@ pub trait RunOnceCommand: Send + Sync {
 
 /// The shared body for run-once handlers.
 ///
-/// Holds borrows of [`Fs`] + [`CommandRunner`] and an instance of some
+/// Holds a borrow of [`Fs`] and an instance of some
 /// [`RunOnceCommand`]. Implements [`Handler`] by routing per-handler
 /// concerns to the command and keeping the shared logic — checksum,
 /// sentinel, intent construction, status lookup — in one place.
 ///
-/// The runner is passed straight through to
-/// [`RunOnceCommand::validate`] at intent-production time so an
-/// environmental pre-flight (e.g. verifying the tool is on PATH
-/// via `<tool> --version`) can shell out without owning its own
-/// runner.
+/// No [`CommandRunner`](crate::datastore::CommandRunner): nothing on
+/// this path spawns. The command a run-once handler builds is
+/// executed by the executor, and the "is the manager installed?"
+/// question belongs to the planner (see the trait docs).
 pub struct RunOnceHandler<'a, C: RunOnceCommand> {
     fs: &'a dyn Fs,
-    runner: &'a dyn CommandRunner,
     cmd: C,
 }
 
 impl<'a, C: RunOnceCommand> RunOnceHandler<'a, C> {
-    pub fn new(fs: &'a dyn Fs, runner: &'a dyn CommandRunner, cmd: C) -> Self {
-        Self { fs, runner, cmd }
+    pub fn new(fs: &'a dyn Fs, cmd: C) -> Self {
+        Self { fs, cmd }
     }
 
     /// Access the underlying command (useful in tests).
@@ -220,10 +240,6 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
             // the symlink chain instead, and the next real `dodot
             // up` plans the Run intent normally. See issue #121.
             //
-            // This skip runs *before* validation: a placeholder has
-            // no content for a validator to inspect, and we shouldn't
-            // surface a validation error for a file that may not
-            // exist yet in any meaningful sense.
             let has_rendered = m.rendered_bytes.is_some();
             let has_disk = self.fs.exists(&m.absolute_path);
             if !has_rendered && !has_disk {
@@ -237,9 +253,6 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 continue;
             }
 
-            // We have content. Validate first, then hash.
-            self.cmd.validate(self.fs, self.runner, &m.absolute_path)?;
-
             // Sentinel hashing prefers in-memory rendered bytes when
             // they're available (preprocessor-produced files); falls
             // back to a disk read for plain on-disk files. The
@@ -251,13 +264,20 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 None => file_checksum(self.fs, &m.absolute_path)?,
             };
 
-            let filename = m
+            // Two names for the same file, and they are not
+            // interchangeable. The sentinel is keyed by the basename
+            // (`install.sh-<hash>`) because that is the datastore's
+            // on-disk shape; the intent carries the pack-relative
+            // path because that is what status rows are keyed by and
+            // what a failure has to be reported against.
+            let relative_path = m.relative_path.to_string_lossy().into_owned();
+            let basename = m
                 .relative_path
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned();
-            let sentinel = format!("{filename}-{checksum}");
+            let sentinel = format!("{basename}-{checksum}");
 
             let (executable, arguments) = self.cmd.command_for(&m.absolute_path);
 
@@ -266,8 +286,9 @@ impl<C: RunOnceCommand> Handler for RunOnceHandler<'_, C> {
                 handler: self.cmd.handler_name().into(),
                 executable,
                 arguments,
+                environment: self.cmd.environment(),
                 sentinel,
-                filename,
+                relative_path,
                 content_hash: checksum,
             });
         }
@@ -406,6 +427,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::datastore::CommandSpec;
     use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
     use crate::testing::TempEnvironment;
     use std::collections::HashMap;
@@ -417,7 +439,7 @@ mod tests {
 
     struct NoopRunner;
     impl CommandRunner for NoopRunner {
-        fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),
@@ -435,7 +457,6 @@ mod tests {
         phase: ExecutionPhase,
         executable: String,
         args_template: Vec<String>,
-        validate_fails: bool,
         deployed_msg: &'static str,
         pending_msg: &'static str,
     }
@@ -447,7 +468,6 @@ mod tests {
                 phase: ExecutionPhase::Setup,
                 executable: "test-cmd".into(),
                 args_template: Vec::new(),
-                validate_fails: false,
                 deployed_msg: "ran",
                 pending_msg: "never ran",
             }
@@ -465,16 +485,6 @@ mod tests {
             let mut args = self.args_template.clone();
             args.push(path.to_string_lossy().into_owned());
             (self.executable.clone(), args)
-        }
-        fn validate(&self, _fs: &dyn Fs, _runner: &dyn CommandRunner, path: &Path) -> Result<()> {
-            if self.validate_fails {
-                Err(crate::DodotError::Fs {
-                    path: path.to_path_buf(),
-                    source: std::io::Error::other("synthetic validation failure"),
-                })
-            } else {
-                Ok(())
-            }
         }
         fn status_deployed(&self) -> &str {
             self.deployed_msg
@@ -515,7 +525,6 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let handler = RunOnceHandler::new(
             env.fs.as_ref(),
-            &NoopRunner,
             FakeCommand {
                 phase: ExecutionPhase::Provision,
                 ..FakeCommand::new("widget")
@@ -538,7 +547,7 @@ mod tests {
             args_template: vec!["--".into()],
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
 
         let abs = env.dotfiles_root.join("vim/setup.sh");
         let matches = vec![make_match("vim", "setup.sh", abs.clone(), None)];
@@ -558,20 +567,24 @@ mod tests {
                 handler: h,
                 executable,
                 arguments,
+                environment,
                 sentinel,
-                filename,
+                relative_path,
                 content_hash,
             } => {
                 assert_eq!(pack, "vim");
                 assert_eq!(h, "fake");
                 assert_eq!(executable, "bash");
+                // No descriptor row for a handler named "fake", so
+                // the shared default declares nothing.
+                assert!(environment.is_empty(), "got: {environment:?}");
                 assert_eq!(arguments[0], "--");
                 assert!(arguments[1].ends_with("vim/setup.sh"));
                 assert!(sentinel.starts_with("setup.sh-"));
                 assert_eq!(sentinel.len(), "setup.sh-".len() + 16);
-                assert_eq!(filename, "setup.sh");
+                assert_eq!(relative_path, "setup.sh");
                 assert_eq!(content_hash.len(), 16);
-                assert_eq!(*sentinel, format!("{filename}-{content_hash}"));
+                assert_eq!(*sentinel, format!("{relative_path}-{content_hash}"));
             }
             other => panic!("expected Run, got {other:?}"),
         }
@@ -586,7 +599,7 @@ mod tests {
             .build();
         let abs = env.dotfiles_root.join("vim/setup.sh");
 
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
 
         let rendered = b"rendered content".to_vec();
         let expected_checksum = file_checksum_bytes(&rendered);
@@ -617,7 +630,7 @@ mod tests {
             .build();
         let abs = env.dotfiles_root.join("vim/setup.sh");
 
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
 
         let expected_checksum = file_checksum(env.fs.as_ref(), &abs).unwrap();
         let matches = vec![make_match("vim", "setup.sh", abs, None)];
@@ -639,32 +652,9 @@ mod tests {
     }
 
     #[test]
-    fn validate_does_not_fire_on_placeholder_match() {
-        // A passive placeholder has no content to validate.
-        let env = TempEnvironment::builder().build();
-        let cmd = FakeCommand {
-            validate_fails: true,
-            ..FakeCommand::new("fake")
-        };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
-
-        let ghost = env.dotfiles_root.join("ghost/install.sh"); // never written
-        let matches = vec![make_match("ghost", "install.sh", ghost, None)];
-        let intents = handler
-            .to_intents(
-                &matches,
-                &HandlerConfig::default(),
-                &pather(&env),
-                env.fs.as_ref(),
-            )
-            .expect("placeholder match should skip cleanly without invoking validate");
-        assert!(intents.is_empty());
-    }
-
-    #[test]
     fn to_intents_skips_first_time_pack_passive_placeholder() {
         let env = TempEnvironment::builder().build();
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
 
         let ghost = env.dotfiles_root.join("ghost/install.sh"); // never written
         let matches = vec![make_match("ghost", "install.sh", ghost, None)];
@@ -681,41 +671,13 @@ mod tests {
     }
 
     #[test]
-    fn to_intents_propagates_validation_error() {
-        let env = TempEnvironment::builder()
-            .pack("vim")
-            .file("setup.sh", "content")
-            .done()
-            .build();
-        let abs = env.dotfiles_root.join("vim/setup.sh");
-
-        let cmd = FakeCommand {
-            validate_fails: true,
-            ..FakeCommand::new("fake")
-        };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
-
-        let matches = vec![make_match("vim", "setup.sh", abs, None)];
-        let result = handler.to_intents(
-            &matches,
-            &HandlerConfig::default(),
-            &pather(&env),
-            env.fs.as_ref(),
-        );
-        assert!(
-            result.is_err(),
-            "expected validate failure to propagate, got {result:?}"
-        );
-    }
-
-    #[test]
     fn to_intents_skips_directories() {
         let env = TempEnvironment::builder()
             .pack("vim")
             .file("scripts/run", "x")
             .done()
             .build();
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
 
         let dir_match = RuleMatch {
             is_dir: true,
@@ -745,7 +707,7 @@ mod tests {
             .file("b.sh", "beta")
             .done()
             .build();
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, FakeCommand::new("fake"));
+        let handler = RunOnceHandler::new(env.fs.as_ref(), FakeCommand::new("fake"));
 
         let matches = vec![
             make_match("vim", "a.sh", env.dotfiles_root.join("vim/a.sh"), None),
@@ -784,7 +746,7 @@ mod tests {
             deployed_msg: "all set",
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
 
         let status = handler.check_status(&abs, "vim", &datastore).unwrap();
         assert!(status.deployed);
@@ -815,7 +777,7 @@ mod tests {
             deployed_msg: "ran",
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
 
         let status = handler.check_status(&abs, "vim", &datastore).unwrap();
         assert!(status.deployed, "older version still counts as deployed");
@@ -845,7 +807,7 @@ mod tests {
             pending_msg: "needs attention",
             ..FakeCommand::new("fake")
         };
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &NoopRunner, cmd);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), cmd);
 
         let status = handler.check_status(&abs, "vim", &datastore).unwrap();
         assert!(!status.deployed);

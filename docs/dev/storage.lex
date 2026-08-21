@@ -20,7 +20,13 @@ Storage
         |       +-- path/                 # staged path directories
         |       |   +-- <name> -> <source>
         |       +-- homebrew/             # sentinels (e.g. "Brewfile-a1b2c3d4e5f6a7b8")
+        |       |   +-- <name>-<checksum>.snapshot   # bytes that ran
+        |       +-- nix/                  # sentinels (e.g. "packages.nix-a1b2c3d4e5f6a7b8")
+        |       |   +-- <name>-<checksum>.snapshot   # bytes that ran
         |       +-- install/              # sentinels (e.g. "install.sh-a1b2c3d4e5f6a7b8")
+        |       |   +-- <name>-<checksum>.snapshot   # bytes that ran
+        |       +-- external/             # one sentinel per fetched entry
+        |       |   +-- <entry>/          # the fetched content itself
         |       +-- preprocessed/         # preprocessor output (rendered files)
         |           +-- <stripped-name>
         +-- probes/
@@ -31,6 +37,8 @@ Storage
 
     :: text ::
 
+    The three filter handlers — `gate`, `ignore`, and `skip` — never appear here. They claim matches and emit no work, so their directories are never created.
+
     Two invariants hold:
 
     - Everything dodot writes outside the dotfiles root lives under this tree. If it isn't here, dodot didn't put it there.
@@ -38,7 +46,7 @@ Storage
 
 2. The DataStore Trait
 
-    Defined in `datastore::DataStore`. Eleven methods, grouped by purpose.
+    Defined in `datastore::DataStore`. Fourteen methods, grouped by purpose.
 
     2.1. Link Creation
 
@@ -52,13 +60,24 @@ Storage
 
     2.2. Code Execution
 
-        `run_and_record(pack, handler, executable, arguments, sentinel, force) -> Result<()>`:
+        Four handlers are `CodeExecution` and write sentinels: `install`, `homebrew`, and `nix` — the run-once handlers, which spawn a command through `run_and_record` — and `external`, which fetches rather than spawns and keys its sentinel on an upstream signature. `dodot up` never wipes their state before re-applying, which is exactly what keeps a script from running on every deploy and an external from being re-downloaded on every deploy.
+
+        `run_and_record(pack, handler, command, sentinel, force) -> Result<()>`:
             Runs a command, records a sentinel on success. If the sentinel already exists and `force` is false, the command is skipped. The sentinel file stores `completed|{timestamp}`. The `force` flag on this method is how `--provision-rerun` is implemented; it does not appear on `HandlerIntent::Run`.
+
+            `command` is a `CommandSpec` — executable, arguments, and the environment to spawn with. See section 4.
+
+            On success it also writes a `<sentinel>.snapshot` sibling holding the bytes of the manifest that ran, and it names that manifest in the run's progress header. Which argument carries the manifest is declared per handler in `provisioners::PROVISIONERS`; a command with no descriptor there runs normally but names no file, so it gets no snapshot and a header naming the executable instead.
 
             Edge case: if the command succeeds but the sentinel write fails, a subsequent call re-runs the command. This is by design — re-running is safer than falsely marking as complete. Install scripts are expected to be idempotent for this reason.
 
+        `did_run(pack, handler, filename, current_hash) -> Result<DidRunStatus>`:
+            The three-way "has this file run, and is what ran current?" lookup the run-once handlers (`install`, `homebrew`, `nix`) plan against. Lists the handler directory for sentinels named `<filename>-<16 hex chars>`, whatever the hash, and answers `NeverRan` (none), `RanCurrent` (one matches `current_hash`), or `RanDifferent` (only other hashes) — the last carrying the prior hash and, when the sibling is on disk, the snapshot of the file as it was at that run.
+
+            Multiple non-matching sentinels tie-break on the most recently completed run, read from each sentinel's `completed|<unix-ts>` payload; unparseable payloads sort last, and a timestamp tie breaks on the sentinel filename so the answer is deterministic.
+
         `has_sentinel(pack, handler, sentinel) -> Result<bool>`:
-            Tests for sentinel existence.
+            Tests for sentinel existence. This is the external handler's check — it asks about one exact signature rather than about a family of hashes.
 
         `sentinel_path(pack, handler, sentinel) -> PathBuf`:
             Returns where a sentinel would be stored; useful for inspection and testing.
@@ -71,6 +90,9 @@ Storage
         `has_handler_state(pack, handler) -> Result<bool>`:
             Tests whether a handler has any state for a pack (any files in its directory).
 
+        `list_packs() -> Result<Vec<String>>`:
+            Lists the pack directory names that have a subtree under `packs/`. These are on-disk datastore keys (`010-nvim`), not display names. Because it walks the datastore rather than the dotfiles root, it is what finds state whose pack the repository has since deleted.
+
         `list_pack_handlers(pack) -> Result<Vec<String>>`:
             Lists handler names that have state for a pack. Used by `down` to discover what needs removal without re-running rule matching.
 
@@ -80,7 +102,10 @@ Storage
     2.4. Preprocessor Output
 
         `write_rendered_file(pack, handler, filename, content) -> Result<PathBuf>`:
-            Writes a regular (non-symlink) file under `packs/<pack>/<handler>/<filename>`. Used by preprocessors that produce content rather than pointing at existing files. Returns the absolute path.
+            Writes a regular (non-symlink) file under `packs/<pack>/<handler>/<filename>`. Used by preprocessors that produce content rather than pointing at existing files, and by the external handler for fetched content and its sentinels. Returns the absolute path. Idempotent — it overwrites.
+
+        `write_rendered_file_with_mode(pack, handler, filename, content, mode) -> Result<PathBuf>`:
+            The same, but applies `mode` at file-creation time so the bytes never sit on disk under a more permissive mode — what whole-file `age` / `gpg` plaintext needs. Required, not defaulted: every `DataStore` implementation has to provide it, precisely so none of them silently inherits a write-then-chmod fallback that is briefly permissive. `FilesystemDataStore` implements it with the atomic `Fs::write_file_with_mode` path.
 
         `write_rendered_dir(pack, handler, relative) -> Result<PathBuf>`:
             Creates an empty directory inside the datastore (mkdir -p semantics). Used for preprocessors that need to materialize directory entries, such as the unarchive preprocessor.
@@ -99,23 +124,35 @@ Storage
 
     CommandRunner:
 
+        pub struct CommandSpec<'a> {
+            pub executable:  &'a str,
+            pub arguments:   &'a [String],
+            pub environment: &'a [(String, String)],
+        }
+
         pub trait CommandRunner: Send + Sync {
-            fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput>;
+            fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput>;
         }
 
     :: rust ::
 
     Production uses `ShellCommandRunner`, which spawns a real subprocess. Tests typically use a mock that records calls and returns scripted outputs.
 
+    A spec's `environment` is *layered* onto the environment dodot is running with — `ShellCommandRunner` calls `Command::envs` and never `env_clear`, so the child keeps the user's `PATH`, `HOME`, and everything else, with the spec's rows overriding or adding on top. `CommandSpec::new(executable, arguments)` carries no rows and is what every caller outside provisioning uses; `CommandSpec::with_environment` is how a provisioning handler's descriptor rows reach the process.
+
 5. Sentinel Format
 
-    Sentinels are small files named `<source>-<checksum>`, where `<source>` is the originating filename (e.g., `install.sh`, `Brewfile`) and `<checksum>` is the first 16 hex characters of a SHA-256 hash of the input content. Example filename: `install.sh-a1b2c3d4e5f6a7b8`.
+    A run-once sentinel is a small file named `<basename>-<checksum>`, where `<basename>` is the matched file's own name (`install.sh`, `Brewfile`, `packages.nix`) and `<checksum>` is the first 8 bytes of `SHA-256(content)` hex-encoded — 16 hex characters. Example filename: `install.sh-a1b2c3d4e5f6a7b8`. SHA-256 is the only hash dodot computes here; the truncation is for readable directory listings, not for security.
 
-    The file content is `completed|{timestamp}` — one line, the literal string `completed`, a pipe, and a Unix epoch timestamp.
+    The content hashed is the content that would run: for a preprocessor-rendered file that is the rendered bytes held in memory, not whatever sits on disk, which is what lets `dodot status` and `up --dry-run` compute the right sentinel for a templated `install.sh` without materializing it.
 
-    Because the checksum is part of the sentinel name, any change to the input content produces a new sentinel name, which causes the handler to re-run automatically. This is how dodot detects that an `install.sh` has been edited or that a preprocessor produced different output on a new machine.
+    The file content is `completed|{timestamp}` — one line, the literal string `completed`, a pipe, and a Unix epoch timestamp. A successful run also leaves a `<sentinel>.snapshot` sibling holding the bytes that ran; that is what the `(N lines added, M removed)` summary and `dodot status --diff` read. Sentinels written before snapshots existed have no sibling, and their rows say `older version (no diff data)`.
 
-    Sentinels are cheap to inspect, cheap to delete, and contain no information you can't reproduce. Deleting one by hand is a supported way to force a re-run of its handler without using `--provision-rerun`.
+    The external handler names its sentinels differently, because what it keys on is an upstream signature rather than a local file's content: `<entry>-<sig>` for a `file` entry (the first 16 hex chars of the sha256 the user declared in `externals.toml`), `<entry>-git-<sha>` for a `git-repo` (the upstream HEAD it deployed), and `<entry>-archive-<sha>` — plus a hash of the member path for `archive-file` — for archives.
+
+    Because the checksum is part of the sentinel name, any change to the input content produces a new sentinel name — which is how dodot detects that an `install.sh` has been edited or that a preprocessor produced different output on a new machine. For the run-once handlers (install, homebrew, nix) detection is not application: [`DataStore::did_run`] reports the mismatch as `RanDifferent`, the executor skips the command with a "ran older version" notice, and applying the edit takes `dodot up --provision-rerun`. The external handler is the exception — a changed signature re-fetches on the spot, since there is no user-authored code to hold back.
+
+    Sentinels are cheap to inspect, cheap to delete, and contain no information you can't reproduce. Deleting them by hand is a supported way to force a re-run without `--provision-rerun` — but for a run-once handler it means every `<basename>-<hash>` sentinel for that file plus each one's `.snapshot` sibling. `run_and_record` never removes the sentinel it supersedes, so a file re-run a few times has several hashes on disk at once, and `did_run` answers `NeverRan` only when none of them is left.
 
 6. Shell Integration Script
 

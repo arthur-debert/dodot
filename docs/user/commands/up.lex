@@ -28,21 +28,24 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     2.3. Execute
 
-        For each pack, dodot wipes that pack's stored configuration-handler state (symlink/shell/path) and re-applies from current source. Provisioning handlers (install/homebrew/nix) are gated on content-hash sentinels, three ways: a file with no sentinel runs, a file whose sentinel matches its current bytes is skipped silently, and a file whose bytes have changed since the recorded run is skipped with a "ran older version" notice. dodot does not re-execute code you edited on its own; `--provision-rerun` applies the edit. After all packs are processed, the shell init script is regenerated and the deployment map is written.
+        For each pack, dodot wipes that pack's stored configuration-handler state (symlink/shell/path) and re-applies from current source. The run-once handlers (install/homebrew/nix) consult a content-hash sentinel first, and it answers three ways: a file with no sentinel runs, a file whose sentinel matches its current bytes is skipped silently, and a file whose bytes have changed since the recorded run is skipped with an `older version` notice. dodot does not re-execute code you edited on its own; `--provision-rerun` applies the edit. After all packs are processed, the shell init script is regenerated and the deployment map is written.
 
         The reconciliation in this phase is what makes `up` idempotent: deleting a source file from a pack and running `up` cleans up its previously-deployed symlink — there is no separate "reconcile" step.
 
 3. Configuration vs provisioning
 
-    Two categories of handler behave differently under `up`:
+    Handlers behave differently under `up` depending on what they produce:
 
     - *Configuration handlers* (`symlink`, `shell`, `path`) produce idempotent filesystem work. They run in full on every `up`.
-    - *Provisioning handlers* (`install`, `homebrew`, `nix`) run user-authored code. They are tracked by content-hash sentinels and skip on re-run — including when the source content has changed, which `up` reports rather than applies. Running code you edited is always an explicit request.
+    - *Run-once handlers* (`install`, `homebrew`, `nix`) run user-authored code. They are tracked by content-hash sentinels and skip on re-run — including when the source content has changed, which `up` reports rather than applies. Running code you edited is always an explicit request.
+    - *`external`* also executes code (it fetches remote files, git repos, and archives declared in `externals.toml`), but it decides for itself rather than freezing on a sentinel: it re-fetches when an entry's declared sha256 or its tracked upstream moves.
+
+    A run-once handler whose package manager isn't installed on this machine is reported, not failed: `up` emits no command, writes no sentinel, and raises no error, and the rest of the pack deploys as usual. The file gets a `homebrew not installed` / `nix not installed` row with a footnote naming the paths dodot probed. `install` has nothing to probe for — it runs a script through `bash` or `zsh`, not a package manager.
 
     Two flags interact with this split:
 
-    - `--no-provision` skips every code-execution handler on this run — the three above, plus `external`, whose `externals.toml` fetches are skipped along with them. Useful when you want a fast `up` that re-links configuration without paying for `brew bundle`, `nix profile install`, or your install script.
-    - `--provision-rerun` forces provisioning handlers to run whatever their sentinel says. This is how you apply an edited `install.sh`, `Brewfile`, or `packages.nix`, since a plain `up` reports the edit and leaves it pending. It also re-executes an *unchanged* file — confirming `brew bundle` is still happy, or re-running an install script after manually undoing what it did.
+    - `--no-provision` skips every code-execution handler on this run — all four of `install`, `homebrew`, `nix`, and `external`. Useful when you want a fast `up` that re-links configuration without paying for `brew bundle`, `nix profile install`, or your install script. Each skipped file still gets a row, labelled `skipped (--no-provision)` — the run reports the choice you made rather than the datastore state it never consulted, and the label stays distinct from a host-gated file's `gated out (…)`.
+    - `--provision-rerun` makes the run-once handlers run whatever their sentinel says. This is how you apply an edited `install.sh`, `Brewfile`, or `packages.nix`, since a plain `up` reports the edit and leaves it pending. It also re-executes an *unchanged* file — confirming `brew bundle` is still happy, or re-running an install script after manually undoing what it did. It has nothing to do with `external`, which is not sentinel-frozen, and nothing to do with `--force`, which is only about occupied symlink targets.
 
 4. Flags
 
@@ -112,7 +115,24 @@ The "make my live config match what's in this repo" command. Discovers your pack
 
     :: shell ::
 
-9. Watch out for
+9. Exit code, and what a failure costs
+
+    `dodot up` exits 0 when every operation succeeded and 1 when any of them failed — a provisioning command that exited non-zero, a symlink whose target was already occupied, or a cross-pack conflict that blocked the deploy. That is the same 1 `dodot transform check` returns for its findings, and it is what makes `dodot up && ./next-step.sh` stop instead of continuing against a machine that was never set up.
+
+    `--dry-run` always exits 0. It attempted nothing, so it has nothing to have failed. It also cannot tell you a script *would* fail: a preview never runs your scripts, so it lists what would run and stops there. Only a real `dodot up` can report that a script didn't work.
+
+    A failure is contained to the file that caused it. A `Brewfile` that fails is a failure row against `Brewfile`, carrying brew's own output — the pack's symlinks, `$PATH` entries, and shell init still deploy and still report, even though provisioning runs before all three. No sentinel is written for a file that failed, so the next `dodot up` runs it again with no flag needed.
+
+        # Only proceed if the machine is actually set up
+        dodot up && ./post-setup.sh
+
+        # In a script that should stop at the first problem
+        set -e
+        dodot up
+
+    :: shell ::
+
+10. Watch out for
 
     - *`--force` is local, not cross-pack.* It overwrites a file at the target location, but cross-pack conflicts (two packs pointing at the same path) ignore `--force` — the fix is in your packs, not in flag-twiddling.
     - *`.dodotignore`'d packs aren't reconciled.* Adding a `.dodotignore` marker to a previously-deployed pack stops it from being discovered, but `up` only reconciles discovered packs, so the previous deployment's symlinks are *not* cleaned up. Run `dodot down <pack>` *before* dropping the marker. See [./../handlers/controlling-activation.lex] §4.

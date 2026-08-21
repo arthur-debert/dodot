@@ -3,10 +3,11 @@
 //! Preprocessors expand files whose version-controlled source differs from
 //! the deployed artifact (templates, plists, encrypted secrets). The
 //! preprocessing phase runs before handler dispatch, producing virtual
-//! entries that downstream handlers (symlink, shell, path, install,
-//! homebrew) consume transparently.
+//! entries that downstream handlers (symlink, shell, path, external,
+//! homebrew, nix, install) consume transparently.
 //!
-//! See `docs/proposals/preprocessing-pipeline.lex` for the full design.
+//! See `docs/proposals/shipped/preprocessing-pipeline.lex` for the
+//! full design.
 
 pub mod age;
 pub mod baseline;
@@ -494,7 +495,10 @@ mod tests {
     /// runner that satisfies the trait works.
     struct NoopRunner;
     impl crate::datastore::CommandRunner for NoopRunner {
-        fn run(&self, _: &str, _: &[String]) -> Result<crate::datastore::CommandOutput> {
+        fn run(
+            &self,
+            _command: crate::datastore::CommandSpec<'_>,
+        ) -> Result<crate::datastore::CommandOutput> {
             unreachable!("default_registry tests do not invoke runners")
         }
     }

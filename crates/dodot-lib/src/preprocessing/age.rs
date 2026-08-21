@@ -32,7 +32,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::fs::Fs;
 use crate::preprocessing::{ExpandedFile, Preprocessor, TransformType};
 use crate::{DodotError, Result};
@@ -125,7 +125,7 @@ impl Preprocessor for AgePreprocessor {
         // `String::from_utf8_lossy` decode in the line-buffered
         // `run` path corrupts non-UTF-8 bytes — fatal for
         // whole-file secrets.
-        let out = self.runner.run_bytes(
+        let out = self.runner.run_bytes(CommandSpec::new(
             "age",
             &[
                 "--decrypt".into(),
@@ -133,7 +133,7 @@ impl Preprocessor for AgePreprocessor {
                 self.identity.to_string_lossy().to_string(),
                 source.to_string_lossy().to_string(),
             ],
-        )?;
+        ))?;
         if out.exit_code != 0 {
             let stderr = out.stderr.trim();
             // Map the most common diagnostic shapes to actionable
@@ -235,7 +235,12 @@ mod tests {
         }
     }
     impl CommandRunner for ScriptedRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut r = self.responses.lock().unwrap();
             if r.is_empty() {
                 return Err(DodotError::Other(format!(
@@ -295,14 +300,18 @@ mod tests {
         }
     }
     impl CommandRunner for ScriptedBytesRunner {
-        fn run(&self, _exe: &str, _args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
             unreachable!("ScriptedBytesRunner only supports run_bytes")
         }
         fn run_bytes(
             &self,
-            exe: &str,
-            args: &[String],
+            command: CommandSpec<'_>,
         ) -> Result<crate::datastore::CommandOutputBytes> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut r = self.responses.lock().unwrap();
             if r.is_empty() {
                 return Err(DodotError::Other(format!(

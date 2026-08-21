@@ -15,7 +15,7 @@ The read-only "what does dodot see?" command. For every pack and every source fi
     For each active pack, `status` shows these rows.
 
     - Every source file dodot saw, as separate icon, pack, filename, and status columns. The icon and filename are muted, the pack is regular, and only the status carries its severity colour.
-    - Files filtered out (`ignore` / `skip` / `gate`) and why they were filtered.
+    - Files the `skip` and `gate` handlers dropped, and why. Files the `ignore` handler claimed get no row at all — that drop is silent by design, the same contract as `.gitignore`.
     - Files affected by preprocessing — under their *post-preprocessing* filename, not the source filename. (A source `config.toml.tmpl` shows as `config.toml`.)
 
     Across packs, three more things surface.
@@ -24,14 +24,39 @@ The read-only "what does dodot see?" command. For every pack and every source fi
     - Packs whose `[pack] os` doesn't match the current host show in a separate "inactive on this OS" section.
     - Packs carrying `.dodotignore` follow the active rows after a blank line. They use `∅` as the icon, `.dodotignore` as the filename, and `ignored` as the status; there is no separate heading.
 
-    Status states for a single row, by handler family:
+    Every handler words its own status column. The three-state shape below is what you'll see day to day:
 
-        | Handler family    | Pending                                  | Deployed            | Error                                                |
-        | symlink           | pending                                  | linked              | target exists but isn't dodot's, or the link is broken |
-        | shell / path      | not sourced / not in PATH                | sourced / in PATH   | (rare — registration writes are atomic)              |
-        | install / homebrew| brew packages not installed              | ran / installed     | sentinel exists but its checksum no longer matches   |
+    Status states by handler:
+
+        | Handler    | Not deployed                  | Deployed                | Third state                                    |
+        | `symlink`  | `pending`                     | `linked`                | `broken: …` when the link chain doesn't verify |
+        | `shell`    | `not sourced`                 | `sourced`               | `syntax error`, or `exited N`                  |
+        | `path`     | `not in PATH`                 | `in PATH`               | `broken: …` when the link chain doesn't verify |
+        | `install`  | `never run`                   | `installed`             | `older version`                                |
+        | `homebrew` | `brew packages not installed` | `installed`             | `brew packages older version`                  |
+        | `nix`      | `nix packages not installed`  | `nix packages installed`| `nix packages older version`                   |
+        | `external` | `pending`                     | `deployed`              | —                                              |
+        | `skip`     | —                             | —                       | `skipped`                                      |
+        | `gate`     | —                             | —                       | `gated out (<label>)`                          |
+        | `ignore`   | —                             | —                       | no row — the drop is silent                    |
 
     :: table align=llll ::
+
+    Reading the third column:
+
+    - *`older version` is not an error.* It is the third normal state of the three run-once handlers (`install`, `homebrew`, `nix`): a recorded run exists, but the file's content has changed since. dodot does not re-run code you edited on its own — it reports the drift and holds. The label carries a line summary (`older version (3 lines added, 1 removed)`), and a warning footnote names the remedy: `dodot up --provision-rerun` applies the current content. `dodot status --diff` prints the full diff between what ran and what's on disk. A sentinel written before dodot started keeping snapshots reads `older version (no diff data)`.
+    - *A `symlink` or `path` row goes `broken:` when the chain doesn't verify* — a missing source file, a data link that isn't a symlink, a link pointing somewhere else. A row can also come back *stale* (the link is healthy but current config would put it elsewhere, so a re-deploy moves it), or, when a file that isn't dodot's already occupies the target path, as a warning with the reason in a footnote — that's the one `dodot up --force` exists for.
+    - *`shell` rows can carry runtime evidence.* `syntax error` means `dodot up`'s pre-flight recorded a parse failure in the file; `exited N` means the newest shell-init run that sourced it exited non-zero. The `exited N` verdict only appears with `[profiling]` enabled, since nothing else observes those runs.
+
+    Three states cut across handlers rather than belonging to one:
+
+    - `skipped (--no-provision)` on any file claimed by `install`, `homebrew`, `nix`, or `external` when that flag was passed to `up` — the run reports the choice you made instead of the datastore state it never consulted.
+    - `homebrew not installed` / `nix not installed` (skipped style) when the package manager isn't on this machine and the file has never run. dodot writes no sentinel and reports no error; the rest of the pack deploys normally. The warning footnote names every location it probed, in probe order, and what installing the manager would change: "homebrew is not installed — probed /opt/homebrew/bin/brew, …, /usr/local/bin/brew. Nothing was recorded, so installing homebrew (https://brew.sh) and re-running `dodot up` runs this file." The real footnote spells the paths out in full; see [./../handlers/homebrew.lex] and [./../handlers/nix.lex] for each manager's list.
+    - `cannot probe homebrew` / `cannot probe nix` (broken style) when a candidate path could not be examined at all. That one is an error footnote: dodot could not answer the question it was asked.
+
+    A receipt outlives the manager. If a `Brewfile` ran and brew has since been removed, the row stays `installed` — the file *did* run, and brew leaving afterwards doesn't undo it — with a warning footnote saying so: "homebrew is not installed (probed …) — the receipt stands: Brewfile ran when it was". If that same file is also `older version`, the footnote adds that the re-run will skip until the manager is back.
+
+    `install` never reports an absent manager: it runs a script through `bash` or `zsh`, not a package manager, so there is nothing to probe for.
 
     Below the rows, `status` reports whether shells are actually loading dodot — see [#3].
 
@@ -53,20 +78,27 @@ The read-only "what does dodot see?" command. For every pack and every source fi
 4. Display options
 
     Display options:
-        | Flag           | Effect                                                                 |
-        | `--full`       | Show every file per pack (the default).                                |
-        | `--short`      | Collapse each pack to a one-line summary.                              |
-        | `--by-name`    | List packs in discovery order (the default).                           |
-        | `--by-status`  | Group packs by aggregated status: deployed / pending / error.          |
+        | Flag            | Effect                                                                                 |
+        | `--full`        | Show every file per pack (the default).                                                |
+        | `--short`       | Collapse each pack to a one-line summary.                                              |
+        | `--by-name`     | List packs in discovery order (the default).                                           |
+        | `--by-status`   | Group packs by aggregated status: deployed / pending / error.                           |
+        | `--diff`        | For run-once files reporting `older version`, print a unified diff of what ran vs. what's on disk. |
+        | `--check-drift` | Hash the deployed externals and report divergence. Opt-in because it can be slow.       |
 
     :: table align=ll ::
 
     File-column icons:
 
     - `➞` symlink
-    - `⚙` shell source / homebrew
+    - `⚙` shell source, `Brewfile`, or `packages.nix` — the three handlers that share it are told apart by the filename and the status text
     - `+` added to `$PATH`
     - `×` install script
+    - `↓` external (fetched into place from `externals.toml`)
+    - `·` filtered out by `skip` or `gate`
+    - `∅` a pack carrying `.dodotignore`
+
+    A file the `ignore` handler claimed has no icon because it has no row.
 
     Full rows expand to the detected terminal width. The pack column is padded so filenames align, status is right-aligned to the terminal edge, and long filenames are clipped in the middle with an ellipsis. When terminal width cannot be detected, dodot uses 80 columns.
 

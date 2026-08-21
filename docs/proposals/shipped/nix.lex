@@ -138,7 +138,7 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
         The handler uses the same hash + sentinel + snapshot machinery as `install` and `homebrew`, via the shared `RunOnceHandler` introduced in #169. On each `dodot up`:
 
-            1. The handler hashes `packages.nix` (Blake3, rendered bytes preferred; on-disk bytes as fallback).
+            1. The handler hashes `packages.nix` (SHA-256 truncated to its first 8 bytes, rendered as 16 hex characters; rendered bytes preferred, on-disk bytes as fallback).
             2. `DataStore::did_run` classifies the file as `NeverRan`, `RanCurrent`, or `RanDifferent` against any previously recorded sentinel for this (pack, "nix", "packages.nix") triple.
             3. `NeverRan` → run the install (sentinel + `<sentinel>.snapshot` written on success). `RanCurrent` → skip silently. `RanDifferent` → skip with notice; `dodot status` reports "nix packages older version (N lines added, M removed)".
             4. `dodot up --provision-rerun` bypasses both skip cases and re-runs against the current content. `--no-provision` skips the handler entirely, as for other Provision-phase handlers.
@@ -198,7 +198,7 @@ Proposal: Nix Handler for Declarative Per-Pack Provisioning
 
         - *Touch NixOS `configuration.nix` or nix-darwin `darwin-configuration.nix`.* System-level configuration requires root and has a blast radius incompatible with `dodot up`'s "edit and re-run cheaply" model. The privilege boundary alone disqualifies it.
 
-        - *Auto-install Nix.* If `nix` is not on PATH, the handler fails loudly. Same posture as Brewfile with `brew`. Bootstrapping a package manager is not a dotfile manager's job.
+        - *Auto-install Nix.* Bootstrapping a package manager is not a dotfile manager's job. Same posture as Brewfile with `brew`. (As shipped, a missing `nix` is not a failure either: the planner finds no `nix` at the probed paths, emits no intent and records nothing, and the file is reported as `nix not installed` while the rest of the pack deploys.)
 
         - *Remove packages.* See §4. dodot says "ensure installed", and that is the whole commitment.
 

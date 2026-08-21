@@ -30,12 +30,29 @@ pub enum Operation {
     },
 
     /// Execute a command and record a sentinel on success.
+    ///
+    /// `relative_path` is the run-once file the command was built
+    /// from, as a pack-relative path (`install.sh`, `Brewfile`,
+    /// `tools/packages.nix`) — the file this operation's outcome is
+    /// reported against. A failed run flips that file's status row to
+    /// `error`; without it the report could only name the command
+    /// line, which matches no row the user recognizes. It is the full
+    /// relative path and not the basename because status rows are
+    /// keyed that way, so two same-named files in one pack
+    /// (`install.sh` and `extras/install.sh`) stay distinguishable.
+    ///
+    /// `environment` holds the variables the command is spawned
+    /// with, layered onto the environment dodot itself runs with —
+    /// the child inherits everything else. It is empty for a command
+    /// that needs nothing set.
     RunCommand {
         pack: String,
         handler: String,
         executable: String,
         arguments: Vec<String>,
+        environment: Vec<(String, String)>,
         sentinel: String,
+        relative_path: String,
     },
 
     /// Check whether a sentinel exists (query, not mutation).
@@ -127,19 +144,35 @@ pub enum HandlerIntent {
     /// silently when the recorded hash matches, surface a
     /// "ran older version" notice when it doesn't.
     ///
-    /// `filename` is the basename of the run-once file (e.g.
-    /// `install.sh`, `Brewfile`, `packages.nix`) — used by `did_run`
-    /// to find all sentinels for the same file across content
-    /// revisions. `content_hash` is the 16-char hex digest of the
-    /// current file contents, also embedded as the suffix of
-    /// `sentinel`.
+    /// `relative_path` is the run-once file's path relative to the
+    /// pack root (e.g. `install.sh`, `Brewfile`,
+    /// `extras/packages.nix`). It identifies the file for reporting —
+    /// status rows are keyed by the same relative path. Its basename
+    /// is separately what `did_run` keys on to find all sentinels for
+    /// the same file across content revisions, since sentinels are
+    /// named `<basename>-<hash>`. `content_hash` is the 16-char hex
+    /// digest of the current file contents, also embedded as the
+    /// suffix of `sentinel`.
+    /// `environment` carries the variables the command is spawned
+    /// with — the handler's rows from [`crate::provisioners`],
+    /// layered onto dodot's own environment rather than replacing
+    /// it. Empty for a handler that declares none.
     Run {
         pack: String,
         handler: String,
+        /// The program to spawn.
+        ///
+        /// For a handler dodot locates itself (`homebrew`, `nix`)
+        /// this is the absolute path the availability probe found,
+        /// substituted by the planner — the run spawns the manager
+        /// the probe answered for rather than re-asking the OS
+        /// through `PATH`. For `install`, whose interpreter is a
+        /// `PATH` lookup by design, it is the bare program name.
         executable: String,
         arguments: Vec<String>,
+        environment: Vec<(String, String)>,
         sentinel: String,
-        filename: String,
+        relative_path: String,
         content_hash: String,
     },
 
@@ -252,11 +285,14 @@ mod tests {
             handler: "install".into(),
             executable: "echo".into(),
             arguments: vec!["hi".into()],
+            environment: vec![("DODOT_TEST".into(), "1".into())],
             sentinel: "s1".into(),
+            relative_path: "install.sh".into(),
         };
         let json = serde_json::to_string(&op).unwrap();
         assert!(json.contains("RunCommand"));
         assert!(json.contains("echo"));
         assert!(json.contains("hi"));
+        assert!(json.contains("DODOT_TEST"));
     }
 }

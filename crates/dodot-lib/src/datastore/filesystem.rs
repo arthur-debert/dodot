@@ -1,7 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use crate::datastore::{CommandRunner, DataStore, DidRunStatus};
+use crate::datastore::{CommandRunner, CommandSpec, DataStore, DidRunStatus};
 use crate::fs::Fs;
 use crate::paths::Pather;
 use crate::{DodotError, Result};
@@ -13,8 +13,10 @@ use crate::{DodotError, Result};
 /// lives at `<filename>-<hash>.snapshot` in the same handler data dir
 /// (`<datastore>/packs/<pack>/<handler>/`). Snapshots are plain
 /// regular files — users who want to manage run-once state by hand
-/// can delete the sentinel + snapshot pair to roll a file back to
-/// `NeverRan`.
+/// can delete sentinel + snapshot pairs to roll a file back to
+/// `NeverRan`. That takes every `<filename>-<hash>` pair for the
+/// file: this method never removes the sentinel it supersedes, and
+/// `did_run` answers `NeverRan` only when none is left.
 ///
 /// Sentinels written before snapshots existed have no sibling —
 /// `did_run` surfaces `previous_snapshot: None` then, so `dodot status`
@@ -200,11 +202,15 @@ impl DataStore for FilesystemDataStore {
         &self,
         pack: &str,
         handler: &str,
-        executable: &str,
-        arguments: &[String],
+        command: CommandSpec<'_>,
         sentinel: &str,
         force: bool,
     ) -> Result<()> {
+        let CommandSpec {
+            executable,
+            arguments,
+            ..
+        } = command;
         if !force && self.has_sentinel(pack, handler, sentinel)? {
             return Ok(());
         }
@@ -214,19 +220,23 @@ impl DataStore for FilesystemDataStore {
         // whether it succeeded. The script's own stdout/stderr still flows
         // through the runner as before.
         //
-        // The script path is the last argument by convention: install
-        // invokes `bash -- <path>` / `zsh -- <path>` and homebrew invokes
-        // `brew bundle --file <path>`. Using the last arg directly (vs a
-        // filename-with-dot heuristic) means extensionless install scripts
-        // — which the install handler explicitly supports — also get a
-        // header block printed.
-        let script_path = arguments.last().cloned();
-        let display_name = script_path
-            .as_deref()
-            .and_then(|p| Path::new(p).file_name())
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| executable.to_string());
-        let header = format!("==== {pack} → {handler} → {display_name}");
+        // Which argument holds the file being run is declared per
+        // handler in `crate::provisioners`, not guessed from argument
+        // shape: `install` invokes `bash -- <path>`, `homebrew`
+        // invokes `brew bundle --file <path>`, and `nix` puts the
+        // manifest mid-command. Reading a declared position also
+        // keeps extensionless install scripts — which the install
+        // handler explicitly supports — working, where a
+        // filename-with-dot heuristic would not. A handler with no
+        // descriptor (or a command shorter than its declared
+        // position) names no file: the header falls back to the
+        // executable and no snapshot is written.
+        let script_path =
+            crate::provisioners::manifest_argument(handler, arguments).map(str::to_owned);
+        let header = format!(
+            "==== {pack} → {handler} → {}",
+            progress_label(executable, script_path.as_deref())
+        );
         let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
         let dim = if tty { "\x1b[2m" } else { "" };
         let green = if tty { "\x1b[32m" } else { "" };
@@ -251,7 +261,7 @@ impl DataStore for FilesystemDataStore {
             }
         }
 
-        let result = self.runner.run(executable, arguments);
+        let result = self.runner.run(command);
         match &result {
             Ok(_) => eprintln!("{header}  {green}OK{reset}"),
             Err(_) => eprintln!("{header}  {red}FAILED{reset}"),
@@ -271,8 +281,8 @@ impl DataStore for FilesystemDataStore {
 
         // Snapshot the file we just ran so that a future `did_run`
         // can return its previous content for diff display when the
-        // current file's hash differs. The path of the file ran is
-        // the last argument by convention — same as the header-block
+        // current file's hash differs. The path of the file ran comes
+        // from the handler's descriptor — same as the header-block
         // read above. Snapshot writes are best-effort: if the read or
         // write fails, log and move on. The sentinel itself is
         // already recorded, so the user's run state is correct; only
@@ -491,6 +501,18 @@ impl DataStore for FilesystemDataStore {
     }
 }
 
+/// What a run's progress header calls the thing being run.
+///
+/// The manifest's file name when the handler's descriptor named one
+/// (`packages.nix`, `Brewfile`, `install.sh`), falling back to the
+/// executable for a command that names no manifest.
+fn progress_label(executable: &str, manifest: Option<&str>) -> String {
+    manifest
+        .and_then(|p| Path::new(p).file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| executable.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,10 +574,12 @@ mod tests {
         assert!(extract_header_block("#!/bin/bash\necho hi\n").is_empty());
     }
 
-    /// Mock command runner that records calls and can be configured to
+    /// Mock command runner that records the calls it was handed —
+    /// command line and environment both — and can be configured to
     /// succeed or fail.
     struct MockCommandRunner {
         calls: Mutex<Vec<String>>,
+        environments: Mutex<Vec<Vec<(String, String)>>>,
         should_fail: bool,
     }
 
@@ -563,6 +587,7 @@ mod tests {
         fn new() -> Self {
             Self {
                 calls: Mutex::new(Vec::new()),
+                environments: Mutex::new(Vec::new()),
                 should_fail: false,
             }
         }
@@ -570,6 +595,7 @@ mod tests {
         fn failing() -> Self {
             Self {
                 calls: Mutex::new(Vec::new()),
+                environments: Mutex::new(Vec::new()),
                 should_fail: true,
             }
         }
@@ -577,12 +603,23 @@ mod tests {
         fn calls(&self) -> Vec<String> {
             self.calls.lock().unwrap().clone()
         }
+
+        fn environments(&self) -> Vec<Vec<(String, String)>> {
+            self.environments.lock().unwrap().clone()
+        }
     }
 
     impl CommandRunner for MockCommandRunner {
-        fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable,
+                arguments,
+                environment,
+                ..
+            } = command;
             let cmd_str = format!("{} {}", executable, arguments.join(" "));
             self.calls.lock().unwrap().push(cmd_str.trim().to_string());
+            self.environments.lock().unwrap().push(environment.to_vec());
             if self.should_fail {
                 Err(crate::DodotError::CommandFailed {
                     command: cmd_str.trim().to_string(),
@@ -776,8 +813,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["hello".into()],
+            CommandSpec::new("echo", &["hello".into()]),
             "install.sh-abc",
             false,
         )
@@ -795,14 +831,72 @@ mod tests {
     }
 
     #[test]
+    fn run_and_record_hands_the_declared_environment_to_the_runner() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        ds.run_and_record(
+            "dev",
+            "homebrew",
+            CommandSpec::with_environment(
+                "brew",
+                &["bundle".into()],
+                &[("HOMEBREW_NO_AUTO_UPDATE".into(), "1".into())],
+            ),
+            "Brewfile-abc",
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            runner.environments(),
+            vec![vec![(
+                "HOMEBREW_NO_AUTO_UPDATE".to_string(),
+                "1".to_string()
+            )]]
+        );
+    }
+
+    #[test]
+    fn run_and_record_passes_no_environment_when_none_is_declared() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        ds.run_and_record(
+            "vim",
+            "install",
+            CommandSpec::new("echo", &["hi".into()]),
+            "s1",
+            false,
+        )
+        .unwrap();
+
+        // Empty, not absent: the child still inherits dodot's own
+        // environment — the runner just layers nothing onto it.
+        assert_eq!(runner.environments(), vec![Vec::new()]);
+    }
+
+    #[test]
     fn run_and_record_is_idempotent() {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
 
-        ds.run_and_record("vim", "install", "echo", &["first".into()], "s1", false)
-            .unwrap();
-        ds.run_and_record("vim", "install", "echo", &["second".into()], "s1", false)
-            .unwrap();
+        ds.run_and_record(
+            "vim",
+            "install",
+            CommandSpec::new("echo", &["first".into()]),
+            "s1",
+            false,
+        )
+        .unwrap();
+        ds.run_and_record(
+            "vim",
+            "install",
+            CommandSpec::new("echo", &["second".into()]),
+            "s1",
+            false,
+        )
+        .unwrap();
 
         assert_eq!(runner.calls(), vec!["echo first"]);
     }
@@ -814,7 +908,13 @@ mod tests {
         let ds = FilesystemDataStore::new(env.fs.clone(), env.paths.clone(), runner);
 
         let err = ds
-            .run_and_record("vim", "install", "bad-cmd", &[], "s1", false)
+            .run_and_record(
+                "vim",
+                "install",
+                CommandSpec::new("bad-cmd", &[]),
+                "s1",
+                false,
+            )
             .unwrap_err();
 
         assert!(
@@ -961,8 +1061,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["a".into()],
+            CommandSpec::new("echo", &["a".into()]),
             "install.sh-aaa",
             false,
         )
@@ -970,8 +1069,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["b".into()],
+            CommandSpec::new("echo", &["b".into()]),
             "install.sh-bbb",
             false,
         )
@@ -1198,8 +1296,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["hi".into()],
+            CommandSpec::new("echo", &["hi".into()]),
             "install.sh-abcdef0123456789",
             false,
         )
@@ -1223,12 +1320,18 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &[env
-                .dotfiles_root
-                .join("vim/install.sh")
-                .to_string_lossy()
-                .into()],
+            CommandSpec::new(
+                "echo", // The install handler's argv shape — `<interpreter> --
+                // <script>` — because the snapshot comes from the
+                // manifest position the `install` descriptor declares.
+                &[
+                    "--".into(),
+                    env.dotfiles_root
+                        .join("vim/install.sh")
+                        .to_string_lossy()
+                        .into(),
+                ],
+            ),
             "install.sh-aaaaaaaaaaaaaaaa",
             false,
         )
@@ -1404,8 +1507,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "bash",
-            &["--".into(), abs.to_string_lossy().into()],
+            CommandSpec::new("bash", &["--".into(), abs.to_string_lossy().into()]),
             "install.sh-abcdef0123456789",
             false,
         )
@@ -1423,6 +1525,77 @@ mod tests {
     }
 
     #[test]
+    fn run_and_record_writes_snapshot_for_a_nix_run() {
+        // The defect this fixes: nix's command ends in
+        // `--extra-experimental-features "nix-command flakes"`, so
+        // taking the last argument for the manifest snapshotted
+        // nothing and left `dodot status --diff` unavailable for
+        // `packages.nix`. The descriptor names argument 7 instead.
+        use crate::handlers::nix::NixCommand;
+        use crate::handlers::run_once::RunOnceCommand;
+
+        let manifest_body = "{ pkgs ? import <nixpkgs> {} }: with pkgs; [ ripgrep ]";
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("packages.nix", manifest_body)
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        let abs = env.dotfiles_root.join("tools/packages.nix");
+        let (executable, arguments) = NixCommand.command_for(&abs);
+        assert_ne!(
+            arguments.last().map(String::as_str),
+            Some(abs.to_string_lossy().as_ref()),
+            "test is only meaningful while the manifest is not the last argument"
+        );
+
+        ds.run_and_record(
+            "tools",
+            "nix",
+            CommandSpec::new(&executable, &arguments),
+            "packages.nix-abcdef0123456789",
+            false,
+        )
+        .unwrap();
+
+        let snapshot_path = env
+            .paths
+            .handler_data_dir("tools", "nix")
+            .join("packages.nix-abcdef0123456789.snapshot");
+        assert!(
+            env.fs.exists(&snapshot_path),
+            "nix run wrote no snapshot sibling"
+        );
+        assert_eq!(
+            env.fs.read_to_string(&snapshot_path).unwrap(),
+            manifest_body
+        );
+    }
+
+    #[test]
+    fn progress_label_names_the_manifest_not_the_last_argument() {
+        use crate::handlers::nix::NixCommand;
+        use crate::handlers::run_once::RunOnceCommand;
+
+        let (executable, arguments) =
+            NixCommand.command_for(std::path::Path::new("/dotfiles/tools/packages.nix"));
+        let manifest = crate::provisioners::manifest_argument("nix", &arguments);
+        assert_eq!(
+            progress_label(&executable, manifest),
+            "packages.nix",
+            "the header used to print `nix-command flakes` here"
+        );
+    }
+
+    #[test]
+    fn progress_label_falls_back_to_the_executable() {
+        // A handler with no descriptor names no manifest — the run
+        // still happens, the header just says what ran.
+        assert_eq!(progress_label("echo", None), "echo");
+    }
+
+    #[test]
     fn run_and_record_snapshot_failure_does_not_fail_run() {
         // If the script path can't be read, the sentinel still records
         // and run_and_record succeeds — snapshot is best-effort.
@@ -1433,8 +1606,7 @@ mod tests {
         ds.run_and_record(
             "vim",
             "install",
-            "echo",
-            &["--".into(), ghost.to_string_lossy().into()],
+            CommandSpec::new("echo", &["--".into(), ghost.to_string_lossy().into()]),
             "missing.sh-abcdef0123456789",
             false,
         )

@@ -287,7 +287,10 @@ assert_install_not_ran() {
 	fi
 }
 
-# Assert that the brew mock was invoked.
+# Assert that the brew mock ran a `brew bundle`.
+#
+# The mock logs `bundle` and nothing else — see install_brew_mock for
+# why — so the log's existence is exactly "the Brewfile ran".
 # Usage: install_brew_mock; dodot up
 #        assert_brew_invoked
 assert_brew_invoked() {
@@ -301,16 +304,23 @@ assert_brew_invoked() {
 }
 
 # Assert that the brew mock was invoked with specific arguments.
-# Each argument is matched as a fixed-string substring against the log.
+# Each argument is matched as a fixed-string substring, and all of them
+# must match the SAME logged call — one line per invocation — so the
+# assertion cannot be satisfied by patterns scattered across different
+# brew calls.
 # Usage: assert_brew_invoked_with "bundle" "--file"
 assert_brew_invoked_with() {
 	local log="$HOME/.dodot-markers/brew.log"
 
 	assert_brew_invoked
 
+	local rows
+	rows=$(cat "$log")
 	for pattern in "$@"; do
-		if ! grep -q -F -- "$pattern" "$log"; then
-			echo "expected brew log to contain '$pattern'" >&2
+		rows=$(printf '%s\n' "$rows" | grep -F -- "$pattern" || true)
+		if [[ -z "$rows" ]]; then
+			echo "expected a single brew call matching all of: $*" >&2
+			echo "  no logged call contains '$pattern' alongside the earlier patterns" >&2
 			echo "  actual log:" >&2
 			cat "$log" >&2
 			return 1
@@ -318,7 +328,44 @@ assert_brew_invoked_with() {
 	done
 }
 
-# Assert that the brew mock was NOT invoked.
+# Assert that the brew mock saw a HOMEBREW_* variable with a given value.
+#
+# The third argument scopes the assertion to one invocation: each env-log
+# row ends with `:: brew <argv>`, so passing a substring of that argv
+# checks the variable for the call that argv identifies rather than for
+# any brew call in the run. Omit it only when the run has a single brew
+# invocation.
+#
+# Usage: assert_brew_env "HOMEBREW_NO_AUTO_UPDATE" "1" "bundle"
+assert_brew_env() {
+	local name="$1" value="$2" context="${3:-}"
+	local log="$HOME/.dodot-markers/brew-env.log"
+
+	if [[ ! -f "$log" ]]; then
+		echo "expected brew env log at $log, but it does not exist" >&2
+		echo "  hint: did you call install_brew_mock before dodot up?" >&2
+		return 1
+	fi
+
+	local rows
+	rows=$(grep -F -- "$name=$value" "$log" || true)
+	if [[ -n "$context" ]]; then
+		rows=$(printf '%s\n' "$rows" | grep -F -- "$context" || true)
+	fi
+
+	if [[ -z "$rows" ]]; then
+		if [[ -n "$context" ]]; then
+			echo "expected a brew call matching '$context' to be spawned with '$name=$value'" >&2
+		else
+			echo "expected brew to be spawned with '$name=$value'" >&2
+		fi
+		echo "  actual env log:" >&2
+		cat "$log" >&2
+		return 1
+	fi
+}
+
+# Assert that the brew mock ran no `brew bundle`.
 # Usage: assert_brew_not_invoked
 assert_brew_not_invoked() {
 	local log="$HOME/.dodot-markers/brew.log"

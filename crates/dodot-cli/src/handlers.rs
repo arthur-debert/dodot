@@ -23,10 +23,11 @@ use dodot_lib::safety_lock::OsPathProbe;
 use crate::safety;
 
 /// Side-channel exit code set by handlers that succeeded in producing
-/// output but want the process to exit non-zero (e.g.
-/// `dodot transform check` when it found divergence). `main.rs` reads
-/// this after the dispatch loop and calls `std::process::exit` if it's
-/// non-zero. Default 0 — handlers that don't set it have no effect.
+/// output but want the process to exit non-zero — `dodot up` when an
+/// operation failed, `dodot transform check` when it found divergence.
+/// `main.rs` reads this after the dispatch loop and calls
+/// `std::process::exit` if it's non-zero. Default 0 — handlers that
+/// don't set it have no effect.
 ///
 /// Why a side-channel: standout's `Output` enum only carries
 /// Render/Silent/Binary; there's no exit-code variant. Returning `Err`
@@ -152,6 +153,15 @@ pub fn status_handler(
     Ok(Output::Render(result))
 }
 
+/// `dodot up [packs…]` — deploy the selected packs.
+///
+/// Exit code 0 when every operation succeeded, 1 when any failed —
+/// a provisioning command that exited non-zero, an occupied symlink
+/// target, or a cross-pack conflict that blocked the whole deploy.
+/// The report still renders either way; the code is threaded out
+/// through [`PENDING_EXIT_CODE`] so a bootstrap script chaining
+/// `dodot up && …` stops instead of continuing against a machine that
+/// was not set up. `--dry-run` attempted nothing and always exits 0.
 pub fn up_handler(
     matches: &clap::ArgMatches,
     cmd: &CommandContext,
@@ -163,6 +173,7 @@ pub fn up_handler(
     // — `up` and `status` output stay consistent.
     let result = commands::up::up_or_status_for_conflict(filter.as_deref(), &ctx)?;
     print_warnings(&result.warnings);
+    PENDING_EXIT_CODE.store(result.exit_code(), Ordering::Relaxed);
     Ok(Output::Render(result))
 }
 
@@ -1154,7 +1165,10 @@ fn try_prompt_invalidate_cfprefsd() -> Result<(), anyhow::Error> {
             // prompt purposes (the cache is cleared either way: an
             // empty cache is the desired end state).
             let runner = ctx.command_runner.as_ref();
-            let result = runner.run("killall", &["cfprefsd".into()]);
+            let result = runner.run(dodot_lib::datastore::CommandSpec::new(
+                "killall",
+                &["cfprefsd".into()],
+            ));
             match result {
                 Ok(_) => eprintln!("Ran `killall cfprefsd`."),
                 Err(e) => eprintln!(

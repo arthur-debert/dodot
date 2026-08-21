@@ -157,10 +157,12 @@ fn main() {
                 handlers::maybe_prompt_install_ladder();
                 handlers::maybe_prompt_invalidate_cfprefsd();
             }
-            // `dodot transform check` may have set a non-zero exit code
-            // via PENDING_EXIT_CODE; the pre-commit hook counts on the
-            // process exiting 1. Read after print so the user still
-            // sees the rendered report when we're about to exit.
+            // `dodot up` (an operation failed) and `dodot transform
+            // check` (divergence found) may have set a non-zero exit
+            // code via PENDING_EXIT_CODE; the pre-commit hook and any
+            // script chaining off `up` count on the process exiting 1.
+            // Read after print so the user still sees the rendered
+            // report when we're about to exit.
             let pending = handlers::PENDING_EXIT_CODE.load(std::sync::atomic::Ordering::Relaxed);
             if pending != 0 {
                 std::process::exit(pending);
@@ -531,7 +533,10 @@ fn build_clap_command() -> ClapCommand {
         .subcommand(
             ClapCommand::new("status")
                 .about("Show deployment status of packs")
-                .after_help("Icons: ➞ symlink  ⚙ shell/homebrew  + path  × install script")
+                .after_help(
+                    "Icons: ➞ symlink  ⚙ shell/homebrew/nix  + path  \
+                     × install script  ↓ external  · skipped or gated out",
+                )
                 .arg(
                     Arg::new("packs")
                         .help("Pack names to show (all if omitted)")
@@ -569,13 +574,13 @@ fn build_clap_command() -> ClapCommand {
                 .arg(
                     Arg::new("no-provision")
                         .long("no-provision")
-                        .help("Skip install scripts and Brewfile")
+                        .help("Skip every code-execution handler for this run: install scripts, Brewfile, packages.nix, and externals.toml fetches")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(
                     Arg::new("provision-rerun")
                         .long("provision-rerun")
-                        .help("Force re-run of install scripts")
+                        .help("Re-run run-once handlers (install scripts, Brewfile, packages.nix) even when a sentinel records an earlier successful run")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(

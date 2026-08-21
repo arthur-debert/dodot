@@ -27,7 +27,7 @@ Getting started
     Two ideas, end-to-end:
 
     - *Packs.* Each top-level directory under your dotfiles root is a pack. The grouping criterion is up to you — by application, by environment, by usage pattern. Packs are turned up or down as a unit.
-    - *Filename conventions.* Inside a pack, filenames decide what dodot does with each file. `Brewfile` runs `brew bundle`. `*.sh` at pack root is sourced into your shell. `bin/` is added to `$PATH`. `install.sh` runs once. Everything else is symlinked under `~/.config/<pack>/`.
+    - *Filename conventions.* Inside a pack, filenames decide what dodot does with each file. `Brewfile` runs `brew bundle`; `packages.nix` runs `nix profile install`. `*.sh` at pack root is sourced into your shell. `bin/` is added to `$PATH`. `install.sh` runs once. `README`, `LICENSE` and friends are skipped rather than deployed. Everything else is symlinked under `~/.config/<pack>/`.
 
     The convention is rooted in common usage patterns, so for most repos the default layout is the most natural one. When it doesn't fit, you override — either by renaming files or by setting overrides in `.dodot.toml`.
 
@@ -177,7 +177,7 @@ Getting started
     - [./adopting.lex] — moving existing dotfiles from `$HOME` and `~/.config/` into packs.
     - [./shell-integration.lex] — the shell hookup in detail, and how to tell whether it's working.
     - [./paths.lex] — where files end up at deploy time.
-    - [./handlers.lex] — index of all eight handlers.
+    - [./handlers.lex] — index of all ten handlers.
     - [./filters.lex] — keeping files out of dispatch.
     - [./templates.lex] — per-host config via `*.tmpl` rendering.
     - [./secrets.lex] — value injection and whole-file decryption.

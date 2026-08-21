@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::config::ConfigManager;
-use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+use crate::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
 use crate::fs::Fs;
 use crate::packs::orchestration::ExecutionContext;
 use crate::paths::Pather;
@@ -12,7 +12,7 @@ use crate::Result;
 
 pub(super) struct MockCommandRunner;
 impl CommandRunner for MockCommandRunner {
-    fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
+    fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
         Ok(CommandOutput {
             exit_code: 0,
             stdout: String::new(),
@@ -46,7 +46,12 @@ impl CannedRunner {
 }
 
 impl CommandRunner for CannedRunner {
-    fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+    fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+        let CommandSpec {
+            executable: exe,
+            arguments: args,
+            ..
+        } = command;
         let mut full = vec![exe.to_string()];
         full.extend(args.iter().cloned());
         self.responses
@@ -89,6 +94,9 @@ pub(super) fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         env_stamp: Default::default(),
         tty: false,
         shell_probe: crate::shell::ProbePolicy::Never,
+        provision_host: Arc::new(
+            crate::provisioners::availability::ProvisionHost::assume_present(),
+        ),
         shell_env: crate::shell::ShellEnv::default(),
     }
 }
@@ -123,6 +131,9 @@ pub(super) fn make_ctx_with_runner(
         env_stamp: Default::default(),
         tty: false,
         shell_probe: crate::shell::ProbePolicy::Never,
+        provision_host: Arc::new(
+            crate::provisioners::availability::ProvisionHost::assume_present(),
+        ),
         shell_env: crate::shell::ShellEnv::default(),
     }
 }

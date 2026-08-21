@@ -81,6 +81,19 @@ pub trait DataStore: Send + Sync {
     /// Idempotent: if the sentinel already exists, the command is not
     /// re-run. The sentinel file stores `completed|{timestamp}`.
     ///
+    /// Alongside the sentinel this writes a `<sentinel>.snapshot`
+    /// sibling holding the bytes of the manifest that ran, and names
+    /// that manifest in the run's progress header. Which argument
+    /// carries the manifest is declared per handler in
+    /// [`crate::provisioners`] — a handler with no descriptor there
+    /// runs normally but names no file, so it gets no snapshot and a
+    /// header naming the executable.
+    ///
+    /// `command` carries the executable, its arguments, and the
+    /// environment to spawn it with — see [`CommandSpec`], whose
+    /// environment is layered onto dodot's own rather than replacing
+    /// it.
+    ///
     /// **Edge case**: if the command succeeds but the sentinel write
     /// fails, a subsequent call will re-run the command. This is by
     /// design — re-running is safer than falsely marking as complete.
@@ -89,8 +102,7 @@ pub trait DataStore: Send + Sync {
         &self,
         pack: &str,
         handler: &str,
-        executable: &str,
-        arguments: &[String],
+        command: CommandSpec<'_>,
         sentinel: &str,
         force: bool,
     ) -> Result<()>;
@@ -171,11 +183,12 @@ pub trait DataStore: Send + Sync {
     /// Like [`write_rendered_file`], but applies `mode` atomically
     /// at file-creation time so the rendered bytes never live on
     /// disk under a more permissive mode (per `secrets.lex` §4.3
-    /// for whole-file `age` / `gpg` plaintext). Default impl
-    /// falls back to `write_rendered_file` followed by an
-    /// `Fs::set_permissions` chmod — semantically equivalent but
-    /// briefly leaves the file at the umask-default mode; real
-    /// impls should override with the atomic
+    /// for whole-file `age` / `gpg` plaintext).
+    ///
+    /// Deliberately has no default implementation: a write-then-chmod
+    /// fallback would leave the file at the umask-default mode for a
+    /// moment, and an implementation must not inherit that by
+    /// omission. `FilesystemDataStore` uses the atomic
     /// `Fs::write_file_with_mode` path.
     fn write_rendered_file_with_mode(
         &self,
@@ -197,13 +210,58 @@ pub trait DataStore: Send + Sync {
     fn sentinel_path(&self, pack: &str, handler: &str, sentinel: &str) -> std::path::PathBuf;
 }
 
+/// Everything needed to spawn one child process: what to run, with
+/// which arguments, and which environment variables to set for it.
+///
+/// The environment is **layered**, never substituted: the child
+/// inherits everything dodot inherited, and each `(name, value)` row
+/// overrides or adds one variable on top of that. Duplicate names are
+/// applied in order, so a later row wins. A spec built with
+/// [`CommandSpec::new`] carries no rows and spawns with dodot's own
+/// environment, unmodified.
+///
+/// Provisioning commands get their rows from the handler's descriptor
+/// in [`crate::provisioners`], which is how `HOMEBREW_NO_AUTO_UPDATE`
+/// reaches `brew` without any branch at the spawn site.
+#[derive(Debug, Clone, Copy)]
+pub struct CommandSpec<'a> {
+    pub executable: &'a str,
+    pub arguments: &'a [String],
+    pub environment: &'a [(String, String)],
+}
+
+impl<'a> CommandSpec<'a> {
+    /// A command to spawn with dodot's environment, unmodified.
+    pub fn new(executable: &'a str, arguments: &'a [String]) -> Self {
+        Self {
+            executable,
+            arguments,
+            environment: &[],
+        }
+    }
+
+    /// A command to spawn with `environment` layered onto dodot's.
+    pub fn with_environment(
+        executable: &'a str,
+        arguments: &'a [String],
+        environment: &'a [(String, String)],
+    ) -> Self {
+        Self {
+            executable,
+            arguments,
+            environment,
+        }
+    }
+}
+
 /// Abstraction over process execution.
 ///
 /// [`FilesystemDataStore`] uses this to run commands in
 /// [`run_and_record`](DataStore::run_and_record). Tests can provide a
 /// mock that records calls without spawning processes.
 pub trait CommandRunner: Send + Sync {
-    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput>;
+    /// Spawn `command`, streaming and capturing its output.
+    fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput>;
 
     /// Variant of [`Self::run`] that returns stdout as raw bytes.
     /// Required for callers that decrypt binary payloads through a
@@ -223,8 +281,8 @@ pub trait CommandRunner: Send + Sync {
     /// subset of bytes) but does *not* recover bytes lost to
     /// `from_utf8_lossy` upstream. Real impls (`ShellCommandRunner`)
     /// must override and read stdout as raw bytes from the start.
-    fn run_bytes(&self, executable: &str, arguments: &[String]) -> Result<CommandOutputBytes> {
-        let out = self.run(executable, arguments)?;
+    fn run_bytes(&self, command: CommandSpec<'_>) -> Result<CommandOutputBytes> {
+        let out = self.run(command)?;
         Ok(CommandOutputBytes {
             exit_code: out.exit_code,
             stdout: out.stdout.into_bytes(),
@@ -245,7 +303,7 @@ pub trait CommandRunner: Send + Sync {
 pub struct NoopCommandRunner;
 
 impl CommandRunner for NoopCommandRunner {
-    fn run(&self, _executable: &str, _arguments: &[String]) -> Result<CommandOutput> {
+    fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
         Ok(CommandOutput {
             exit_code: 0,
             stdout: String::new(),
@@ -328,14 +386,24 @@ pub(crate) fn parse_status_line(line: &str) -> Option<&str> {
 }
 
 impl CommandRunner for ShellCommandRunner {
-    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+    fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+        let CommandSpec {
+            executable,
+            arguments,
+            environment,
+        } = command;
         use std::io::{BufRead, BufReader, IsTerminal, Write};
         use std::process::{Command, Stdio};
         use std::sync::{Arc, Mutex};
         use std::thread;
 
+        // `envs` adds to the inherited environment rather than
+        // replacing it — no `env_clear` here, deliberately: an
+        // install script is entitled to the user's PATH, HOME, and
+        // everything else dodot was started with.
         let mut child = Command::new(executable)
             .args(arguments)
+            .envs(environment.iter().map(|(name, value)| (name, value)))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -475,7 +543,12 @@ impl CommandRunner for ShellCommandRunner {
     /// [`CommandRunner::run_bytes`] requires. Stderr is still
     /// buffered as text via the same drainer pattern `run` uses —
     /// gpg and age both emit human-readable diagnostics.
-    fn run_bytes(&self, executable: &str, arguments: &[String]) -> Result<CommandOutputBytes> {
+    fn run_bytes(&self, command: CommandSpec<'_>) -> Result<CommandOutputBytes> {
+        let CommandSpec {
+            executable,
+            arguments,
+            environment,
+        } = command;
         use std::io::{Read, Write};
         use std::process::{Command, Stdio};
         use std::sync::{Arc, Mutex};
@@ -483,6 +556,7 @@ impl CommandRunner for ShellCommandRunner {
 
         let mut child = Command::new(executable)
             .args(arguments)
+            .envs(environment.iter().map(|(name, value)| (name, value)))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -621,7 +695,7 @@ mod tests {
             echo '# status: phase two'; \
             echo done";
         let out = runner
-            .run("bash", &["-c".into(), script.into()])
+            .run(CommandSpec::new("bash", &["-c".into(), script.into()]))
             .expect("script should succeed");
         assert!(out.stdout.contains("starting"));
         assert!(out.stdout.contains("# status: phase one"));
@@ -632,9 +706,27 @@ mod tests {
     }
 
     #[test]
+    fn shell_runner_layers_the_environment_onto_the_inherited_one() {
+        // The end of the seam: the only layer that can actually put a
+        // variable in front of a child process. Asserted against a
+        // real spawn because there is nothing below this to stub.
+        let runner = ShellCommandRunner::new(false);
+        let out = runner
+            .run(CommandSpec::with_environment(
+                "bash",
+                &["-c".into(), "echo \"[$DODOT_SEAM_TEST][$PATH]\"".into()],
+                &[("DODOT_SEAM_TEST".into(), "layered".into())],
+            ))
+            .expect("script should succeed");
+        assert!(out.stdout.contains("[layered]"), "got: {}", out.stdout);
+        // Layered, not replaced: the child keeps what dodot inherited.
+        assert!(!out.stdout.contains("[layered][]"), "got: {}", out.stdout);
+    }
+
+    #[test]
     fn shell_runner_returns_error_on_nonzero_exit() {
         let runner = ShellCommandRunner::new(false);
-        let result = runner.run("bash", &["-c".into(), "exit 7".into()]);
+        let result = runner.run(CommandSpec::new("bash", &["-c".into(), "exit 7".into()]));
         match result {
             Err(crate::DodotError::CommandFailed { exit_code, .. }) => {
                 assert_eq!(exit_code, 7);
@@ -647,7 +739,10 @@ mod tests {
     fn shell_runner_captures_stderr_in_command_output() {
         let runner = ShellCommandRunner::new(false);
         let out = runner
-            .run("bash", &["-c".into(), "echo hello >&2; echo world".into()])
+            .run(CommandSpec::new(
+                "bash",
+                &["-c".into(), "echo hello >&2; echo world".into()],
+            ))
             .expect("script should succeed");
         assert!(out.stderr.contains("hello"));
         assert!(out.stdout.contains("world"));

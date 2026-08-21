@@ -15,7 +15,7 @@ fully-commented starter file, or get / set / unset individual keys.[/desc]
   [usage]dodot config [OPTIONS] [COMMAND][/usage]
 
 [header]COMMANDS[/header]
-  [item]list[/item]    [desc]Show all resolved configuration key/value pairs (default if no subcommand)[/desc]
+  [item]list[/item]    [desc]Show all resolved configuration key/value pairs[/desc]
   [item]get[/item]     [desc]Show the resolved value and documentation for a single key[/desc]
   [item]set[/item]     [desc]Persist a configuration value to the config file[/desc]
   [item]unset[/item]   [desc]Remove a configuration value from the config file[/desc]
@@ -27,7 +27,7 @@ fully-commented starter file, or get / set / unset individual keys.[/desc]
                     value and means the resolved root's [item].dodot.toml[/item][/desc]
 
 [header]EXAMPLES[/header]
-  [example]dodot config                       [dim]# show resolved configuration[/dim]
+  [example]dodot config list                  [dim]# show resolved configuration[/dim]
   dodot config gen                   [dim]# print a commented starter to stdout[/dim]
   dodot config gen -o .dodot.toml    [dim]# write it to a file[/dim]
   dodot config get symlink.force_home

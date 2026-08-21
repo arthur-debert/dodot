@@ -120,8 +120,7 @@ mod tests {
             .done()
             .build();
 
-        let runner = crate::datastore::NoopCommandRunner;
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &runner, InstallCommand);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), InstallCommand);
         let make_match = |name: &str| RuleMatch {
             relative_path: name.into(),
             absolute_path: env.dotfiles_root.join(format!("vim/{name}")),
@@ -189,8 +188,7 @@ mod tests {
             .done()
             .build();
 
-        let runner = crate::datastore::NoopCommandRunner;
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &runner, InstallCommand);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), InstallCommand);
         let matches = vec![RuleMatch {
             relative_path: "install.sh".into(),
             absolute_path: env.dotfiles_root.join("vim/install.sh"),
@@ -224,20 +222,24 @@ mod tests {
                 handler: h,
                 executable,
                 arguments,
+                environment,
                 sentinel,
-                filename,
+                relative_path,
                 content_hash,
             } => {
                 assert_eq!(pack, "vim");
                 assert_eq!(h, HANDLER_INSTALL);
                 assert_eq!(executable, "bash");
+                // An install script declares nothing: the child gets
+                // dodot's environment and nothing layered on.
+                assert!(environment.is_empty(), "got: {environment:?}");
                 assert_eq!(arguments[0], "--");
                 assert!(arguments[1].ends_with("install.sh"));
                 assert!(sentinel.starts_with("install.sh-"));
                 assert_eq!(sentinel.len(), "install.sh-".len() + 16);
-                assert_eq!(filename, "install.sh");
+                assert_eq!(relative_path, "install.sh");
                 assert_eq!(content_hash.len(), 16);
-                assert_eq!(*sentinel, format!("{filename}-{content_hash}"));
+                assert_eq!(*sentinel, format!("{relative_path}-{content_hash}"));
             }
             other => panic!("expected Run, got {other:?}"),
         }

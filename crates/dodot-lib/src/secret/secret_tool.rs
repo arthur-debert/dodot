@@ -42,7 +42,7 @@
 
 use std::sync::Arc;
 
-use crate::datastore::CommandRunner;
+use crate::datastore::{CommandRunner, CommandSpec};
 use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
 use crate::{DodotError, Result};
@@ -103,7 +103,10 @@ impl SecretProvider for SecretToolProvider {
     fn probe(&self) -> ProbeResult {
         // `secret-tool --version` is cheap and doesn't touch the
         // daemon.
-        match self.runner.run("secret-tool", &["--version".into()]) {
+        match self
+            .runner
+            .run(CommandSpec::new("secret-tool", &["--version".into()]))
+        {
             Ok(out) if out.exit_code == 0 => {}
             Ok(_) => {
                 return ProbeResult::ProbeFailed {
@@ -140,7 +143,7 @@ impl SecretProvider for SecretToolProvider {
             args.push("account".into());
             args.push(a.into());
         }
-        let out = self.runner.run("secret-tool", &args)?;
+        let out = self.runner.run(CommandSpec::new("secret-tool", &args))?;
         if out.exit_code != 0 {
             let stderr = out.stderr.trim();
             // `secret-tool lookup` exits 1 with empty stdout AND
@@ -242,7 +245,12 @@ mod tests {
         }
     }
     impl CommandRunner for ScriptedRunner {
-        fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        fn run(&self, command: CommandSpec<'_>) -> Result<CommandOutput> {
+            let CommandSpec {
+                executable: exe,
+                arguments: args,
+                ..
+            } = command;
             let mut r = self.responses.lock().unwrap();
             if r.is_empty() {
                 return Err(DodotError::Other(format!(

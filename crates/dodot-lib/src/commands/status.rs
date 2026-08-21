@@ -74,15 +74,58 @@ enum Health {
     /// Data link exists and is healthy, but the user link is not at the
     /// path that current config would produce. A re-deploy would move it.
     Stale(String),
-    /// Run-once handler (install / homebrew) recorded a successful run
+    /// Run-once handler (install / homebrew / nix) recorded a successful run
     /// for a *different* content hash than the file currently has on
     /// disk. The script has not been re-run automatically — the
     /// notify-don't-rerun policy leaves the prior state in place
     /// until the user passes `--provision-rerun`. `label` is the
     /// short status-column text (carries the per-handler "older
     /// version" copy plus a `(N+ M-)` line summary when a snapshot is
-    /// on disk).
-    RanOlderVersion { label: String },
+    /// on disk); `remedy` is the footnote body naming the command
+    /// that applies the edit, because the label alone states the
+    /// condition and leaves the user with nothing to do about it.
+    RanOlderVersion { label: String, remedy: String },
+    /// A code-execution handler (install / homebrew / nix / external)
+    /// claimed this file, but `--no-provision` dropped the handler
+    /// before intent generation. The row reports the user's own
+    /// choice rather than the file's datastore state, which would
+    /// otherwise read as `never ran` with no hint that this run was
+    /// never going to run it. Deliberately distinct from
+    /// [`Health::Gated`] (the host doesn't match) and
+    /// [`Health::Skipped`] (a `mappings.skip` rule) — three
+    /// conditions with three different remedies.
+    ProvisionSkipped,
+    /// A provisioning handler's manager is not usable on this
+    /// machine: absent (nothing at any candidate path) or
+    /// unprobeable (a candidate that could not be examined).
+    ///
+    /// The row is the whole point. Because the planner skips an
+    /// absent manager without writing a receipt or recording an
+    /// error, nothing else in the output would mention the file, and
+    /// its datastore state (`never ran`) would answer a question the
+    /// user did not ask. The carried
+    /// [`UnavailableRow`](crate::provisioners::availability::UnavailableRow)
+    /// holds the style, label, and footnote — built in the
+    /// availability module so `up --dry-run` and `status` cannot word
+    /// the same machine state differently.
+    ///
+    /// Deliberately distinct from [`Health::ProvisionSkipped`] (the
+    /// user passed `--no-provision`) and [`Health::Gated`] (the host
+    /// does not match the file's gate label): three conditions, three
+    /// remedies.
+    ManagerUnavailable {
+        row: crate::provisioners::availability::UnavailableRow,
+    },
+    /// A run-once file whose receipt is current, but whose manager is
+    /// no longer installed — brew ran this `Brewfile`, and brew has
+    /// since been removed.
+    ///
+    /// The receipt wins the verdict: the file *did* run, and the
+    /// manager leaving afterwards does not undo that. Absence
+    /// annotates instead, the same shape as
+    /// [`Health::RecentFailures`] — a warning footnote on a row that
+    /// stays deployed.
+    RanWithManagerAbsent { label: String, note: String },
     /// File matched the `mappings.skip` list (README, LICENSE, …).
     /// No handler runs on it, but it surfaces in status so users can see
     /// the rule applied rather than wondering why the file is "missing."
@@ -126,6 +169,11 @@ impl Health {
             // pack with an older-version entry is one user action away
             // from being current.
             Health::RanOlderVersion { .. } => "stale",
+            Health::ManagerUnavailable { row } => row.style,
+            // The receipt decides, not the manager's current
+            // whereabouts: this file ran.
+            Health::RanWithManagerAbsent { .. } => "deployed",
+            Health::ProvisionSkipped => "skipped",
             Health::Skipped => "skipped",
             Health::Gated { .. } => "skipped",
         }
@@ -160,7 +208,10 @@ impl Health {
             }
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
-            Health::RanOlderVersion { label } => label.clone(),
+            Health::RanOlderVersion { label, .. } => label.clone(),
+            Health::ManagerUnavailable { row } => row.label.clone(),
+            Health::RanWithManagerAbsent { label, .. } => label.clone(),
+            Health::ProvisionSkipped => crate::commands::PROVISION_SKIPPED_LABEL.into(),
             Health::Skipped => "skipped".into(),
             Health::Gated { label, .. } => format!("gated out ({label})"),
         }
@@ -168,14 +219,42 @@ impl Health {
 
     /// If this health carries a footnote, build the command-wide note
     /// for it. Hard failures (pending conflict, syntax error, gate
-    /// mismatch) are error-kind notes; run history is a warning-kind
-    /// note with a ✓/✗ timeline — recent instability annotates the
-    /// row, it must never present as a current error. `None` for
-    /// footnote-less healths.
+    /// mismatch) are error-kind notes; run history and the
+    /// older-version remedy are warning-kind notes — neither is a
+    /// current error, they annotate an otherwise-working row. `None`
+    /// for footnote-less healths.
     fn footnote(&self) -> Option<DisplayNote> {
         match self {
             Health::PendingConflict { reason } => Some(DisplayNote::error(reason.clone())),
+            // Warning, not error: the previous run succeeded and the
+            // machine is in a working state — the file has simply
+            // moved on. The body carries the remedy, which is the
+            // whole reason this footnote exists.
+            Health::RanOlderVersion { remedy, .. } => Some(DisplayNote {
+                body: remedy.clone(),
+                hint: None,
+                kind: "warning".into(),
+                timeline: None,
+                command: None,
+            }),
             Health::DeployedWithError { reason, .. } => Some(DisplayNote::error(reason.clone())),
+            // Absence is a warning (nothing is broken, a manager is
+            // simply not here); a probe failure is an error (dodot
+            // could not answer the question it was asked).
+            Health::ManagerUnavailable { row } => Some(DisplayNote {
+                body: row.note.clone(),
+                hint: None,
+                kind: row.note_kind.into(),
+                timeline: None,
+                command: None,
+            }),
+            Health::RanWithManagerAbsent { note, .. } => Some(DisplayNote {
+                body: note.clone(),
+                hint: None,
+                kind: "warning".into(),
+                timeline: None,
+                command: None,
+            }),
             Health::Gated {
                 expected, actual, ..
             } => Some(DisplayNote::error(format!(
@@ -491,8 +570,8 @@ fn verify_staged(
     Health::Deployed
 }
 
-/// Classify a run-once handler row (install / homebrew) by consulting
-/// the datastore's three-way [`DidRunStatus`] for the file.
+/// Classify a run-once handler row (install / homebrew / nix) by
+/// consulting the datastore's three-way [`DidRunStatus`] for the file.
 ///
 /// On `RanDifferent`, `out_diffs` accumulates a unified-diff entry for
 /// the row when `show_diff` is set AND the previous-run snapshot is on
@@ -502,6 +581,34 @@ fn verify_staged(
 /// `display_name` is the pack name used in the diff payload (display
 /// name, not on-disk name) so the JSON / text output mirrors the rest
 /// of the status row.
+///
+/// [`DidRunStatus::RanDifferent`] maps to [`Health::RanOlderVersion`],
+/// which also carries the footnote body naming `--provision-rerun`. The
+/// label states the condition — the file has moved on — and the
+/// footnote is the only place the user is told what to do about it.
+///
+/// # The manager itself
+///
+/// Crossed with all three of those states is a fourth question the
+/// datastore cannot answer: *is the manager still installed?* This
+/// asks [`availability::probe`](crate::provisioners::availability::probe)
+/// — the same function, with the same inputs, that the pack planner
+/// asks before generating intents, which is what makes a `status` row
+/// and the `up` that produced it agree by construction rather than by
+/// review. The probe stats candidate paths and spawns nothing, so
+/// `status` stays passive.
+///
+/// The three states rank as follows:
+///
+/// - A **probe failure** wins every verdict. dodot could not answer
+///   the question at all, and a row that quietly reported something
+///   else would be inventing an answer.
+/// - **Absence with no receipt** is the skip: the file will not run
+///   on this machine, and the row names the manager and every
+///   location probed.
+/// - **Absence with a receipt** annotates without changing the
+///   verdict. The file ran; a manager removed afterwards does not
+///   undo that.
 fn run_once_health(
     file: &std::path::Path,
     pack: &str,
@@ -537,12 +644,48 @@ fn run_once_health(
         Err(e) => return Health::Broken(format!("broken: datastore error: {e}")),
     };
 
+    let availability = crate::provisioners::availability::probe(
+        ctx.fs.as_ref(),
+        ctx.provision_host.as_ref(),
+        handler,
+    );
+    let probe_failed = matches!(
+        availability,
+        crate::provisioners::availability::Availability::ProbeFailed { .. }
+    );
+    // `None` whenever the manager is present, which is every row on a
+    // machine that has its managers installed.
+    let unavailable = availability.unavailable_row(handler);
+
     match status {
-        DidRunStatus::NeverRan => Health::Pending,
-        DidRunStatus::RanCurrent => Health::Deployed,
+        DidRunStatus::NeverRan => match unavailable {
+            Some(row) => Health::ManagerUnavailable { row },
+            None => Health::Pending,
+        },
+        DidRunStatus::RanCurrent => match unavailable {
+            Some(row) if probe_failed => Health::ManagerUnavailable { row },
+            Some(_) => Health::RanWithManagerAbsent {
+                label: messages.deployed.clone(),
+                // Not the skip's copy: that one ends in "nothing was
+                // recorded, so the next `dodot up` runs this file",
+                // and something was recorded.
+                note: format!(
+                    "{handler} is not installed ({}) — the receipt stands: {filename} ran when it was",
+                    availability
+                        .probed_locations()
+                        .expect("an absent manager names where it was looked for")
+                ),
+            },
+            None => Health::Deployed,
+        },
         DidRunStatus::RanDifferent {
             previous_snapshot, ..
         } => {
+            if probe_failed {
+                return Health::ManagerUnavailable {
+                    row: unavailable.expect("a probe failure always renders a row"),
+                };
+            }
             // Pull the current source bytes for both the line summary
             // and the (optional) full diff. A read error here drops us
             // back to the no-snapshot label rather than failing the
@@ -570,7 +713,19 @@ fn run_once_health(
                     format!("{} (no diff data)", messages.ran_different)
                 }
             };
-            Health::RanOlderVersion { label }
+            // An absent manager makes `--provision-rerun` a promise
+            // dodot cannot keep, so the remedy says so rather than
+            // sending the user at a flag that would skip.
+            let absence = availability
+                .probed_locations()
+                .map(|probed| format!(" — {handler} is not installed ({probed}), so that re-run skips until it is back"))
+                .unwrap_or_default();
+            Health::RanOlderVersion {
+                label,
+                remedy: format!(
+                    "ran an older version of {filename} — run `dodot up --provision-rerun` to apply the current one{absence}"
+                ),
+            }
         }
     }
 }
@@ -688,7 +843,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         ignored_packs.retain(|p| names.iter().any(|n| n == &p.name || n == &p.display_name));
     }
 
-    let registry = handlers::create_registry(ctx.fs.as_ref(), ctx.command_runner.as_ref());
+    let registry = handlers::create_registry(ctx.fs.as_ref());
     let host = ctx.host_facts.as_ref();
     let mut display_packs = Vec::new();
     let mut notes: Vec<DisplayNote> = Vec::new();
@@ -828,6 +983,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // so it tracks the pack's display name rather than its raw
         // on-disk name. status is a Passive command — same §7.4
         // contract as the direct preprocess_pack call above.
+        // Files `--no-provision` dropped before intent generation.
+        // Their rows come from the planner's own decision rather than
+        // a second evaluation of the same predicate here, so the row
+        // can never disagree with what the run actually did. Empty on
+        // any run without `--no-provision`, and empty when planning
+        // failed — the pre-existing datastore-state rows stand in.
+        let mut provision_skipped: Vec<orchestration::ProvisionSkip> = Vec::new();
         let intents_for_pack: Vec<HandlerIntent> = match orchestration::plan_pack(
             &pack,
             ctx,
@@ -835,6 +997,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         ) {
             Ok(plan) => {
                 warnings.extend(plan.warnings);
+                provision_skipped = plan.provision_skipped;
                 let intents = plan.intents.clone();
                 pack_intents.push((pack.display_name.clone(), plan.intents));
                 intents
@@ -852,7 +1015,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         // Pass 1: filter / non-deployable handlers (skip, gate) and the
         // remaining deployable handlers that we still verify match-side
-        // (shell, path, install, homebrew). Symlink rows are emitted
+        // (shell, path, external, homebrew, nix, install). Symlink rows are emitted
         // below, off the planner's intents, so they correctly expand
         // escape-prefix dirs and never re-derive a target.
         for m in &matches {
@@ -867,6 +1030,27 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             }
 
             let rel_str = m.relative_path.to_string_lossy().into_owned();
+
+            // `--no-provision` wins over every datastore verdict below:
+            // this run was never going to touch the file, so reporting
+            // what the datastore remembers about it would answer a
+            // question the user did not ask.
+            if provision_skipped
+                .iter()
+                .any(|skip| skip.handler == m.handler && skip.relative_path == rel_str)
+            {
+                let health = Health::ProvisionSkipped;
+                files.push(DisplayFile {
+                    name: rel_str.clone(),
+                    symbol: handler_symbol(&m.handler).into(),
+                    description: handler_description(&m.handler, &rel_str, None),
+                    status: health.style().into(),
+                    status_label: health.label(&m.handler),
+                    handler: m.handler.clone(),
+                    note_ref: None,
+                });
+                continue;
+            }
 
             let health = match m.handler.as_str() {
                 h if h == HANDLER_SKIP => Health::Skipped,
@@ -1039,6 +1223,9 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         group_mode: ctx.group_mode.as_str().into(),
         diffs,
         shell_hookup: shell_hookup_notice(ctx),
+        // `status` reports the world; it attempts nothing that could
+        // fail, and carries no exit-code contract.
+        failed: false,
     })
 }
 
@@ -1227,7 +1414,7 @@ mod tests {
         );
     }
 
-    // ── run_once_health (three-state for install / homebrew) ──
+    // ── run_once_health (three-state for install / homebrew / nix) ──
 
     use super::{run_once_health, Health};
     use crate::commands::DisplayDiff;
@@ -1239,12 +1426,12 @@ mod tests {
 
     fn ctx_for(env: &TempEnvironment) -> ExecutionContext {
         use crate::config::ConfigManager;
-        use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+        use crate::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
         use crate::Result;
         use std::sync::Arc;
         struct NoopRunner;
         impl CommandRunner for NoopRunner {
-            fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
+            fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput> {
                 Ok(CommandOutput {
                     exit_code: 0,
                     stdout: String::new(),
@@ -1280,6 +1467,9 @@ mod tests {
             env_stamp: Default::default(),
             tty: false,
             shell_probe: crate::shell::ProbePolicy::Never,
+            provision_host: Arc::new(
+                crate::provisioners::availability::ProvisionHost::assume_present(),
+            ),
             shell_env: crate::shell::ShellEnv::default(),
         }
     }
@@ -1348,7 +1538,7 @@ mod tests {
         let mut diffs = Vec::new();
         let h = run_once_health(&abs, "vim", "vim", HANDLER_INSTALL, &ctx, false, &mut diffs);
         match h {
-            Health::RanOlderVersion { label } => {
+            Health::RanOlderVersion { label, remedy } => {
                 assert!(
                     label.contains("older version"),
                     "label should mention older version, got: {label}"
@@ -1356,6 +1546,10 @@ mod tests {
                 assert!(
                     label.contains("lines added") && label.contains("removed"),
                     "label should contain a (N+ M-) summary, got: {label}"
+                );
+                assert!(
+                    remedy.contains("--provision-rerun"),
+                    "the footnote must name the flag that applies the edit, got: {remedy}"
                 );
             }
             _ => panic!("expected RanOlderVersion"),
@@ -1382,10 +1576,14 @@ mod tests {
         let mut diffs = Vec::new();
         let h = run_once_health(&abs, "vim", "vim", HANDLER_INSTALL, &ctx, true, &mut diffs);
         match h {
-            Health::RanOlderVersion { label } => {
+            Health::RanOlderVersion { label, remedy } => {
                 assert!(
                     label.contains("older version") && label.contains("no diff data"),
                     "label should mention `no diff data`, got: {label}"
+                );
+                assert!(
+                    remedy.contains("--provision-rerun"),
+                    "a missing snapshot must not cost the user the remedy, got: {remedy}"
                 );
             }
             _ => panic!("expected RanOlderVersion"),

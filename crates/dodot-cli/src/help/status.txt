@@ -26,9 +26,11 @@ landed.[/desc]
 
 [header]ICONS[/header]
   [item]➞[/item]   [desc]symlink[/desc]
-  [item]⚙[/item]   [desc]shell source / homebrew[/desc]
+  [item]⚙[/item]   [desc]shell source / homebrew / nix[/desc]
   [item]+[/item]   [desc]added to [item]$PATH[/item][/desc]
   [item]×[/item]   [desc]install script[/desc]
+  [item]↓[/item]   [desc]fetched external[/desc]
+  [item]·[/item]   [desc]skipped or gated out[/desc]
 
 [header]EXAMPLES[/header]
   [example]dodot status                   [dim]# everything[/dim]

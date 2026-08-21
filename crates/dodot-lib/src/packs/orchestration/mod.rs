@@ -30,6 +30,7 @@ mod test_support;
 pub(crate) use planning::filter_pre_preprocess_gates;
 pub use planning::{
     collect_pack_intents, collect_pack_intents_with_preprocessors, plan_pack, PackPlan,
+    ProvisionSkip, ProvisionUnavailable,
 };
 pub use resolve::{resolve_pack_dir_name, validate_pack_names};
 
@@ -681,6 +682,9 @@ mod tests {
             env_stamp: Default::default(),
             tty: false,
             shell_probe: crate::shell::ProbePolicy::Never,
+            provision_host: Arc::new(
+                crate::provisioners::availability::ProvisionHost::assume_present(),
+            ),
             shell_env: crate::shell::ShellEnv::default(),
         };
 

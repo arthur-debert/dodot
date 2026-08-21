@@ -47,6 +47,13 @@ pub struct MessageResult {
 
 // ── Shared display types ────────────────────────────────────────
 
+/// Row label for a file whose handler `--no-provision` dropped from
+/// this run. Shared by the two renderers (`status`'s health labels and
+/// `up --dry-run`'s intent rendering) so the same skip never reads two
+/// ways. Deliberately names the flag: the condition is the user's own
+/// choice, and dropping the flag is the remedy.
+pub const PROVISION_SKIPPED_LABEL: &str = "skipped (--no-provision)";
+
 /// Handler symbols matching the Go implementation.
 pub fn handler_symbol(handler: &str) -> &'static str {
     match handler {
@@ -58,6 +65,7 @@ pub fn handler_symbol(handler: &str) -> &'static str {
         "nix" => "⚙",
         "skip" => "·",
         "gate" => "·",
+        "external" => "↓",
         _ => "?",
     }
 }
@@ -92,6 +100,7 @@ pub fn handler_description(handler: &str, rel_path: &str, user_target: Option<&s
         "nix" => "nix profile install".into(),
         "skip" => "not deployed".into(),
         "gate" => "not deployed".into(),
+        "external" => "fetch externals".into(),
         _ => String::new(),
     }
 }
@@ -377,6 +386,35 @@ pub struct PackStatusResult {
     /// have yet.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell_hookup: Option<crate::shell::ActivationNotice>,
+    /// True when this run left at least one operation failed — a
+    /// provisioning command that exited non-zero, a symlink that hit
+    /// an occupied target, a pack that failed as a whole. This is the
+    /// data behind [`PackStatusResult::exit_code`].
+    ///
+    /// Set by `up` on an active run only. A `--dry-run` leaves it
+    /// false however much it reports as failing: nothing was attempted,
+    /// so a preview must not fail a script that runs it. `status` and
+    /// `down` leave it false — they report, and neither has an
+    /// exit-code contract of its own.
+    pub failed: bool,
+}
+
+impl PackStatusResult {
+    /// Process exit code: 1 when the run failed at least one
+    /// operation, 0 otherwise.
+    ///
+    /// 1 is dodot's existing "the command ran and found something
+    /// wrong" code — the same one `dodot transform check` returns for
+    /// its findings. Hard errors (a pack that doesn't exist, a
+    /// refused root) never reach here; those propagate as `Err` and
+    /// the CLI exits on the error's own status.
+    pub fn exit_code(&self) -> i32 {
+        if self.failed {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 /// Build the shell-hookup footer for a `pack-status` render.

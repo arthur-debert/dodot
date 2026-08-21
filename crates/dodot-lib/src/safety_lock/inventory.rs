@@ -201,11 +201,7 @@ pub fn build_inventory(
     let discovered = scan_packs(fs, root_path, &root_config.pack.ignore)
         .map_err(|error| unusable_routing(root_path, error))?;
 
-    // Only `Handler::phase` is read, so the run-once handlers never reach a
-    // subprocess — the same posture `handlers::configuration_handler_names`
-    // takes when it inspects the registry without exercising it.
-    let runner = crate::datastore::NoopCommandRunner;
-    let registry = create_registry(fs, &runner);
+    let registry = create_registry(fs);
     let scanner = Scanner::new(fs);
 
     let mut counts: BTreeMap<InventoryCategory, usize> = BTreeMap::new();
@@ -1397,8 +1393,7 @@ mod tests {
     #[test]
     fn an_unknown_handler_counts_as_other() {
         let fs = OsFs::new();
-        let runner = crate::datastore::NoopCommandRunner;
-        let registry = create_registry(&fs, &runner);
+        let registry = create_registry(&fs);
 
         assert_eq!(
             category_of("a-handler-from-the-future", &registry),

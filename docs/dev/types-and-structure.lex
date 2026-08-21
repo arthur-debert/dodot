@@ -24,20 +24,31 @@ Types and Structure
 
     Modules:
 
-        commands/        # public API: up, down, status, list, init, fill, adopt, addignore
+        commands/        # public API: one module per command (up, down, status,
+                         #   list, init, fill, adopt, addignore, refresh, reset, …)
         config/          # DodotConfig + layered resolution via clapfig/confique
         conflicts.rs     # conflict detection utilities
         datastore/       # DataStore trait + FilesystemDataStore
+        equivalence.rs   # "would deploying change any content?" detection
         error.rs         # error types and codes
         execution/       # Executor: intent -> operation -> DataStore dispatch
+        external/        # externals.toml parsing + fetch specs
         fs/              # Fs trait + OsFs (swappable for testing)
-        handlers/        # built-in handlers: symlink, shell, path, install, homebrew
+        gates/           # gate labels, host facts, predicate evaluation
+        handlers/        # Handler trait + registry + the ten handlers (gate, ignore,
+                         #   skip, external, homebrew, nix, install, path, shell, symlink)
         operations/      # Operation enum, HandlerIntent enum
         packs/           # Pack discovery, orchestration, guardian methods
         paths/           # Pather trait + XdgPather
+        plists/          # plist binary<->XML conversion for git clean/smudge filters
         preprocessing/   # preprocessor pipeline + preprocessors (template, unarchive, identity)
+        probe/           # read-only views over the datastore + the markers `up` writes
+        prompts/         # persistent registry of dismissed prompts
+        provisioners/    # per-provisioner descriptors, availability probe, version floors
         render/          # standout theme + template registration
         rules/           # Rule, PackEntry, RuleMatch, Scanner
+        safety_lock.rs   # approval gate for an implicitly discovered dotfiles root
+        secret/          # secret provider trait + the `secret(...)` scheme registry
         shell/           # shell init script generation
         testing/         # TempEnvironment builder and test helpers
         lib.rs           # crate root, re-exports
@@ -80,7 +91,7 @@ Types and Structure
 
         :: rust ::
 
-        Rules are sorted once per scan by descending priority; the first matching rule wins. Equal priority falls back to first-match order. Filter handlers (`ignore`, `skip`) sit at the highest priority tier (100, 50) so they always beat the precise mappings (10) and the catchall symlink (0).
+        Rules are sorted once per scan by descending priority; the first matching rule wins. Equal priority falls back to first-match order. The filter handlers `ignore` and `skip` sit at the highest priority tier (100, 50) so they always beat the precise mappings (20 for `external` and `install`, 10 for the rest) and the catchall symlink (0). The third filter handler, `gate`, has no rule at all — the scanner mints its matches from host facts before rule matching runs.
 
     4.2. `PackEntry` and `RuleMatch`
 
@@ -120,7 +131,9 @@ Types and Structure
         Execution phases:
 
             pub enum ExecutionPhase {
-                Provision,   // homebrew
+                Filter,      // gate, ignore, skip
+                External,    // external
+                Provision,   // homebrew, nix
                 Setup,       // install
                 PathExport,  // path
                 ShellInit,   // shell
@@ -129,23 +142,26 @@ Types and Structure
 
         :: rust ::
 
-        The enum's *declaration order* is the execution order — `derive(Ord)` does the rest. `rules::handler_execution_order` sorts handler-name groups by looking up each name's phase in the registry and ordering on that. Adding a handler is a deliberate design choice: which phase does it belong to? There is no alphabetical fallback between known handlers.
+        The enum's *declaration order* is the execution order — `derive(Ord)` does the rest. `rules::handler_execution_order` sorts handler-name groups by looking up each name's phase in the registry and ordering on that. Adding a handler is a deliberate design choice: which phase does it belong to? There is no alphabetical fallback between known handlers. A phase may hold more than one handler, and the order two handlers sharing a phase run in is not defined; nothing depends on it. See [./handlers.lex] §3.1, and [./../reference/handler-registry.lex] for the generated phase-by-phase roster.
 
     4.4. `HandlerIntent`
 
-        Defined in `operations::HandlerIntent`. A handler's declarative output — one of three shapes.
+        Defined in `operations::HandlerIntent`. A handler's declarative output — one of four shapes.
 
         Intent:
 
             pub enum HandlerIntent {
                 Link { pack, handler, source, user_path },
                 Stage { pack, handler, source },
-                Run { pack, handler, executable, arguments, sentinel },
+                Run { pack, handler, executable, arguments, environment, sentinel, relative_path, content_hash },
+                Fetch { pack, handler, name, spec, user_path },
             }
 
         :: rust ::
 
-        `Link` is a full double-link deployment (used by symlink). `Stage` adds a source file to the datastore without a user-side link (used by shell and path; the init script picks them up). `Run` is a tracked command execution (used by install and homebrew). The `force` flag that overrides sentinel checks lives on `DataStore::run_and_record`, not on the intent.
+        `Link` is a full double-link deployment (used by symlink). `Stage` adds a source file to the datastore without a user-side link (used by shell and path; the init script picks them up). `Run` is a tracked command execution (used by install, homebrew, and nix); its `environment` carries the variables the handler's `provisioners` row declares, layered onto dodot's own environment at spawn time. `Fetch` is one declared external resource (used by external); the executor skips it when a sentinel already records the resource's current upstream signature. The `force` flag that overrides sentinel checks lives on `DataStore::run_and_record`, not on the intent.
+
+        The filter handlers — `gate`, `ignore`, `skip` — emit no intent at all; claiming the match is their whole effect.
 
     4.5. `Operation`
 
@@ -156,13 +172,14 @@ Types and Structure
             pub enum Operation {
                 CreateDataLink   { pack, handler, source },
                 CreateUserLink   { pack, handler, datastore_path, user_path },
-                RunCommand       { pack, handler, executable, arguments, sentinel },
+                RunCommand       { pack, handler, executable, arguments, environment, sentinel, relative_path },
                 CheckSentinel    { pack, handler, sentinel },
+                FetchExternal    { pack, handler, name, url },
             }
 
         :: rust ::
 
-        A single `Link` intent produces one `CreateDataLink` plus one `CreateUserLink`. A `Stage` intent produces one `CreateDataLink`. A `Run` intent produces one `RunCommand` (with an implicit sentinel check).
+        A single `Link` intent produces one `CreateDataLink` plus one `CreateUserLink`. A `Stage` intent produces one `CreateDataLink`. A `Run` intent produces one `RunCommand` (with an implicit sentinel check). A `Fetch` intent produces one `FetchExternal` plus the `CreateUserLink` that points the user-visible target at the fetched copy.
 
     4.6. `DataStore`
 
@@ -174,14 +191,19 @@ Types and Structure
 
 5. Execution Context
 
-    All handler-based commands run through an `ExecutionContext` (defined in `packs::orchestration`). The context carries:
+    All handler-based commands run through an `ExecutionContext` (defined in `packs::context`). The context carries the dependencies:
 
     - A `ConfigManager` for config resolution
     - An `Fs` implementation
     - A `DataStore` implementation
     - A `Pather` for XDG resolution
+    - A `SyntaxChecker` for the pre-flight check on shell sources
+    - A `CommandRunner` for advisory probes (the homebrew-cask lookup, macOS `mdls`/`mdfind`, and `up`'s provisioner fitness probe)
+    - The resolved `HostFacts` that gate predicates evaluate against
 
-    Production code uses `ExecutionContext::production(dotfiles_root)` which wires the real implementations. Tests use `TempEnvironment` to build one with temp directories.
+    …and the flags that scope one invocation: `dry_run`, `force`, `no_provision`, `provision_rerun`, `check_drift`, `show_diff`, `verbose`, `tty`, the view and group modes, and the shell activation stamp.
+
+    Production code uses `ExecutionContext::production(dotfiles_root)` which wires the real implementations. Tests use `TempEnvironment` to build one with temp directories, or assemble the fields directly.
 
 6. Testing Infrastructure
 

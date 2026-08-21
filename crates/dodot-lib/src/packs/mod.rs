@@ -7,7 +7,8 @@
 //!
 //! Packs are processed in lexicographic order of their on-disk directory
 //! names. That order determines every cross-pack effect: shell init
-//! source order, `$PATH` entry order, install/homebrew execution order.
+//! source order, `$PATH` entry order, and the order the code-execution
+//! handlers (external, homebrew, nix, install) run in.
 //! See [`docs/reference/handlers.lex`](../../../../docs/reference/handlers.lex)
 //! "Cross-Pack Ordering" for the user-facing contract.
 //!
@@ -203,8 +204,8 @@ pub struct DiscoveredPacks {
 ///
 /// Both lists are returned sorted lexicographically by on-disk
 /// directory name. That sort order is the contract that drives every
-/// cross-pack effect (shell init source order, `$PATH` order,
-/// install/homebrew execution order); see the module docs.
+/// cross-pack effect (shell init source order, `$PATH` order, and the
+/// order the code-execution handlers run in); see the module docs.
 ///
 /// Errors:
 ///

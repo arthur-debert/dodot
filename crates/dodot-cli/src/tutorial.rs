@@ -338,6 +338,12 @@ impl TutorialEnv {
             // that script. Evidence only here — the user's next real
             // `dodot up` measures.
             shell_probe: ProbePolicy::Never,
+            // A real host: the sandbox's `install.sh` step runs for
+            // real, so what is installed on this machine is what
+            // decides.
+            provision_host: std::sync::Arc::new(
+                dodot_lib::provisioners::availability::ProvisionHost::detect(self.paths.home_dir()),
+            ),
             shell_env: self.shell_env.clone(),
         }
     }
@@ -845,7 +851,7 @@ mod tests {
     use super::*;
 
     use dodot_lib::config::ConfigManager;
-    use dodot_lib::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
+    use dodot_lib::datastore::{CommandOutput, CommandRunner, CommandSpec, FilesystemDataStore};
     use dodot_lib::shell::NoopSyntaxChecker;
     use dodot_lib::testing::TempEnvironment;
 
@@ -854,7 +860,7 @@ mod tests {
     /// shouldn't actually invoke external programs.
     struct NoopCommandRunner;
     impl CommandRunner for NoopCommandRunner {
-        fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput, dodot_lib::DodotError> {
+        fn run(&self, _command: CommandSpec<'_>) -> Result<CommandOutput, dodot_lib::DodotError> {
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),

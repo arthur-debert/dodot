@@ -8,6 +8,12 @@
 //! This prevents partial deployments where one pack silently overwrites
 //! another pack's symlinks.
 //!
+//! Between 2 and 3, and only on a real run, `up` asks each package
+//! manager it is about to spawn whether it is new enough to run what
+//! the user wrote (`provisioners::fitness`). That question costs a
+//! subprocess, which is why it lives here and not in planning: this
+//! file is the only place in dodot that asks it.
+//!
 //! ## Output rendering
 //!
 //! For non-dry-run executions, `up` renders by calling `status::status()`
@@ -18,8 +24,22 @@
 //!
 //! Dry-run keeps the per-intent rendering since there's no
 //! post-execution state to verify.
+//!
+//! Both renderings additionally place a row for every file
+//! `--no-provision` dropped during planning. Those files produce no
+//! intent and no operation, so nothing else in either path would
+//! mention them — the user's own choice would read as an empty pack.
+//!
+//! ## Failures
+//!
+//! A failed operation is contained to the file it happened to: the
+//! rest of the pack still executes, and the failure flips that file's
+//! row to `error` with the failure text as its note. `up` reports
+//! whether the run left any failure behind in
+//! [`PackStatusResult::failed`], which the CLI turns into the process
+//! exit code — the signal a bootstrap script or an image build reads.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use tracing::{debug, info};
 
@@ -28,7 +48,6 @@ use crate::commands::{
     DisplayNote, DisplayPack, PackStatusResult,
 };
 use crate::conflicts;
-use crate::datastore::format_command_for_display;
 use crate::handlers;
 use crate::operations::HandlerIntent;
 use crate::packs::orchestration::{self, ExecutionContext, PackResult};
@@ -44,6 +63,11 @@ use crate::Result;
 /// deployed and a `CrossPackConflict` error is returned — even if
 /// `--force` is set, because cross-pack conflicts are a configuration
 /// problem, not a deployment problem.
+///
+/// Operation failures do not abort the run: they are collected into
+/// the returned result, whose [`PackStatusResult::failed`] flag says
+/// whether anything failed. Only a dry run leaves that flag false
+/// regardless of what it reports.
 pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     info!(
         dry_run = ctx.dry_run,
@@ -103,6 +127,18 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
 
     let mut pack_intents: Vec<(String, Vec<HandlerIntent>)> = Vec::with_capacity(packs.len());
     let mut intent_errors: Vec<PackResult> = Vec::new();
+    // Per-pack record of what `--no-provision` dropped. Only the
+    // dry-run renderer reads it: a real run renders through
+    // `status::status()`, which reads the same list off its own
+    // planning pass. Empty on every run without `--no-provision`.
+    let mut pack_skips: Vec<(String, Vec<orchestration::ProvisionSkip>)> = Vec::new();
+    // Per-pack record of what an absent (or unprobeable) manager
+    // dropped. The dry-run renderer places its rows — a real run
+    // renders through `status::status()`, which asks the same probe on
+    // its own planning pass — and both runs read it below for the one
+    // outcome that is a failure rather than a skip: a probe that could
+    // not answer at all.
+    let mut pack_unavailable: Vec<(String, Vec<orchestration::ProvisionUnavailable>)> = Vec::new();
 
     for pack in &packs {
         // Active when actually deploying; Passive on `--dry-run`. The
@@ -117,6 +153,12 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         match orchestration::plan_pack(pack, ctx, mode) {
             Ok(plan) => {
                 warnings.extend(plan.warnings);
+                if !plan.provision_skipped.is_empty() {
+                    pack_skips.push((pack.display_name.clone(), plan.provision_skipped));
+                }
+                if !plan.provision_unavailable.is_empty() {
+                    pack_unavailable.push((pack.display_name.clone(), plan.provision_unavailable));
+                }
                 pack_intents.push((pack.display_name.clone(), plan.intents));
             }
             Err(e) => {
@@ -140,6 +182,18 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     }
     debug!("no cross-pack conflicts");
 
+    // Phase 2.5: is each manager the run is about to spawn *well
+    // enough* to use?
+    //
+    // `!ctx.dry_run` is the whole up-only contract, stated once: the
+    // fitness probe spawns the manager to ask, and a dry run that
+    // spawned the user's package manager would no longer be
+    // reporting what it *would* do. `status` never reaches this file
+    // at all. See `provisioners::fitness`.
+    if !ctx.dry_run {
+        warnings.extend(provisioner_fitness_warnings(&pack_intents, ctx));
+    }
+
     // Phase 3: Reconcile non-provisioning state, then execute intents.
     //
     // For configuration handlers (path, shell, symlink), every `up` is
@@ -149,11 +203,12 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // init script and the deployed user-side links — instead of
     // lingering as a stale entry that points at a now-missing source.
     //
-    // Provisioning handlers (install, homebrew) are deliberately left
-    // alone. Their sentinels record "did this run with this content?"
-    // independently of whether the source still exists right now;
-    // wiping them would force install scripts and `brew bundle` to
-    // re-execute on every up, defeating the sentinel mechanism.
+    // Provisioning handlers (install, homebrew, nix) are deliberately
+    // left alone. Their sentinels record "did this run with this
+    // content?" independently of whether the source still exists right
+    // now; wiping them would force install scripts, `brew bundle`, and
+    // `nix profile install` to re-execute on every up, defeating the
+    // sentinel mechanism.
     let mut pack_results: Vec<PackResult> = intent_errors;
     let config_handlers = if ctx.dry_run {
         Vec::new()
@@ -317,9 +372,30 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         }
     }
 
-    let has_failures = pack_results
+    // A manager dodot could not *look for* is a failure, and the only
+    // one that never reaches `pack_results`: a probe failure produces
+    // no intent, so it produces no operation to carry a verdict.
+    //
+    // Absence is not counted here. The two outcomes are separated
+    // precisely because they differ: a missing brew is an ordinary
+    // machine state with a remedy the user can act on, while a
+    // `/opt/homebrew` dodot cannot stat means the question went
+    // unanswered — the run's report about that file is not to be
+    // trusted, and `up` says so with its exit code. The rest of the
+    // pack still deploys either way (ADR-0008).
+    let unprobeable = pack_unavailable
         .iter()
-        .any(|pr| !pr.success || pr.operations.iter().any(|op| !op.success));
+        .flat_map(|(_, files)| files)
+        .any(|f| {
+            matches!(
+                f.availability,
+                crate::provisioners::availability::Availability::ProbeFailed { .. }
+            )
+        });
+    let has_failures = unprobeable
+        || pack_results
+            .iter()
+            .any(|pr| !pr.success || pr.operations.iter().any(|op| !op.success));
 
     // Build display packs.
     //
@@ -333,7 +409,12 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // post-execution state to verify, and the user wants to see the planned
     // changes, not the unchanged current state.
     let (display_packs, notes) = if ctx.dry_run {
-        render_intents(&pack_results, ctx.paths.home_dir())
+        render_intents(
+            &pack_results,
+            &pack_skips,
+            &pack_unavailable,
+            ctx.paths.home_dir(),
+        )
     } else {
         let pack_names: Vec<String> = packs.iter().map(|p| p.display_name.clone()).collect();
         let status_result = status::status(Some(&pack_names), ctx)?;
@@ -368,7 +449,103 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         group_mode: ctx.group_mode.as_str().into(),
         diffs: Vec::new(),
         shell_hookup: activation_notice(ctx, pre_up_generation),
+        // A dry run attempted nothing, so it reports failures without
+        // being one — `dodot up --dry-run` in a script stays exit 0.
+        failed: has_failures && !ctx.dry_run,
     })
+}
+
+/// Ask each manager this run is about to spawn whether it is well
+/// enough to use, print what to tell the user about the ones that are
+/// not, and return the same text for the run's warning list.
+///
+/// Asked here rather than during planning because planning is shared
+/// with `--dry-run`, and asked before Phase 3 rather than inside the
+/// executor because the answer has to be on screen before the
+/// manager's own parse error is.
+///
+/// That last part is why the warning is *printed here* rather than
+/// only returned. `PackStatusResult::warnings` is printed by the CLI
+/// after `up` has returned, and a failing `brew bundle` writes its
+/// stderr straight to the user's terminal while it runs — so a
+/// warning that was only collected would arrive after the parse error
+/// it exists to explain, which is the wrong way round. It is still
+/// collected as well: the end-of-run warning list is what `--output
+/// json` serializes and what an API caller reads, and repeating one
+/// line in the run's summary costs less than dropping it from the
+/// machine-readable output.
+///
+/// One spawn per (manager, executable) pair per run, however many
+/// packs declare a file for it — three packs with a `Brewfile` ask
+/// brew its version once. The cache is here, and not in
+/// `provisioners::availability`, for the reason ADR-0008 gives:
+/// caching a couple of `stat` calls buys nothing, and caching a
+/// subprocess buys the whole difference.
+///
+/// A file whose receipt is already current is not asked about at all
+/// — see [`will_spawn`](crate::execution::run::will_spawn).
+fn provisioner_fitness_warnings(
+    pack_intents: &[(String, Vec<HandlerIntent>)],
+    ctx: &ExecutionContext,
+) -> Vec<String> {
+    use std::io::Write;
+
+    let mut asked: HashSet<(&str, &str)> = HashSet::new();
+    let mut warnings = Vec::new();
+    for (_, intents) in pack_intents {
+        for intent in intents {
+            let HandlerIntent::Run {
+                handler,
+                executable,
+                environment,
+                ..
+            } = intent
+            else {
+                continue;
+            };
+            if crate::provisioners::fitness::floor_for(handler).is_none() {
+                continue;
+            }
+            // Order matters: a manager is marked asked only once
+            // something has actually asked it. Marking on sight would
+            // let a pack whose receipt is current swallow the
+            // question on behalf of a pack whose `Brewfile` is about
+            // to run against the same brew.
+            if !crate::execution::run::will_spawn(
+                ctx.datastore.as_ref(),
+                ctx.provision_rerun,
+                intent,
+            ) {
+                continue;
+            }
+            if !asked.insert((handler.as_str(), executable.as_str())) {
+                continue;
+            }
+            let fitness = crate::provisioners::fitness::probe(
+                ctx.command_runner.as_ref(),
+                handler,
+                executable,
+                environment,
+            );
+            if let Some(warning) = fitness.warning(handler, executable) {
+                tracing::warn!(handler = %handler, "{warning}");
+                // Now, on the user's stderr, and not only in the
+                // returned list: Phase 3 is about to spawn this
+                // manager, and its output goes to the same terminal.
+                // Tracing is not a substitute — in the default quiet
+                // mode it reaches the log file and nothing else.
+                //
+                // Written through `std::io::stderr()` rather than
+                // `eprintln!` so it is the same handle
+                // `ShellCommandRunner` forwards a failing command's
+                // stderr through: one descriptor, two writers, and
+                // the order on screen is the order things happened.
+                let _ = writeln!(std::io::stderr(), "dodot: {warning}");
+                warnings.push(warning);
+            }
+        }
+    }
+    warnings
 }
 
 /// The shell-hookup footer `up` reports.
@@ -435,6 +612,11 @@ pub fn up_or_status_for_conflict(
             base.message = Some("Cross-pack conflicts prevent deployment.".into());
             base.dry_run = ctx.dry_run;
             base.conflicts = display_conflicts;
+            // Nothing deployed, so an active run is a failed one: a
+            // script chaining off `dodot up` must not proceed against
+            // a machine where every pack was blocked. A dry run is a
+            // preview and stays exit 0.
+            base.failed = !ctx.dry_run;
             Ok(base)
         }
         Err(e) => Err(e),
@@ -509,11 +691,25 @@ fn wipe_configuration_state(
 /// there's no executed state to verify and the user wants to see the
 /// planned changes rather than the unchanged status quo.
 ///
+/// `pack_skips` carries the files `--no-provision` dropped during
+/// planning, keyed by pack display name. They produced no intent and
+/// so no operation; without them the preview would simply omit the
+/// files the user asked to skip, which reads as "dodot found nothing
+/// here" rather than "you told me not to".
+///
+/// `pack_unavailable` carries the files whose manager is not on this
+/// machine, for the same reason and with a different story: not "you
+/// told me not to" but "brew is not here, and here is where I
+/// looked". Its rows are worded by the availability module, so a
+/// preview and the `status` row for the same machine match.
+///
 /// Returns (packs, notes). Failed operations keep their row but receive a
 /// `note_ref` into the command-wide notes list, keeping the column layout
 /// intact.
 fn render_intents(
     pack_results: &[PackResult],
+    pack_skips: &[(String, Vec<orchestration::ProvisionSkip>)],
+    pack_unavailable: &[(String, Vec<orchestration::ProvisionUnavailable>)],
     home: &std::path::Path,
 ) -> (Vec<DisplayPack>, Vec<DisplayNote>) {
     let mut notes: Vec<DisplayNote> = Vec::new();
@@ -546,6 +742,49 @@ fn render_intents(
                     }
                 })
                 .collect();
+
+            if let Some((_, skips)) = pack_skips.iter().find(|(name, _)| name == &pr.pack_name) {
+                files.extend(skips.iter().map(|skip| DisplayFile {
+                    name: skip.relative_path.clone(),
+                    symbol: handler_symbol(&skip.handler).into(),
+                    description: handler_description(&skip.handler, &skip.relative_path, None),
+                    status: "skipped".into(),
+                    status_label: crate::commands::PROVISION_SKIPPED_LABEL.into(),
+                    handler: skip.handler.clone(),
+                    note_ref: None,
+                }));
+            }
+
+            if let Some((_, unavailable)) = pack_unavailable
+                .iter()
+                .find(|(name, _)| name == &pr.pack_name)
+            {
+                for entry in unavailable {
+                    let Some(row) = entry.availability.unavailable_row(&entry.handler) else {
+                        continue;
+                    };
+                    notes.push(DisplayNote {
+                        body: row.note,
+                        hint: None,
+                        kind: row.note_kind.into(),
+                        timeline: None,
+                        command: None,
+                    });
+                    files.push(DisplayFile {
+                        name: entry.relative_path.clone(),
+                        symbol: handler_symbol(&entry.handler).into(),
+                        description: handler_description(
+                            &entry.handler,
+                            &entry.relative_path,
+                            None,
+                        ),
+                        status: row.style.into(),
+                        status_label: row.label,
+                        handler: entry.handler.clone(),
+                        note_ref: Some(notes.len() as u32),
+                    });
+                }
+            }
 
             if let Some(err) = &pr.error {
                 notes.push(DisplayNote::error(err.clone()));
@@ -592,9 +831,10 @@ pub(crate) fn overlay_errors(
 
             // Prefer to flip the existing status row so the file listing
             // stays one line per item. Match order:
-            //   1. (handler, name) — exact match by pack-relative basename.
-            //      Correct when the operation's source basename equals the
-            //      file row's pack-relative path (flat layout, common case).
+            //   1. (handler, name) — exact match. Status rows are keyed
+            //      by pack-relative path, and a RunCommand carries the
+            //      same pack-relative path, so this is the match for a
+            //      failed provisioning run at any depth.
             //   2. (handler, user_target) — covers the pre-link CreateUserLink
             //      conflict case where datastore_path is defaulted (empty)
             //      and the op's "name" comes from user_path.file_name(),
@@ -735,16 +975,20 @@ fn extract_op_info(
             };
             (handler.clone(), name, Some(target))
         }
+        // The run-once file, not the command line: this name is what
+        // `overlay_errors` matches against the status rows, and those
+        // are keyed by the pack-relative path of the file a rule
+        // matched (`install.sh`, `extras/install.sh`), never by the
+        // `bash -- /long/path` dodot built from it. Carrying the full
+        // relative path — not the basename — is what keeps two
+        // same-named run-once files in one pack from flipping each
+        // other's row. The command line still reaches the user, in
+        // the row's message.
         crate::operations::Operation::RunCommand {
             handler,
-            executable,
-            arguments,
+            relative_path,
             ..
-        } => (
-            handler.clone(),
-            format_command_for_display(executable, arguments),
-            None,
-        ),
+        } => (handler.clone(), relative_path.clone(), None),
         crate::operations::Operation::CheckSentinel {
             handler, sentinel, ..
         } => (handler.clone(), sentinel.clone(), None),

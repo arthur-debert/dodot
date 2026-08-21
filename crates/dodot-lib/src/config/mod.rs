@@ -230,7 +230,10 @@ pub struct PreprocessorTemplateSection {
     /// (e.g. `name = "Alice"` makes `{{ name }}` render as `Alice`).
     ///
     /// Reserved: `dodot` and `env` are built-in namespaces; using them
-    /// as var names raises an error at load time.
+    /// as var names is a hard error. It is raised when the
+    /// preprocessing pipeline is constructed — on any command that
+    /// plans packs — not when this file is parsed, so a config-only
+    /// command will read the offending value without complaint.
     #[config(default = {})]
     pub vars: std::collections::HashMap<String, String>,
 
@@ -314,18 +317,21 @@ pub struct ShellSection {
     /// regenerates the script.
     ///
     /// - `"auto"` (default) — emit the block whenever this host has an
-    ///   executable `brew` under a known prefix (macOS only). Nothing is
-    ///   emitted when brew is absent; the next `dodot up` picks it up
-    ///   once installed.
+    ///   executable `brew` under a known prefix, on macOS or on Linux
+    ///   (`/home/linuxbrew/.linuxbrew` and `~/.linuxbrew` are probed
+    ///   alongside the macOS prefixes). Nothing is emitted when brew is
+    ///   absent; the next `dodot up` picks it up once installed.
     /// - `"off"` — never emit it. Reach for this if you bootstrap
     ///   Homebrew yourself, or want nothing but dodot's own PATH lines
     ///   in the init script.
     ///
     /// The block is emitted verbatim and *first*, above dodot's PATH
-    /// additions, so pack contributions stay the last word. It is also
-    /// the one thing dodot puts on the shell startup path that spends
-    /// processes: brew's own block re-execs `path_helper`, about 2-3 ms
-    /// per shell start. The capture itself (`brew shellenv`, twice)
+    /// additions, so pack contributions stay the last word. On macOS it
+    /// is also the one thing dodot puts on the shell startup path that
+    /// spends processes: brew's own block re-execs `path_helper`, about
+    /// 2-3 ms per shell start. A Linux capture has no `path_helper`
+    /// line — it is plain `export` statements — so a Linux shell spends
+    /// no processes on it. The capture itself (`brew shellenv`, twice)
     /// runs only at `dodot up`/`down` and is cached in the datastore,
     /// so both hook shapes pay a shell the same. See
     /// `docs/proposals/shell-hookup-ergonomics.lex` §4 and

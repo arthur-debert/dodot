@@ -4,6 +4,26 @@
 //! The bulk of the behavior lives in
 //! [`crate::handlers::run_once::RunOnceHandler`]. This module supplies
 //! the [`BrewfileCommand`] specialization.
+//!
+//! Two of brew's defaults are turned off here, because both make a
+//! `Brewfile` run do work the user did not ask for:
+//!
+//! - `--no-upgrade` — `brew bundle` upgrades every outdated formula
+//!   it encounters by default, so "install what this Brewfile
+//!   declares" would otherwise be a long mutating upgrade of packages
+//!   that have nothing to do with the file.
+//! - `HOMEBREW_NO_AUTO_UPDATE` — declared in the handler's
+//!   [`crate::provisioners`] row and applied by the shared spawn
+//!   path, it stops the first brew of the day from running a `brew
+//!   update` first.
+//!
+//! They interact: with auto-update suppressed a stale brew stays
+//! stale, so nothing downstream may assume a brew recent enough for
+//! the newer `Brewfile` entry types. Reading brew's version is
+//! [`crate::provisioners::fitness`]'s job, not this handler's — this
+//! handler still does no pre-flight validation. `dodot up` asks brew
+//! its version before spawning it and warns when it is below the
+//! floor; the bundle runs either way.
 
 use std::path::Path;
 
@@ -12,7 +32,9 @@ use crate::handlers::{ExecutionPhase, HANDLER_HOMEBREW};
 
 /// [`RunOnceCommand`] for the `homebrew` handler.
 ///
-/// Invokes `brew bundle --file <abs path>`. No pre-flight validation —
+/// Invokes `brew bundle --no-upgrade --file <abs path>`, with
+/// `HOMEBREW_NO_AUTO_UPDATE` set from the handler's descriptor row.
+/// See the module docs for why both. No pre-flight validation —
 /// `brew` itself surfaces parse errors clearly when the Brewfile is
 /// malformed. See the
 /// [`RunOnceCommand`](crate::handlers::run_once::RunOnceCommand)
@@ -28,11 +50,23 @@ impl RunOnceCommand for BrewfileCommand {
         ExecutionPhase::Provision
     }
 
+    /// `brew bundle --no-upgrade --file <abs path>`.
+    ///
+    /// The program is the name a user would type. The planner
+    /// replaces it with the absolute path
+    /// [`provisioners::availability`](crate::provisioners::availability)
+    /// found before it emits the intent, so this stays a pure
+    /// function of the manifest path and the arguments — and the
+    /// manifest position declared in
+    /// [`crate::provisioners::PROVISIONERS`] — are unaffected.
     fn command_for(&self, path: &Path) -> (String, Vec<String>) {
         (
             "brew".to_string(),
             vec![
                 "bundle".into(),
+                // Install what the Brewfile declares; leave every
+                // other outdated formula on the machine alone.
+                "--no-upgrade".into(),
                 "--file".into(),
                 path.to_string_lossy().into_owned(),
             ],
@@ -64,6 +98,27 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
+    fn brewfile_command_suppresses_auto_update() {
+        // The variable is declared in the descriptor registry and
+        // reaches the command through the shared default, so this
+        // fails if the two ever disagree.
+        assert_eq!(
+            BrewfileCommand.environment(),
+            vec![("HOMEBREW_NO_AUTO_UPDATE".to_string(), "1".to_string())]
+        );
+    }
+
+    #[test]
+    fn brewfile_command_does_not_upgrade_unrelated_formulae() {
+        let (executable, arguments) = BrewfileCommand.command_for(Path::new("/packs/dev/Brewfile"));
+        assert_eq!(executable, "brew");
+        assert_eq!(
+            arguments,
+            vec!["bundle", "--no-upgrade", "--file", "/packs/dev/Brewfile"]
+        );
+    }
+
+    #[test]
     fn brewfile_command_identity() {
         assert_eq!(BrewfileCommand.handler_name(), HANDLER_HOMEBREW);
         assert_eq!(BrewfileCommand.phase(), ExecutionPhase::Provision);
@@ -82,8 +137,7 @@ mod tests {
             .done()
             .build();
 
-        let runner = crate::datastore::NoopCommandRunner;
-        let handler = RunOnceHandler::new(env.fs.as_ref(), &runner, BrewfileCommand);
+        let handler = RunOnceHandler::new(env.fs.as_ref(), BrewfileCommand);
         let matches = vec![RuleMatch {
             relative_path: "Brewfile".into(),
             absolute_path: env.dotfiles_root.join("dev/Brewfile"),
@@ -117,21 +171,27 @@ mod tests {
                 handler: h,
                 executable,
                 arguments,
+                environment,
                 sentinel,
-                filename,
+                relative_path,
                 content_hash,
             } => {
                 assert_eq!(pack, "dev");
                 assert_eq!(h, HANDLER_HOMEBREW);
                 assert_eq!(executable, "brew");
                 assert_eq!(arguments[0], "bundle");
-                assert_eq!(arguments[1], "--file");
-                assert!(arguments[2].ends_with("Brewfile"));
+                assert_eq!(arguments[1], "--no-upgrade");
+                assert_eq!(arguments[2], "--file");
+                assert!(arguments[3].ends_with("Brewfile"));
+                assert_eq!(
+                    environment.as_slice(),
+                    &[("HOMEBREW_NO_AUTO_UPDATE".to_string(), "1".to_string())]
+                );
                 assert!(sentinel.starts_with("Brewfile-"));
                 assert_eq!(sentinel.len(), "Brewfile-".len() + 16);
-                assert_eq!(filename, "Brewfile");
+                assert_eq!(relative_path, "Brewfile");
                 assert_eq!(content_hash.len(), 16);
-                assert_eq!(*sentinel, format!("{filename}-{content_hash}"));
+                assert_eq!(*sentinel, format!("{relative_path}-{content_hash}"));
             }
             other => panic!("expected Run, got {other:?}"),
         }
