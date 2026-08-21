@@ -8,6 +8,12 @@
 //! This prevents partial deployments where one pack silently overwrites
 //! another pack's symlinks.
 //!
+//! Between 2 and 3, and only on a real run, `up` asks each package
+//! manager it is about to spawn whether it is new enough to run what
+//! the user wrote (`provisioners::fitness`). That question costs a
+//! subprocess, which is why it lives here and not in planning: this
+//! file is the only place in dodot that asks it.
+//!
 //! ## Output rendering
 //!
 //! For non-dry-run executions, `up` renders by calling `status::status()`
@@ -33,7 +39,7 @@
 //! [`PackStatusResult::failed`], which the CLI turns into the process
 //! exit code — the signal a bootstrap script or an image build reads.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use tracing::{debug, info};
 
@@ -175,6 +181,18 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         return Err(crate::DodotError::CrossPackConflict { conflicts });
     }
     debug!("no cross-pack conflicts");
+
+    // Phase 2.5: is each manager the run is about to spawn *well
+    // enough* to use?
+    //
+    // `!ctx.dry_run` is the whole up-only contract, stated once: the
+    // fitness probe spawns the manager to ask, and a dry run that
+    // spawned the user's package manager would no longer be
+    // reporting what it *would* do. `status` never reaches this file
+    // at all. See `provisioners::fitness`.
+    if !ctx.dry_run {
+        warnings.extend(provisioner_fitness_warnings(&pack_intents, ctx));
+    }
 
     // Phase 3: Reconcile non-provisioning state, then execute intents.
     //
@@ -435,6 +453,99 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         // being one — `dodot up --dry-run` in a script stays exit 0.
         failed: has_failures && !ctx.dry_run,
     })
+}
+
+/// Ask each manager this run is about to spawn whether it is well
+/// enough to use, print what to tell the user about the ones that are
+/// not, and return the same text for the run's warning list.
+///
+/// Asked here rather than during planning because planning is shared
+/// with `--dry-run`, and asked before Phase 3 rather than inside the
+/// executor because the answer has to be on screen before the
+/// manager's own parse error is.
+///
+/// That last part is why the warning is *printed here* rather than
+/// only returned. `PackStatusResult::warnings` is printed by the CLI
+/// after `up` has returned, and a failing `brew bundle` writes its
+/// stderr straight to the user's terminal while it runs — so a
+/// warning that was only collected would arrive after the parse error
+/// it exists to explain, which is the wrong way round. It is still
+/// collected as well: the end-of-run warning list is what `--output
+/// json` serializes and what an API caller reads, and repeating one
+/// line in the run's summary costs less than dropping it from the
+/// machine-readable output.
+///
+/// One spawn per (manager, executable) pair per run, however many
+/// packs declare a file for it — three packs with a `Brewfile` ask
+/// brew its version once. The cache is here, and not in
+/// `provisioners::availability`, for the reason ADR-0008 gives:
+/// caching a couple of `stat` calls buys nothing, and caching a
+/// subprocess buys the whole difference.
+///
+/// A file whose receipt is already current is not asked about at all
+/// — see [`will_spawn`](crate::execution::run::will_spawn).
+fn provisioner_fitness_warnings(
+    pack_intents: &[(String, Vec<HandlerIntent>)],
+    ctx: &ExecutionContext,
+) -> Vec<String> {
+    use std::io::Write;
+
+    let mut asked: HashSet<(&str, &str)> = HashSet::new();
+    let mut warnings = Vec::new();
+    for (_, intents) in pack_intents {
+        for intent in intents {
+            let HandlerIntent::Run {
+                handler,
+                executable,
+                environment,
+                ..
+            } = intent
+            else {
+                continue;
+            };
+            if crate::provisioners::fitness::floor_for(handler).is_none() {
+                continue;
+            }
+            // Order matters: a manager is marked asked only once
+            // something has actually asked it. Marking on sight would
+            // let a pack whose receipt is current swallow the
+            // question on behalf of a pack whose `Brewfile` is about
+            // to run against the same brew.
+            if !crate::execution::run::will_spawn(
+                ctx.datastore.as_ref(),
+                ctx.provision_rerun,
+                intent,
+            ) {
+                continue;
+            }
+            if !asked.insert((handler.as_str(), executable.as_str())) {
+                continue;
+            }
+            let fitness = crate::provisioners::fitness::probe(
+                ctx.command_runner.as_ref(),
+                handler,
+                executable,
+                environment,
+            );
+            if let Some(warning) = fitness.warning(handler, executable) {
+                tracing::warn!(handler = %handler, "{warning}");
+                // Now, on the user's stderr, and not only in the
+                // returned list: Phase 3 is about to spawn this
+                // manager, and its output goes to the same terminal.
+                // Tracing is not a substitute — in the default quiet
+                // mode it reaches the log file and nothing else.
+                //
+                // Written through `std::io::stderr()` rather than
+                // `eprintln!` so it is the same handle
+                // `ShellCommandRunner` forwards a failing command's
+                // stderr through: one descriptor, two writers, and
+                // the order on screen is the order things happened.
+                let _ = writeln!(std::io::stderr(), "dodot: {warning}");
+                warnings.push(warning);
+            }
+        }
+    }
+    warnings
 }
 
 /// The shell-hookup footer `up` reports.

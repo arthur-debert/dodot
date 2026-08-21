@@ -23,8 +23,9 @@
 //! after a run. Status reaches this module on every provisioning row,
 //! so anything here that needed the tool to *answer* would break that
 //! posture. Asking a manager whether it is well enough to use — a
-//! version floor, a working `brew --version` — is the separate
-//! fitness probe, which spawns and is therefore `up`-only.
+//! version floor, a working `brew --version` — is
+//! [`fitness`](crate::provisioners::fitness), which spawns and is
+//! therefore `up`-only.
 //!
 //! # One probe, two callers
 //!
@@ -51,8 +52,11 @@
 //! Re-probing is a handful of `stat` calls, so nothing is cached
 //! within a run: the probe stays a pure function of `(fs, host,
 //! handler)`, which is what makes the planner and status agree
-//! trivially. A cache belongs with the fitness probe, where the cost
-//! is a subprocess rather than a `stat`.
+//! trivially. Caching belongs with the fitness question, where the
+//! cost is a subprocess rather than a `stat`, and that is where it
+//! happens: `commands::up` asks
+//! [`fitness::probe`](crate::provisioners::fitness::probe) once per
+//! (manager, executable) pair per run.
 //!
 //! See `docs/adr/0008-availability-is-three-outcomes-one-probe.md`.
 

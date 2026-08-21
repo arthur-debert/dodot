@@ -7,7 +7,7 @@ Runs `brew bundle` against your source `Brewfile` once per content-hash, tracked
 
     A source file named `Brewfile` at the pack root. Single-string match — the homebrew handler claims one Brewfile per pack.
 
-    macOS-only in practice, since `brew` itself is macOS-and-linux-but-mostly-macOS. dodot does not gate the handler by OS; on a host without `brew` installed, the bundle simply fails. Use a `[pack] os` predicate or a `_darwin/` directory-gate if you need the pack itself to no-op on non-mac hosts.
+    macOS-only in practice, since `brew` itself is macOS-and-linux-but-mostly-macOS. dodot does not gate the handler by OS; on a host without `brew` installed, dodot skips the file and says where it looked, rather than running a bundle that cannot work. Use a `[pack] os` predicate or a `_darwin/` directory-gate if you need the pack itself to no-op on non-mac hosts.
 
 2. Sentinels
 
@@ -46,6 +46,21 @@ Runs `brew bundle` against your source `Brewfile` once per content-hash, tracked
 
     - *No upgrades.* `brew bundle` upgrades every outdated formula it encounters by default. dodot passes `--no-upgrade`, so a run installs what the Brewfile declares and leaves the rest of your machine's packages at the versions they were. Upgrading stays something you ask for, with `brew upgrade`.
     - *No auto-update.* The first brew invocation of a day normally runs a `brew update` first — a network round-trip that upgrades brew and its taps and takes seconds before your packages get a look in. dodot suppresses it, so `dodot up` costs what your Brewfile costs. Updating brew stays something you ask for, with `brew update`.
+
+    Suppressing the auto-update has one consequence dodot then has to cover for you. A `Brewfile` may declare `go`, `cargo`, `uv`, `npm`, and `krew` entries alongside `brew` and `cask`, and brew grew support for them one at a time — `go` in 4.6.17, `cargo` in 5.0.7, `uv` in 5.0.16, and `npm` and `krew` in 5.1.2. Brew's own auto-update would normally have carried an older installation past all of those without you noticing. With auto-update off, an old brew stays old, so before running your `Brewfile` dodot asks `brew --version` and tells you if it is below 5.1.2 — the newest of the four — with `brew update` as the remedy:
+
+        dodot: homebrew at /opt/homebrew/bin/brew is 5.0.16, older than 5.1.2: not all of the
+        `Brewfile` entry types go, cargo, uv, npm, and krew are supported, and one of them may
+        fail to parse. Run `brew update` to update it. dodot runs this file anyway — everything
+        that does not need the newer homebrew still works.
+
+    :: console ::
+
+    It is a report, not a refusal, and a deliberately hedged one: dodot does not read your `Brewfile`, so it knows neither which entry types yours uses nor whether the brew you have is new enough for them. The 5.0.16 above already supports `go`, `cargo`, and `uv` — only `npm` and `krew` would fail on it — and a `Brewfile` of plain `brew` lines runs perfectly on an installation far older than that. The point is that if a line does fail afterwards, you are looking at a named condition with a remedy instead of a parse error out of `brew bundle`.
+
+    The warning is printed when dodot asks the question, before your `Brewfile` runs, so brew's own output cannot arrive first. It also appears in the run's closing warnings, which is where `--output json` carries it.
+
+    A brew at or above the floor says nothing at all, and the question is asked only by `dodot up`, only when a `Brewfile` is actually about to run, and once per machine per run however many packs declare one. `dodot status` and `dodot up --dry-run` never spawn brew.
 
     The variable is layered onto the environment dodot is running with, not substituted for it: the `brew` process still sees your `PATH`, `HOME`, and the rest of your `HOMEBREW_*` settings. The one exception is `HOMEBREW_NO_AUTO_UPDATE` itself — dodot's value wins for the bundle it runs, so a `HOMEBREW_NO_AUTO_UPDATE=0` you export does not re-enable auto-update here. Run `brew bundle` yourself if you want brew's defaults back for a particular run.
 

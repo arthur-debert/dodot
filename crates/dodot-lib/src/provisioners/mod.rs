@@ -76,8 +76,16 @@
 //! present / absent / probe-failed answer both `dodot up`'s planner
 //! and `dodot status` read. See
 //! `docs/adr/0007-locate-a-provisioner-at-fixed-paths.md`.
+//!
+//! [`ProvisionerDescriptor::version_floor`] states the second
+//! question — whether that program is *new enough* to run what the
+//! user wrote — which [`fitness`] answers by spawning it. That is
+//! why the two live in separate modules: only `dodot up` may ask a
+//! question that costs a subprocess. See
+//! `docs/adr/0010-a-fitness-probe-spawns-so-it-is-up-only.md`.
 
 pub mod availability;
+pub mod fitness;
 
 use crate::handlers::{HANDLER_HOMEBREW, HANDLER_INSTALL, HANDLER_NIX};
 
@@ -196,6 +204,15 @@ pub struct ProvisionerDescriptor {
     ///
     /// `None` for `install`, which has no manager to install.
     pub project_url: Option<&'static str>,
+    /// The lowest version of this manager dodot considers usable, or
+    /// `None` for a handler with no floor.
+    ///
+    /// Read by [`fitness::probe`], which spawns the manager to ask —
+    /// so a declared floor costs a subprocess on every `up` that
+    /// would run this handler's file, and no other command asks at
+    /// all. See
+    /// `docs/adr/0010-a-fitness-probe-spawns-so-it-is-up-only.md`.
+    pub version_floor: Option<fitness::VersionFloor>,
 }
 
 /// Where `brew` lives, in probe order — the Homebrew shell
@@ -273,6 +290,7 @@ pub const PROVISIONERS: &[ProvisionerDescriptor] = &[
         manifest_arg: ManifestArgPosition::at(1),
         location: ExecutableLocation::Path,
         project_url: None,
+        version_floor: None,
     },
     ProvisionerDescriptor {
         handler: HANDLER_HOMEBREW,
@@ -285,6 +303,12 @@ pub const PROVISIONERS: &[ProvisionerDescriptor] = &[
         manifest_arg: ManifestArgPosition::at(3),
         location: ExecutableLocation::Candidates(HOMEBREW_CANDIDATES),
         project_url: Some(HOMEBREW_PROJECT_URL),
+        // A `Brewfile`'s `go`, `cargo`, `uv`, `npm`, and `krew`
+        // entries are why dodot ships no handlers for those package
+        // managers, and they need a brew from 2026-03-30 or newer.
+        // With `HOMEBREW_NO_AUTO_UPDATE` set above, an old brew stays
+        // old, so the floor is checked rather than assumed.
+        version_floor: Some(fitness::HOMEBREW_VERSION_FLOOR),
     },
     ProvisionerDescriptor {
         handler: HANDLER_NIX,
@@ -292,6 +316,11 @@ pub const PROVISIONERS: &[ProvisionerDescriptor] = &[
         manifest_arg: ManifestArgPosition::at(7),
         location: ExecutableLocation::Candidates(NIX_CANDIDATES),
         project_url: Some(NIX_PROJECT_URL),
+        // Nix's CLI surface dodot uses (`nix profile install`) is
+        // years old, and dodot has no Nix installation to verify a
+        // floor against. An unverified floor would refuse hosts on
+        // guesswork.
+        version_floor: None,
     },
 ];
 

@@ -45,6 +45,47 @@ fn sentinel_key(relative_path: &str) -> &str {
         .unwrap_or(relative_path)
 }
 
+/// Whether this intent's command is actually going to be spawned —
+/// the receipt gate [`Executor::execute_run`] applies, asked ahead of
+/// it.
+///
+/// `dodot up`'s fitness probe needs the answer *before* execution
+/// starts, because a probe that spawns the user's package manager to
+/// read its version has no business running for a file whose receipt
+/// is already current: on the second `up` of the day that would be a
+/// subprocess bought for a warning about a run that is not happening.
+///
+/// The gate below is the authoritative one — this returns the same
+/// verdict from the same call, and `commands/tests/fitness.rs` pins
+/// the two together by asserting that a current receipt costs no
+/// version probe. A datastore that cannot answer reports `true`: the
+/// executor is about to raise that failure properly, and guessing
+/// "will not run" here would suppress a warning on the strength of an
+/// error nobody has seen yet.
+pub(crate) fn will_spawn(
+    datastore: &dyn crate::datastore::DataStore,
+    provision_rerun: bool,
+    intent: &HandlerIntent,
+) -> bool {
+    let HandlerIntent::Run {
+        pack,
+        handler,
+        relative_path,
+        content_hash,
+        ..
+    } = intent
+    else {
+        return false;
+    };
+    if provision_rerun {
+        return true;
+    }
+    match datastore.did_run(pack, handler, sentinel_key(relative_path), content_hash) {
+        Ok(status) => matches!(status, DidRunStatus::NeverRan),
+        Err(_) => true,
+    }
+}
+
 impl<'a> Executor<'a> {
     pub(super) fn execute_run(&self, intent: &HandlerIntent) -> Result<Vec<OperationResult>> {
         let HandlerIntent::Run {
