@@ -1,7 +1,7 @@
 :: verified ::
 The homebrew handler
 
-Runs `brew bundle` against your source `Brewfile` once per content-hash, tracked by a sentinel. Functionally a specialization of the install handler with a more ergonomic default for the common case: "install these packages on every machine I use."
+Runs `brew bundle` against your source `Brewfile` once, tracked by a sentinel keyed on the file's content. Editing the `Brewfile` does not re-run it on its own: dodot reports `brew packages older version` and holds until you pass `dodot up --provision-rerun` (section 8). Functionally a specialization of the install handler with a more ergonomic default for the common case: "install these packages on every machine I use."
 
 1. Default claim
 

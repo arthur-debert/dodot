@@ -12,8 +12,7 @@ Read-only. Per-file: handler symbol, live target, and a **handler-specific** lab
 `installed`/`never run`/`older version` (provisioning), `skipped`, `gated out`. Only
 the **pack-level rollup** is constrained to `pending`/`deployed`/`error`. Symbols:
 `➞` symlink · `⚙` shell/homebrew/nix · `+` `$PATH` · `×` install · `↓` external ·
-`·` skip/gate (not deployed). The icon set in `status --help` lists only the first
-four.
+`·` skip/gate (not deployed). `status --help` prints the same six.
 
 Below the pack rows, one **shell hookup** line reports whether shells are actually
 loading dodot: `shell hookup: ok`, `Deployed, but no shell has loaded dodot yet.`

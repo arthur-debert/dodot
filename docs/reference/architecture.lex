@@ -111,7 +111,7 @@ Architecture
 
     The pipeline gives you several properties that are worth naming explicitly.
 
-    - _Deterministic._ Given the same inputs (pack files, rules, config), the operation list is identical across runs and machines.
+    - _Deterministic._ Given the same inputs (pack files, rules, config), the same operations are produced, from the same matches, with the same contents. The one thing not pinned is the relative order of two handlers that share a phase (§2.4) — dodot sorts handler groups by phase and by nothing else, so `homebrew` and `nix` can come out either way round between runs. Nothing depends on it, and phase boundaries still hold.
     - _Idempotent at the boundary._ Running `dodot up` a second time produces the same operations but yields no change, because configuration handlers use idempotent filesystem operations and code-execution handlers consult their sentinels and don't repeat work that already ran.
     - _Previewable._ `--dry-run` reports the exact operation list that would have run.
     - _Fail-fast._ The pipeline stops on the first error in execution and reports it with context. Partial state is allowed (and legible, via the datastore); silent drift is not.

@@ -11,20 +11,40 @@
 //! and missed the rest, so the published taxonomy described a
 //! registry dodot had not shipped for months.
 //!
-//! So the tables are no longer written by hand. [`render_registry_doc`]
-//! renders `docs/reference/handler-registry.lex` from
-//! [`create_registry`](crate::handlers::create_registry) plus
+//! So the canonical table is no longer written by hand.
+//! [`render_registry_doc`] renders `docs/reference/handler-registry.lex`
+//! from [`create_registry`](crate::handlers::create_registry) plus
 //! [`mappings_to_rules`](crate::config::mappings_to_rules) over the
 //! default [`MappingsSection`](crate::config::MappingsSection), and a
 //! test in this module fails when the checked-in file drifts from
-//! what the registry would render. Every other document links to that
-//! page instead of restating it.
+//! what the registry would render. That page is the copy that cannot
+//! disagree with the shipped registry, and it is what a document
+//! should link to when it needs the whole roster.
 //!
-//! What a new handler therefore owes the docs is one [`HandlerDoc`]
-//! row here (the test refuses a registry entry with no row, and a row
-//! with no registry entry) and a `pixi run gen-docs` to regenerate the
-//! page. Everything else in the tables comes from the code the
-//! handler already had to write.
+//! # The rosters that stay hand-written
+//!
+//! Generation did not remove every other list, and was not meant to.
+//! A handful of pages name the handlers *in the middle of explaining
+//! something else* — the README's tour, the priority ladder in
+//! `mappings.lex`, the phase table in `execution-order.lex` — where a
+//! link to a separate page would cost the reader more than the
+//! duplication does. Those pages are enumerated in
+//! [`CONTEXTUAL_ROSTERS`], and the test
+//! `contextual_rosters_name_every_handler` holds each of them to
+//! naming every registered handler.
+//!
+//! So a new handler owes the docs three things, not one:
+//!
+//! 1. A [`HandlerDoc`] row here — the test refuses a registry entry
+//!    with no row, and a row with no registry entry.
+//! 2. A `pixi run gen-docs`, which regenerates the page from the
+//!    registry; everything in its table comes from code the handler
+//!    already had to write.
+//! 3. A line in each page of [`CONTEXTUAL_ROSTERS`], plus a
+//!    user-facing snippet under `docs/user/handlers/`. The roster test
+//!    catches a page that forgot the handler entirely; it cannot
+//!    catch one that describes it wrongly, so read what you are
+//!    editing.
 //!
 //! # What lives in the descriptor, and what does not
 //!
@@ -48,6 +68,29 @@ use crate::handlers::{
 
 /// The path of the generated page, relative to the repository root.
 pub const REGISTRY_DOC_PATH: &str = "docs/reference/handler-registry.lex";
+
+/// The pages that keep a hand-written handler roster, relative to the
+/// repository root.
+///
+/// Each names the handlers as part of explaining something else, so
+/// generation would not fit and a bare link would read worse. The
+/// price is an update obligation per new handler, and
+/// `contextual_rosters_name_every_handler` is what collects it:
+/// adding a handler fails the test until every page here mentions it.
+///
+/// A page whose roster is replaced by a link to the generated table
+/// should come off this list.
+pub const CONTEXTUAL_ROSTERS: &[&str] = &[
+    "README.md",
+    "docs/dev/handlers.lex",
+    "docs/reference/handlers.lex",
+    "docs/user/handlers.lex",
+    "docs/user/configuration.lex",
+    "docs/user/handlers/mappings.lex",
+    "docs/user/handlers/execution-order.lex",
+    "skills/using-dodot/SKILL.md",
+    "skills/using-dodot/HANDLERS.md",
+];
 
 /// The documentation-facing prose for one handler.
 ///
@@ -99,17 +142,17 @@ pub const HANDLER_CATALOG: &[HandlerDoc] = &[
     },
     HandlerDoc {
         handler: HANDLER_HOMEBREW,
-        effect: "Runs `brew bundle` once per content hash",
+        effect: "Runs `brew bundle` once, then holds an edited `Brewfile` at `older version` until `--provision-rerun`",
         claims: None,
     },
     HandlerDoc {
         handler: HANDLER_NIX,
-        effect: "Runs `nix profile install` once per content hash",
+        effect: "Runs `nix profile install` once, then holds an edited manifest at `older version` until `--provision-rerun`",
         claims: None,
     },
     HandlerDoc {
         handler: HANDLER_INSTALL,
-        effect: "Runs the script once per content hash",
+        effect: "Runs the script once, then holds an edited script at `older version` until `--provision-rerun`",
         claims: None,
     },
     HandlerDoc {
@@ -275,8 +318,11 @@ pub fn render_registry_doc(fs: &dyn Fs, mappings: &MappingsSection) -> String {
         1,
         &format!(
             "*Generated from the handler registry — do not edit.* Run `pixi run gen-docs` to \
-             regenerate this page from `{}`; the test suite fails when it drifts. Every other \
-             document links here rather than restating the tables.",
+             regenerate this page from `{}`; the test suite fails when it drifts. This is the \
+             roster that cannot disagree with the shipped registry, so link here rather than \
+             copying the tables. A few pages do keep a hand-written roster where naming the \
+             handlers is part of explaining something else; they are listed in that same file, \
+             and a test holds each of them to naming every registered handler.",
             "crates/dodot-lib/src/handlers/catalog.rs"
         ),
     ));
@@ -574,5 +620,68 @@ mod tests {
             checked_in, rendered,
             "{REGISTRY_DOC_PATH} is out of date with the handler registry — run `pixi run gen-docs`"
         );
+    }
+
+    /// Every page in [`CONTEXTUAL_ROSTERS`] names every registered
+    /// handler.
+    ///
+    /// These pages keep a hand-written roster on purpose (see the
+    /// module docs), so the generated page cannot cover them. What
+    /// this test covers is the drift that actually happened: `nix`,
+    /// `external`, and `gate` were added to the registry and left out
+    /// of roster after roster. A brand-new handler now fails here
+    /// until each page has been told about it.
+    ///
+    /// It is a mention check, not a correctness check — it cannot see
+    /// that a page put a handler in the wrong phase or gave it the
+    /// wrong priority. The generated page is still the only copy that
+    /// cannot drift in its details.
+    #[test]
+    fn contextual_rosters_name_every_handler() {
+        let fs = OsFs::new();
+        let registered: Vec<String> = create_registry(&fs).keys().cloned().collect();
+        let root = repo_root();
+
+        let mut missing: Vec<String> = Vec::new();
+        for page in CONTEXTUAL_ROSTERS {
+            let path = root.join(page);
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+            for handler in &registered {
+                if !mentions_word(&text, handler) {
+                    missing.push(format!("{page}: `{handler}`"));
+                }
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "these pages keep a hand-written handler roster and do not mention every \
+             registered handler — add the handler to each, or drop the page from \
+             CONTEXTUAL_ROSTERS if its roster is gone:\n  {}",
+            missing.join("\n  ")
+        );
+    }
+
+    /// Whether `text` names `word` as a word of its own.
+    ///
+    /// A hit is disqualified by a preceding alphanumeric, `_`, `-`,
+    /// `.`, or `/` — so `packages.nix` is not a mention of the `nix`
+    /// handler and `handlers/path.lex` is not a mention of `path` —
+    /// and by a trailing alphanumeric, `_`, or `-`, so
+    /// `externals.toml` is not a mention of `external`. A trailing
+    /// `.` is allowed, since a name can end a sentence.
+    fn mentions_word(text: &str, word: &str) -> bool {
+        text.match_indices(word).any(|(start, _)| {
+            let before_ok = text[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric() && !matches!(c, '_' | '-' | '.' | '/'));
+            let after_ok = text[start + word.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_alphanumeric() && !matches!(c, '_' | '-'));
+            before_ok && after_ok
+        })
     }
 }

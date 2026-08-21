@@ -50,8 +50,10 @@
 //!
 //! Snapshots live at
 //! `<datastore>/packs/<pack>/<handler>/<filename>-<hash>.snapshot`;
-//! users who want to manage state directly can delete the sentinel +
-//! snapshot pair to roll a file back to `never ran`.
+//! users who want to manage state directly can delete sentinel +
+//! snapshot pairs to roll a file back to `never ran` — all of the
+//! pairs for that filename, since earlier runs' sentinels are kept
+//! and any one of them still reads as `older version`.
 
 use std::io::Read;
 use std::path::Path;

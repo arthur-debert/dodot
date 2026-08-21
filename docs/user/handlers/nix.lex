@@ -1,7 +1,7 @@
 :: verified ::
 The nix handler
 
-Runs `nix profile install` against your source `packages.nix` once per content-hash, tracked by a sentinel. The Linux counterpart to the homebrew handler — and a fine choice on macOS too if you prefer declarative Nix to imperative Homebrew. Mechanically a specialization of the install handler with a more ergonomic default for the common case: "install these packages on every machine I use, declared in one file."
+Runs `nix profile install` against your source `packages.nix` once, tracked by a sentinel keyed on the file's content. Editing the manifest does not re-run it on its own: dodot reports `nix packages older version` and holds until you pass `dodot up --provision-rerun` (section 10). The Linux counterpart to the homebrew handler — and a fine choice on macOS too if you prefer declarative Nix to imperative Homebrew. Mechanically a specialization of the install handler with a more ergonomic default for the common case: "install these packages on every machine I use, declared in one file."
 
 1. Default claim
 

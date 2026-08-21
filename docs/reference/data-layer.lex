@@ -84,7 +84,9 @@ The Data Layer
 
     :: text ::
 
-    Configuration handlers (symlink, shell, path) fill their subdirectories with symlinks that point back to source files. Code-execution handlers (external, install, homebrew, nix) fill theirs with _sentinels_ — small marker files, named `<basename>-<hash of the content that ran>`, that record "this has already run, don't run it again." A successful run also leaves a `<sentinel>.snapshot` sibling holding the bytes that ran, which is what `dodot status --diff` compares against.
+    Configuration handlers (symlink, shell, path) fill their subdirectories with symlinks that point back to source files. Code-execution handlers fill theirs with _sentinels_ — small marker files that record "this has already happened, don't do it again."
+
+    The run-once handlers (install, homebrew, nix) key theirs on the local file they ran: `<basename>-<hash of the content that ran>`, plus a `<sentinel>.snapshot` sibling holding those bytes, which is what `dodot status --diff` compares against. The external handler keys its own on the *upstream* signature instead — the sha256 declared in `externals.toml`, or the remote HEAD a `git-repo` was fetched at — and writes no `.snapshot` sibling: what it fetched is already in the datastore, and there is no local source file whose earlier bytes anyone would diff against. [./../dev/storage.lex] §5 spells out both name shapes.
 
     The exact API between handlers and the datastore lives in [./../dev/storage.lex]. The shape above is the conceptual picture.
 
@@ -93,7 +95,7 @@ The Data Layer
     Because the datastore is legible, you can manipulate it by hand. Some cases where that is actually useful:
 
     - Removing a single deployment without running `dodot down` on the whole pack — delete the specific symlink.
-    - Resetting a provisioning sentinel to make `install.sh` re-run without `--provision-rerun` — delete the sentinel file (and its `.snapshot` sibling). The file goes back to "never ran", and the next `dodot up` runs it.
+    - Resetting provisioning state to make `install.sh` re-run without `--provision-rerun` — delete *every* `install.sh-*` sentinel in that handler's directory, along with their `.snapshot` siblings. dodot keeps the sentinels of earlier runs, and it treats the file as "never ran" only when none of them is left; remove just the newest and it reads an older one and still reports `older version`.
     - Moving a deployment to a different pack — move the directory.
     - Inspecting what the next shell session will source — `ls <datastore>/packs/*/shell/`.
 

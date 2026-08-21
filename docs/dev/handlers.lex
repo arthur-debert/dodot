@@ -85,12 +85,15 @@ Handlers
 
         A phase may hold more than one handler: `Filter` holds three, `Provision` holds two. The order two handlers sharing a phase run in is not defined — [`rules::handler_execution_order`] stable-sorts names collected from a `HashMap`, so their relative order is whatever the map iteration produced. Nothing in dodot depends on it.
 
-        Adding a handler is a deliberate design choice: which phase does it belong to? There is no alphabetical fallback between known handlers. The invariants pinning the order:
+        Adding a handler is a deliberate design choice: which phase does it belong to? There is no alphabetical fallback between known handlers.
 
-        - The filter phase is always first. `gate`, `ignore`, and `skip` exist to keep matched files away from deploying handlers; running them later would let a precise mapping or the catchall claim a file the user said to drop, or a file whose gate does not hold on this host.
-        - The catchall phase is always last. `symlink` is the only `MatchMode::Catchall` handler — running it before any precise handler would let it claim files that belong elsewhere.
+        First, two things the phase order does *not* do, because who claims a file is settled before any phase is consulted. [`Scanner::match_entries`] hands each entry to exactly one handler — the highest-priority rule that matches it, or a `gate` match the scanner mints itself from host facts — and only those finished matches are then grouped by handler and sorted by phase. So a file the user said to drop is kept away from a precise mapping and the catchall by `ignore` at priority 100 and `skip` at 50, not by `Filter` running first; and `symlink` is kept off a `Brewfile` by its priority-0 catchall rule and the one-exclusive-catchall invariant [`validate_registry`] asserts, not by `Link` running last. Moving either phase would change nothing about who claims what.
+
+        What the order does pin:
+
         - Code-execution phases run before configuration phases. `External`, `Provision`, and `Setup` produce filesystem state (fetched content, installed binaries, formulae, generated files) that later phases may reference.
         - `External` runs first among those three: install scripts and shell init may reference fetched content at its target path, so the fetch has to have happened.
+        - `Filter` sits first and `Link` last so the phase list reads in the same order as the priority ladder. Nothing depends on either slot: the filter handlers emit no intents at all, and `symlink` only ever deploys what no other handler wanted.
 
     3.2. `HandlerCategory`
 
@@ -227,7 +230,7 @@ Handlers
 
             [`DataStore::run_and_record`] also writes a `<sentinel>.snapshot` sibling holding the bytes that ran. That snapshot is what feeds the `(N lines added, M removed)` summary on an `older version` row and the body of `dodot status --diff`. Sentinels written before snapshots existed have no sibling, and their rows read `older version (no diff data)`.
 
-            Deleting the sentinel and its snapshot by hand rolls the file back to `NeverRan` — a supported way to force one re-run without `--provision-rerun`.
+            Deleting run-once state by hand is supported, and it takes *every* sentinel for that basename, not just the current one: [`DataStore::did_run`] answers `NeverRan` only when no `<basename>-<hash>` file is left in the handler's directory at all. `run_and_record` never removes the sentinels it supersedes, so after a few `--provision-rerun`s several hashes sit side by side; delete only the newest pair and the next plain `up` reads an older one and still reports `older version`. Remove `<basename>-*` and their `.snapshot` siblings together, or use `--provision-rerun`.
 
         4.4.5. Why there is no `validate` hook
 
@@ -361,14 +364,15 @@ Handlers
 
     The mechanical steps:
 
-    1. Create `handlers/<name>.rs`. A handler that runs a user-provided file once per content hash implements [`RunOnceCommand`], not [`Handler`] — the registry wraps it in `RunOnceHandler<C>` and it inherits the whole run-once lifecycle (§4.4). Anything else implements [`Handler`] directly. Either way, pick a phase based on what the handler does: drop-only filtering belongs in `Filter`; fetching remote content belongs in `External`; code execution belongs in `Provision` or `Setup`; configuration belongs in `PathExport`, `ShellInit`, or `Link`.
+    1. Create `handlers/<name>.rs`. A handler that runs a user-provided file once, tracked by a content-hash sentinel, implements [`RunOnceCommand`], not [`Handler`] — the registry wraps it in `RunOnceHandler<C>` and it inherits the whole run-once lifecycle (§4.4). Anything else implements [`Handler`] directly. Either way, pick a phase based on what the handler does: drop-only filtering belongs in `Filter`; fetching remote content belongs in `External`; code execution belongs in `Provision` or `Setup`; configuration belongs in `PathExport`, `ShellInit`, or `Link`.
     2. Export a name constant in `handlers/mod.rs` (`pub const HANDLER_<NAME>: &str = "<name>";`).
     3. Register it in [`create_registry`].
     4. If the handler should claim files by default, add a pattern to [`config::MappingsSection`] and emit the corresponding rule from [`config::mappings_to_rules`]. If the handler is opt-in (the user must add a rule explicitly), skip this step. A provisioning handler also needs a [`ProvisionerDescriptor`] row in `crates/dodot-lib/src/provisioners/mod.rs`: its handler name, the environment variables its command is spawned with (empty for most), the *position* of the manifest path inside the command's arguments, how the executable is located (`ExecutableLocation::Candidates` for a manager dodot probes for at fixed paths, `ExecutableLocation::Path` for the `install` case where the OS resolves an interpreter at spawn time), the manager's project page for the "not installed" message, and a version floor or `None`. A test in that module pins each declared manifest position against the argv the handler's `command_for` actually builds, so the two cannot drift.
     5. Decide whether `validate_registry` still passes. Two `Catchall` + `Exclusive` handlers will trip the `debug_assert!`.
     6. Add one [`HandlerDoc`] row to `HANDLER_CATALOG` in `handlers/catalog.rs` — the handler name, a one-line present-tense description of what a claimed file gets, and (only if the handler's matches do not come from `[mappings]` patterns) how to describe what it claims. A test holds the catalog and the registry equal in both directions: a registered handler with no row fails, and a row with no registered handler fails. Everything else in the published tables — phase, category, match mode, scope, default patterns, priority — is read from the registry and the config defaults at render time, so it cannot disagree with the shipped behavior.
-    7. Run `pixi run gen-docs` to regenerate [./../reference/handler-registry.lex] and commit the result. The handler tables in the documentation are generated from the registry; do not hand-edit that page, and do not restate its tables elsewhere — link to it. The same test that renders it fails when the checked-in page drifts.
-    8. Write the user-facing snippet: a new file under `docs/user/handlers/`, linked from [./../user/handlers.lex]. That is the prose the generated tables cannot carry — what the handler is for, what a pack author writes, and what stays live between runs.
+    7. Run `pixi run gen-docs` to regenerate [./../reference/handler-registry.lex] and commit the result. Do not hand-edit that page: it is rendered from the registry, and the same test that renders it fails when the checked-in copy drifts. It is the roster that cannot disagree with the shipped code, so a document that needs the whole taxonomy should link to it rather than copy it.
+    8. Add the handler to the pages that keep a hand-written roster anyway. They are enumerated in `CONTEXTUAL_ROSTERS` in `handlers/catalog.rs` — the README's tour, [./../user/configuration.lex], [./../user/handlers.lex], [./../user/handlers/mappings.lex], [./../user/handlers/execution-order.lex], [./../reference/handlers.lex], this document, and the two `using-dodot` skill pages. Each names the handlers in the middle of explaining something else, where a link to a separate page would cost the reader more than the duplication does, so generation does not fit. The test `contextual_rosters_name_every_handler` fails until every one of them mentions the new handler — it catches a page that forgot the handler, not a page that describes it wrongly, so read what you are editing.
+    9. Write the user-facing snippet: a new file under `docs/user/handlers/`, linked from [./../user/handlers.lex]. That is the prose the generated tables cannot carry — what the handler is for, what a pack author writes, and what stays live between runs.
 
     :: note :: The trait surface is small (two methods carry behavior, three more are classification), and smaller still for a run-once command. A new handler is typically a few dozen lines plus tests against `TempEnvironment`.
 
@@ -384,4 +388,4 @@ Handlers
 
     The handler trait itself has compile-time object-safety checks in `mod.rs` (`assert_object_safe`, `assert_boxable`) plus tests asserting the registry has exactly one exclusive catchall, that phase ordering matches declaration order, and that each built-in handler is in the phase it is supposed to be in. `RunOnceCommand` gets the same object-safety check in `run_once.rs`.
 
-    A third pattern guards the generated documentation. The tests in `handlers/catalog.rs` hold `HANDLER_CATALOG` and the registry equal in both directions, and re-render [./../reference/handler-registry.lex] to compare against the checked-in file — so a handler that ships without a catalog row, or with a stale generated page, fails `pixi run test`.
+    A third pattern guards the documentation. The tests in `handlers/catalog.rs` hold `HANDLER_CATALOG` and the registry equal in both directions, and re-render [./../reference/handler-registry.lex] to compare against the checked-in file — so a handler that ships without a catalog row, or with a stale generated page, fails `pixi run test`. A third test reads the pages in `CONTEXTUAL_ROSTERS` and fails when one of them does not mention a registered handler, which is the drift that actually happened when `nix`, `external`, and `gate` landed. It checks for a mention and nothing more: it cannot tell that a page put a handler in the wrong phase.

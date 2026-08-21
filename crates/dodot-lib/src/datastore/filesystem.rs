@@ -13,8 +13,10 @@ use crate::{DodotError, Result};
 /// lives at `<filename>-<hash>.snapshot` in the same handler data dir
 /// (`<datastore>/packs/<pack>/<handler>/`). Snapshots are plain
 /// regular files — users who want to manage run-once state by hand
-/// can delete the sentinel + snapshot pair to roll a file back to
-/// `NeverRan`.
+/// can delete sentinel + snapshot pairs to roll a file back to
+/// `NeverRan`. That takes every `<filename>-<hash>` pair for the
+/// file: this method never removes the sentinel it supersedes, and
+/// `did_run` answers `NeverRan` only when none is left.
 ///
 /// Sentinels written before snapshots existed have no sibling —
 /// `did_run` surfaces `previous_snapshot: None` then, so `dodot status`

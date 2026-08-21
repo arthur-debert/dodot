@@ -105,7 +105,7 @@ Storage
             Writes a regular (non-symlink) file under `packs/<pack>/<handler>/<filename>`. Used by preprocessors that produce content rather than pointing at existing files, and by the external handler for fetched content and its sentinels. Returns the absolute path. Idempotent — it overwrites.
 
         `write_rendered_file_with_mode(pack, handler, filename, content, mode) -> Result<PathBuf>`:
-            The same, but applies `mode` at file-creation time so the bytes never sit on disk under a more permissive mode — what whole-file `age` / `gpg` plaintext needs. The default implementation writes then chmods, which is briefly permissive; real implementations override it with the atomic `Fs::write_file_with_mode` path.
+            The same, but applies `mode` at file-creation time so the bytes never sit on disk under a more permissive mode — what whole-file `age` / `gpg` plaintext needs. Required, not defaulted: every `DataStore` implementation has to provide it, precisely so none of them silently inherits a write-then-chmod fallback that is briefly permissive. `FilesystemDataStore` implements it with the atomic `Fs::write_file_with_mode` path.
 
         `write_rendered_dir(pack, handler, relative) -> Result<PathBuf>`:
             Creates an empty directory inside the datastore (mkdir -p semantics). Used for preprocessors that need to materialize directory entries, such as the unarchive preprocessor.
@@ -152,7 +152,7 @@ Storage
 
     Because the checksum is part of the sentinel name, any change to the input content produces a new sentinel name — which is how dodot detects that an `install.sh` has been edited or that a preprocessor produced different output on a new machine. For the run-once handlers (install, homebrew, nix) detection is not application: [`DataStore::did_run`] reports the mismatch as `RanDifferent`, the executor skips the command with a "ran older version" notice, and applying the edit takes `dodot up --provision-rerun`. The external handler is the exception — a changed signature re-fetches on the spot, since there is no user-authored code to hold back.
 
-    Sentinels are cheap to inspect, cheap to delete, and contain no information you can't reproduce. Deleting one by hand — together with its `.snapshot` sibling — is a supported way to force a re-run of its handler without using `--provision-rerun`.
+    Sentinels are cheap to inspect, cheap to delete, and contain no information you can't reproduce. Deleting them by hand is a supported way to force a re-run without `--provision-rerun` — but for a run-once handler it means every `<basename>-<hash>` sentinel for that file plus each one's `.snapshot` sibling. `run_and_record` never removes the sentinel it supersedes, so a file re-run a few times has several hashes on disk at once, and `did_run` answers `NeverRan` only when none of them is left.
 
 6. Shell Integration Script
 

@@ -89,8 +89,10 @@ the datastore, and symlinks them into place.
   it is the upstream HEAD from a `git ls-remote`: unchanged HEAD leaves the clone
   alone, a moved HEAD re-fetches. A sha256 mismatch is fatal; a network failure is
   soft — an existing cached copy stays in place and the run reports the failure.
-  `dodot status` reports `externals deployed` / `externals not yet fetched` for
-  the pack as a whole, not per entry. `--no-provision` skips this handler too.
+  `dodot status` reports on the `externals.toml` row as a whole, not per entry,
+  and with the generic labels `pending` / `deployed` — the handler's own
+  "externals deployed" wording is internal and never reaches the status column.
+  `--no-provision` skips this handler too.
 
 ## Filter handlers
 

@@ -9,13 +9,13 @@ For terminology, see [./glossary/handler.lex].
 
     Seven deploy handlers, one per snippet:
 
-    - [./handlers/symlink.lex] — link source files into deployed locations. The catch-all.
-    - [./handlers/shell.lex] — source shell scripts at login.
-    - [./handlers/path.lex] — add a source `bin/` directory to `$PATH`; covers the compose-once precedence contract for where each pack's directory lands.
-    - [./handlers/install.lex] — run a one-shot setup script, content-hashed.
-    - [./handlers/homebrew.lex] — run `brew bundle` against a source `Brewfile`, content-hashed.
-    - [./handlers/nix.lex] — run `nix profile install` against a source `packages.nix`, content-hashed.
-    - [./handlers/external.lex] — fetch upstream content — a file, a git repo, an archive — declared in a source `externals.toml`, and symlink it into place.
+    - `symlink` ([./handlers/symlink.lex]) — link source files into deployed locations. The catch-all.
+    - `shell` ([./handlers/shell.lex]) — source shell scripts at login.
+    - `path` ([./handlers/path.lex]) — add a source `bin/` directory to `$PATH`; covers the compose-once precedence contract for where each pack's directory lands.
+    - `install` ([./handlers/install.lex]) — run a one-shot setup script, tracked by a content hash.
+    - `homebrew` ([./handlers/homebrew.lex]) — run `brew bundle` against a source `Brewfile`, tracked by a content hash.
+    - `nix` ([./handlers/nix.lex]) — run `nix profile install` against a source `packages.nix`, tracked by a content hash.
+    - `external` ([./handlers/external.lex]) — fetch upstream content — a file, a git repo, an archive — declared in a source `externals.toml`, and symlink it into place.
 
     Three filter handlers, bundled in one snippet because they share a usage story:
 

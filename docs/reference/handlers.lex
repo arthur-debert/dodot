@@ -42,13 +42,13 @@ Handlers
 
     1.6. homebrew
 
-        Runs `brew bundle --no-upgrade` against a `Brewfile`, once per content hash, with `HOMEBREW_NO_AUTO_UPDATE=1` in the environment. It is not a separate implementation: install, homebrew, and nix are one run-once handler parameterised by the command it builds. Editing the `Brewfile` does not re-run it — the new content hashes differently, so `dodot up` reports `brew packages older version` and holds, and `dodot up --provision-rerun` is what applies the edit.
+        Runs `brew bundle --no-upgrade` against a `Brewfile` once, tracked by a sentinel keyed on the file's content hash, with `HOMEBREW_NO_AUTO_UPDATE=1` in the environment. It is not a separate implementation: install, homebrew, and nix are one run-once handler parameterised by the command it builds. Editing the `Brewfile` does not re-run it — the new content hashes differently, so `dodot up` reports `brew packages older version` and holds, and `dodot up --provision-rerun` is what applies the edit.
 
         Homebrew is not macOS-only. It runs on Linux, and where its prerequisites are acceptable it is the same `Brewfile` you already have — but those prerequisites are real: a system compiler and build tools, and on older distributions brew brings its own gcc and glibc. Where that is too much to accept, `nix` covers the same need without leaning on the host toolchain, and `install.sh` remains the fallback for anything the distro's own package manager should own. See [./../user/handlers/homebrew.lex].
 
     1.7. nix
 
-        Runs `nix profile install` against the pack's `packages.nix`, once per content hash — the same run-once machinery as install and homebrew, pointed at a different command. Matches `packages.nix` at the pack root. A pack can carry both a `Brewfile` and a `packages.nix`; the two run independently against their own package managers.
+        Runs `nix profile install` against the pack's `packages.nix` once, tracked by a sentinel keyed on the file's content hash — the same run-once machinery as install and homebrew, pointed at a different command. Matches `packages.nix` at the pack root. A pack can carry both a `Brewfile` and a `packages.nix`; the two run independently against their own package managers.
 
         Editing the manifest does not re-run it either: `dodot up` reports `nix packages older version` and holds until `--provision-rerun`. And the only command the handler can build is `nix profile install`, so *removing a line from `packages.nix` uninstalls nothing* — the re-run installs the remaining list, which adds nothing and removes nothing. Deleting `packages.nix` outright removes nothing either; provisioning state is deliberately left out of `up`'s wipe-and-reapply reconcile. See [./../user/handlers/nix.lex].
 

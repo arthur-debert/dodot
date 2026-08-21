@@ -246,6 +246,6 @@ Template Expansion
 
     :: shell ::
 
-    `dodot up --provision-rerun` is what applies the new content. The same holds for a rendered `Brewfile` (`brew packages older version`) and a rendered `packages.nix` (`nix packages older version`). Deleting the sentinel by hand rolls the file back to "never ran" and gets the same effect on the next plain `up`.
+    `dodot up --provision-rerun` is what applies the new content. The same holds for a rendered `Brewfile` (`brew packages older version`) and a rendered `packages.nix` (`nix packages older version`). Deleting the recorded runs by hand gets the same effect on the next plain `up`, but it means all of them: every `<basename>-<hash>` sentinel for that file, plus their `.snapshot` siblings. dodot keeps the sentinels of earlier runs, so removing only the newest leaves an older one behind and the file still reads `older version`.
 
     So a template that feeds a run-once handler is a two-step edit: change the variable, then `dodot up --provision-rerun`. A template that feeds `symlink`, `shell`, or `path` is a one-step edit — `dodot up` and the new content is in place.

@@ -1,24 +1,26 @@
 :: verified ::
 Execution order
 
-The order in which handlers run within a pack, and the order in which packs run relative to each other. Both orderings are deterministic and visible — you don't have to guess what runs first.
+The order in which handlers run within a pack, and the order in which packs run relative to each other. Both orderings are fixed and visible — you don't have to guess what runs first. The one exception, in §4, is two handlers that share a phase: their order relative to each other is not specified.
 
 1. Within a pack: phases
 
     Inside a single pack, every handler belongs to one of seven phases. They run in this fixed order:
 
         | Order | Phase      | Handlers            | Why this slot                                                              |
-        | 1     | Filter     | ignore, skip, gate  | Drop matched source files before any deploying handler can claim them.     |
+        | 1     | Filter     | ignore, skip, gate  | Emit no work at all; listed first so the phases read like the priority ladder. |
         | 2     | External   | external            | Fetch upstream content first, so later handlers find it already at its target path. |
         | 3     | Provision  | homebrew, nix       | Install packages, so anything later may use what they put on `$PATH`.      |
         | 4     | Setup      | install             | User setup scripts that may rely on Provision having completed.            |
         | 5     | PathExport | path                | Stage `bin/` directories onto `$PATH` before shell init reads it.          |
         | 6     | ShellInit  | shell               | Register shell startup files, which can reference PathExport executables.  |
-        | 7     | Link       | symlink             | Catch-all; runs last because precise handlers must claim their files first. |
+        | 7     | Link       | symlink             | Catch-all; deploys whatever no precise handler claimed.                    |
 
     :: table align=rlll ::
 
     The order is encoded as a Rust `enum` declared in execution order in `crates/dodot-lib/src/handlers/mod.rs`. Adding or moving a phase is a visible, deliberate code change — not an accident of alphabetical sort.
+
+    What the phase order does *not* decide is which handler gets a file. That is settled earlier, when dodot matches each file against the rules: the highest-priority pattern wins, and gates are evaluated before matching runs at all. So a `README` is kept off the symlink handler by `skip` sitting at priority 50, not by the Filter phase running first — see [./mappings.lex]. By the time phases matter, every file already has its handler, and the phase order only says who acts first.
 
     The roster above is reproduced here because phase order is what this page is about; the copy that cannot drift is generated straight from the registry at [./../../reference/handler-registry.lex], which also carries each handler's category, match mode, and default claims.
 
