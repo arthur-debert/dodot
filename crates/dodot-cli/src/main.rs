@@ -533,7 +533,10 @@ fn build_clap_command() -> ClapCommand {
         .subcommand(
             ClapCommand::new("status")
                 .about("Show deployment status of packs")
-                .after_help("Icons: ➞ symlink  ⚙ shell/homebrew  + path  × install script")
+                .after_help(
+                    "Icons: ➞ symlink  ⚙ shell/homebrew/nix  + path  \
+                     × install script  ↓ external  · skipped or gated out",
+                )
                 .arg(
                     Arg::new("packs")
                         .help("Pack names to show (all if omitted)")

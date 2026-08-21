@@ -13,6 +13,11 @@ changelog = "./bin/shipit changelog"
 logs = "./bin/shipit logs"
 # <<< shipit-managed tasks <<<
 
+# Regenerate the code-derived documentation pages (the handler registry
+# table). The test suite checks the same pages, so this is only needed
+# after a handler changes.
+gen-docs = "./bin/gen-docs"
+
 [feature.lint.dependencies]
 # >>> shipit-managed rust lint toolchain (do not edit; regenerate via `shipit install`) >>>
 # The fleet-pinned rust lint toolchain (#547 Layer 1) — delivered because this

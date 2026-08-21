@@ -320,7 +320,7 @@ Conditional Running
           mac-tools/
             install.sh           ×  run script     never run
             install._linux.sh    ·  not deployed   gated out (linux) [1]
-            Brewfile             ⚙  brew install   not installed
+            Brewfile             ⚙  brew install   brew packages not installed
           Inactive on this OS
             linux-tools (os=linux, current=darwin)
 

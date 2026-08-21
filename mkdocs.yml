@@ -70,4 +70,5 @@ nav:
   - Reference:
       - Philosophy: reference/philosophy.md
       - Architecture: reference/architecture.md
+      - Handler registry: reference/handler-registry.md
       - Terms & concepts: reference/terms-and-concepts.md

@@ -326,9 +326,11 @@ pub const PROVISIONERS: &[ProvisionerDescriptor] = &[
 
 /// Look up a provisioning handler's descriptor by name.
 ///
-/// `None` for every other handler — the symlink, shell, path, gate,
-/// and external handlers do not run a manifest through a command and
-/// have no row here.
+/// `None` for every other handler — the symlink, shell, path,
+/// external, ignore, skip, and gate handlers do not run a manifest
+/// through a package manager and have no row here. (`external` does
+/// fetch, but through dodot's own fetch path rather than a spawned
+/// manager.)
 pub fn descriptor_for(handler: &str) -> Option<&'static ProvisionerDescriptor> {
     PROVISIONERS.iter().find(|d| d.handler == handler)
 }

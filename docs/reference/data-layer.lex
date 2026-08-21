@@ -84,7 +84,7 @@ The Data Layer
 
     :: text ::
 
-    Configuration handlers (symlink, shell, path) fill their subdirectories with symlinks that point back to source files. Code-execution handlers (install, homebrew) fill theirs with _sentinels_ — empty marker files that record "this has already run, don't run it again."
+    Configuration handlers (symlink, shell, path) fill their subdirectories with symlinks that point back to source files. Code-execution handlers (external, install, homebrew, nix) fill theirs with _sentinels_ — small marker files, named `<basename>-<hash of the content that ran>`, that record "this has already run, don't run it again." A successful run also leaves a `<sentinel>.snapshot` sibling holding the bytes that ran, which is what `dodot status --diff` compares against.
 
     The exact API between handlers and the datastore lives in [./../dev/storage.lex]. The shape above is the conceptual picture.
 
@@ -93,7 +93,7 @@ The Data Layer
     Because the datastore is legible, you can manipulate it by hand. Some cases where that is actually useful:
 
     - Removing a single deployment without running `dodot down` on the whole pack — delete the specific symlink.
-    - Resetting a provisioning sentinel to make `install.sh` re-run without `--provision-rerun` — delete the sentinel file.
+    - Resetting a provisioning sentinel to make `install.sh` re-run without `--provision-rerun` — delete the sentinel file (and its `.snapshot` sibling). The file goes back to "never ran", and the next `dodot up` runs it.
     - Moving a deployment to a different pack — move the directory.
     - Inspecting what the next shell session will source — `ls <datastore>/packs/*/shell/`.
 

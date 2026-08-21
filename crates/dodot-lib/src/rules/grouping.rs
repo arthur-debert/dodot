@@ -19,8 +19,15 @@ pub fn group_by_handler(matches: &[RuleMatch]) -> HashMap<String, Vec<RuleMatch>
 /// Order is driven by each handler's [`ExecutionPhase`]
 /// (see [`crate::handlers::ExecutionPhase`] for the full phase list and
 /// why each slot is where it is). The phase enum's declaration order
-/// *is* the execution order — `Provision` → `Setup` → `PathExport` →
-/// `ShellInit` → `Link`.
+/// *is* the execution order — `Filter` → `External` → `Provision` →
+/// `Setup` → `PathExport` → `ShellInit` → `Link`.
+///
+/// Sorting is by phase only, so two handlers sharing a phase
+/// (`homebrew` and `nix` in `Provision`, the three filter handlers)
+/// come out in whatever order the group map yielded them. Nothing
+/// depends on that relative order: the filter handlers emit no
+/// intents at all, and a `Brewfile` and a `packages.nix` install
+/// independently of each other.
 ///
 /// Handler names not present in the registry are placed last in
 /// alphabetical order (they get ignored by the pipeline anyway).

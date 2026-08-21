@@ -3,10 +3,11 @@
 //! Preprocessors expand files whose version-controlled source differs from
 //! the deployed artifact (templates, plists, encrypted secrets). The
 //! preprocessing phase runs before handler dispatch, producing virtual
-//! entries that downstream handlers (symlink, shell, path, install,
-//! homebrew) consume transparently.
+//! entries that downstream handlers (symlink, shell, path, external,
+//! homebrew, nix, install) consume transparently.
 //!
-//! See `docs/proposals/preprocessing-pipeline.lex` for the full design.
+//! See `docs/proposals/shipped/preprocessing-pipeline.lex` for the
+//! full design.
 
 pub mod age;
 pub mod baseline;

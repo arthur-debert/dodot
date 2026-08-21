@@ -297,7 +297,7 @@ Configuration
 
 5. The `[mappings]` Section
 
-    Overrides the default filename-to-handler map. Each key is a handler name; each value is either a single pattern or a list of patterns.
+    Overrides the default filename-to-handler map. Each key names a handler; the value is the pattern (or patterns) that route a file to it. The block below is the shipped default, written out in full:
 
     Mappings:
 
@@ -306,23 +306,48 @@ Configuration
         install = ["install.sh", "install.bash", "install.zsh"]
         shell = ["*.sh", "*.bash", "*.zsh"]
         homebrew = "Brewfile"
+        nix = "packages.nix"
+        externals = ["externals.toml"]
         ignore = []
         skip = ["README", "README.*", "LICENSE", "LICENSE.*", "CHANGELOG", "CHANGELOG.*", "CONTRIBUTING", "CONTRIBUTING.*", "AUTHORS", "AUTHORS.*", "NOTICE", "NOTICE.*", "COPYING", "COPYING.*"]
 
     :: toml ::
 
+    One trip hazard in that list: the key for the `external` handler is *`externals`*, plural, while the handler it feeds is named `external` (singular) everywhere else — in `dodot status` rows, in `--no-provision` output, in the handler registry. `externals` is the only key whose spelling differs from its handler's name.
+
+    The value shape is fixed per key, and it is not interchangeable: `path`, `homebrew`, and `nix` take a single string; `install`, `shell`, `externals`, `ignore`, and `skip` take a list. `[mappings.gates]` is a table rather than a pattern list, because it maps globs to gate labels instead of filenames to one handler — see [#5.1].
+
+    The `symlink` handler has no key here — it is the catchall (`*`), and it claims whatever no other rule did. The `gate` handler has no key either: gate matches come from filenames (`._<label>`), directory segments (`_<label>/`), and `[mappings.gates]`, not from a pattern list.
+
     The shell wildcards match at depth-1 only — any `.sh`/`.bash`/`.zsh` file at the *pack's root* is sourced. A `.sh` script tucked inside a subdirectory of the pack (for example `hypr/scripts/foo.sh`) is not pulled in; nested files flow through the symlink handler the same way every other nested file does. That carve-out is what keeps window-manager and tmux helper scripts (which live at `~/.config/<app>/scripts/*.sh` and are invoked by other tools, not the shell) from being silently sourced into your login shell.
 
     Shell extensions (`.sh`, `.bash`, `.zsh`) carry real meaning in dodot. For `install`, the extension selects the interpreter that runs the script: `.sh` and `.bash` run under `bash`, `.zsh` runs under `zsh`. For `shell`, the files are sourced into whatever shell reads `dodot-init.sh` — put zsh-only syntax in `.zsh`, bash-only syntax in `.bash`, and portable snippets in `.sh`. The user's login shell does not affect which `install.*` interpreter is picked; the extension is the contract.
 
-    `install` is list-only: even a single install script must be written as a TOML array (`install = ["install.sh"]`). The older single-string form (`install = "install.sh"`) no longer parses — update any older configs that use it.
+    One migration note on that: even a single install script must be written as a TOML array (`install = ["install.sh"]`). The older single-string form (`install = "install.sh"`) no longer parses — update any older configs that use it.
 
-    Two of the keys map to _filter handlers_ — real handlers that claim a match but produce no executable intent. Their job is to keep matching files away from the deploying handlers (precise mappings, catchall symlink):
+    Two of the keys route matches to _filter handlers_ — real handlers that claim a match but produce no executable intent. Their job is to keep matching files away from the deploying handlers (precise mappings, catchall symlink). The third filter handler, `gate`, has its own key: see [#5.1].
 
     - `ignore` — claims matches and drops them silently, mirroring `.gitignore`. Nothing surfaces in `dodot status`. Priority 100.
     - `skip` — claims matches and surfaces them in `dodot status` as `skipped`, but does not deploy them. Defaults cover the documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally. Priority 50.
 
-    `install` sits at priority 20, above the priority-10 shell wildcard, so as long as `install.sh` is in `mappings.install` (the default) it routes to the install handler rather than being claimed by the shell glob — the install hook never gets accidentally sourced. The other precise mappings (`shell`, `path`, `homebrew`) sit at priority 10; the catchall symlink at priority 0. So a file the user said to drop is dropped, full stop — `ignore` over `skip` over `install` over the rest of the precise mappings over catchall. (If you override `mappings.install` to drop `install.sh`, the shell wildcard *will* claim it — that's the user's choice.)
+    Every rule carries a priority, and the highest one claims the file:
+
+    Rule priorities:
+
+        | Priority | Key          | Handler    |
+        | 100      | `ignore`     | `ignore`   |
+        | 50       | `skip`       | `skip`     |
+        | 20       | `install`    | `install`  |
+        | 20       | `externals`  | `external` |
+        | 10       | `homebrew`   | `homebrew` |
+        | 10       | `nix`        | `nix`      |
+        | 10       | `path`       | `path`     |
+        | 10       | `shell`      | `shell`    |
+        | 0        | — (catchall) | `symlink`  |
+
+    :: table align=rll ::
+
+    `install` and `externals` sit at 20, above the priority-10 shell wildcard, so as long as `install.sh` is in `mappings.install` (the default) it routes to the install handler rather than being claimed by the shell glob — the install hook never gets accidentally sourced, and neither does an `externals.toml` that some overridden glob happens to match. So a file the user said to drop is dropped, full stop — `ignore` over `skip` over `install`/`externals` over the rest of the precise mappings over catchall. (If you override `mappings.install` to drop `install.sh`, the shell wildcard *will* claim it — that's the user's choice.)
 
     Distinct from `[pack] ignore`: `[mappings] ignore`/`skip` apply only to handler dispatch within a known pack, while `[pack] ignore` affects pack discovery and scanning. To skip an entire pack, drop a `.dodotignore` marker file (the "pack-ignore" mechanism).
 

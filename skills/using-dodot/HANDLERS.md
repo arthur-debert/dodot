@@ -9,6 +9,7 @@ pattern → handler mappings with a priority; checked highest-first, first match
 |------|----------|---------------------------------------------------------------------------------------|
 | 100  | ignore   | (empty by default)                                                                    |
 | 50   | skip     | README, LICENSE, CHANGELOG, CONTRIBUTING, AUTHORS, NOTICE, COPYING (case-insensitive) |
+| 20   | external | `externals.toml`                                                                      |
 | 20   | install  | `install.sh`, `install.bash`, `install.zsh`                                           |
 | 10   | homebrew | `Brewfile`                                                                            |
 | 10   | nix      | `packages.nix`                                                                        |
@@ -64,10 +65,32 @@ One-shot setup, tracked by a sentinel so it doesn't re-run:
 - **install** — runs `install.sh` once.
 - **homebrew** — runs `brew bundle` on a `Brewfile`.
 - **nix** — runs `nix profile install` on a `packages.nix`.
-- **Liveness:** editing the script does **not** auto-rerun (conservative — it could
-  be destructive). `dodot status` reports `never run` / `installed` / `older
-  version (N lines ±)`; `dodot status --diff` shows the change. Apply edits with
-  `dodot up --provision-rerun`. Skip provisioning entirely with `dodot up --no-provision`.
+- **Liveness:** editing the file does **not** auto-rerun (conservative — it could
+  be destructive). dodot notices the change and holds: the row becomes an
+  older-version row and the recorded run stands. The three states are labelled per
+  handler — install `never run` / `installed` / `older version`, homebrew `brew
+  packages not installed` / `installed` / `brew packages older version`, nix `nix
+  packages not installed` / `nix packages installed` / `nix packages older
+  version` — and the older-version label carries a `(N lines added, M removed)`
+  summary, or `(no diff data)` for sentinels written before snapshots existed.
+  `dodot status --diff` shows the change. Apply the edit with `dodot up
+  --provision-rerun`, which is also how you re-run content that has not changed.
+  Skip provisioning entirely with `dodot up --no-provision`.
+
+### external
+
+Fetches the resources declared in `externals.toml` at the pack root — each entry
+is a `file`, `git-repo`, `archive`, or `archive-file` with a target path — into
+the datastore, and symlinks them into place.
+
+- **Liveness:** re-fetching is driven by each entry's upstream signature, not by
+  an edit to your files. For `file`, the signature is the sha256 you declare in
+  `externals.toml`: same sha256 is a no-op, bumping it re-fetches. For `git-repo`,
+  it is the upstream HEAD from a `git ls-remote`: unchanged HEAD leaves the clone
+  alone, a moved HEAD re-fetches. A sha256 mismatch is fatal; a network failure is
+  soft — an existing cached copy stays in place and the run reports the failure.
+  `dodot status` reports `externals deployed` / `externals not yet fetched` for
+  the pack as a whole, not per entry. `--no-provision` skips this handler too.
 
 ## Filter handlers
 
@@ -78,9 +101,12 @@ These drop a match *without* deploying it.
 - **skip** — drops but surfaces as `skipped` in `dodot status` (so you can see it
   was deliberately not deployed). Defaults cover README/LICENSE/etc.
 - **gate** — drops on hosts where a predicate doesn't match. Driven by filename
-  suffix `._<label>` (e.g. `install._darwin.sh`, `home.bashrc._linux`) or a
-  `_<label>/` directory at pack root. Built-in labels: `darwin`, `linux`, `macos`,
-  `arm64`, `aarch64`, `x86_64`; define more under `[gates]`.
+  suffix `._<label>` (e.g. `install._darwin.sh`, `home.bashrc._linux`), a
+  `_<label>/` directory segment, or a glob → label entry under `[mappings.gates]`.
+  Built-in labels: `darwin`, `linux`, `macos`, `arm64`, `aarch64`, `x86_64`;
+  define more under `[gates]` (dimensions `os`, `arch`, `hostname`, `username`).
+  Carrying both a filename gate and a `[mappings.gates]` entry on the same file is
+  an error.
 
 ## Not the same as `.dodotignore`
 

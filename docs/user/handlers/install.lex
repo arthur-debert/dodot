@@ -22,6 +22,10 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
     Each script runs in a fresh subprocess, so your interactive shell state (aliases, functions, options) is invisible to it regardless. The extension is the contract the pack author declares: `install.zsh` announces zsh-specific syntax; `install.sh` announces portability.
 
+    *There is no manager to be absent.* The homebrew and nix handlers look for their package manager at a fixed list of paths before planning anything, and report the file as `skipped` when it is not on this machine. The install handler has nothing to look for: it runs your script through `bash` or `zsh`, resolved through `PATH` at spawn time the way your own shell resolves them. So an install row never reads `install not installed`, and dodot never skips a script because a tool is missing. If the interpreter genuinely is not there, the script's own run fails, and you get the failure the way you'd get any other non-zero exit — see section 5.
+
+    That is also what makes an install script the last rung of the provisioning ladder. A `Brewfile` needs brew and a `packages.nix` needs nix; a script needs a shell, which is already there, and it can call `apt`, `dnf`, `pacman`, or anything else this host happens to ship. [./homebrew.lex] §1 lays out when to reach for which.
+
 3. Sentinels
 
     On success, dodot writes a sentinel file `<filename>-<checksum>` into the datastore — for example `install.sh-a1b2c3d4e5f6a7b8`. The checksum is the first 8 bytes (16 hex chars) of a SHA-256 of the source script's bytes. Alongside it dodot also writes a sibling file `<filename>-<checksum>.snapshot` containing the script bytes as they were at the time of that run, so a future `dodot status` can show what changed.
@@ -96,3 +100,5 @@ Runs your source install script once on this host, tracked by a content-hashed s
     Edits to the source script change its content hash. dodot detects the change but **does not re-run the script automatically** — instead `dodot status` reports `older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 4 for the full three-state model and `--diff` workflow.
 
     Removing a source script from the pack stops dodot from running it, but does not roll back side-effects from prior runs — dodot has no history of what the script did. Cleanup of side-effects is on the script author. Adding a new source script picks it up on the next `dodot up`.
+
+    None of that varies by machine. Unlike homebrew and nix, this handler has no manager probe in front of it (section 2), so an edit here always lands in one of the three states above — never in a "skipped, the tool is missing" row.

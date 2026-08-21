@@ -1,7 +1,7 @@
 Design Specification: Template Expansion
 
     :: note ::
-        *Status: implemented and shipped.* The template preprocessor (Phase T1), reverse-merge framework (Phase T2 via burgertocow + diffy), and configuration / status surface (Phase T3) all landed across PRs #100–#107. The user-facing reference is at [./../reference/pre-processors.lex] §6 and [./../reference/template-magic.lex]. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree, the reference docs are authoritative.
+        *Status: implemented and shipped.* The template preprocessor (Phase T1), reverse-merge framework (Phase T2 via burgertocow + diffy), and configuration / status surface (Phase T3) all landed across PRs #100–#107. The user-facing reference is at [./../../reference/pre-processors.lex] §6 and [./../../reference/template-magic.lex]. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree, the reference docs are authoritative.
 
     This document specifies the template expansion preprocessor for dodot. It is a concrete implementation of a Generative (One-Way) transformation as defined in the Preprocessing Pipeline design [./preprocessing-pipeline.lex].
 
@@ -143,7 +143,7 @@ Design Specification: Template Expansion
 
     4.2. Sentinel Hashing for Executable Templates
 
-        For templates that route to the install or homebrew handler (e.g., `install.sh.tmpl`), the sentinel must track both the template content hash AND the variable context hash. If either changes, the script re-runs. This extends the existing sentinel format:
+        For templates that route to a run-once handler (install or homebrew, and — since the nix handler landed in #161 — nix too), e.g. `install.sh.tmpl`, the sentinel must track both the template content hash AND the variable context hash. If either changes, the sentinel no longer matches; the script does *not* re-run on its own. dodot reports the file as `older version` and holds the recorded run, and `dodot up --provision-rerun` applies the new rendering. This extends the existing sentinel format:
 
             sentinel = "{filename}-{hash(template_content + context_hash)}"
 

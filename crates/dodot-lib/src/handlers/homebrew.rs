@@ -19,10 +19,11 @@
 //!
 //! They interact: with auto-update suppressed a stale brew stays
 //! stale, so nothing downstream may assume a brew recent enough for
-//! the newer `Brewfile` entry types. Checking brew's own version
-//! before the bundle runs is a separate workstream's job and is not
-//! implemented here: this handler still does no pre-flight
-//! validation, and a too-old brew surfaces as brew's own parse error.
+//! the newer `Brewfile` entry types. Reading brew's version is
+//! [`crate::provisioners::fitness`]'s job, not this handler's — this
+//! handler still does no pre-flight validation. `dodot up` asks brew
+//! its version before spawning it and warns when it is below the
+//! floor; the bundle runs either way.
 
 use std::path::Path;
 
