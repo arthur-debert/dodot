@@ -122,15 +122,20 @@ dodot fill <pack>                        # add starter install.sh/aliases.sh/Bre
 
 ## How filenames map to handlers (the essentials)
 
-| At pack root            | Handler  | Result                                       |
-|-------------------------|----------|----------------------------------------------|
-| `*.sh` `*.bash` `*.zsh` | shell    | sourced at login                             |
-| `bin/`                  | path     | directory added to `$PATH`                   |
-| `install.sh`            | install  | run once (tracked; won't re-run)             |
-| `Brewfile`              | homebrew | `brew bundle`                                |
-| `packages.nix`          | nix      | `nix profile install`                        |
-| `README` `LICENSE` …    | skip     | not deployed; shown as `skipped`             |
-| anything else           | symlink  | linked to `~/.<name>` or `~/.config/<pack>/` |
+<!-- handler-roster:begin -->
+| At pack root             | Handler  | Result                                        |
+|--------------------------|----------|-----------------------------------------------|
+| `*.sh` `*.bash` `*.zsh`  | shell    | sourced at login                              |
+| `bin/`                   | path     | directory added to `$PATH`                    |
+| `install.sh`             | install  | run once (tracked; won't re-run)              |
+| `Brewfile`               | homebrew | `brew bundle`                                 |
+| `packages.nix`           | nix      | `nix profile install`                         |
+| `externals.toml`         | external | fetch declared files, git repos, archives     |
+| `._<label>` `_<label>/`  | gate     | dropped on hosts the label doesn't match      |
+| `[mappings] ignore` globs| ignore   | dropped silently (empty by default)           |
+| `README` `LICENSE` …     | skip     | not deployed; shown as `skipped`              |
+| anything else            | symlink  | linked to `~/.<name>` or `~/.config/<pack>/`  |
+<!-- handler-roster:end -->
 
 Routing prefixes on a symlinked file override the default target: `home.X` →
 `~/.X`, `xdg.X` → `$XDG_CONFIG_HOME/X`, `app.X` → app-support dir; the directory

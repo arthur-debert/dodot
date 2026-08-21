@@ -30,7 +30,7 @@ Architecture
 
     2.2. Rule Matching
 
-        Each pack's top-level entries (files and directories immediately under the pack root) are matched against the rule set. Rules declare patterns, the handler that should claim a match, and a priority. Higher priority wins; first match wins at equal priority. The two filter handlers (`ignore`, `skip`) sit at the highest priority tier so a file the user wants dropped never gets claimed by a precise mapping or the catchall.
+        Each pack's top-level entries (files and directories immediately under the pack root) are matched against the rule set. Rules declare patterns, the handler that should claim a match, and a priority. Higher priority wins; first match wins at equal priority. The three filter handlers keep a file the user wants dropped from being claimed by a precise mapping or the catchall: `ignore` and `skip` sit at the highest priority tiers (100 and 50), and `gate` needs no rule at all — the scanner mints gate matches itself, from `._<label>` filenames, `_<label>/` directory segments, and `[mappings.gates]` globs.
 
         The scanner is top-level only. It does _not_ recurse into subdirectories. A handler that receives a directory entry decides for itself what to do with the contents.
 
@@ -44,7 +44,7 @@ Architecture
 
         Matches are grouped by the handler that claimed them. Each group is handed to its handler as a batch. This lets handlers make decisions that span multiple files — the symlink handler, for example, can reason about whether a whole directory should be linked wholesale or per-file based on whether any nested path was independently claimed.
 
-        The groups are processed in a fixed order: `Provision` → `Setup` → `PathExport` → `ShellInit` → `Link`. The order is encoded as an `ExecutionPhase` enum declared in execution order, so it's explicit and type-checked rather than an accident of handler naming. See [./handlers.lex] §3 for the phase list and the rationale behind each slot.
+        The groups are processed in a fixed order: `Filter` → `External` → `Provision` → `Setup` → `PathExport` → `ShellInit` → `Link`. The order is encoded as an `ExecutionPhase` enum declared in execution order, so it's explicit and type-checked rather than an accident of handler naming. A phase can hold more than one handler — `Filter` holds three, `Provision` two — and the order two handlers sharing a phase run in is not defined; nothing depends on it. See [./handlers.lex] §3 for the rationale behind each slot, and [./handler-registry.lex] for the generated phase list.
 
     2.5. Intents
 
@@ -111,8 +111,8 @@ Architecture
 
     The pipeline gives you several properties that are worth naming explicitly.
 
-    - _Deterministic._ Given the same inputs (pack files, rules, config), the operation list is identical across runs and machines.
-    - _Idempotent at the boundary._ Running `dodot up` a second time produces the same operations but yields no change, because configuration handlers use idempotent filesystem operations and code-execution handlers are gated by sentinels.
+    - _Deterministic._ Given the same inputs (pack files, rules, config), the same operations are produced, from the same matches, with the same contents. The one thing not pinned is the relative order of two handlers that share a phase (§2.4) — dodot sorts handler groups by phase and by nothing else, so `homebrew` and `nix` can come out either way round between runs. Nothing depends on it, and phase boundaries still hold.
+    - _Idempotent at the boundary._ Running `dodot up` a second time produces the same operations but yields no change, because configuration handlers use idempotent filesystem operations and code-execution handlers consult their sentinels and don't repeat work that already ran.
     - _Previewable._ `--dry-run` reports the exact operation list that would have run.
     - _Fail-fast._ The pipeline stops on the first error in execution and reports it with context. Partial state is allowed (and legible, via the datastore); silent drift is not.
     - _Per-pack isolation._ Packs are processed independently. A failure in one pack does not prevent other packs from succeeding, though the command's exit code still reflects the failure.

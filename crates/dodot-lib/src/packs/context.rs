@@ -46,7 +46,7 @@ pub struct ExecutionContext {
     pub check_drift: bool,
     /// Opt-in unified-diff display for run-once handlers. When true,
     /// `status` populates [`PackStatusResult::diffs`](crate::commands::PackStatusResult)
-    /// for any `install` / `homebrew` row whose recorded sentinel hash
+    /// for any `install` / `homebrew` / `nix` row whose recorded sentinel hash
     /// no longer matches the current source AND whose snapshot sibling
     /// is on disk. Default `false`; surfaced via the `--diff` flag on
     /// `dodot status`.

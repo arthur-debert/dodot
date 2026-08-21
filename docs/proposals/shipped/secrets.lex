@@ -186,9 +186,9 @@ Design Specification: Secret Handling
 
     3.5. Sentinel Hashing
 
-        For templates that route to the install or homebrew handler, the sentinel must reflect resolved secret values so that rotation triggers a re-run.
+        For templates that route to a run-once handler, the sentinel must reflect resolved secret values so that rotation is *detected*.
 
-        The shipped install / homebrew sentinel format is `{filename}-{8-byte SHA-256 of rendered_bytes}` (see `crates/dodot-lib/src/handlers/install.rs::file_checksum`). Because the rendered bytes already include resolved secret values, secret rotation flows through naturally: rotated value → different rendered bytes → different sentinel → script re-runs. No separate `secret_hash` component is required.
+        The shipped run-once sentinel format is `{filename}-{8-byte SHA-256 of rendered_bytes}` (see `crates/dodot-lib/src/handlers/run_once.rs::file_checksum`). Because the rendered bytes already include resolved secret values, secret rotation flows through naturally: rotated value → different rendered bytes → different sentinel. What dodot then does with that difference is the run-once policy, not a secrets question: it reports `older version` and holds, and `dodot up --provision-rerun` runs the newly-rendered file. No separate `secret_hash` component is required.
 
         The original sketch (`hash(template_content + context_hash + secret_hash)`) was more elaborate than necessary — the three-component formula would only matter if we wanted to detect rotation *without rendering*, which is incompatible with §7.4's "passive commands MUST NOT trigger template evaluation" anyway. Active mode renders before hashing; the rendered-bytes hash is sufficient. The sentinel never reveals the value.
 

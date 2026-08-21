@@ -11,8 +11,8 @@ Read-only. Per-file: handler symbol, live target, and a **handler-specific** lab
 `pending`/`deployed` (symlink), `sourced`/`not sourced` (shell), `in PATH` (path),
 `installed`/`never run`/`older version` (provisioning), `skipped`, `gated out`. Only
 the **pack-level rollup** is constrained to `pending`/`deployed`/`error`. Symbols:
-`➞` symlink · `⚙` shell/homebrew/nix · `+` `$PATH` · `×` install · `·` skip/gate
-(not deployed). The icon set in `status --help` lists only the first four.
+`➞` symlink · `⚙` shell/homebrew/nix · `+` `$PATH` · `×` install · `↓` external ·
+`·` skip/gate (not deployed). `status --help` prints the same six.
 
 Below the pack rows, one **shell hookup** line reports whether shells are actually
 loading dodot: `shell hookup: ok`, `Deployed, but no shell has loaded dodot yet.`
@@ -41,8 +41,12 @@ documented read-only or preview variants bypass the gate and establish no trust.
 stdin/stdout filter passthroughs are root-independent and remain outside it.
 
 - `--dry-run` — preview only.
-- `--no-provision` — skip install scripts and Brewfile.
-- `--provision-rerun` — force-rerun provisioning even if the sentinel matches.
+- `--no-provision` — skip every code-execution handler: install scripts, `Brewfile`,
+  `packages.nix`, and `externals.toml`. Those files report `skipped (--no-provision)`.
+- `--provision-rerun` — run provisioning against the file's current content. This is
+  how you apply an edit: a plain `dodot up` never re-runs on its own, so an edited
+  `install.sh` / `Brewfile` / `packages.nix` is reported as `older version` and held.
+  It also re-runs content that has not changed at all.
 - `--force` — overwrite pre-existing files at target locations.
 
 ### `dodot down [PACKS...]`

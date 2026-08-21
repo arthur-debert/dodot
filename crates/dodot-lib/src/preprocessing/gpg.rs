@@ -31,9 +31,12 @@ use crate::{DodotError, Result};
 /// `gpg` decryption preprocessor. Constructed from
 /// `[preprocessor.gpg]` config + the shared `CommandRunner`.
 ///
-/// Configurable extensions (default `["gpg", "asc"]`) cover both
-/// the binary-armored form (`.gpg`) and the ASCII-armored form
-/// (`.asc`); the same `gpg --decrypt` call handles both.
+/// Extensions are configurable and default to `["gpg"]`. `asc` is
+/// deliberately not in the default: the suffix is conventionally used
+/// for armored public keys and detached signatures, which `gpg
+/// --decrypt` cannot decrypt, so routing them here produces confusing
+/// failures. A repo that stores only armored *ciphertext* under
+/// `.asc` can add it.
 pub struct GpgPreprocessor {
     runner: Arc<dyn CommandRunner>,
     extensions: Vec<String>,

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Regenerate the documentation pages dodot generates from its own code.
+#
+# Today that is docs/reference/handler-registry.lex, rendered from the
+# handler registry by crates/dodot-lib/src/handlers/catalog.rs. The
+# same test that renders it also asserts the checked-in page matches,
+# so `pixi run test` fails when a handler changes and nobody ran this.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+DODOT_UPDATE_DOCS=1 cargo test -p dodot-lib --lib handlers::catalog -- --nocapture
+echo "regenerated: docs/reference/handler-registry.lex"

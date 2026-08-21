@@ -1,12 +1,14 @@
 Handlers
 
-    A handler is the thing that decides what to do with a file once dodot has decided to process it. Each handler has exactly one job: link configs, source shell scripts, add directories to `$PATH`, fetch external content, run install scripts once, or install packages from a Brewfile or `packages.nix`. This document describes the handlers dodot ships, the rules for how matches flow to them, and the distinction between handlers that always run and handlers that run once.
+    A handler is the thing that decides what to do with a file once dodot has decided to process it. Each handler has exactly one job: link configs, source shell scripts, add directories to `$PATH`, fetch external content, run install scripts once, install packages from a `Brewfile` or a `packages.nix`, or drop a file from processing entirely. This document describes the handlers dodot ships, the rules for how matches flow to them, and the distinction between handlers that always run and handlers that run once.
 
     See [./terms-and-concepts.lex] for terminology used throughout.
 
 1. The Built-in Handlers
 
-    dodot ships with eight handlers: five that deploy files (symlink, shell, path, install, homebrew) and three that drop files from processing (ignore, skip, gate). All eight share the same `Handler` trait and run from the same registry.
+    dodot ships with ten handlers: seven that act on a file (symlink, shell, path, external, install, homebrew, nix) and three that drop it from processing (ignore, skip, gate). All ten share the same `Handler` trait and run from the same registry.
+
+    :: handler-roster:begin ::
 
     1.1. Symlink
 
@@ -24,7 +26,13 @@ Handlers
 
         Exposes a directory on your `$PATH`. The conventional match is a `bin/` directory inside a pack; its contents become directly executable from any shell. Like shell, this rides on the dodot init script — the datastore records which directories should be on PATH, and the init script prepends them.
 
-    1.4. install
+    1.4. external
+
+        Fetches content that upstream owns — a shell framework, a plugin-manager bootstrap, a community theme repo, a single shared snippet — and puts it where the rest of the pack can use it. Matches `externals.toml` at the pack root; each `[section]` in that file declares one resource, typed `file`, `git-repo`, `archive`, or `archive-file`.
+
+        External is the one code-execution handler that refreshes on its own, because there is no user-authored code to re-run — only content to keep current. Each entry's sentinel records a content signature: `file`, `archive`, and `archive-file` use the sha256 you wrote in the TOML, so editing the TOML is the only thing that can cause a re-fetch; a `git-repo` asks upstream instead, via a cheap `git ls-remote` on every `up`, and re-fetches when that SHA moves. The decision is the handler's — `--provision-rerun` has no say in it. See [./../user/handlers/external.lex].
+
+    1.5. install
 
         Runs an arbitrary shell script once, tracked by a sentinel file so it doesn't re-run on every deploy. Matches `install.sh`, `install.bash`, and `install.zsh` by convention. Use this for machine-specific setup that isn't covered by the other handlers: installing language toolchains, configuring window managers, creating directories, setting system defaults.
 
@@ -34,25 +42,35 @@ Handlers
 
         Output is quiet by default — start/end markers, the script's leading comment block, and any `# status: <message>` lines the script emits on stdout are surfaced live; everything else is captured and discarded unless the script fails (in which case stderr is dumped) or `dodot up --verbose` is passed (which streams the raw output). The `# status:` convention is tool-agnostic — the markers are plain shell comments when the script is run by hand. See [./../user/handlers/install.lex] for the user-facing details and examples.
 
-    1.5. homebrew
+    1.6. homebrew
 
-        Runs `brew bundle` against a `Brewfile`, once per content-hash. macOS-only in practice. Functionally a specialization of install, but more ergonomic for its common case.
+        Runs `brew bundle --no-upgrade` against a `Brewfile` once, tracked by a sentinel keyed on the file's content hash, with `HOMEBREW_NO_AUTO_UPDATE=1` in the environment. It is not a separate implementation: install, homebrew, and nix are one run-once handler parameterised by the command it builds. Editing the `Brewfile` does not re-run it — the new content hashes differently, so `dodot up` reports `brew packages older version` and holds, and `dodot up --provision-rerun` is what applies the edit.
 
-    1.6. ignore (filter)
+        Homebrew is not macOS-only. It runs on Linux, and where its prerequisites are acceptable it is the same `Brewfile` you already have — but those prerequisites are real: a system compiler and build tools, and on older distributions brew brings its own gcc and glibc. Where that is too much to accept, `nix` covers the same need without leaning on the host toolchain, and `install.sh` remains the fallback for anything the distro's own package manager should own. See [./../user/handlers/homebrew.lex].
+
+    1.7. nix
+
+        Runs `nix profile install` against the pack's `packages.nix` once, tracked by a sentinel keyed on the file's content hash — the same run-once machinery as install and homebrew, pointed at a different command. Matches `packages.nix` at the pack root. A pack can carry both a `Brewfile` and a `packages.nix`; the two run independently against their own package managers.
+
+        Editing the manifest does not re-run it either: `dodot up` reports `nix packages older version` and holds until `--provision-rerun`. And the only command the handler can build is `nix profile install`, so *removing a line from `packages.nix` uninstalls nothing* — the re-run installs the remaining list, which adds nothing and removes nothing. Deleting `packages.nix` outright removes nothing either; provisioning state is deliberately left out of `up`'s wipe-and-reapply reconcile. See [./../user/handlers/nix.lex].
+
+    1.8. ignore (filter)
 
         Claims matches and drops them silently — same contract as `.gitignore`. No executable intent, no entry in `dodot status`. Configured via `[mappings] ignore` (default empty). Useful for build artifacts, scratch files, anything you don't want dodot to know about.
 
-    1.7. skip (filter)
+    1.9. skip (filter)
 
         Claims matches, surfaces them in `dodot status` as `skipped`, but produces no executable intent. Configured via `[mappings] skip`. Defaults cover the common documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally.
 
-    1.8. gate (filter)
+    1.10. gate (filter)
 
         Claims matches whose host predicate evaluates false on the current host — e.g. `install._darwin.sh` on a linux box, or any file inside `_darwin/` when running on linux. Surfaces in `dodot status` as `gated out (<label>)` with a footnote showing what the predicate expected vs what the host has. Produces no executable intent; the file stays on disk and will deploy on a matching host.
 
-        Unlike `ignore` and `skip`, gate matches are *dynamic* — they depend on host facts (OS, arch, hostname, …) and on the filename grammar (`._<label>`, `_<label>/`) plus the `[mappings.gates]` config. The full surface is in [./../user/conditional-running.lex] and the design proposal at [./../proposals/conditional-running.lex] (or its shipped sibling). The matching infrastructure is shared with `ignore` and `skip`: gate evaluation runs at scan time and produces a `RuleMatch` whose `handler` is `"gate"`, with predicate / host metadata stashed in `options` for the status renderer.
+        Unlike `ignore` and `skip`, gate matches are *dynamic* — they depend on host facts (OS, arch, hostname, …) and on the filename grammar (`._<label>`, `_<label>/`) plus the `[mappings.gates]` config. The full surface is in [./../user/conditional-running.lex] and the design proposal at [./../proposals/shipped/conditional-running.lex]. The matching infrastructure is shared with `ignore` and `skip`: gate evaluation runs at scan time and produces a `RuleMatch` whose `handler` is `"gate"`, with predicate / host metadata stashed in `options` for the status renderer.
 
         The three filter handlers exist because four things were previously different mechanisms — a pack-level marker, a silent skip, a visible "excluded", and host-conditional dispatch — and unifying the intra-pack cases into real handlers means there's one matching model and one config grammar instead of four. Pack-level `.dodotignore` (the "pack-ignore" mechanism) and pack-level `[pack] os` (the conditional-running mechanism) stay separate at the discovery layer.
+
+    :: handler-roster:end ::
 
 2. Matching Model
 
@@ -61,7 +79,7 @@ Handlers
     Match mode:
         _Precise_ handlers claim specific names or patterns: `install.sh`, `aliases.sh`, `Brewfile`, `bin/`. _Catchall_ handlers claim anything precise handlers didn't touch. Precise handlers run first and consume their matches; the catchall sees only what's left.
 
-        At most one handler may be catchall in a given pack. Today that role is played by `symlink`. This isn't a rule of the matching system so much as a practical consequence: two catchalls would race for every unclaimed file.
+        At most one exclusive handler may be catchall, and the registry asserts it. Today that role is played by `symlink`. The constraint is a practical one: two catchalls would race for every unclaimed file.
 
     Scope:
         _Exclusive_ matches are consumed on first claim — no other handler sees that entry. _Shared_ matches remain available after a claim, so multiple handlers can act on the same entry. All current handlers are exclusive. Shared scope is reserved for future observer-style handlers (an audit handler, a stats handler) that watch without deploying.
@@ -72,28 +90,41 @@ Handlers
 
     Within a single pack, handlers run in a fixed, documented order. The order is driven by an `ExecutionPhase` enum whose variants are declared in execution order — adding or moving a phase is a visible, deliberate code change, not an accident of alphabetical sort.
 
-    Phases, in order:
+    The phase list itself — every phase in order, and which handlers sit in each — is generated from the registry at [./handler-registry.lex]. A phase may hold more than one handler: `Filter` holds three and `Provision` holds two. The order two handlers sharing a phase run in is not defined, and nothing in dodot depends on it.
 
-        | Phase         | Handler             | Why here                                                                |
-        | `Filter`      | ignore, skip, gate  | Drop files before any deploying handler can claim them.                 |
-        | `Provision`   | homebrew            | Installs packages. Anything later may depend on tools it exposes.       |
-        | `Setup`       | install             | User-authored scripts that can lean on Provision completing first.      |
-        | `PathExport`  | path                | Stages `bin/` onto PATH; runs before ShellInit.                         |
-        | `ShellInit`   | shell               | Shell startup files that may reference binaries from PathExport.        |
-        | `Link`        | symlink             | Catchall; must be last so precise handlers claim their files.           |
+    What the generated list can't tell you is why each phase sits where it does:
 
-    :: table align=lll ::
+    `Filter`:
+        Drops files before any deploying handler can claim them.
+
+    `External`:
+        Fetches the content upstream owns. It runs after `Filter` — no point fetching for a file that was dropped — and before `Provision`, so install scripts and shell init can rely on the fetched content already being in place.
+
+    `Provision`:
+        Installs packages. Anything later may depend on the tools it puts on disk.
+
+    `Setup`:
+        User-authored scripts, which can lean on `External` and `Provision` having completed first.
+
+    `PathExport`:
+        Stages `bin/` onto `$PATH`; runs before `ShellInit`.
+
+    `ShellInit`:
+        Shell startup files that may reference binaries from `PathExport`.
+
+    `Link`:
+        The catchall. Last, so every precise handler has claimed its files first.
 
     Three design invariants pin this order down.
 
     The filter phase is always first.
-        `ignore` and `skip` exist to keep matched files away from deploying handlers. If they ran later, a precise mapping (priority 10) or the catchall (priority 0) could already have claimed the file and emitted intents — so filter handlers sit at the highest priority tier (100, 50) and run before anything else has a chance.
+        `ignore`, `skip`, and `gate` exist to keep matched files away from deploying handlers. If they ran later, a precise mapping (priority 10) or the catchall (priority 0) could already have claimed the file and emitted intents. So `ignore` and `skip` sit at the highest priority tiers (100 and 50), and `gate` needs no rule at all — the scanner mints gate matches itself, before rule priorities come into play.
 
     The catchall phase is always last.
         `symlink` is the only catchall handler (`MatchMode::Catchall`). Running it before any precise handler would let it claim files that belong elsewhere. `Link` sitting at the bottom of the enum is not a convention — it's the shape of "precise before catchall" written into the type.
 
     Code-execution phases run before configuration phases.
-        `Provision` and `Setup` produce a filesystem a user's shell needs to see (installed binaries, `brew` formulae, generated files). `PathExport`, `ShellInit`, and `Link` deploy configuration that may reference those outputs. Reversing them would let a shell rc file try to source a program that hasn't been installed yet.
+        `External`, `Provision`, and `Setup` produce a filesystem a user's shell needs to see (fetched repos and archives, installed binaries, `brew` formulae, generated files). `PathExport`, `ShellInit`, and `Link` deploy configuration that may reference those outputs. Reversing them would let a shell rc file try to source a program that hasn't been installed yet.
 
     The preprocessing layer (`.tmpl`, `.plist.xml`, `.age`) sits *upstream* of this ordering — templates are rendered before rules match, so by the time the phase order kicks in every match is a concrete file. See [./pre-processors.lex] for how preprocessors fit into the pipeline.
 
@@ -141,7 +172,7 @@ Handlers
 
     5.1. Configuration handlers
 
-        symlink, shell, and path. Their operations are idempotent filesystem work: create a link, stage a file. Running them a second time produces the same result as running them once; no special tracking is required. `dodot up` always runs them in full.
+        symlink, shell, path, and the three filter handlers — ignore, skip, and gate. The first three do idempotent filesystem work: create a link, stage a file. Running them a second time produces the same result as running them once; no special tracking is required. The filter handlers do less than that: they claim a file and emit no intent at all, which is idempotent for the same reason. `dodot up` always runs all six in full.
 
     5.2. Code execution handlers
 
@@ -160,20 +191,7 @@ Handlers
 
 6. Quick Reference
 
-    Handler summary (rows in execution order):
-
-        | Handler  | Phase       | Category       | Default claims                                     | Effect                              |
-        | ignore   | Filter      | Configuration  | None (user-configured via `[mappings] ignore`)     | Silently drop; no status entry      |
-        | skip     | Filter      | Configuration  | `README.*`, `LICENSE.*`, `CHANGELOG.*`, etc.       | List in status as `skipped`         |
-        | external | External    | Code Execution | `externals.toml`                                   | Fetch when its signature changes    |
-        | homebrew | Provision   | Code Execution | `Brewfile`                                         | `brew bundle` once per content hash |
-        | nix      | Provision   | Code Execution | `packages.nix`                                     | `nix profile install` once per hash |
-        | install  | Setup       | Code Execution | `install.{sh,bash,zsh}`                            | Run once per content hash           |
-        | path     | PathExport  | Configuration  | `bin/`                                             | Prepended to `$PATH`                |
-        | shell    | ShellInit   | Configuration  | `*.{sh,bash,zsh}` at pack root                     | Sourced at shell login              |
-        | symlink  | Link        | Configuration  | Anything else (catchall)                           | Link to `~` or `~/.config/`         |
-
-    :: table align=lllll ::
+    The registry's own roster — every handler, its phase and category, its match mode and scope, what it claims by default, and what it does — is generated from the code at [./handler-registry.lex], along with the phase list and the default mappings. It is regenerated with `pixi run gen-docs` and a test fails when it drifts, so it cannot go stale the way a hand-copied table can.
 
 7. Why Handlers Look the Way They Do
 
@@ -186,4 +204,4 @@ Handlers
         The trait they implement is stable enough that writing a custom handler is not hard, but dodot does not load third-party handlers at runtime. The built-in set is deliberately small; we'd rather add handlers carefully than ship a plugin system we have to maintain.
 
     The catchall is always symlink.
-        This is a convention rather than a hard rule of the code, but it's the only combination that preserves the "just name it sensibly" promise. If no precise handler matched, we know the user wanted the file deployed somewhere sensible, and a link is the right default.
+        The registry allows at most one exclusive catchall and asserts it; symlink is the handler that fills the slot, and that is the only arrangement that preserves the "just name it sensibly" promise. If no precise handler matched, we know the user wanted the file deployed somewhere sensible, and a link is the right default.

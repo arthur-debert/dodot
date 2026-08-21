@@ -1015,7 +1015,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         // Pass 1: filter / non-deployable handlers (skip, gate) and the
         // remaining deployable handlers that we still verify match-side
-        // (shell, path, install, homebrew, nix). Symlink rows are emitted
+        // (shell, path, external, homebrew, nix, install). Symlink rows are emitted
         // below, off the planner's intents, so they correctly expand
         // escape-prefix dirs and never re-derive a target.
         for m in &matches {

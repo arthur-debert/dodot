@@ -87,6 +87,10 @@ silently. Same if two preprocessors produce the same output name.
 
 `$XDG_DATA_HOME/dodot/packs/<pack>/preprocessed/<stripped-name>` (directory
 structure preserved). That file is what the handlers see and what `refresh` /
-`transform` hash. The install handler's completion sentinel hashes the **rendered**
-script, so changing a variable (or moving machines, changing `dodot.hostname`)
-re-triggers the install step even when the `.tmpl` source is unchanged.
+`transform` hash.
+
+The run-once handlers — install, homebrew, nix — hash the **rendered** bytes, so
+changing a variable (or moving machines, changing `dodot.hostname`) changes the
+hash even when the `.tmpl` source is unchanged. dodot never re-runs on its own:
+it detects the change, reports the file as `older version`, and holds the
+recorded run. Apply the new rendering with `dodot up --provision-rerun`.

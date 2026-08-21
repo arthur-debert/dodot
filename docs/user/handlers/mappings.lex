@@ -11,11 +11,14 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
 
 2. Defaults
 
+    :: handler-roster:begin ::
+
     Default mappings as they ship — listed by priority, highest first:
 
         | Priority | Handler  | Default claims                                                                                                          |
         | 100      | ignore   | (empty by default)                                                                                                      |
         | 50       | skip     | `README`/`README.*`, `LICENSE`/`LICENSE.*`, `CHANGELOG`/`CHANGELOG.*`, `CONTRIBUTING`/`CONTRIBUTING.*`, `AUTHORS`/`AUTHORS.*`, `NOTICE`/`NOTICE.*`, `COPYING`/`COPYING.*` (case-insensitive) |
+        | 20       | external | `externals.toml`                                                                                                        |
         | 20       | install  | `install.sh`, `install.bash`, `install.zsh`                                                                             |
         | 10       | homebrew | `Brewfile`                                                                                                              |
         | 10       | nix      | `packages.nix`                                                                                                          |
@@ -25,20 +28,23 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
 
     :: table align=rll ::
 
-    The `gate` handler is not in the priority ladder. Gate matching runs at *scan time*, before the rule matcher — gate predicates strip the `._<label>` suffix from a source filename if the host matches, or surface a "gated out" entry if it doesn't. See [./controlling-activation.lex] for the full story.
+    The `gate` handler is not in the priority ladder. Gate matching runs at *scan time*, before the rule matcher — gate predicates strip the `._<label>` suffix from a source filename if the host matches, or list the file as "gated out" if it doesn't. See [./controlling-activation.lex] for the full story.
 
-    `install` sits at priority 20 — above the priority-10 shell wildcard — so as long as `install.sh` is in `mappings.install` (the default), it routes to the install handler rather than being claimed by the shell glob. Without the gap, the install hook would be silently sourced by every shell session. If you override `mappings.install` to drop `install.sh`, the shell wildcard *will* claim it — that's the user's choice.
+    :: handler-roster:end ::
+
+    `install` sits at priority 20 — above the priority-10 shell wildcard — so as long as `install.sh` is in `mappings.install` (the default), it routes to the install handler rather than being claimed by the shell glob. Without the gap, the install hook would be silently sourced by every shell session. If you override `mappings.install` to drop `install.sh`, the shell wildcard *will* claim it — that's the user's choice. `external` sits at 20 for the same reason: a precise `externals.toml` match wins over any broader glob a user might add at priority 10.
 
     Default mappings as raw TOML (the form `dodot config gen` emits):
 
         [mappings]
-        path     = "bin"
-        install  = ["install.sh", "install.bash", "install.zsh"]
-        shell    = ["*.sh", "*.bash", "*.zsh"]
-        homebrew = "Brewfile"
-        nix      = "packages.nix"
-        ignore   = []
-        skip     = [
+        path      = "bin"
+        install   = ["install.sh", "install.bash", "install.zsh"]
+        shell     = ["*.sh", "*.bash", "*.zsh"]
+        homebrew  = "Brewfile"
+        nix       = "packages.nix"
+        externals = ["externals.toml"]
+        ignore    = []
+        skip      = [
             "README", "README.*",
             "LICENSE", "LICENSE.*",
             "CHANGELOG", "CHANGELOG.*",
@@ -55,16 +61,20 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
     Each `[mappings]` key has a fixed shape. Setting the wrong shape (a string for a list-typed key, or vice versa) is a config-load error.
 
     Key shapes:
-        | Key      | Type    | Notes                                                                          |
-        | path     | string  | One directory name per pack. Trailing `/` auto-added.                          |
-        | install  | list    | Multiple matched files all run, each with its own sentinel.                    |
-        | shell    | list    | Every matched file is sourced.                                                 |
-        | homebrew | string  | One `Brewfile` per pack.                                                       |
-        | nix      | string  | One `packages.nix` per pack.                                                   |
-        | ignore   | list    | Matches drop silently — no entry in `dodot status`.                            |
-        | skip     | list    | Matches surface as `skipped` in `dodot status`. Case-insensitive.              |
+        | Key       | Type   | Notes                                                                           |
+        | path      | string | One directory name per pack. Trailing `/` auto-added.                           |
+        | install   | list   | Multiple matched files all run, each with its own sentinel.                     |
+        | shell     | list   | Every matched file is sourced.                                                  |
+        | homebrew  | string | One `Brewfile` per pack.                                                        |
+        | nix       | string | One `packages.nix` per pack.                                                    |
+        | externals | list   | Each matched file declares one external resource per TOML section.              |
+        | ignore    | list   | Matches drop silently — no entry in `dodot status`.                             |
+        | skip      | list   | Matches are listed as `skipped` in `dodot status`. Case-insensitive.            |
+        | gates     | table  | Glob → gate label. Read at scan time, outside the priority ladder.              |
 
     :: table align=lll ::
+
+    Watch the plural: the handler is named `external`, the `[mappings]` key is `externals`. The key names the file that lists a pack's externals, not the handler that fetches them. `[mappings.gates]` is a TOML sub-table rather than a pattern list; see [./controlling-activation.lex].
 
 4. Override rules
 

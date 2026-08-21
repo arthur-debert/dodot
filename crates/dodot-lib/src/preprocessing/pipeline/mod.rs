@@ -702,7 +702,7 @@ pub fn preprocess_pack(
 ///   with empty `rendered_bytes`. Status renders this as "pending"
 ///   under the logical name (`config.toml` rather than the source
 ///   `config.toml.tmpl`); handlers that need rendered content for
-///   sentinel hashing (install, homebrew) skip intent generation
+///   sentinel hashing (install, homebrew, nix) skip intent generation
 ///   for these placeholders rather than crashing. The next real
 ///   `dodot up` populates the baseline and plans intents normally.
 ///

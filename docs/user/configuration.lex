@@ -1,3 +1,4 @@
+:: verified ::
 Configuration
 
     One of dodot's principles is to minimize both adoption and migration
@@ -32,6 +33,7 @@ Configuration
         $ dodot config set <key> <value>
         $ dodot config unset <key>
         $ dodot config gen > .dodot.toml     # write a commented starter file
+        $ dodot config schema                # emit a JSON Schema for the config struct
 
     :: shell ::
 
@@ -44,6 +46,8 @@ Configuration
 
     Both are optional. Every key has a compiled-in default; you only put into `.dodot.toml` the values you want to override. Pack configuration layers on top of root configuration, so you can set a sensible default at the root and override it per pack.
 
+    dodot finds these by walking up from the file it is resolving and stopping at the first directory holding a `.git`, which for a normal dotfiles repo is the root. Two consequences fall out of that boundary, and both bite only unusual layouts: if your dotfiles root is *not* a git repository, the walk continues past it and any `.dodot.toml` in a parent directory is merged in; and if a pack carries its own `.git` (a submodule, say), the walk stops at the pack, so the root config never reaches it.
+
     Merge rules:
 
     - Scalars and arrays: override (the later-layer value replaces the earlier one, no accumulation).
@@ -51,8 +55,12 @@ Configuration
 
     Some sections are _root-only_ — they're read from the root
     `.dodot.toml` and per-pack overrides are ignored. `[secret]`,
-    `[profiling]` and `[shell]` fall in this bucket; `[pack] os` is the mirror image
-    (pack-only — root-level entries are rejected).
+    `[profiling]` and `[shell]` fall in this bucket, and so do two
+    individual keys that sit in otherwise per-pack sections:
+    `[symlink] app_uses_library` and `[path] auto_chmod_exec`. In every
+    case a pack-level entry parses without complaint and is simply
+    never read — there is no warning. `[pack] os` is the mirror image
+    (pack-only — root-level entries are rejected, loudly).
 
 2. The `[pack]` Section
 
@@ -165,9 +173,9 @@ Configuration
         you don't want that behavior on Linux, drop the entry from
         the list there (or override per-pack).
 
-        The shipped defaults stay under a 100-entry budget — that's
-        a build-time invariant on `force_app`'s seed, not a user
-        validation. You can set a longer list yourself; it just
+        The shipped list stays at or under 100 entries. That cap is
+        held by a test over `force_app`'s seed, not by any check on
+        your config — you can set a longer list yourself; it just
         won't be a sane thing to do.
 
         Equivalent per-file: prefix with `app.` or place under
@@ -176,10 +184,14 @@ Configuration
     3.3. `app_aliases`
 
         macOS: pack-name → app-folder rewrites. When a pack's name
-        matches a key, every entry in that pack reroutes from the
-        default `<xdg_config_home>/<pack>/<rest>` to
+        matches a key, every entry in that pack that would otherwise
+        take the default rule reroutes from
+        `<xdg_config_home>/<pack>/<rest>` to
         `<app_support_dir>/<value>/<rest>`. Useful when your pack
         directory and the app's Library folder have different names.
+        Entries already claimed by a routing prefix, `force_home`,
+        `force_app`, or `[symlink.targets]` are resolved before the
+        alias is consulted, so those keep their own destination.
 
         App aliases:
 
@@ -196,7 +208,8 @@ Configuration
         macOS toggle. When `true` (the default), `_app/` directories,
         `app.X` filenames, `force_app`, and `app_aliases` route
         through `~/Library/Application Support`. When `false`, they
-        all collapse to plain `~/.config` (Linux-style placement).
+        all collapse to `$XDG_CONFIG_HOME` (Linux-style placement —
+        `~/.config` unless you have set the variable elsewhere).
         `_lib/` and `lib.X` are unaffected — those explicitly target
         `~/Library/`.
 
@@ -250,11 +263,19 @@ Configuration
 
     3.7. `plist_extensions`
 
-        Filename suffixes (without leading dot) that `dodot
-        git-install-filters` and the `.gitattributes` writer treat
-        as plists. Some apps store plists with non-standard suffixes
+        Filename suffixes (without leading dot) that dodot treats as
+        plists. Some apps store plists with non-standard suffixes
         (`.binplist`, `.savedState`); register the extra extensions
         here to flow them through the same clean/smudge pipeline.
+
+        Two things read this list: `dodot up`, to spot plist files in
+        your packs (the filter-install prompt and cfprefsd drift
+        detection), and `dodot git-install-filters` /
+        `dodot git-show-filters`, to render the
+        `*.<ext> filter=dodot-plist` lines. dodot *prints* those lines
+        for you to paste — it never edits `.gitattributes` itself, and
+        deliberately does not even hand you a shell snippet that
+        would.
 
         Plist extensions:
 
@@ -263,7 +284,7 @@ Configuration
 
         :: toml ::
 
-        Default `["plist"]`. Comparison is case-insensitive, and the list honors the standard root → pack inheritance.
+        Default `["plist"]`. Entries are trimmed of a leading dot, lowercased, and deduplicated, and any entry carrying characters outside `[A-Za-z0-9_+-]` is dropped; comparison against a filename is case-insensitive. Inheritance depends on which reader you are asking: `up`'s detection resolves the config per pack, while the two `git-*-filters` commands read the root config only — so a pack-level override changes what `up` notices but not what those commands print.
 
 4. The `[path]` Section
 
@@ -297,32 +318,61 @@ Configuration
 
 5. The `[mappings]` Section
 
-    Overrides the default filename-to-handler map. Each key is a handler name; each value is either a single pattern or a list of patterns.
+    Overrides the default filename-to-handler map. Each key names a handler; the value is the pattern (or patterns) that route a file to it. The block below is the shipped default, written out in full:
 
     Mappings:
+
+    :: handler-roster:begin ::
 
         [mappings]
         path = "bin"
         install = ["install.sh", "install.bash", "install.zsh"]
         shell = ["*.sh", "*.bash", "*.zsh"]
         homebrew = "Brewfile"
+        nix = "packages.nix"
+        externals = ["externals.toml"]
         ignore = []
         skip = ["README", "README.*", "LICENSE", "LICENSE.*", "CHANGELOG", "CHANGELOG.*", "CONTRIBUTING", "CONTRIBUTING.*", "AUTHORS", "AUTHORS.*", "NOTICE", "NOTICE.*", "COPYING", "COPYING.*"]
 
     :: toml ::
 
+    One trip hazard in that list: the key for the `external` handler is *`externals`*, plural, while the handler it feeds is named `external` (singular) everywhere else — in `dodot status` rows, in `--no-provision` output, in the handler registry. `externals` is the only key whose spelling differs from its handler's name.
+
+    The value shape is fixed per key, and it is not interchangeable: `path`, `homebrew`, and `nix` take a single string; `install`, `shell`, `externals`, `ignore`, and `skip` take a list. `[mappings.gates]` is a table rather than a pattern list, because it maps globs to gate labels instead of filenames to one handler — see [#5.1].
+
+    The `symlink` handler has no key here — it is the catchall (`*`), and it claims whatever no other rule did. The `gate` handler has no key either: gate matches come from filenames (`._<label>`), directory segments (`_<label>/`), and `[mappings.gates]`, not from a pattern list.
+
+    :: handler-roster:end ::
+
     The shell wildcards match at depth-1 only — any `.sh`/`.bash`/`.zsh` file at the *pack's root* is sourced. A `.sh` script tucked inside a subdirectory of the pack (for example `hypr/scripts/foo.sh`) is not pulled in; nested files flow through the symlink handler the same way every other nested file does. That carve-out is what keeps window-manager and tmux helper scripts (which live at `~/.config/<app>/scripts/*.sh` and are invoked by other tools, not the shell) from being silently sourced into your login shell.
 
     Shell extensions (`.sh`, `.bash`, `.zsh`) carry real meaning in dodot. For `install`, the extension selects the interpreter that runs the script: `.sh` and `.bash` run under `bash`, `.zsh` runs under `zsh`. For `shell`, the files are sourced into whatever shell reads `dodot-init.sh` — put zsh-only syntax in `.zsh`, bash-only syntax in `.bash`, and portable snippets in `.sh`. The user's login shell does not affect which `install.*` interpreter is picked; the extension is the contract.
 
-    `install` is list-only: even a single install script must be written as a TOML array (`install = ["install.sh"]`). The older single-string form (`install = "install.sh"`) no longer parses — update any older configs that use it.
+    One migration note on that: even a single install script must be written as a TOML array (`install = ["install.sh"]`). The older single-string form (`install = "install.sh"`) no longer parses — update any older configs that use it.
 
-    Two of the keys map to _filter handlers_ — real handlers that claim a match but produce no executable intent. Their job is to keep matching files away from the deploying handlers (precise mappings, catchall symlink):
+    Two of the keys route matches to _filter handlers_ — real handlers that claim a match but produce no executable intent. Their job is to keep matching files away from the deploying handlers (precise mappings, catchall symlink). The third filter handler, `gate`, has its own key: see [#5.1].
 
     - `ignore` — claims matches and drops them silently, mirroring `.gitignore`. Nothing surfaces in `dodot status`. Priority 100.
     - `skip` — claims matches and surfaces them in `dodot status` as `skipped`, but does not deploy them. Defaults cover the documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally. Priority 50.
 
-    `install` sits at priority 20, above the priority-10 shell wildcard, so as long as `install.sh` is in `mappings.install` (the default) it routes to the install handler rather than being claimed by the shell glob — the install hook never gets accidentally sourced. The other precise mappings (`shell`, `path`, `homebrew`) sit at priority 10; the catchall symlink at priority 0. So a file the user said to drop is dropped, full stop — `ignore` over `skip` over `install` over the rest of the precise mappings over catchall. (If you override `mappings.install` to drop `install.sh`, the shell wildcard *will* claim it — that's the user's choice.)
+    Every rule carries a priority, and the highest one claims the file:
+
+    Rule priorities:
+
+        | Priority | Key          | Handler    |
+        | 100      | `ignore`     | `ignore`   |
+        | 50       | `skip`       | `skip`     |
+        | 20       | `install`    | `install`  |
+        | 20       | `externals`  | `external` |
+        | 10       | `homebrew`   | `homebrew` |
+        | 10       | `nix`        | `nix`      |
+        | 10       | `path`       | `path`     |
+        | 10       | `shell`      | `shell`    |
+        | 0        | — (catchall) | `symlink`  |
+
+    :: table align=rll ::
+
+    `install` and `externals` sit at 20, above the priority-10 shell wildcard, so as long as `install.sh` is in `mappings.install` (the default) it routes to the install handler rather than being claimed by the shell glob — the install hook never gets accidentally sourced, and neither does an `externals.toml` that some overridden glob happens to match. So a file the user said to drop is dropped, full stop — `ignore` over `skip` over `install`/`externals` over the rest of the precise mappings over catchall. (If you override `mappings.install` to drop `install.sh`, the shell wildcard *will* claim it — that's the user's choice.)
 
     Distinct from `[pack] ignore`: `[mappings] ignore`/`skip` apply only to handler dispatch within a known pack, while `[pack] ignore` affects pack discovery and scanning. To skip an entire pack, drop a `.dodotignore` marker file (the "pack-ignore" mechanism).
 
@@ -372,7 +422,11 @@ Configuration
     `macos`, `arm64`, `aarch64`, `x86_64`). Redefining an existing
     built-in label (e.g. `darwin = { … }` in `[gates]`) replaces its
     predicate entirely — it does not merge dimensions into the
-    built-in. Shadowing a built-in is allowed but unusual; most user
+    built-in, because the seed is compiled in rather than merged as
+    configuration. Redefining a label the *root* config defines is the
+    opposite: those go through the normal config merge, so a pack
+    overrides only the dimensions it names and the root's others
+    survive. Shadowing a built-in is allowed but unusual; most user
     labels use names the seed doesn't claim. For the full surface and
     composition rules, see [./conditional-running.lex].
 
@@ -409,9 +463,9 @@ Configuration
 
         `extensions` is the list of trigger extensions. Both `".j2"` and `"j2"` are tolerated (leading dot optional).
 
-        `[preprocessor.template.vars]` defines variables available in templates under their bare names. See [./templates.lex] for usage. Reserved: `dodot` and `env` are built-in namespaces, so using them as var names is a hard error at load time.
+        `[preprocessor.template.vars]` defines variables available in templates under their bare names. See [./templates.lex] for usage. Reserved: `dodot` and `env` are built-in namespaces, so using them as var names is a hard error. It is raised when dodot builds the preprocessing pipeline — on any command that plans packs (`dodot up`, `dodot status`, …) — not when the config file is parsed, so `dodot config list` will show the offending value without complaint.
 
-        `no_reverse` is glob patterns (matched against the source file's basename) whose reverse-merge in `dodot transform check` is bypassed. Templates listed here still render normally on `dodot up` and stay in the divergence cache; they just skip the heuristic that tries to backport changes from the deployed copy into the source. Useful for templates that are mostly dynamic — the heuristic degrades there and produces more conflict markers than usable diffs.
+        `no_reverse` is glob patterns (matched against the source file's basename) whose reverse-merge is bypassed — both in `dodot transform check` and in the git clean filter, which echoes the input through unchanged rather than trying to back out the rendering. Templates listed here still render normally on `dodot up` and stay in the divergence cache; they just skip the heuristic that tries to backport changes from the deployed copy into the source. Useful for templates that are mostly dynamic — the heuristic degrades there and produces more conflict markers than usable diffs.
 
     7.3. `[preprocessor.age]`
 
@@ -427,6 +481,8 @@ Configuration
         :: toml ::
 
         `extensions` matches the same shape as `template.extensions`; add entries when your repo uses non-standard suffixes (e.g. `["age", "age.txt"]`). `identity` is the path to the age identity file used for decryption; leaving it empty defers to the runtime, which checks `$AGE_IDENTITY` first, then falls back to `~/.config/age/identity.txt` (the conventional `age-keygen` destination).
+
+        :: warning :: Custom `extensions` and an empty `identity` do not currently combine: on the defer-to-the-runtime path dodot rebuilds the preprocessor with the built-in `["age"]` list, so extra suffixes are dropped without a diagnostic. Set `identity` explicitly when you register non-standard suffixes.
 
     7.4. `[preprocessor.gpg]`
 
@@ -456,13 +512,13 @@ Configuration
 
     When `enabled = true` (the default), the generated `dodot-init.sh` carries a timing wrapper around each `source` and PATH line. bash 5+ / zsh sessions emit one TSV per shell startup under `<data_dir>/probes/shell-init/`; older shells fall through to the no-op path even with the wrapper present. Set `enabled = false` to make the init script byte-identical to the pre-Phase-2 form.
 
-    `keep_last_runs` caps retained TSV files; older ones get pruned at the end of every `dodot up`. At ~4 KB per run, the default budget is roughly 400 KB on disk.
+    `keep_last_runs` caps retained TSV files; older ones (and their sibling `.errors.log`) get pruned near the end of every real `dodot up` — `--dry-run` prunes nothing, and `keep_last_runs = 0` is read as "never prune" rather than "keep none". At ~4 KB per run, the default budget is roughly 400 KB on disk.
 
 9. The `[secret]` Section
 
     _Root-only_. Configuration for secret resolution in templates (the `secret(...)` template function). Per-pack overrides are ignored — secret tooling (binaries, env vars like `$PASSWORD_STORE_DIR`, `OP_SERVICE_ACCOUNT_TOKEN`) is a property of the host, not of any individual pack.
 
-    All providers default to `enabled = false`. Templates that call `secret(...)` against an unregistered scheme surface a "no provider for scheme" render error at `dodot up` time.
+    All providers default to `enabled = false`. A template that calls `secret(...)` against a scheme no enabled provider registers fails the render at `dodot up` time with "no secret provider registered for scheme `<name>`", listing the schemes that *are* configured and naming the `[secret.providers.<key>]` block to enable. With the subsystem off altogether, or no provider enabled at all, the message instead says no secret providers are configured.
 
     9.1. Global kill switch
 
@@ -519,9 +575,9 @@ Configuration
 
     :: toml ::
 
-    `homebrew` decides whether the init script opens with Homebrew's environment. With `"auto"` (the default), `dodot up` and `dodot down` ask `brew shellenv` for its bootstrap block and keep the answer — baked into the generated script as static text, and cached in dodot's datastore so `dodot init-sh` emits the same block without running `brew` either (only a cold or prefix-mismatched cache makes `init-sh` capture live, once, in memory). Homebrew stays the authority on its own setup; a brew upgrade that changes the block is picked up by the next `dodot up`, the same refresh rule as everything else dodot generates. Homebrew on Linux counts: `/home/linuxbrew/.linuxbrew` and `~/.linuxbrew` are probed alongside the macOS prefixes, and `$HOMEBREW_PREFIX` is tried first when you have set it. On a host without Homebrew nothing is emitted; install brew and the next `dodot up` picks it up.
+    `homebrew` takes exactly two values, `"auto"` and `"off"`; anything else is a hard error the first time a command needs to read it. It decides whether the init script opens with Homebrew's environment. With `"auto"` (the default), `dodot up` and `dodot down` ask `brew shellenv` for its bootstrap block and keep the answer — baked into the generated script as static text, and cached in dodot's datastore so `dodot init-sh` emits the same block without running `brew` either (only a cold or prefix-mismatched cache makes `init-sh` capture live, once, in memory). Homebrew stays the authority on its own setup; a brew upgrade that changes the block is picked up by the next `dodot up`, the same refresh rule as everything else dodot generates. Homebrew on Linux counts: `/home/linuxbrew/.linuxbrew` and `~/.linuxbrew` are probed alongside the macOS prefixes, and `$HOMEBREW_PREFIX` is tried first when you have set it. On a host without Homebrew nothing is emitted; install brew and the next `dodot up` picks it up.
 
-    A brew that is installed but fails to answer `brew shellenv` — mid-upgrade, say — is treated differently from a missing one: `dodot up` and `dodot down` warn you, quoting brew's exit code or error, and keep the block from the last successful capture so your shells keep working through the hiccup. Only a genuinely absent brew drops the block.
+    A brew that is installed but fails to answer `brew shellenv` — mid-upgrade, say — is treated differently from a missing one: `dodot up` and `dodot down` warn you, quoting brew's exit code or error, and keep the block from the last successful capture so your shells keep working through the hiccup. That rescue needs the cached block to have come from the same prefix that just failed; a cache left over from a prefix brew has since moved off is never served, and the warning then tells you the script carries no Homebrew block until brew answers again. Only a genuinely absent brew drops the block silently.
 
     The block lands _first_, above the PATH additions your packs contribute, so your own entries stay ahead of brew's. That is what makes a `001-homebrew` bootstrap pack unnecessary: brew's environment is available to every pack script without any ordering work on your part.
 
@@ -531,8 +587,8 @@ Configuration
 
 11. Inheritance Model
 
-    Most sections follow the same three-layer model: compiled defaults, then root `.dodot.toml`, then pack `.dodot.toml`. The outermost layer that sets a key wins for scalars and arrays; for maps, the layers deep-merge. The exceptions: `[secret]`, `[profiling]` and `[shell]` are root-only (per-pack entries are ignored), and `[pack] os` is pack-only (root-level entries are rejected).
+    Most sections follow the same three-layer model: compiled defaults, then root `.dodot.toml`, then pack `.dodot.toml`. The *last* layer to set a key wins for scalars and arrays — pack over root, root over the compiled default; for maps, the layers deep-merge. The exceptions: `[secret]`, `[profiling]` and `[shell]` are root-only (per-pack entries are ignored), and `[pack] os` is pack-only (root-level entries are rejected).
 
-    Example: you set `[preprocessor.template.vars] editor = "nvim"` at the root. In a pack for work configs, you set `[preprocessor.template.vars] editor = "vscode"`. That pack renders templates with `editor = "vscode"`; all others render with `editor = "nvim"`. All other keys under `[preprocessor.template]` (enabled, extensions) remain as defined at the root.
+    Example: you set `[preprocessor.template.vars] editor = "nvim"` at the root. In a pack for work configs, you set `[preprocessor.template.vars] editor = "vscode"`. That pack renders templates with `editor = "vscode"`; all others render with `editor = "nvim"`. The other template keys (`extensions`, `no_reverse`) and the `[preprocessor] enabled` switch one level up remain as defined at the root.
 
-    To see the fully resolved configuration for a context, run `dodot config list`. To inspect a single key with its inline doc, run `dodot config get <key>`.
+    To see the resolved configuration, run `dodot config list`; to inspect a single key with its inline doc, run `dodot config get <key>`. Both answer for the *root* — compiled defaults plus the root `.dodot.toml`. Neither applies a pack's overrides, and running them from inside a pack directory does not change the answer, so a pack-level value has to be read from that pack's own `.dodot.toml`.

@@ -44,7 +44,7 @@ Paths
 
     A pack with an ordering prefix has the prefix stripped from the deployed name: `010-nvim/init.lua` deploys to `~/.config/nvim/init.lua`, not `~/.config/010-nvim/init.lua`. The numeric prefix governs `dodot up` execution order, not the deployed path.
 
-    Anything not claimed by a more specific handler (shell, path, install, homebrew) flows through the symlink handler and the rules below.
+    Anything not claimed by a more specific handler (shell, path, external, homebrew, nix, install, or one of the three filter handlers) flows through the symlink handler and the rules below.
 
 4. Escape hatches, by what you want to do
 

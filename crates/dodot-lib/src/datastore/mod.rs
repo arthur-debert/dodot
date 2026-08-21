@@ -183,11 +183,12 @@ pub trait DataStore: Send + Sync {
     /// Like [`write_rendered_file`], but applies `mode` atomically
     /// at file-creation time so the rendered bytes never live on
     /// disk under a more permissive mode (per `secrets.lex` §4.3
-    /// for whole-file `age` / `gpg` plaintext). Default impl
-    /// falls back to `write_rendered_file` followed by an
-    /// `Fs::set_permissions` chmod — semantically equivalent but
-    /// briefly leaves the file at the umask-default mode; real
-    /// impls should override with the atomic
+    /// for whole-file `age` / `gpg` plaintext).
+    ///
+    /// Deliberately has no default implementation: a write-then-chmod
+    /// fallback would leave the file at the umask-default mode for a
+    /// moment, and an implementation must not inherit that by
+    /// omission. `FilesystemDataStore` uses the atomic
     /// `Fs::write_file_with_mode` path.
     fn write_rendered_file_with_mode(
         &self,

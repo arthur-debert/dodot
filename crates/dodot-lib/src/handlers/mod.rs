@@ -10,6 +10,7 @@
 //! linking) but must not mutate anything — mutations are the executor's
 //! job. This keeps planning idempotent and safe to re-run.
 
+pub mod catalog;
 pub mod externals;
 pub mod filter;
 pub mod gate;
@@ -35,9 +36,14 @@ use crate::Result;
 
 /// Whether a handler manages configuration or executes code.
 ///
-/// Configuration handlers (symlink, shell, path) are safe to run
-/// repeatedly. Code execution handlers (install, homebrew) run once
-/// and are tracked by sentinels.
+/// Configuration handlers (symlink, shell, path, and the three
+/// filter handlers) are safe to run repeatedly. Code execution
+/// handlers (external, homebrew, nix, install) record what they did
+/// in a sentinel keyed on the content that ran. The three run-once
+/// handlers then hold: an edited manifest is reported as `older
+/// version` and applied only under `--provision-rerun`. `external`
+/// is the exception — a moved upstream signature re-fetches on the
+/// spot, since there is no user-authored code to hold back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum HandlerCategory {
     Configuration,
@@ -55,9 +61,14 @@ pub enum HandlerCategory {
 /// # Why this order
 ///
 /// - [`Filter`](Self::Filter) claims files that should not be processed
-///   (ignore, skip). It runs first so its matches sit higher in priority
-///   than every other handler — a file the user said to drop must never
-///   be claimed by a precise mapping or the catchall.
+///   (ignore, skip, gate) and emits no intents at all. Its slot is
+///   first so the phase list reads in the same order as the rule
+///   priority ladder, not because the slot does any work: what keeps
+///   a dropped file away from a precise mapping or the catchall is
+///   that ladder (`ignore` at 100, `skip` at 50) plus the gate
+///   matches [`crate::rules::Scanner::match_entries`] mints before
+///   the rule matcher runs — all of it settled before any phase is
+///   consulted.
 /// - [`Provision`](Self::Provision) installs packages. Anything later
 ///   (including user `install.sh` scripts) may depend on the tools it
 ///   put on PATH.
@@ -67,19 +78,23 @@ pub enum HandlerCategory {
 ///   `$PATH`. It runs before [`ShellInit`](Self::ShellInit) so shell
 ///   init scripts can reference the executables it exposes.
 /// - [`ShellInit`](Self::ShellInit) registers shell startup files.
-/// - [`Link`](Self::Link) is the catchall symlink phase. It runs last
-///   because the symlink handler is catchall — precise handlers above
-///   must have already claimed their files.
+/// - [`Link`](Self::Link) is the catchall symlink phase, last for the
+///   same reading-order reason as `Filter` being first. `symlink` is
+///   kept off a file a precise handler wanted by its priority-0 rule
+///   and the single-exclusive-catchall invariant `validate_registry`
+///   asserts, not by its phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum ExecutionPhase {
-    /// Claim files to drop or list-but-not-act-on (ignore, skip). No
-    /// executable intent is produced.
+    /// Claim files to drop or list-but-not-act-on (ignore, skip,
+    /// gate). No executable intent is produced.
     Filter,
     /// Fetch external content (externals.toml). Runs before Provision
     /// so install scripts and shell init can rely on fetched content
     /// being in place at their target paths.
     External,
-    /// Install packages (homebrew).
+    /// Install packages (homebrew, nix). Two handlers share this
+    /// phase; the order they run in relative to each other is not
+    /// pinned down, and nothing depends on it.
     Provision,
     /// Run user setup scripts (install).
     Setup,
@@ -303,10 +318,11 @@ pub const HANDLER_EXTERNAL: &str = "external";
 /// `up` for these handlers is equivalent to "down (these handlers) +
 /// up", so a deleted source file no longer leaves an orphan entry.
 ///
-/// Code-execution handlers (install, homebrew) are excluded — their
-/// sentinels record "did this run with this content?" and must persist
-/// across re-runs of `up` so install scripts and `brew bundle` aren't
-/// re-executed every time.
+/// Code-execution handlers (external, homebrew, nix, install) are
+/// excluded — their sentinels record "did this run with this
+/// content?" and must persist across re-runs of `up` so install
+/// scripts, `brew bundle`, `nix profile install`, and multi-gigabyte
+/// fetches aren't re-executed every time.
 pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
     // This walk only reads `Handler::category()`, never invokes
     // `to_intents`.

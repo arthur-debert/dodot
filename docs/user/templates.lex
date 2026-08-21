@@ -1,10 +1,13 @@
+:: verified ::
 Template Expansion
 
     Some dotfiles need to vary between machines: a different git user per host, an OS-specific Homebrew prefix, a laptop-vs-workstation shell prompt. Rather than forking configs or hand-editing after every clone, dodot renders Jinja2-style templates at deploy time. One versioned source file can produce different outputs on different hosts.
 
     Any pack file whose name ends in `.tmpl` or `.template` is a template. dodot strips that extension, renders the content, and hands the result to the normal handler pipeline. `git/gitconfig.tmpl` is rendered and then symlinked as `~/.gitconfig`, exactly as if `gitconfig` had been there all along.
 
-    Rendering is transparent: there is no `dodot render` step, no staging area, no "please remember to regenerate." Every `dodot up` re-renders, so editing the template or changing a variable picks up on the next deploy.
+    Rendering is transparent: there is no `dodot render` step, no staging area, no "please remember to regenerate." Every `dodot up` re-renders, so editing the template or changing a variable is picked up on the next deploy.
+
+    Re-rendering is not re-running. A rendered file the `symlink`, `shell`, or `path` handler deploys is replaced with the new content on every `up`. A rendered `install.sh`, `Brewfile`, or `packages.nix` is not: those handlers run a file once and record what they ran, so a re-render that changes the content makes the next `up` report `older version` and hold — the details are in [#9].
 
     :: note :: For the concept-level view of how preprocessing fits into dodot, see [./../reference/pre-processors.lex]. For terminology, see [./../reference/terms-and-concepts.lex].
 
@@ -24,7 +27,7 @@ Template Expansion
         name = "Alice"
 
         $ dodot up git
-        git/gitconfig                     ➞ linked
+        git                  ➞ gitconfig                                  linked
 
         $ cat ~/.gitconfig
         [user]
@@ -152,7 +155,7 @@ Template Expansion
 
         $ dodot up vim
         ... template render failed for ~/dotfiles/vim/gvimrc.tmpl:
-              undefined value (in <string>:1)
+              undefined value (in ~/dotfiles/vim/gvimrc.tmpl:1)
               hint: define the variable in [preprocessor.template.vars] in .dodot.toml,
               or reference an environment variable with {{ env.NAME }} (with a default filter if optional)
 
@@ -213,7 +216,7 @@ Template Expansion
 
     The rule applies symmetrically to multiple preprocessors: if two preprocessors produce the same output name, the second one raises the same collision error.
 
-9. For Developers: Where Rendered Output Lives
+9. Rendered Output, and What The Run-Once Handlers Hash
 
     Each rendered template is written to:
 
@@ -225,7 +228,24 @@ Template Expansion
 
     That file is what the handlers see. The symlink handler creates `~/.gitconfig` pointing at the rendered file; the install handler executes the rendered `install.sh`; the path handler stages the rendered script into the PATH directory. Directory structure is preserved — `pack/sub/file.tmpl` renders to `.../preprocessed/sub/file`.
 
-    Two consequences worth knowing:
+    Two consequences are worth knowing.
 
     - _Diagnostics_ — if you want to see exactly what dodot produced for a given template, that directory is the source of truth.
-    - _Hashing_ — the install handler derives its completion sentinel from the hash of the *rendered* script, not the `.tmpl` source. Changing a variable (or the value of `dodot.hostname` after moving machines) re-triggers the install step even if the template itself didn't change.
+    - _Hashing_ — the three run-once handlers (`install`, `homebrew`, `nix`) record their completion sentinel against the hash of the *rendered* file, not the `.tmpl` source.
+
+    The second one is the one that surprises people, so state it plainly: dodot never re-runs a run-once file by itself. Changing a template variable — or moving to a machine where `dodot.hostname` or `dodot.os` differs — changes the rendered bytes, so the hash no longer matches the recorded one. dodot notices that and *reports* it. It does not act on it.
+
+    An edited template behind an install script:
+
+        $ dodot up tools
+        Packs deployed.
+        tools                × install.sh    older version (1 line added, 1 removed) [1]
+
+        Warnings:
+          [1] ran an older version of install.sh — run `dodot up --provision-rerun` to apply the current one
+
+    :: shell ::
+
+    `dodot up --provision-rerun` is what applies the new content. The same holds for a rendered `Brewfile` (`brew packages older version`) and a rendered `packages.nix` (`nix packages older version`). Deleting the recorded runs by hand gets the same effect on the next plain `up`, but it means all of them: every `<basename>-<hash>` sentinel for that file, plus their `.snapshot` siblings. dodot keeps the sentinels of earlier runs, so removing only the newest leaves an older one behind and the file still reads `older version`.
+
+    So a template that feeds a run-once handler is a two-step edit: change the variable, then `dodot up --provision-rerun`. A template that feeds `symlink`, `shell`, or `path` is a one-step edit — `dodot up` and the new content is in place.

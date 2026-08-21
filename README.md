@@ -96,6 +96,7 @@ vim ~/.gitconfig        # same file as ~/dotfiles/git/gitconfig
 
 dodot matches files to handlers by name convention:
 
+<!-- handler-roster:begin -->
 | Handler      | Matches                                     | Action                                                                                                                |
 | ------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | **symlink**  | Most files (default)                        | Symlink under `~/.config/<pack>/`                                                                                     |
@@ -104,6 +105,11 @@ dodot matches files to handlers by name convention:
 | **homebrew** | `Brewfile`                                  | `brew bundle install`; edits report `older version`, apply with `dodot up --provision-rerun`                          |
 | **install**  | `install.sh`, `install.bash`, `install.zsh` | Run once (checksum-tracked); edits report `older version`, apply with `dodot up --provision-rerun`                    |
 | **nix**      | `packages.nix`                              | `nix profile install` (shape-agnostic wrapper); edits report `older version`, apply with `dodot up --provision-rerun` |
+| **external** | `externals.toml`                            | Fetch each declared file, git repo, or archive into place; re-fetches when its upstream signature moves               |
+| **gate**     | `._<label>` files, `_<label>/` dirs         | Drop the file on hosts the label doesn't match (built-in OS/arch labels; define more under `[gates]`)                 |
+| **ignore**   | `[mappings] ignore` globs (empty default)   | Drop silently, like `.gitignore`                                                                                      |
+| **skip**     | `README`, `LICENSE`, `CHANGELOG`, …         | Not deployed, but reported as `skipped`                                                                               |
+<!-- handler-roster:end -->
 
 Symlink targets are resolved smartly:
 
