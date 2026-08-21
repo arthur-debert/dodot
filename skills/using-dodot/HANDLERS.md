@@ -5,6 +5,7 @@ pattern → handler mappings with a priority; checked highest-first, first match
 
 ## Default rules (highest priority first)
 
+<!-- handler-roster:begin -->
 | Prio | Handler  | Matches (at pack root)                                                                |
 |------|----------|---------------------------------------------------------------------------------------|
 | 100  | ignore   | (empty by default)                                                                    |
@@ -16,6 +17,7 @@ pattern → handler mappings with a priority; checked highest-first, first match
 | 10   | path     | `bin/`                                                                                |
 | 10   | shell    | `*.sh`, `*.bash`, `*.zsh`                                                             |
 | 0    | symlink  | catch-all — anything not claimed above                                                |
+<!-- handler-roster:end -->
 
 Override dispatch per-pack or repo-wide in `.dodot.toml` under `[mappings]`
 (e.g. `shell = ["aliases.sh"]`, `ignore = ["scratch.txt"]`).
@@ -98,6 +100,7 @@ the datastore, and symlinks them into place.
 
 These drop a match *without* deploying it.
 
+<!-- handler-roster:begin -->
 - **ignore** — silent drop, like `.gitignore`. Empty by default; add globs via
   `[mappings] ignore`.
 - **skip** — drops but surfaces as `skipped` in `dodot status` (so you can see it
@@ -109,6 +112,7 @@ These drop a match *without* deploying it.
   define more under `[gates]` (dimensions `os`, `arch`, `hostname`, `username`).
   Carrying both a filename gate and a `[mappings.gates]` entry on the same file is
   an error.
+<!-- handler-roster:end -->
 
 ## Not the same as `.dodotignore`
 

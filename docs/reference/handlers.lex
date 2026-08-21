@@ -8,6 +8,8 @@ Handlers
 
     dodot ships with ten handlers: seven that act on a file (symlink, shell, path, external, install, homebrew, nix) and three that drop it from processing (ignore, skip, gate). All ten share the same `Handler` trait and run from the same registry.
 
+    :: handler-roster:begin ::
+
     1.1. Symlink
 
         Creates a symlink from a deployed location back to a file or directory in your pack. This is the default for any file that no other handler claims — anything that looks like plain configuration flows through here.
@@ -67,6 +69,8 @@ Handlers
         Unlike `ignore` and `skip`, gate matches are *dynamic* — they depend on host facts (OS, arch, hostname, …) and on the filename grammar (`._<label>`, `_<label>/`) plus the `[mappings.gates]` config. The full surface is in [./../user/conditional-running.lex] and the design proposal at [./../proposals/shipped/conditional-running.lex]. The matching infrastructure is shared with `ignore` and `skip`: gate evaluation runs at scan time and produces a `RuleMatch` whose `handler` is `"gate"`, with predicate / host metadata stashed in `options` for the status renderer.
 
         The three filter handlers exist because four things were previously different mechanisms — a pack-level marker, a silent skip, a visible "excluded", and host-conditional dispatch — and unifying the intra-pack cases into real handlers means there's one matching model and one config grammar instead of four. Pack-level `.dodotignore` (the "pack-ignore" mechanism) and pack-level `[pack] os` (the conditional-running mechanism) stay separate at the discovery layer.
+
+    :: handler-roster:end ::
 
 2. Matching Model
 

@@ -1,6 +1,6 @@
 Handler Registry
 
-    *Generated from the handler registry — do not edit.* Run `pixi run gen-docs` to regenerate this page from `crates/dodot-lib/src/handlers/catalog.rs`; the test suite fails when it drifts. This is the roster that cannot disagree with the shipped registry, so link here rather than copying the tables. A few pages do keep a hand-written roster where naming the handlers is part of explaining something else; they are listed in that same file, and a test holds each of them to naming every registered handler.
+    *Generated from the handler registry — do not edit.* Run `pixi run gen-docs` to regenerate this page from `crates/dodot-lib/src/handlers/catalog.rs`; the test suite fails when it drifts. This is the roster that cannot disagree with the shipped registry, so link here rather than copying the tables. A few pages do keep a hand-written roster where naming the handlers is part of explaining something else; they are listed in that same file, each marks its roster with a `handler-roster` comment, and a test holds what is inside those markers to naming every registered handler.
 
     For what each handler is *for*, see [./handlers.lex]; for the per-handler user guides, see [./../user/handlers.lex].
 

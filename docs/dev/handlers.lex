@@ -69,6 +69,8 @@ Handlers
 
         Each handler belongs to exactly one phase. The enum's *declaration order* is the execution order — `derive(Ord)` does the rest, and [`rules::handler_execution_order`] sorts handler-name groups by looking up each name's phase in the registry.
 
+        :: handler-roster:begin ::
+
         ExecutionPhase:
 
             pub enum ExecutionPhase {
@@ -82,6 +84,8 @@ Handlers
             }
 
         :: rust ::
+
+        :: handler-roster:end ::
 
         A phase may hold more than one handler: `Filter` holds three, `Provision` holds two. The order two handlers sharing a phase run in is not defined — [`rules::handler_execution_order`] stable-sorts names collected from a `HashMap`, so their relative order is whatever the map iteration produced. Nothing in dodot depends on it.
 
@@ -371,7 +375,7 @@ Handlers
     5. Decide whether `validate_registry` still passes. Two `Catchall` + `Exclusive` handlers will trip the `debug_assert!`.
     6. Add one [`HandlerDoc`] row to `HANDLER_CATALOG` in `handlers/catalog.rs` — the handler name, a one-line present-tense description of what a claimed file gets, and (only if the handler's matches do not come from `[mappings]` patterns) how to describe what it claims. A test holds the catalog and the registry equal in both directions: a registered handler with no row fails, and a row with no registered handler fails. Everything else in the published tables — phase, category, match mode, scope, default patterns, priority — is read from the registry and the config defaults at render time, so it cannot disagree with the shipped behavior.
     7. Run `pixi run gen-docs` to regenerate [./../reference/handler-registry.lex] and commit the result. Do not hand-edit that page: it is rendered from the registry, and the same test that renders it fails when the checked-in copy drifts. It is the roster that cannot disagree with the shipped code, so a document that needs the whole taxonomy should link to it rather than copy it.
-    8. Add the handler to the pages that keep a hand-written roster anyway. They are enumerated in `CONTEXTUAL_ROSTERS` in `handlers/catalog.rs` — the README's tour, [./../user/configuration.lex], [./../user/handlers.lex], [./../user/handlers/mappings.lex], [./../user/handlers/execution-order.lex], [./../reference/handlers.lex], this document, and the two `using-dodot` skill pages. Each names the handlers in the middle of explaining something else, where a link to a separate page would cost the reader more than the duplication does, so generation does not fit. The test `contextual_rosters_name_every_handler` fails until every one of them mentions the new handler — it catches a page that forgot the handler, not a page that describes it wrongly, so read what you are editing.
+    8. Add the handler to the pages that keep a hand-written roster anyway. They are enumerated in `CONTEXTUAL_ROSTERS` in `handlers/catalog.rs` — the README's tour, [./../user/configuration.lex], [./../user/handlers.lex], [./../user/handlers/mappings.lex], [./../user/handlers/execution-order.lex], [./../reference/handlers.lex], this document, and the two `using-dodot` skill pages. Each names the handlers in the middle of explaining something else, where a link to a separate page would cost the reader more than the duplication does, so generation does not fit. Each marks its roster with a `handler-roster:begin` / `handler-roster:end` comment — `<!-- … -->` in Markdown, `:: … ::` in lex, invisible in both — and the test `contextual_rosters_list_every_handler` reads only what sits between them. That scoping is deliberate: handler names like `path` and `gate` appear throughout ordinary prose, so a page-wide search would stay green even after a handler was deleted from the table it belongs in. The test catches a roster that forgot the handler, not one that describes it wrongly, so read what you are editing.
     9. Write the user-facing snippet: a new file under `docs/user/handlers/`, linked from [./../user/handlers.lex]. That is the prose the generated tables cannot carry — what the handler is for, what a pack author writes, and what stays live between runs.
 
     :: note :: The trait surface is small (two methods carry behavior, three more are classification), and smaller still for a run-once command. A new handler is typically a few dozen lines plus tests against `TempEnvironment`.

@@ -9,6 +9,8 @@ For terminology, see [./glossary/handler.lex].
 
     Seven deploy handlers, one per snippet:
 
+    :: handler-roster:begin ::
+
     - `symlink` ([./handlers/symlink.lex]) — link source files into deployed locations. The catch-all.
     - `shell` ([./handlers/shell.lex]) — source shell scripts at login.
     - `path` ([./handlers/path.lex]) — add a source `bin/` directory to `$PATH`; covers the compose-once precedence contract for where each pack's directory lands.
@@ -20,6 +22,8 @@ For terminology, see [./glossary/handler.lex].
     Three filter handlers, bundled in one snippet because they share a usage story:
 
     - [./handlers/controlling-activation.lex] — `ignore` (silent drop), `skip` (visible drop), `gate` (host-conditional drop), plus pack-level `[pack] ignore` and `.dodotignore`.
+
+    :: handler-roster:end ::
 
 2. The dispatch model
 

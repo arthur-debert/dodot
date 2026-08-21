@@ -96,6 +96,7 @@ vim ~/.gitconfig        # same file as ~/dotfiles/git/gitconfig
 
 dodot matches files to handlers by name convention:
 
+<!-- handler-roster:begin -->
 | Handler      | Matches                                     | Action                                                                                                                |
 | ------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | **symlink**  | Most files (default)                        | Symlink under `~/.config/<pack>/`                                                                                     |
@@ -108,6 +109,7 @@ dodot matches files to handlers by name convention:
 | **gate**     | `._<label>` files, `_<label>/` dirs         | Drop the file on hosts the label doesn't match (built-in OS/arch labels; define more under `[gates]`)                 |
 | **ignore**   | `[mappings] ignore` globs (empty default)   | Drop silently, like `.gitignore`                                                                                      |
 | **skip**     | `README`, `LICENSE`, `CHANGELOG`, …         | Not deployed, but reported as `skipped`                                                                               |
+<!-- handler-roster:end -->
 
 Symlink targets are resolved smartly:
 

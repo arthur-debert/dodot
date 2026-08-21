@@ -322,6 +322,8 @@ Configuration
 
     Mappings:
 
+    :: handler-roster:begin ::
+
         [mappings]
         path = "bin"
         install = ["install.sh", "install.bash", "install.zsh"]
@@ -339,6 +341,8 @@ Configuration
     The value shape is fixed per key, and it is not interchangeable: `path`, `homebrew`, and `nix` take a single string; `install`, `shell`, `externals`, `ignore`, and `skip` take a list. `[mappings.gates]` is a table rather than a pattern list, because it maps globs to gate labels instead of filenames to one handler — see [#5.1].
 
     The `symlink` handler has no key here — it is the catchall (`*`), and it claims whatever no other rule did. The `gate` handler has no key either: gate matches come from filenames (`._<label>`), directory segments (`_<label>/`), and `[mappings.gates]`, not from a pattern list.
+
+    :: handler-roster:end ::
 
     The shell wildcards match at depth-1 only — any `.sh`/`.bash`/`.zsh` file at the *pack's root* is sourced. A `.sh` script tucked inside a subdirectory of the pack (for example `hypr/scripts/foo.sh`) is not pulled in; nested files flow through the symlink handler the same way every other nested file does. That carve-out is what keeps window-manager and tmux helper scripts (which live at `~/.config/<app>/scripts/*.sh` and are invoked by other tools, not the shell) from being silently sourced into your login shell.
 

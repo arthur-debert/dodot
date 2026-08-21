@@ -29,9 +29,14 @@
 //! `mappings.lex`, the phase table in `execution-order.lex` — where a
 //! link to a separate page would cost the reader more than the
 //! duplication does. Those pages are enumerated in
-//! [`CONTEXTUAL_ROSTERS`], and the test
-//! `contextual_rosters_name_every_handler` holds each of them to
-//! naming every registered handler.
+//! [`CONTEXTUAL_ROSTERS`]; each marks its roster with
+//! [`ROSTER_BEGIN`] / [`ROSTER_END`], and the test
+//! `contextual_rosters_list_every_handler` reads what sits between
+//! those markers and holds it to naming every registered handler.
+//! Reading only the marked region is the point: names like `path` and
+//! `gate` turn up all over ordinary prose, so a page-wide search would
+//! stay green even after a handler was dropped from the table it
+//! belongs in.
 //!
 //! So a new handler owes the docs three things, not one:
 //!
@@ -40,11 +45,11 @@
 //! 2. A `pixi run gen-docs`, which regenerates the page from the
 //!    registry; everything in its table comes from code the handler
 //!    already had to write.
-//! 3. A line in each page of [`CONTEXTUAL_ROSTERS`], plus a
-//!    user-facing snippet under `docs/user/handlers/`. The roster test
-//!    catches a page that forgot the handler entirely; it cannot
-//!    catch one that describes it wrongly, so read what you are
-//!    editing.
+//! 3. A line inside the marked roster of each page in
+//!    [`CONTEXTUAL_ROSTERS`], plus a user-facing snippet under
+//!    `docs/user/handlers/`. The roster test catches a roster that
+//!    forgot the handler; it cannot catch one that describes it
+//!    wrongly, so read what you are editing.
 //!
 //! # What lives in the descriptor, and what does not
 //!
@@ -69,17 +74,35 @@ use crate::handlers::{
 /// The path of the generated page, relative to the repository root.
 pub const REGISTRY_DOC_PATH: &str = "docs/reference/handler-registry.lex";
 
+/// The opening marker of a hand-written roster region.
+///
+/// Written as `<!-- handler-roster:begin -->` in Markdown and
+/// `:: handler-roster:begin ::` in lex; both render as an invisible
+/// comment, and both carry this token verbatim in the source, which
+/// is what [`roster_regions`] looks for.
+pub const ROSTER_BEGIN: &str = "handler-roster:begin";
+
+/// The closing marker of a hand-written roster region.
+pub const ROSTER_END: &str = "handler-roster:end";
+
 /// The pages that keep a hand-written handler roster, relative to the
 /// repository root.
 ///
 /// Each names the handlers as part of explaining something else, so
 /// generation would not fit and a bare link would read worse. The
 /// price is an update obligation per new handler, and
-/// `contextual_rosters_name_every_handler` is what collects it:
-/// adding a handler fails the test until every page here mentions it.
+/// `contextual_rosters_list_every_handler` is what collects it:
+/// adding a handler fails the test until every page here lists it.
+///
+/// The obligation is scoped to the roster itself, not to the page.
+/// Every page below marks its roster with [`ROSTER_BEGIN`] /
+/// [`ROSTER_END`], and the test reads only what sits between them —
+/// otherwise a page that drops a handler from its table would still
+/// pass on the strength of the name appearing in unrelated prose,
+/// which is precisely the drift the test exists to catch.
 ///
 /// A page whose roster is replaced by a link to the generated table
-/// should come off this list.
+/// should come off this list, and its markers should go with it.
 pub const CONTEXTUAL_ROSTERS: &[&str] = &[
     "README.md",
     "docs/dev/handlers.lex",
@@ -322,7 +345,8 @@ pub fn render_registry_doc(fs: &dyn Fs, mappings: &MappingsSection) -> String {
              roster that cannot disagree with the shipped registry, so link here rather than \
              copying the tables. A few pages do keep a hand-written roster where naming the \
              handlers is part of explaining something else; they are listed in that same file, \
-             and a test holds each of them to naming every registered handler.",
+             each marks its roster with a `handler-roster` comment, and a test holds what is \
+             inside those markers to naming every registered handler.",
             "crates/dodot-lib/src/handlers/catalog.rs"
         ),
     ));
@@ -434,6 +458,99 @@ pub fn render_registry_doc(fs: &dyn Fs, mappings: &MappingsSection) -> String {
     out.push_str(&render_table(2, &mapping_table, "rll"));
 
     out
+}
+
+/// Whether a line is a roster marker, and which one.
+///
+/// A marker is a line that is *only* a marker comment, in one of the
+/// two forms the documentation uses: `<!-- handler-roster:begin -->`
+/// in Markdown, `:: handler-roster:begin ::` in lex. Matching the
+/// whole line rather than searching for the token is what lets a
+/// document *describe* the markers — as the handler-authoring guide
+/// does — without the prose being mistaken for one.
+fn marker_kind(line: &str) -> Option<Marker> {
+    let trimmed = line.trim();
+    let inner = trimmed
+        .strip_prefix("<!--")
+        .and_then(|rest| rest.strip_suffix("-->"))
+        .or_else(|| {
+            trimmed
+                .strip_prefix("::")
+                .and_then(|rest| rest.strip_suffix("::"))
+        })?
+        .trim();
+
+    match inner {
+        _ if inner == ROSTER_BEGIN => Some(Marker::Begin),
+        _ if inner == ROSTER_END => Some(Marker::End),
+        _ => None,
+    }
+}
+
+/// Which end of a roster region a marker line opens or closes.
+enum Marker {
+    Begin,
+    End,
+}
+
+/// Every marked roster region in `text`, concatenated.
+///
+/// A region runs from a [`ROSTER_BEGIN`] marker line to the next
+/// [`ROSTER_END`] marker line; the marker lines themselves are not
+/// part of it. A page may mark more than one region — several of them
+/// name the handlers with no default rule separately from the table
+/// of the ones that have one.
+///
+/// # Errors
+///
+/// When the page carries no region at all, or a marker is unbalanced.
+/// Both are the page having drifted away from the contract rather
+/// than a handler being missing, so they are reported apart from it.
+pub fn roster_regions(text: &str) -> Result<String, String> {
+    let mut out = String::new();
+    let mut depth = 0usize;
+    let mut regions = 0usize;
+
+    for (number, line) in text.lines().enumerate() {
+        let marker = marker_kind(line);
+        let begins = matches!(marker, Some(Marker::Begin));
+        let ends = matches!(marker, Some(Marker::End));
+        if begins {
+            if depth > 0 {
+                return Err(format!(
+                    "line {}: a roster region opens inside another",
+                    number + 1
+                ));
+            }
+            depth = 1;
+            regions += 1;
+            continue;
+        }
+        if ends {
+            if depth == 0 {
+                return Err(format!(
+                    "line {}: a roster region closes without opening",
+                    number + 1
+                ));
+            }
+            depth = 0;
+            continue;
+        }
+        if depth > 0 {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+
+    if depth != 0 {
+        return Err("a roster region opens and never closes".to_string());
+    }
+    if regions == 0 {
+        return Err(format!(
+            "no roster region found — mark it with `{ROSTER_BEGIN}` / `{ROSTER_END}`"
+        ));
+    }
+    Ok(out)
 }
 
 /// Patterns as a comma-separated list of inline-code cells.
@@ -622,45 +739,152 @@ mod tests {
         );
     }
 
-    /// Every page in [`CONTEXTUAL_ROSTERS`] names every registered
+    /// Every roster in [`CONTEXTUAL_ROSTERS`] lists every registered
     /// handler.
     ///
     /// These pages keep a hand-written roster on purpose (see the
     /// module docs), so the generated page cannot cover them. What
     /// this test covers is the drift that actually happened: `nix`,
     /// `external`, and `gate` were added to the registry and left out
-    /// of roster after roster. A brand-new handler now fails here
-    /// until each page has been told about it.
+    /// of roster after roster. A brand-new handler fails here until
+    /// each page has been told about it.
     ///
-    /// It is a mention check, not a correctness check — it cannot see
-    /// that a page put a handler in the wrong phase or gave it the
-    /// wrong priority. The generated page is still the only copy that
-    /// cannot drift in its details.
+    /// The check reads only what sits between the roster markers, not
+    /// the whole page. That distinction is the test: names like
+    /// `path`, `shell`, and `gate` occur throughout ordinary prose, so
+    /// a page-wide search would stay green even after a handler was
+    /// deleted from the table it belongs in.
+    ///
+    /// It still cannot see that a roster put a handler in the wrong
+    /// phase or gave it the wrong priority — presence is all it
+    /// checks. The generated page remains the only copy that cannot
+    /// drift in its details.
     #[test]
-    fn contextual_rosters_name_every_handler() {
+    fn contextual_rosters_list_every_handler() {
         let fs = OsFs::new();
         let registered: Vec<String> = create_registry(&fs).keys().cloned().collect();
         let root = repo_root();
 
-        let mut missing: Vec<String> = Vec::new();
+        let mut problems: Vec<String> = Vec::new();
         for page in CONTEXTUAL_ROSTERS {
             let path = root.join(page);
             let text = std::fs::read_to_string(&path)
                 .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-            for handler in &registered {
-                if !mentions_word(&text, handler) {
-                    missing.push(format!("{page}: `{handler}`"));
+
+            let roster = match roster_regions(&text) {
+                Ok(roster) => roster,
+                Err(reason) => {
+                    problems.push(format!("{page}: {reason}"));
+                    continue;
                 }
+            };
+
+            let absent: Vec<&str> = registered
+                .iter()
+                .filter(|handler| !mentions_word(&roster, handler))
+                .map(String::as_str)
+                .collect();
+            if !absent.is_empty() {
+                problems.push(format!("{page}: roster omits {}", absent.join(", ")));
             }
         }
 
         assert!(
-            missing.is_empty(),
-            "these pages keep a hand-written handler roster and do not mention every \
-             registered handler — add the handler to each, or drop the page from \
-             CONTEXTUAL_ROSTERS if its roster is gone:\n  {}",
-            missing.join("\n  ")
+            problems.is_empty(),
+            "each of these pages keeps a hand-written handler roster between \
+             `{ROSTER_BEGIN}` / `{ROSTER_END}` markers, and the roster has to name every \
+             registered handler — add it there (a mention elsewhere on the page does not \
+             count), or drop the page from CONTEXTUAL_ROSTERS if its roster is gone:\n  {}",
+            problems.join("\n  ")
         );
+    }
+
+    /// A name outside the markers does not satisfy the roster check.
+    ///
+    /// This is the property the page-wide version of this test lacked:
+    /// `gate` below is named twice in prose and never in the roster,
+    /// which has to read as missing.
+    #[test]
+    fn a_mention_outside_the_roster_does_not_count() {
+        let page = "\
+Some prose about the gate handler and how gating works.
+
+<!-- handler-roster:begin -->
+| `symlink` | links |
+| `shell`   | sources |
+<!-- handler-roster:end -->
+
+More prose, mentioning gate again for good measure.
+";
+        let roster = roster_regions(page).expect("the fixture marks one region");
+
+        assert!(mentions_word(&roster, "symlink"));
+        assert!(mentions_word(&roster, "shell"));
+        assert!(
+            !mentions_word(&roster, "gate"),
+            "`gate` appears only outside the markers, so it must not count as listed"
+        );
+        assert!(
+            mentions_word(page, "gate"),
+            "the fixture is only meaningful if a page-wide search WOULD have found it"
+        );
+    }
+
+    /// Several regions on one page are concatenated.
+    #[test]
+    fn roster_regions_accumulates_every_marked_block() {
+        let page = "\
+:: handler-roster:begin ::
+`homebrew`
+:: handler-roster:end ::
+
+filler
+
+:: handler-roster:begin ::
+`gate`
+:: handler-roster:end ::
+";
+        let roster = roster_regions(page).expect("two regions");
+        assert!(mentions_word(&roster, "homebrew"));
+        assert!(mentions_word(&roster, "gate"));
+        assert!(!roster.contains("filler"));
+    }
+
+    /// Prose that *names* the markers is not a marker.
+    ///
+    /// The handler-authoring guide documents the marker syntax, so its
+    /// text carries both tokens on one line. Matching whole lines
+    /// rather than searching for the token is what keeps that from
+    /// opening a bogus region.
+    #[test]
+    fn prose_describing_the_markers_is_not_a_marker() {
+        let page = "\
+Mark it with a `handler-roster:begin` / `handler-roster:end` comment.
+
+<!-- handler-roster:begin -->
+`symlink`
+<!-- handler-roster:end -->
+";
+        let roster = roster_regions(page).expect("exactly one real region");
+        assert!(mentions_word(&roster, "symlink"));
+        assert!(
+            !roster.contains("Mark it with"),
+            "the sentence describing the markers must stay outside the region"
+        );
+    }
+
+    /// A page that lost its markers is reported as such, not as a
+    /// page that dropped every handler at once.
+    #[test]
+    fn roster_regions_reports_missing_and_unbalanced_markers() {
+        let err = roster_regions("no markers here").expect_err("no region");
+        assert!(err.contains("no roster region found"), "{err}");
+
+        let err = roster_regions("<!-- handler-roster:begin -->\nrow\n").expect_err("unclosed");
+        assert!(err.contains("never closes"), "{err}");
+
+        let err = roster_regions("<!-- handler-roster:end -->\n").expect_err("unopened");
+        assert!(err.contains("without opening"), "{err}");
     }
 
     /// Whether `text` names `word` as a word of its own.

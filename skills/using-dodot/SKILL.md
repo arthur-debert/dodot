@@ -122,6 +122,7 @@ dodot fill <pack>                        # add starter install.sh/aliases.sh/Bre
 
 ## How filenames map to handlers (the essentials)
 
+<!-- handler-roster:begin -->
 | At pack root             | Handler  | Result                                        |
 |--------------------------|----------|-----------------------------------------------|
 | `*.sh` `*.bash` `*.zsh`  | shell    | sourced at login                              |
@@ -134,6 +135,7 @@ dodot fill <pack>                        # add starter install.sh/aliases.sh/Bre
 | `[mappings] ignore` globs| ignore   | dropped silently (empty by default)           |
 | `README` `LICENSE` …     | skip     | not deployed; shown as `skipped`              |
 | anything else            | symlink  | linked to `~/.<name>` or `~/.config/<pack>/`  |
+<!-- handler-roster:end -->
 
 Routing prefixes on a symlinked file override the default target: `home.X` →
 `~/.X`, `xdg.X` → `$XDG_CONFIG_HOME/X`, `app.X` → app-support dir; the directory

@@ -5,6 +5,8 @@ The order in which handlers run within a pack, and the order in which packs run 
 
 1. Within a pack: phases
 
+    :: handler-roster:begin ::
+
     Inside a single pack, every handler belongs to one of seven phases. They run in this fixed order:
 
         | Order | Phase      | Handlers            | Why this slot                                                              |
@@ -17,6 +19,8 @@ The order in which handlers run within a pack, and the order in which packs run 
         | 7     | Link       | symlink             | Catch-all; deploys whatever no precise handler claimed.                    |
 
     :: table align=rlll ::
+
+    :: handler-roster:end ::
 
     The order is encoded as a Rust `enum` declared in execution order in `crates/dodot-lib/src/handlers/mod.rs`. Adding or moving a phase is a visible, deliberate code change — not an accident of alphabetical sort.
 
