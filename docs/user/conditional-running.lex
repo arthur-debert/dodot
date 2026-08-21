@@ -1,3 +1,4 @@
+:: verified ::
 Conditional Running
 
     Some dotfiles only make sense on certain machines: a `Brewfile` is
@@ -12,7 +13,7 @@ Conditional Running
     whether a file *exists* on a host. The two compose: a darwin-only
     template is `aliases._darwin.sh.tmpl` (gate first, template second).
 
-    :: note :: For terminology see [./../reference/terms-and-concepts.lex]. For the design rationale see the conditional-running proposal in [./../proposals/]
+    :: note :: For terminology see [./../reference/terms-and-concepts.lex]. For the design rationale see [./../proposals/shipped/conditional-running.lex].
 
 1. The Five Surfaces, At A Glance
 
@@ -20,12 +21,12 @@ Conditional Running
     matches what you want to gate.
 
     Five surfaces:
-        | Surface              | Granularity     | Example                                        |
-        | filename suffix      | one file        | `install._darwin.sh`                           |
-        | directory segment    | a subtree       | `_darwin/_home/.bashrc`                        |
-        | `[pack] os`          | whole pack      | `[pack] os = ["darwin"]` in pack `.dodot.toml` |
-        | `[mappings.gates]`   | glob (legacy)   | `"install-mac.sh" = "darwin"`                  |
-        | `dodot adopt --only-os` | adopting in   | `dodot adopt ~/.bashrc --only-os darwin`       |
+        | Surface                 | Granularity        | Example                                        |
+        | filename suffix         | one file           | `install._darwin.sh`                           |
+        | directory segment       | a subtree          | `_darwin/_home/.bashrc`                        |
+        | `[pack] os`             | whole pack         | `[pack] os = ["darwin"]` in pack `.dodot.toml` |
+        | `[mappings.gates]`      | files a glob picks | `"install-mac.sh" = "darwin"`                  |
+        | `dodot adopt --only-os` | one adopted file   | `dodot adopt ~/.bashrc --only-os darwin`       |
     :: table align=lll ::
 
     The first three are the everyday tools. `[mappings.gates]` is an
@@ -133,7 +134,7 @@ Conditional Running
     gate. Other names are looked up in the gate table; unknown labels
     are a hard error at scan time.
 
-    :: note :: The reverse nesting (`_home/_darwin/...` — routing prefix outside, gate inside) is *not* supported. The symlink resolver owns recursion inside routing-prefix subtrees and is gate-unaware. Put the gate at the outer level: `_darwin/_home/...`.
+    :: note :: The reverse nesting (`_home/_darwin/...` — routing prefix outside, gate inside) is *not* supported, and it fails quietly rather than loudly: the symlink resolver owns recursion inside routing-prefix subtrees, is gate-unaware, and treats `_darwin` as an ordinary directory name — so `_home/_darwin/.zshrc` deploys to `~/._darwin/.zshrc` instead of erroring. Put the gate at the outer level: `_darwin/_home/...`.
 
 5. Pack-Level: `[pack] os`
 
@@ -162,15 +163,16 @@ Conditional Running
     `dodot status` surfaces the pack under an "Inactive on this OS"
     section so you know it's there but skipped:
 
-    Status output (running on linux):
+    Status output (running on darwin, with a linux-only pack):
 
         $ dodot status
-          shared-tools/vimrc                 ➞ linked
-          …
-          Inactive on this OS
-            mac-tools (os=darwin, current=linux)
+        shared-tools         ➞ vimrc                                             pending
+        Inactive on this OS
+          linux-tools (os=linux, current=darwin)
 
     :: text ::
+
+    The pack name occupies the first column of its first row only; the icon sits between the pack and the filename, and the status is right-aligned to the terminal width. Several OS values join with a comma.
 
     Root-level `[pack] os` is rejected (gating every pack from the
     root would silently neutralise the dotfiles repo for hosts not in
@@ -211,7 +213,10 @@ Conditional Running
     :: text ::
 
     Note: `[pack] os` accepts OS identifier strings only (`"darwin"`,
-    `"linux"`, …), not custom gate labels. `dodot adopt --only-os`
+    `"linux"`, …), not custom gate labels. It compares against the
+    host's OS directly and never consults the gate table, so a custom
+    label there does not error — it simply never matches, and the pack
+    goes inactive everywhere. `dodot adopt --only-os`
     accepts custom labels but validates them against the *root* config's
     gate table only — a label defined solely in a pack `.dodot.toml` is
     not visible there (see §8 for the workaround).
@@ -219,13 +224,24 @@ Conditional Running
     Constraints on label names: they must match `[A-Za-z0-9_-]+` (so
     they can be parsed from filenames and directories) and must not
     collide with routing-prefix tokens (`home`/`xdg`/`app`/`lib`).
-    Both are hard errors at config load.
+    Both are hard errors, raised when dodot builds the gate table —
+    that is, on the first command that reads the config for that pack
+    (`status`, `up`, `adopt`, …), not when the file is parsed.
 
     Labels stack across the standard config layers (compiled defaults
     < root `.dodot.toml` < pack `.dodot.toml`): a pack can introduce
-    new labels without repeating root labels. A pack that redefines a
-    label from root or the built-in seed replaces that predicate
-    entirely — dimensions are not merged across layers.
+    new labels without repeating root labels.
+
+    Redefinition behaves differently depending on what you are
+    redefining, because the built-in seed is compiled in rather than
+    merged as config. A pack that redefines a label the *root* config
+    defines overrides only the dimensions it names, and the root
+    entry's other dimensions survive — root
+    `arm-mac = { os = "darwin", arch = "aarch64" }` plus pack
+    `arm-mac = { os = "linux" }` yields `arch=aarch64, os=linux`, not
+    `os=linux` alone. Redefining a *built-in* label replaces its
+    predicate outright: `darwin = { arch = "riscv" }` gates on the
+    arch and nothing else.
 
 7. Glob Escape Hatch: `[mappings.gates]`
 
@@ -255,10 +271,14 @@ Conditional Running
 8. Adopting With A Gate: `dodot adopt --only-os`
 
     `dodot adopt` defaults to "no gate" — adopting `~/.bashrc` from a
-    darwin host produces `home.bashrc` (no suffix), so re-deploying on
-    any host puts the file back at `~/.bashrc`. Pass `--only-os
-    <label>` to wrap the adopted entry in a gate dir so re-deploy
-    only fires on matching hosts:
+    darwin host produces `bashrc` (no gate suffix, and no `home.`
+    prefix either, because `bashrc` is on the `[symlink] force_home`
+    list and routes to `$HOME` on its own). A dotted file that is
+    *not* on that list keeps the prefix: `~/.vimrc` adopts as
+    `home.vimrc`. Either way, re-deploying on any host puts the file
+    back where it came from. Pass `--only-os <label>` to wrap the
+    adopted entry in a gate dir so re-deploy only fires on matching
+    hosts:
 
     Gated adopt:
 
@@ -273,7 +293,7 @@ Conditional Running
         ~/dotfiles/
             shell/
                 _darwin/
-                    home.bashrc          # re-deploys to ~/.bashrc on darwin only
+                    bashrc               # re-deploys to ~/.bashrc on darwin only
 
     :: text ::
 
@@ -317,17 +337,18 @@ Conditional Running
     Status output (running on darwin):
 
         $ dodot status
-          mac-tools/
-            install.sh           ×  run script     never run
-            install._linux.sh    ·  not deployed   gated out (linux) [1]
-            Brewfile             ⚙  brew install   brew packages not installed
-          Inactive on this OS
-            linux-tools (os=linux, current=darwin)
+        mac-tools            ⚙ Brewfile                      brew packages not installed
+                             · install._linux.sh                   gated out (linux) [1]
+                             × install.sh                                      never run
+        Inactive on this OS
+          linux-tools (os=linux, current=darwin)
 
         Errors:
-          [1] expected os=linux; got os=darwin
+        [1] expected os=linux; got os=darwin
 
     :: shell ::
+
+    Rows are ordered by pack-relative path, not by handler. A gated-out file's footnote is filed under `Errors:` — the gate itself is a normal outcome, but dodot files the "what did the host actually have?" detail there rather than under `Warnings:`.
 
     The footnote shows the predicate the gate expected and what the
     host actually has. For *passing*-gate files the row is rendered
@@ -340,18 +361,22 @@ Conditional Running
     Things gates intentionally do not do:
 
     - *No predicate language*. Labels are equality-only AND conjunctions. For OR, define multiple labels and use multiple filenames.
-    - *No filename stacking*. `install._darwin._arm64.sh` is *not* parsed as "darwin AND arm64." Use a compound user-defined label (`arm-mac = { os = "darwin", arch = "aarch64" }`) and write `install._arm-mac.sh`.
+    - *No filename stacking*. `install._darwin._arm64.sh` is *not* parsed as "darwin AND arm64." dodot reads the gate token right-to-left and takes the last one only, so that name gates on `_arm64` alone and deploys as `install._darwin.sh` — with the `._darwin` left in the deployed filename as literal text. Use a compound user-defined label (`arm-mac = { os = "darwin", arch = "aarch64" }`) and write `install._arm-mac.sh`.
     - *No negation*. There's no `_!darwin` syntax. Write the positive form for the OSes you do want.
-    - *No nested gates inside routing-prefix subtrees*. `_home/_darwin/...` is *not* recognised — the symlink handler owns recursion inside routing prefixes. Put the gate at the outer level: `_darwin/_home/...`.
+    - *No nested gates inside routing-prefix subtrees*. `_home/_darwin/...` is *not* recognised — the symlink handler owns recursion inside routing prefixes and reads `_darwin` as a literal directory name, so the file lands at `~/._darwin/...` with no warning. Put the gate at the outer level: `_darwin/_home/...`.
     - *No profile selection*. dodot is single-config-per-machine; hostname-based gates are the closest analog. See [./../reference/philosophy.lex] §7.
 
 12. Diagnostic Tips
 
     - `dodot status` is the source of truth — it shows every gated
       file under its actual disposition.
-    - `dodot config` prints the fully resolved config including the
-      `[gates]` table after merging. Useful when a label appears not
-      to fire.
+    - `dodot config list` prints the resolved config including any
+      `[gates]` table, which is useful when a label appears not to
+      fire. Two limits worth knowing: it resolves the *root* config,
+      so pack-level `[gates]` do not appear, and the built-in seed is
+      compiled in rather than configured, so `darwin`, `linux` and the
+      rest are never listed. A bare `dodot config` prints the
+      subcommand help, not the configuration.
     - Unknown gate labels are a *scan-time error*, not a silent skip.
       A typo in `_darwn.sh` or in a `[mappings.gates]` entry like
       `"foo.sh" = "darwn"`

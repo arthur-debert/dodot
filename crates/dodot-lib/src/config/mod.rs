@@ -230,7 +230,10 @@ pub struct PreprocessorTemplateSection {
     /// (e.g. `name = "Alice"` makes `{{ name }}` render as `Alice`).
     ///
     /// Reserved: `dodot` and `env` are built-in namespaces; using them
-    /// as var names raises an error at load time.
+    /// as var names is a hard error. It is raised when the
+    /// preprocessing pipeline is constructed — on any command that
+    /// plans packs — not when this file is parsed, so a config-only
+    /// command will read the offending value without complaint.
     #[config(default = {})]
     pub vars: std::collections::HashMap<String, String>,
 
