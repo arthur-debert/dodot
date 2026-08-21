@@ -17,12 +17,18 @@
 //! lookup, and **no subprocess**.
 //!
 //! The no-subprocess half is a hard contract, not an optimization.
-//! `dodot status` is a passive command: it builds its context with a
-//! [`NoopCommandRunner`](crate::datastore::NoopCommandRunner), and
-//! `commands/tests/gating.rs` pins its datastore as byte-identical
-//! after a run. Status reaches this module on every provisioning row,
-//! so anything here that needed the tool to *answer* would break that
-//! posture. Asking a manager whether it is well enough to use — a
+//! `dodot status` is a passive command, but nothing in its context
+//! enforces that mechanically: production status is built by
+//! [`ExecutionContext::production`](crate::packs::orchestration::ExecutionContext::production),
+//! which carries a real `ShellCommandRunner` like every other
+//! command. What holds is the call graph — status never reaches
+//! anything that spawns — and `commands/tests/gating.rs` pins its
+//! datastore as byte-identical after a run. Status reaches this
+//! module on every provisioning row, so anything here that needed
+//! the tool to *answer* would break that posture. Tests may inject a
+//! [`NoopCommandRunner`](crate::datastore::NoopCommandRunner) to make
+//! an accidental spawn visible, but that is a test technique, not the
+//! production guarantee. Asking a manager whether it is well enough to use — a
 //! version floor, a working `brew --version` — is
 //! [`fitness`](crate::provisioners::fitness), which spawns and is
 //! therefore `up`-only.

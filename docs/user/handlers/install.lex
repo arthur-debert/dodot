@@ -34,17 +34,17 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
     - `--no-provision` — skip every code-execution handler entirely on this run: install, homebrew, nix, and external. The skipped files still get a row, labelled `skipped (--no-provision)`, so a run you asked to be partial doesn't look like a pack dodot found nothing in.
     - `--provision-rerun` — the canonical "apply pending content edits" escape hatch for the run-once handlers: install, homebrew, and nix. Re-executes them even when a sentinel exists. Use it after editing `install.sh` to opt back into running the new content.
-    - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does **not** trigger run-once re-execution.
+    - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does *not* trigger run-once re-execution.
 
 4. Editing an install script after it ran (the three states)
 
-    When you edit `install.sh` after a successful run, dodot does **not** re-run it automatically. Re-running arbitrary user code on every content edit is a surprising default; the conservative posture is to *notify* and let you decide.
+    When you edit `install.sh` after a successful run, dodot does *not* re-run it automatically. Re-running arbitrary user code on every content edit is a surprising default; the conservative posture is to *notify* and let you decide.
 
     `dodot up` and `dodot status` report one of three states for each install file:
 
-    - **`never run`** — no sentinel exists for this file. `dodot up` will run it on the next invocation.
-    - **`installed`** — a sentinel exists for the *current* content hash. The script has run, and the source hasn't changed since. `dodot up` is a no-op.
-    - **`older version (N lines added, M removed)`** — a sentinel exists, but for a *different* content hash. The script ran successfully against an earlier version of the file, and you've edited the source since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --provision-rerun`.
+    - *`never run`* — no sentinel exists for this file. `dodot up` will run it on the next invocation.
+    - *`installed`* — a sentinel exists for the *current* content hash. The script has run, and the source hasn't changed since. `dodot up` is a no-op.
+    - *`older version (N lines added, M removed)`* — a sentinel exists, but for a *different* content hash. The script ran successfully against an earlier version of the file, and you've edited the source since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --provision-rerun`.
 
     For sentinels written before the snapshot convention was introduced, the third state shows `older version (no diff data)` — the run state is still tracked, but dodot has no record of the prior content to summarize what changed.
 
@@ -97,7 +97,7 @@ Runs your source install script once on this host, tracked by a content-hashed s
 
 7. Live edits
 
-    Edits to the source script change its content hash. dodot detects the change but **does not re-run the script automatically** — instead `dodot status` reports `older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 4 for the full three-state model and `--diff` workflow.
+    Edits to the source script change its content hash. dodot detects the change but *does not re-run the script automatically* — instead `dodot status` reports `older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 4 for the full three-state model and `--diff` workflow.
 
     Removing a source script from the pack stops dodot from running it, but does not roll back side-effects from prior runs — dodot has no history of what the script did. Cleanup of side-effects is on the script author. Adding a new source script picks it up on the next `dodot up`.
 

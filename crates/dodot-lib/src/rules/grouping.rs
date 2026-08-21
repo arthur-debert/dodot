@@ -22,12 +22,17 @@ pub fn group_by_handler(matches: &[RuleMatch]) -> HashMap<String, Vec<RuleMatch>
 /// *is* the execution order — `Filter` → `External` → `Provision` →
 /// `Setup` → `PathExport` → `ShellInit` → `Link`.
 ///
-/// Sorting is by phase only, so two handlers sharing a phase
+/// Phase is the only *meaningful* axis: two handlers sharing a phase
 /// (`homebrew` and `nix` in `Provision`, the three filter handlers)
-/// come out in whatever order the group map yielded them. Nothing
-/// depends on that relative order: the filter handlers emit no
-/// intents at all, and a `Brewfile` and a `packages.nix` install
-/// independently of each other.
+/// have no ordering requirement between them — the filter handlers
+/// emit no intents at all, and a `Brewfile` and a `packages.nix`
+/// install independently of each other. Handler name breaks the tie
+/// anyway, because `groups` is a [`HashMap`] and its iteration order
+/// is randomized per process: without the tiebreak, same-phase
+/// handlers would come out in a different order run to run, and that
+/// order reaches intent generation, the reported rows, and the
+/// `handler execution order` debug line. Meaningless *and* unstable
+/// is a flake; meaningless and fixed is just a convention.
 ///
 /// Handler names not present in the registry are placed last in
 /// alphabetical order (they get ignored by the pipeline anyway).
@@ -42,7 +47,7 @@ pub fn handler_execution_order(
         let pa = registry.get(a).map(|h| h.phase());
         let pb = registry.get(b).map(|h| h.phase());
         match (pa, pb) {
-            (Some(x), Some(y)) => x.cmp(&y),
+            (Some(x), Some(y)) => x.cmp(&y).then_with(|| a.cmp(b)),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
             (None, None) => a.cmp(b),
@@ -131,5 +136,33 @@ mod tests {
 
         // Known handlers keep phase order; unknown lands at the end.
         assert_eq!(order, vec!["homebrew", "symlink", "zzz-unknown"]);
+    }
+
+    /// Same-phase handlers must come out in the same order every
+    /// time. `groups` is a `HashMap`, so its iteration order is
+    /// randomized per process and a phase-only comparator would let
+    /// `homebrew` and `nix` — both `Provision` — swap between runs.
+    /// Building the map repeatedly in one process does not re-seed
+    /// the hasher, so this asserts the property directly against the
+    /// name tiebreak rather than trying to provoke a reshuffle.
+    #[test]
+    fn same_phase_handlers_are_ordered_by_name() {
+        let fs = crate::fs::OsFs::new();
+        let registry = crate::handlers::create_registry(&fs);
+
+        // Insertion order is deliberately reversed relative to the
+        // expected output, so a comparator that fell back to
+        // insertion order would produce `nix` before `homebrew`.
+        let mut groups = HashMap::new();
+        groups.insert("nix".into(), vec![]);
+        groups.insert("homebrew".into(), vec![]);
+
+        let order = handler_execution_order(&groups, &registry);
+        assert_eq!(
+            order,
+            vec!["homebrew", "nix"],
+            "handlers sharing a phase must be ordered by name, not by \
+             whatever the group map yielded"
+        );
     }
 }

@@ -11,9 +11,10 @@ read from mode bits, called by both the pack planner and `dodot status`.
 `!ctx.dry_run`.
 
 The boundary is what makes `dodot status` a passive command rather than a
-command that happens not to write anything today. Status builds its context with
-a `NoopCommandRunner` and is pinned byte-identical against the datastore, and it
-reaches the presence probe on *every* provisioning row. If the version question
+command that happens not to write anything today. Status carries a real
+`ShellCommandRunner` in production and stays passive because its call graph
+never reaches one that spawns; it is pinned byte-identical against the
+datastore, and it reaches the presence probe on *every* provisioning row. If the version question
 lived in the same module, every `dodot status` on a machine with three
 `Brewfile`s would spawn brew three times, and the pin that catches it would be a
 test nobody thought to write. Keeping the spawning question in a module status

@@ -41,9 +41,11 @@ and nothing else.
 ## Presence is stat-only; fitness is what spawns
 
 The probe stats candidates and reads mode bits. It spawns nothing, and that is a
-contract rather than an optimization: `dodot status` builds its context with a
-`NoopCommandRunner` and is pinned to leave the datastore byte-identical, and
-status reaches this module on every provisioning row. Asking a manager whether
+contract rather than an optimization: `dodot status` carries a real
+`ShellCommandRunner` in production like every other command — what keeps it
+passive is that its call graph never reaches one that spawns — it is pinned to
+leave the datastore byte-identical, and status reaches this module on every
+provisioning row. Asking a manager whether
 it is well enough to use — a version floor, a working `brew --version` — is a
 separate fitness probe that spawns and is therefore `up`-only. An implementer
 who reaches for `brew --version` from the presence module has broken the

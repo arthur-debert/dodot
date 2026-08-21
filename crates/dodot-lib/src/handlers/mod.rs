@@ -313,7 +313,11 @@ pub const HANDLER_EXTERNAL: &str = "external";
 
 /// Names of all configuration-category handlers in the registry.
 ///
-/// Returned in no particular order. Used by `dodot up` to wipe stale
+/// Sorted by name. The registry is a `HashMap`, so its iteration
+/// order is randomized per process, and `dodot up` walks this list
+/// calling `remove_state` per handler — leaving it unsorted would
+/// make the handler named in a reconcile failure differ run to run
+/// for the same broken state. Used by `dodot up` to wipe stale
 /// per-pack state before re-applying current source: every successful
 /// `up` for these handlers is equivalent to "down (these handlers) +
 /// up", so a deleted source file no longer leaves an orphan entry.
@@ -327,11 +331,13 @@ pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
     // This walk only reads `Handler::category()`, never invokes
     // `to_intents`.
     let registry = create_registry(fs);
-    registry
+    let mut names = registry
         .iter()
         .filter(|(_, h)| h.category() == HandlerCategory::Configuration)
         .map(|(name, _)| name.clone())
-        .collect()
+        .collect::<Vec<_>>();
+    names.sort();
+    names
 }
 
 /// Create the default handler registry.

@@ -76,21 +76,21 @@ Runs `nix profile install` against your source `packages.nix` once, tracked by a
 
     `packages.nix` evaluates to one of:
 
-    - **List of derivations** — the canonical form:
+    - List of derivations — the canonical form:
 
           { pkgs ? import <nixpkgs> {} }:
           with pkgs; [ ripgrep fd bat ]
 
       :: nix ::
 
-    - **Bare derivation** — the common case for a one-tool pack:
+    - Bare derivation — the common case for a one-tool pack:
 
           { pkgs ? import <nixpkgs> {} }:
           pkgs.zoxide
 
       :: nix ::
 
-    - **Attribute set of derivations** — useful when a pack wants named attrs for tooling outside dodot:
+    - Attribute set of derivations — useful when a pack wants named attrs for tooling outside dodot:
 
           { pkgs ? import <nixpkgs> {} }:
           { ripgrep = pkgs.ripgrep; fd = pkgs.fd; }
@@ -139,17 +139,17 @@ Runs `nix profile install` against your source `packages.nix` once, tracked by a
 
     - `--no-provision` — skip every code-execution handler entirely on this run: install, homebrew, nix, and external. The skipped files still get a row, labelled `skipped (--no-provision)`.
     - `--provision-rerun` — the canonical "apply pending content edits" escape hatch for the run-once handlers: install, homebrew, and nix. Re-executes them even when a sentinel exists. Use it after editing `packages.nix` to opt back into running the new content.
-    - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does **not** trigger run-once re-execution.
+    - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does *not* trigger run-once re-execution.
 
 6. Editing `packages.nix` after it ran (the three states)
 
-    When you edit `packages.nix` after a successful install, dodot does **not** re-run `nix profile install` automatically. The conservative posture is to *notify* and let you decide.
+    When you edit `packages.nix` after a successful install, dodot does *not* re-run `nix profile install` automatically. The conservative posture is to *notify* and let you decide.
 
     `dodot up` and `dodot status` report one of three states:
 
-    - **`nix packages not installed`** — no sentinel exists. `dodot up` will run `nix profile install` on the next invocation.
-    - **`nix packages installed`** — a sentinel exists for the *current* content hash. The install has run, and the source hasn't changed since. `dodot up` is a no-op.
-    - **`nix packages older version (N lines added, M removed)`** — a sentinel exists, but for a *different* content hash. The install ran successfully against an earlier version of `packages.nix`, and you've edited it since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --provision-rerun`.
+    - *`nix packages not installed`* — no sentinel exists. `dodot up` will run `nix profile install` on the next invocation.
+    - *`nix packages installed`* — a sentinel exists for the *current* content hash. The install has run, and the source hasn't changed since. `dodot up` is a no-op.
+    - *`nix packages older version (N lines added, M removed)`* — a sentinel exists, but for a *different* content hash. The install ran successfully against an earlier version of `packages.nix`, and you've edited it since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --provision-rerun`.
 
     Section 2 covers what each of these three looks like when nix itself is missing.
 
@@ -173,7 +173,7 @@ Runs `nix profile install` against your source `packages.nix` once, tracked by a
     - If a pack's `packages.nix` shrinks from `[ ripgrep fd ]` to `[ ripgrep ]`, dodot also does *nothing* to `fd`. It stays installed.
     - `dodot down --uninstall` does not exist for this handler.
 
-    This is not a soft default or a conservative first cut — it is the whole shape of the handler. The only command dodot can build for `packages.nix` is `nix profile install`; **`nix profile remove` appears nowhere in dodot's source**. There is no code path, no flag, and no failure mode that uninstalls a Nix package. Everything below follows from that one fact:
+    This is not a soft default or a conservative first cut — it is the whole shape of the handler. The only command dodot can build for `packages.nix` is `nix profile install`; *`nix profile remove` appears nowhere in dodot's source*. There is no code path, no flag, and no failure mode that uninstalls a Nix package. Everything below follows from that one fact:
 
     - *Removing a line from `packages.nix` uninstalls nothing, ever.* The edit changes the content hash, so the next `up` reports `nix packages older version` and holds; `dodot up --provision-rerun` then installs the *remaining* list, which adds nothing and removes nothing.
     - *Deleting `packages.nix` outright removes nothing either.* `dodot up` wipes and re-applies the configuration handlers' state on every run, so a deleted source file stops being deployed — but provisioning state is deliberately left out of that reconcile, and provisioning side-effects were never dodot's to reverse.
@@ -185,8 +185,8 @@ Runs `nix profile install` against your source `packages.nix` once, tracked by a
 
     What dodot tracks is the sentinel, not the Nix profile. dodot does not call `nix profile list`, does not diff installed packages against the manifest, and does not skip its run because a package is already present. The sentinel records "we ran `nix profile install` against this content hash" — that is the entire state dodot tracks. Implications worth knowing:
 
-    - **Manual `nix profile install` of the same package before dodot's first run doesn't suppress dodot's run.** With no sentinel on disk, the next `dodot up` will still invoke `nix profile install` against the manifest. `nix profile install` is not idempotent at the profile level — if the same package is already in the profile, Nix surfaces an error and the pack reports the failure. Reconcile by hand: either `nix profile remove` the manual entry before running dodot, or skip dodot's first invocation for that pack and let `dodot up --provision-rerun` apply once you've decided.
-    - **Manual `nix profile remove` of a package the manifest still lists doesn't trigger a reinstall by dodot.** The sentinel says "we already ran with this content"; dodot considers the work done until the manifest changes or `--provision-rerun` is passed. Same shape as a manual `brew uninstall` against a `Brewfile`.
+    - *Manual `nix profile install` of the same package before dodot's first run doesn't suppress dodot's run.* With no sentinel on disk, the next `dodot up` will still invoke `nix profile install` against the manifest. `nix profile install` is not idempotent at the profile level — if the same package is already in the profile, Nix surfaces an error and the pack reports the failure. Reconcile by hand: either `nix profile remove` the manual entry before running dodot, or skip dodot's first invocation for that pack and let `dodot up --provision-rerun` apply once you've decided.
+    - *Manual `nix profile remove` of a package the manifest still lists doesn't trigger a reinstall by dodot.* The sentinel says "we already ran with this content"; dodot considers the work done until the manifest changes or `--provision-rerun` is passed. Same shape as a manual `brew uninstall` against a `Brewfile`.
 
 8. Pinning: what Nix can do that Homebrew cannot, and what dodot does not do
 
@@ -210,13 +210,13 @@ Runs `nix profile install` against your source `packages.nix` once, tracked by a
 
 10. Live edits
 
-    Edits to `packages.nix` — adding or removing a package, switching a derivation — change its content hash. dodot detects the change but **does not re-run `nix profile install` automatically** — instead `dodot status` reports `nix packages older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 6 for the full three-state model and `--diff` workflow.
+    Edits to `packages.nix` — adding or removing a package, switching a derivation — change its content hash. dodot detects the change but *does not re-run `nix profile install` automatically* — instead `dodot status` reports `nix packages older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 6 for the full three-state model and `--diff` workflow.
 
     Removing a package from the manifest is a special case worth stating twice: the re-run installs the shorter list and uninstalls nothing. Nothing dodot does will ever take a package back out of your profile — section 7.
 
-    Channel updates that bump a package version (e.g. `ripgrep` 13 → 14) do **not** change the manifest's content hash, so dodot does not trigger a reinstall on its own. Run `nix profile upgrade '.*'` (or just the packages you care about) when you want newer versions; that's outside dodot's job.
+    Channel updates that bump a package version (e.g. `ripgrep` 13 → 14) do *not* change the manifest's content hash, so dodot does not trigger a reinstall on its own. Run `nix profile upgrade '.*'` (or just the packages you care about) when you want newer versions; that's outside dodot's job.
 
-    Removing the source `packages.nix` from the pack stops dodot from invoking `nix profile install`, but does **not** uninstall the packages it installed earlier — `nix profile remove` (against your own selectors) is the Nix-side mechanism for that, run by hand.
+    Removing the source `packages.nix` from the pack stops dodot from invoking `nix profile install`, but does *not* uninstall the packages it installed earlier — `nix profile remove` (against your own selectors) is the Nix-side mechanism for that, run by hand.
 
     On a machine without nix, an edit changes what the row says but not what happens: nothing runs either way. If the manifest had been installed here before, the row goes `nix packages older version` and the footnote adds that the re-run waits until nix is back; if it never ran here, the row stays `nix not installed` and your edit takes effect the first time you run `dodot up` on a machine that has Nix. Section 2 has both.
 
@@ -224,11 +224,11 @@ Runs `nix profile install` against your source `packages.nix` once, tracked by a
 
     Out of scope for v1 — flagged here so the surface stays predictable:
 
-    - **`flake.nix` / `home.nix`.** Flakes are ambiguous (dev-shell, package, NixOS module, anything) and require an attribute selector the handler can't reliably infer. `home.nix` is not pack-composable: home-manager's single-user manifest can't compose across packs without dodot understanding home-manager's module system.
-    - **Dotfile management, services, or shell init via Nix.** That's home-manager's territory, and dodot already handles dotfiles via the symlink handler. Users who want home-manager run it themselves.
-    - **NixOS `configuration.nix` / nix-darwin `darwin-configuration.nix`.** System-level configuration requires root and has a blast radius incompatible with `dodot up`'s "edit and re-run cheaply" model.
-    - **Auto-installing Nix.** Same posture as homebrew with `brew`. A host without nix gets a skipped row naming every path dodot probed and the project page (§2), and nothing else. Bootstrapping a package manager isn't a dotfile manager's job.
-    - **Removing packages.** See §7. dodot says "ensure installed", and that is the whole commitment.
-    - **Upgrading packages on channel drift.** See §10.
-    - **Pinning or injecting `nixpkgs`.** See §8. The manifest's `{ pkgs ? import <nixpkgs> {} }` relies on the user's `NIX_PATH`, and dodot's invocation is unconditionally `--impure`. A future mode may let packs declare a pinned source.
-    - **Mirroring / wrapping `apt` / `dnf` / `pacman` / `snap` / `flatpak`.** Users who need distro-package provisioning have `install.sh` — see [./install.lex].
+    - *`flake.nix` / `home.nix`.* Flakes are ambiguous (dev-shell, package, NixOS module, anything) and require an attribute selector the handler can't reliably infer. `home.nix` is not pack-composable: home-manager's single-user manifest can't compose across packs without dodot understanding home-manager's module system.
+    - *Dotfile management, services, or shell init via Nix.* That's home-manager's territory, and dodot already handles dotfiles via the symlink handler. Users who want home-manager run it themselves.
+    - *NixOS `configuration.nix` / nix-darwin `darwin-configuration.nix`.* System-level configuration requires root and has a blast radius incompatible with `dodot up`'s "edit and re-run cheaply" model.
+    - *Auto-installing Nix.* Same posture as homebrew with `brew`. A host without nix gets a skipped row naming every path dodot probed and the project page (§2), and nothing else. Bootstrapping a package manager isn't a dotfile manager's job.
+    - *Removing packages.* See §7. dodot says "ensure installed", and that is the whole commitment.
+    - *Upgrading packages on channel drift.* See §10.
+    - *Pinning or injecting `nixpkgs`.* See §8. The manifest's `{ pkgs ? import <nixpkgs> {} }` relies on the user's `NIX_PATH`, and dodot's invocation is unconditionally `--impure`. A future mode may let packs declare a pinned source.
+    - *Mirroring / wrapping `apt` / `dnf` / `pacman` / `snap` / `flatpak`.* Users who need distro-package provisioning have `install.sh` — see [./install.lex].

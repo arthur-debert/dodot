@@ -6,8 +6,8 @@
 //! asks the questions only the manager itself can answer, which means
 //! spawning it. The two are separate modules rather than two arms of
 //! one function precisely so the boundary is visible: `dodot status`
-//! builds its context with a
-//! [`NoopCommandRunner`](crate::datastore::NoopCommandRunner) and is
+//! carries a real `ShellCommandRunner` in production and is kept
+//! passive by its call graph rather than by a disabled runner, it is
 //! pinned to leave the datastore byte-identical, and it reaches the
 //! presence probe on every provisioning row. Nothing here may be
 //! reachable from it.

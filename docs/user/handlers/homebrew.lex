@@ -84,17 +84,17 @@ Runs `brew bundle` against your source `Brewfile` once, tracked by a sentinel ke
 
     - `--no-provision` — skip every code-execution handler entirely on this run: install, homebrew, nix, and external. The skipped files still get a row, labelled `skipped (--no-provision)`, so a run you asked to be partial doesn't look like a pack dodot found nothing in.
     - `--provision-rerun` — the canonical "apply pending content edits" escape hatch for the run-once handlers: install, homebrew, and nix. Re-executes them even when a sentinel exists. Use it after editing the Brewfile to opt back into running the new content.
-    - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does **not** trigger run-once re-execution.
+    - `--force` — overwrite pre-existing files at symlink target paths. Distinct from `--provision-rerun`; does *not* trigger run-once re-execution.
 
 4. Editing a Brewfile after it ran (the three states)
 
-    When you edit your `Brewfile` after a successful run, dodot does **not** re-run `brew bundle` automatically. The conservative posture is to *notify* and let you decide.
+    When you edit your `Brewfile` after a successful run, dodot does *not* re-run `brew bundle` automatically. The conservative posture is to *notify* and let you decide.
 
     `dodot up` and `dodot status` report one of three states for the Brewfile:
 
-    - **`brew packages not installed`** — no sentinel exists. `dodot up` will run `brew bundle` on the next invocation.
-    - **`installed`** — a sentinel exists for the *current* content hash. The bundle has run, and the source hasn't changed since. `dodot up` is a no-op.
-    - **`brew packages older version (N lines added, M removed)`** — a sentinel exists, but for a *different* content hash. The bundle ran successfully against an earlier version of the Brewfile, and you've edited it since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --provision-rerun`.
+    - *`brew packages not installed`* — no sentinel exists. `dodot up` will run `brew bundle` on the next invocation.
+    - *`installed`* — a sentinel exists for the *current* content hash. The bundle has run, and the source hasn't changed since. `dodot up` is a no-op.
+    - *`brew packages older version (N lines added, M removed)`* — a sentinel exists, but for a *different* content hash. The bundle ran successfully against an earlier version of the Brewfile, and you've edited it since. `dodot up` does not auto-rerun. To apply the edits, run `dodot up --provision-rerun`.
 
     Section 2 covers what each of these three looks like when brew itself is missing.
 
@@ -122,7 +122,7 @@ Runs `brew bundle` against your source `Brewfile` once, tracked by a sentinel ke
 
     Suppressing the auto-update has one consequence dodot then has to cover for you. A `Brewfile` may declare `go`, `cargo`, `uv`, `npm`, and `krew` entries alongside `brew` and `cask`, and brew grew support for them one at a time — `go` in 4.6.17, `cargo` in 5.0.7, `uv` in 5.0.16, and `npm` and `krew` in 5.1.2 (2026-03-30). Those entry types are the reason dodot ships no handlers of its own for the language-bound package managers: they are Homebrew's job. Brew's own auto-update would normally have carried an old installation past all of them without you noticing — but dodot turns auto-update off, so an old brew stays old. Having taken that away, dodot owes you the check.
 
-    So before running your `Brewfile`, dodot asks `brew --version` and compares the answer against a floor of *5.1.2* — the newest of those four releases, because dodot does not read your `Brewfile` and so cannot know which entry types you wrote. Below the floor, with `brew update` as the remedy:
+    So before running your `Brewfile`, dodot asks `brew --version` and compares the answer against a floor of 5.1.2 — the newest of those four releases, because dodot does not read your `Brewfile` and so cannot know which entry types you wrote. Below the floor, with `brew update` as the remedy:
 
         dodot: homebrew at /opt/homebrew/bin/brew is 5.0.16, older than 5.1.2: not all of the
         `Brewfile` entry types go, cargo, uv, npm, and krew are supported, and one of them may
@@ -162,7 +162,7 @@ Runs `brew bundle` against your source `Brewfile` once, tracked by a sentinel ke
 
 8. Live edits
 
-    Edits to the source Brewfile — adding or removing a `brew "..."` line, changing a `cask` — change its content hash. dodot detects the change but **does not re-run `brew bundle` automatically** — instead `dodot status` reports `brew packages older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 4 for the full three-state model and `--diff` workflow.
+    Edits to the source Brewfile — adding or removing a `brew "..."` line, changing a `cask` — change its content hash. dodot detects the change but *does not re-run `brew bundle` automatically* — instead `dodot status` reports `brew packages older version` and `dodot up` skips it with the same notice. Apply the edits explicitly with `dodot up --provision-rerun`. See section 4 for the full three-state model and `--diff` workflow.
 
     `brew bundle` itself is mostly idempotent: running it with the same Brewfile installs nothing new and leaves your system as it was. So `--provision-rerun` is cheap if you want to reconfirm; the only cost is brew's own work to check each entry.
 
