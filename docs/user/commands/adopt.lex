@@ -58,7 +58,34 @@ Pack name is inferred from the source's deployed location when it can be — pas
 
     `--into` does *not* create the pack if it doesn't exist — you must run `dodot init <pack>` first or the command errors. (Inferred packs *are* auto-created.)
 
-5. Flags
+5. What adopt will and won't adopt
+
+    A pack scan doesn't read everything inside a pack. It skips dodot's own `.dodot.toml` and `.dodotignore`, every top-level name matching `[pack] ignore`, and every top-level name starting with `.` except `.config` (see [./../filters.lex] §4). Adopting a file into one of those positions would produce a pack entry that no later `dodot up` or `dodot status` ever reads — so `adopt` checks the same three rules, at the same positions, before it writes anything.
+
+    What it does about a match depends on whether you named the path:
+
+    - *You typed the path.* The run is refused. Nothing is written, and no pack is created. For an `[pack] ignore` match the error quotes the pattern and names the file that supplied the list, so you know which one to edit. For a reserved name or a hidden name there's no setting to point at, and the error says so rather than implying a fix.
+    - *`adopt` found the path expanding a directory you named.* The child stays a real file at its original path, its adoptable siblings are adopted normally, and the run reports it once and exits `0`. A discovered `.dodot.toml` or `.dodotignore` is the exception — copying either into a pack would replace the pack's configuration or hide the pack, so that one refuses the run.
+
+    The report is the only time you hear about it. `[pack] ignore` matches are invisible in `dodot status` by design, so no later command tells you `~/.config/zed/.DS_Store` is still a real file among symlinks:
+
+        $ dodot adopt ~/.config/zed/
+        left in place: /Users/you/.config/zed/.DS_Store — matches `.DS_Store` in [pack] ignore (dodot's default list)
+        [... the pack's status, with the adopted entries ...]
+
+    :: shell ::
+
+    A directory whose children are *all* skipped is an error, not a report — reporting each child and exiting `0` would claim an adoption that never happened. The message lists every child and the rule that matched it. An empty directory is the same refusal.
+
+    Three limits are worth knowing:
+
+    - *Only the top-level position is checked.* `dodot adopt ~/.config/nvim/lua/plugins/init.lua` lands at `lua/plugins/init.lua`, and only `lua` is classified. If `lua` matches an ignore pattern the adoption is refused; if `plugins` or `init.lua` matches, it proceeds, because the scan reads `lua` and hands the whole directory to the symlink handler. Routing prefixes (`_home/`, `_xdg/`, `_app/`, `_lib/`) sit at that position and are tested there like any other name — none of them is hidden or reserved, so none refuses on its own. A `--only-os <label>` directory is the one that goes deeper: it expands transparently on a matching host, so the name inside it is checked too.
+    - *Adopt doesn't look inside a directory it copies.* `dodot adopt ~/.config/helix/themes/` copies the directory whole, ignored files included, and later scans omit them silently — the same behaviour any adopted directory has always had.
+    - *Dispatch-layer filters don't participate.* A file matching `[mappings] ignore` or `[mappings] skip`, or carrying a gate label, is discovered by the scan and then routed. It's a live pack entry whose routing you change by editing config, so `adopt` treats it as ordinary.
+
+    `--force` changes none of this. It answers one question — may `adopt` replace an existing destination inside the pack — and answers it after the rules above have already decided which entries exist.
+
+6. Flags
 
     Flags:
         | Flag             | Effect                                                                                       |
@@ -69,7 +96,7 @@ Pack name is inferred from the source's deployed location when it can be — pas
 
     :: table align=ll ::
 
-6. Examples
+7. Examples
 
         # XDG-rooted: pack name inferred from path
         dodot adopt ~/.config/nvim/init.lua             # pack `nvim`, in-pack `init.lua`
@@ -94,7 +121,7 @@ Pack name is inferred from the source's deployed location when it can be — pas
 
     :: shell ::
 
-7. Watch out for
+8. Watch out for
 
     - *`~/Library/Containers/` is refused.* Sandboxed-app container data isn't safe to externalize — apps treat the path as private and may rebuild on launch. The error points you at the right alternative (usually `~/Library/Application Support/<App>/`).
     - *`--no-follow` is for adopting symlinks themselves.* By default, if you adopt `~/.bashrc` and it's *already* a symlink to somewhere else, dodot follows the link and moves the *target*. Pass `--no-follow` to move the symlink itself instead. Comes up when consolidating across multiple dotfiles managers.
@@ -102,4 +129,5 @@ Pack name is inferred from the source's deployed location when it can be — pas
     - *Pack must exist when `--into` is used.* Inference auto-creates new packs; explicit `--into <pack>` does not. If you're starting fresh, `dodot init <pack>` first.
     - *One invocation can't name a directory and something inside it.* `dodot adopt ~/.config/nvim/lua ~/.config/nvim/lua/init.lua` is refused before anything is written, and so is the same pair reached by expansion (`dodot adopt ~/.config/nvim ~/.config/nvim/lua/init.lua`). No order comes out right: replace the directory first and the file path now resolves back into the pack through the new symlink, so replacing it overwrites the pack's own entry; replace the file first and publishing the directory buries it. Adopt the outer path alone — adopting a directory already carries its contents. Two sources that don't contain each other can still land one inside the other in the pack — `dodot adopt --into nvim ~/.config/other/lua ~/.config/nvim/_xdg/other` puts one at `_xdg/other/lua` and the other at `_xdg/other` — and that pair is refused the same way, naming both pack paths.
     - *An `externals.toml` template dodot hasn't rendered stops the run.* Before writing anything, `adopt` checks that no other pack already claims the paths you're about to deploy to. A pack's `externals.toml` declares its targets inside the file, so `adopt` has to read it — and if that file only exists as `externals.toml.tmpl` and you have never run `dodot up` on that pack, there is nothing to read. The same applies once you edit that template, or a `vars` value it interpolates: what dodot has on hand is then the last render, whose targets may not be the ones the file now names. Rendering it here would resolve its secrets and write its output for a run you haven't agreed to yet, so `adopt` refuses instead and names the file. Run `dodot up` for that pack once, then re-run `adopt`. `--force` doesn't skip this: it overrides what dodot found in the way, not what dodot hasn't looked at.
+    - *An ignored, hidden, or reserved destination refuses or reports.* `adopt` checks the three rules a pack scan applies before it writes, so it never produces a pack entry dodot won't read. §5 has the full behaviour.
     - *Adopt is reversible by hand, not by command.* There's no `dodot un-adopt`. To undo: replace the symlink at the source location with the moved file (`mv <pack>/<rel> <original>`). dodot doesn't track adoption history.

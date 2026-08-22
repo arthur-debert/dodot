@@ -13,5 +13,5 @@ mod scanner;
 mod types;
 
 pub use grouping::{group_by_handler, handler_execution_order};
-pub use scanner::{should_skip_entry, Scanner, SPECIAL_FILES};
+pub use scanner::{matched_ignore_pattern, should_skip_entry, Scanner, SPECIAL_FILES};
 pub use types::{GateFailure, PackEntry, Rule, RuleMatch};

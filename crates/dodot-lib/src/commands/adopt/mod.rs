@@ -27,10 +27,10 @@
 //! that can refuse the run has passed:
 //!
 //! 1. **Plan** ([`plan`]) — resolve the destination pack, infer each
-//!    source's in-pack path, classify entries, check destination
-//!    conflicts, check that the sources are readable and the dotfiles
-//!    root writable, and reject duplicate or overlapping entries.
-//!    Writes nothing, including no inferred pack directory.
+//!    source's in-pack path, classify entries ([`classify`]), check
+//!    destination conflicts, check that the sources are readable and
+//!    the dotfiles root writable, and reject duplicate or overlapping
+//!    entries. Writes nothing, including no inferred pack directory.
 //!
 //! 2. **Prepare** ([`Preparation`]) — copy the prospective content into
 //!    a hidden preparation directory inside the dotfiles root, laid out
@@ -77,6 +77,32 @@
 //!   all — is `#378` (WS04). Step 5 currently removes the failed
 //!   source's own pack entry and no more.
 //!
+//! ## What adopt refuses, and what it leaves alone
+//!
+//! An entry is adoptable when a later pack scan would read it at the
+//! in-pack position adopt gives it — the [`classify`] module owns that
+//! predicate and the reasoning behind it. The two answers to a match
+//! live here, in [`plan`]:
+//!
+//! - A **source the user typed** that no scan would read refuses the
+//!   run. Answering it with a report and a success would be a lie about
+//!   what the command did.
+//! - A **child found expanding a directory** that no scan would read
+//!   stays at its original path while its adoptable siblings complete,
+//!   and is reported once ([`report_left_in_place`]). Reserved
+//!   filenames are the exception and refuse in both cases: copying one
+//!   into the pack would replace the pack's configuration or hide the
+//!   pack.
+//!
+//! An expanded directory with no adoptable child at all refuses
+//! ([`no_adoptable_children`]) rather than reporting every child and
+//! exiting zero, which would claim an adoption that did not happen.
+//!
+//! The report is the only chance there is: `[pack] ignore` matches are
+//! invisible in `dodot status` by design, so no later command tells the
+//! user the file is still a real file among symlinks. Adopt persists no
+//! record of it — the report exists for the one run.
+//!
 //! ## Auto-creating packs
 //!
 //! When all sources point at a single inferred pack name and that pack
@@ -87,6 +113,7 @@
 //! and `<pack>` does not exist, adopt refuses — explicit pack names are
 //! typo-checked against the existing pack inventory.
 
+mod classify;
 mod infer;
 
 use std::collections::BTreeSet;
@@ -98,9 +125,9 @@ use crate::conflicts;
 use crate::fs::Fs;
 use crate::packs;
 use crate::packs::orchestration::{self, ExecutionContext};
-use crate::rules;
 use crate::{DodotError, Result};
 
+use self::classify::{classify, EffectiveIgnore, SkipRule};
 use self::infer::{infer_target, InferredTarget};
 
 /// Re-export so the round-trip property test in `commands::tests` can
@@ -132,6 +159,32 @@ struct AdoptPlan {
     /// per the user's --force opt-in, and we can't restore the old content
     /// anyway.
     destructive_overwrite: bool,
+}
+
+/// A child of an expanded directory that adopt leaves where it is.
+///
+/// `docs/proposals/adopt-safety.lex` §3.3: a discovered child no pack
+/// scan would read stays a real file at its original path while its
+/// adoptable siblings complete, and §4 reports it once. Adopt writes no
+/// record of it anywhere — the report exists for the one run, because
+/// `[pack] ignore` is silent in `dodot status` by design and adopt is
+/// the single moment dodot both knows the fact and was asked about that
+/// directory.
+struct LeftInPlace {
+    /// The child's original path, which this run does not touch.
+    path: PathBuf,
+    /// The discovery rule that keeps a pack scan from reading it.
+    rule: SkipRule,
+}
+
+/// What [`plan`] decided: the entries to adopt, and the two kinds of
+/// entry it decided against.
+struct PlannedRun {
+    plans: Vec<AdoptPlan>,
+    /// Messages for sources skipped because they are already adopted.
+    skipped_already_adopted: Vec<String>,
+    /// Discovered children left at their original paths (§3.3).
+    left_in_place: Vec<LeftInPlace>,
 }
 
 // ── Public entry point ───────────────────────────────────────────────
@@ -208,8 +261,12 @@ pub fn adopt(
     //
     // Nothing on disk changes here, so every refusal below leaves the
     // dotfiles root as it was — an inferred pack included.
-    let (plans, skipped_already_adopted) = plan(
-        &pack_dir,
+    let PlannedRun {
+        plans,
+        skipped_already_adopted,
+        left_in_place,
+    } = plan(
+        &pack_display,
         &pack_path,
         pack_existed,
         sources,
@@ -227,6 +284,7 @@ pub fn adopt(
         for msg in skipped_already_adopted {
             result.warnings.push(msg);
         }
+        report_left_in_place(&mut result, &left_in_place, &pack_display);
         return Ok(result);
     }
 
@@ -253,6 +311,7 @@ pub fn adopt(
             for msg in skipped_already_adopted {
                 result.warnings.push(msg);
             }
+            report_left_in_place(&mut result, &left_in_place, &pack_display);
             return Ok(result);
         }
     } else {
@@ -275,6 +334,7 @@ pub fn adopt(
             for msg in skipped_already_adopted {
                 result.warnings.push(msg);
             }
+            report_left_in_place(&mut result, &left_in_place, &pack_display);
             return Ok(result);
         }
 
@@ -300,6 +360,7 @@ pub fn adopt(
     for msg in skipped_already_adopted {
         result.warnings.push(msg);
     }
+    report_left_in_place(&mut result, &left_in_place, &pack_display);
 
     // Capitalization-heuristic advisory (M5) + brew enrichment (M6).
     //
@@ -796,11 +857,18 @@ fn resolve_pack_for_sources(
 /// created in and the rename lands in — instead of a pack path that does
 /// not exist yet and must not be created to be tested.
 ///
-/// Returns the plans and the human-readable messages for sources that
-/// were skipped because they are already adopted.
+/// Classification (§3) happens here too, and it is the reason an
+/// unadoptable entry never reaches a pack: a source the user typed that
+/// no pack scan would read is a refusal, and a child discovered by
+/// directory expansion that no pack scan would read stays where it is
+/// and is reported.
+///
+/// Returns the plans, the human-readable messages for sources that were
+/// skipped because they are already adopted, and the children left in
+/// place.
 #[allow(clippy::too_many_arguments)]
 fn plan(
-    pack_name: &str,
+    pack_display: &str,
     pack_path: &Path,
     pack_exists: bool,
     sources: &[PathBuf],
@@ -809,18 +877,36 @@ fn plan(
     no_follow: bool,
     only_os: Option<&str>,
     ctx: &ExecutionContext,
-) -> Result<(Vec<AdoptPlan>, Vec<String>)> {
+) -> Result<PlannedRun> {
     let fs = ctx.fs.as_ref();
     let dotfiles_root = ctx.paths.dotfiles_root().to_path_buf();
     let data_dir = ctx.paths.data_dir().to_path_buf();
 
     let root_config = ctx.config_manager.root_config()?;
     let pack_config = ctx.config_manager.config_for_pack(pack_path)?;
-    let ignore_patterns = {
-        let mut combined = root_config.pack.ignore.clone();
-        combined.extend(pack_config.pack.ignore.iter().cloned());
-        combined
+    // The effective `[pack] ignore` list, and nothing else: the config
+    // resolver has already applied pack-replaces-root-replaces-default,
+    // so this is the single list `dodot up` applies to this pack rather
+    // than a concatenation of layers. `EffectiveIgnore` also records
+    // which layer set it, because that is the file a refusal tells the
+    // user to edit (`docs/proposals/adopt-safety.lex` §3.1, §3.2).
+    let ignore = EffectiveIgnore::resolve(
+        fs,
+        &dotfiles_root,
+        pack_path,
+        pack_config.pack.ignore.clone(),
+    );
+    // Classification follows the top-level walk into a gate directory
+    // whose predicate holds on this host, so it needs the same gate
+    // table and host facts the walk uses.
+    let gates = {
+        let mut table = crate::gates::GateTable::with_builtins();
+        if !pack_config.gates.is_empty() {
+            table.merge_user(&pack_config.gates)?;
+        }
+        table
     };
+    let host = ctx.host_facts.as_ref();
     // The merged force_home list: pack-level overrides root, but for
     // adopt we feed both layers to inference so a user's pack-scoped
     // force_home addition is honored. The resolver does the same merge
@@ -833,6 +919,7 @@ fn plan(
 
     let mut plans: Vec<AdoptPlan> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
+    let mut left_in_place: Vec<LeftInPlace> = Vec::new();
 
     for raw_source in sources {
         let abs = absolutize(raw_source)?;
@@ -878,7 +965,7 @@ fn plan(
                          run `dodot up {}` to upgrade it to dodot's full chain",
                         abs.display(),
                         raw_target.display(),
-                        pack_name,
+                        pack_display,
                     ));
                     continue;
                 }
@@ -939,6 +1026,12 @@ fn plan(
                 (Some(natural), Some(over)) if natural != over
             );
             let entries = fs.read_dir(&abs)?;
+            // Every child and the rule that skipped it, kept for the
+            // zero-adoptable refusal below — which needs the whole list
+            // to show the user that the directory holds nothing dodot
+            // would manage.
+            let mut unadoptable: Vec<(String, SkipRule)> = Vec::new();
+            let mut adopted_a_child = false;
             for entry in entries {
                 let child_in_pack = expand_child_in_pack(&inferred, &entry.name, override_differs);
                 // Same gate-dir wrap as the single-source path.
@@ -947,28 +1040,62 @@ fn plan(
                 } else {
                     child_in_pack
                 };
-                push_plan(
-                    &mut plans,
-                    fs,
-                    &abs.join(&entry.name),
-                    pack_path,
-                    &child_in_pack,
-                    no_follow,
-                    force,
-                    &ignore_patterns,
-                )?;
+                let child_source = abs.join(&entry.name);
+                match classify(&child_in_pack, &ignore, &gates, host) {
+                    // A discovered `.dodot.toml` or `.dodotignore` is
+                    // the one discovered entry that refuses the run
+                    // (§3.3). Copying either into the pack would
+                    // replace the pack's own configuration or hide the
+                    // pack entirely — an outcome different in kind from
+                    // leaving noise behind, and not one to produce as a
+                    // side effect of adopting a directory.
+                    Some(rule @ SkipRule::Reserved { .. }) => {
+                        return Err(DodotError::Other(rule.refusal(
+                            &child_source,
+                            &child_in_pack,
+                            pack_display,
+                        )));
+                    }
+                    Some(rule) => {
+                        unadoptable.push((entry.name.clone(), rule.clone()));
+                        left_in_place.push(LeftInPlace {
+                            path: child_source,
+                            rule,
+                        });
+                    }
+                    None => {
+                        adopted_a_child = true;
+                        push_plan(
+                            &mut plans,
+                            fs,
+                            &child_source,
+                            pack_path,
+                            &child_in_pack,
+                            no_follow,
+                            force,
+                        )?;
+                    }
+                }
+            }
+            if !adopted_a_child {
+                return Err(DodotError::Other(no_adoptable_children(
+                    &abs,
+                    &unadoptable,
+                    pack_display,
+                )));
             }
         } else {
-            push_plan(
-                &mut plans,
-                fs,
-                &abs,
-                pack_path,
-                &in_pack,
-                no_follow,
-                force,
-                &ignore_patterns,
-            )?;
+            // A source the user typed that no pack scan would read is a
+            // refusal, not a report: answering it with a success would
+            // be a lie about what the command did (§3.2).
+            if let Some(rule) = classify(&in_pack, &ignore, &gates, host) {
+                return Err(DodotError::Other(rule.refusal(
+                    &abs,
+                    &in_pack,
+                    pack_display,
+                )));
+            }
+            push_plan(&mut plans, fs, &abs, pack_path, &in_pack, no_follow, force)?;
         }
     }
 
@@ -978,7 +1105,6 @@ fn plan(
 
     // Permission pre-flight. We do this after planning so every error up to
     // this point gives precise guidance; perms check catches late issues.
-    let _ = pack_name;
     check_writable(
         fs,
         if pack_exists {
@@ -997,7 +1123,71 @@ fn plan(
         }
     }
 
-    Ok((plans, skipped))
+    Ok(PlannedRun {
+        plans,
+        skipped_already_adopted: skipped,
+        left_in_place,
+    })
+}
+
+/// The §3.4 refusal: an expanded directory holding nothing a pack scan
+/// would read.
+///
+/// Reporting every child as left in place and exiting zero would claim
+/// an adoption that did not happen, so this is an error. It lists the
+/// children and the rule each matched, so the user can see the directory
+/// holds nothing dodot would manage instead of guessing why the command
+/// refused.
+fn no_adoptable_children(dir: &Path, children: &[(String, SkipRule)], pack: &str) -> String {
+    if children.is_empty() {
+        return format!(
+            "refusing to adopt {}: expanding this directory found no adoptable \
+             entries — it has no children.",
+            dir.display()
+        );
+    }
+    let headline = if children.len() == 1 {
+        "its only child is skipped by a discovery rule:".to_string()
+    } else {
+        format!(
+            "all {} children are skipped by a discovery rule:",
+            children.len()
+        )
+    };
+    let width = children
+        .iter()
+        .map(|(name, _)| name.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut message = format!(
+        "refusing to adopt {}: expanding this directory found no adoptable \
+         entries, {headline}",
+        dir.display()
+    );
+    for (name, rule) in children {
+        message.push_str(&format!(
+            "\n  {name:<width$}  {}",
+            rule.short(pack),
+            width = width
+        ));
+    }
+    message
+}
+
+/// The §4 report: each left-in-place path once, with the rule that
+/// matched it.
+///
+/// These are not failures and they never move the exit status — §5.5
+/// sets that from what happened to the *planned* sources, and a
+/// left-in-place entry was never planned.
+fn report_left_in_place(result: &mut PackStatusResult, left: &[LeftInPlace], pack: &str) {
+    for entry in left {
+        result.warnings.push(format!(
+            "left in place: {} — {}",
+            entry.path.display(),
+            entry.rule.reported(pack)
+        ));
+    }
 }
 
 /// Refuse a plan set in which one entry contains another, on either
@@ -1136,9 +1326,11 @@ fn expand_child_in_pack(
 
 /// Build and validate a single AdoptPlan, appending it to `plans`.
 ///
-/// Centralises the destination-conflict, ignore-pattern, and per-invocation
-/// collision checks so they're applied uniformly between the regular
-/// path and the directory-expansion path.
+/// Centralises the destination-conflict and per-invocation collision
+/// checks so they're applied uniformly between the regular path and the
+/// directory-expansion path. Classification is the caller's, because the
+/// two paths answer an unadoptable entry differently — a typed source
+/// refuses the run, a discovered child is left where it is.
 #[allow(clippy::too_many_arguments)]
 fn push_plan(
     plans: &mut Vec<AdoptPlan>,
@@ -1148,7 +1340,6 @@ fn push_plan(
     in_pack: &Path,
     no_follow: bool,
     force: bool,
-    ignore_patterns: &[String],
 ) -> Result<()> {
     let lmeta = fs.lstat(source)?;
     let is_source_symlink = lmeta.is_symlink;
@@ -1158,30 +1349,6 @@ fn push_plan(
     } else {
         fs.stat(source)?.is_dir
     };
-
-    // Filename-ignore check against pack + root ignore patterns.
-    //
-    // Ignore patterns apply to *top-level pack entries* (matching
-    // `rules::Scanner::walk_pack`'s semantics on `dodot up`). For a
-    // nested adopt like `lua/plugins/foo.lua`, the top-level entry is
-    // `lua/`, so we test the *first* path component — not the leaf
-    // basename. Using the leaf would let through adoptions that
-    // `dodot up` would later silently ignore (or vice versa).
-    use std::path::Component;
-    let top_level_name = in_pack
-        .components()
-        .find_map(|c| match c {
-            Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .unwrap_or_else(|| in_pack.display().to_string());
-    if rules::should_skip_entry(&top_level_name, ignore_patterns) {
-        return Err(DodotError::Other(format!(
-            "refusing to adopt {}: top-level entry '{}' matches an ignore pattern or is reserved",
-            source.display(),
-            top_level_name
-        )));
-    }
 
     let pack_dest = pack_path.join(in_pack);
 
