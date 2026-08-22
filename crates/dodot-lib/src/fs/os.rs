@@ -259,6 +259,8 @@ fn metadata_from_std(meta: &fs::Metadata, is_symlink: bool) -> FsMetadata {
         id: FileId {
             dev: meta.dev(),
             ino: meta.ino(),
+            ctime: meta.ctime(),
+            ctime_nsec: meta.ctime_nsec(),
         },
     }
 }
@@ -429,6 +431,53 @@ mod tests {
         assert!(crate::fs::is_already_exists(
             &fs.mkdir_exclusive(&occupied).unwrap_err()
         ));
+    }
+
+    /// A path whose file was replaced never reads as the entry that
+    /// was there before, even where the kernel hands the freed inode
+    /// number straight back to the replacement — which ext4 and tmpfs
+    /// routinely do for `rm f` followed by a fresh `f`. The ctime is
+    /// what separates the two, and a caller deciding whether to move
+    /// or remove what it finds at a path depends on that separation.
+    #[test]
+    fn a_replaced_file_reads_as_a_different_entry_even_on_a_reused_inode() {
+        let tmp = TempDir::new().unwrap();
+        let fs = OsFs::new();
+        let path = tmp.path().join("f");
+
+        fs.write_file(&path, b"first").unwrap();
+        let before = fs.lstat(&path).unwrap().id;
+
+        fs.remove_file(&path).unwrap();
+        fs.write_file(&path, b"second").unwrap();
+        let after = fs.lstat(&path).unwrap().id;
+
+        assert_ne!(
+            before, after,
+            "a file replaced at the same path is a different entry"
+        );
+    }
+
+    /// Renaming an entry keeps it the same entry — the whole reason a
+    /// caller can read an id before its own move and compare it after.
+    /// The ctime moves with the rename, which is why that comparison
+    /// is [`FileId::same_entry`] rather than equality.
+    #[test]
+    fn a_renamed_file_stays_the_same_entry_with_a_new_ctime() {
+        let tmp = TempDir::new().unwrap();
+        let fs = OsFs::new();
+        let from = tmp.path().join("from");
+        let to = tmp.path().join("to");
+
+        fs.write_file(&from, b"content").unwrap();
+        let before = fs.lstat(&from).unwrap().id;
+        fs.rename_noreplace(&from, &to).unwrap();
+        let after = fs.lstat(&to).unwrap().id;
+
+        assert!(
+            after.same_entry(&before),
+            "a rename carries the entry: {before:?} vs {after:?}"
+        );
     }
 
     #[test]

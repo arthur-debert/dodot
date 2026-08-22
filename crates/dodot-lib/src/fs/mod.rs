@@ -15,42 +15,74 @@ pub struct FsMetadata {
     pub len: u64,
     /// Unix permission mode (e.g. `0o755`).
     pub mode: u32,
-    /// Which entry this is, independent of the path it was read
-    /// through: the device and inode numbers `stat(2)` reports.
+    /// Which entry this is and when it last changed — what a caller
+    /// compares to ask whether a path still holds what it left there.
     ///
-    /// A path answers "what is here now", and that answer changes
-    /// under a caller whenever another process writes the same path.
-    /// This pair answers "is this still the same entry", which is what
-    /// a recovery step needs before it moves something it believes it
-    /// created: two reads of one path that report different ids read
-    /// two different entries, whatever the path suggests.
-    ///
-    /// A `rename` carries the id with the entry, so an id read before
-    /// a rename still names the same content afterwards. Comparing
-    /// ids is not free of races — another process can still act
-    /// between the read and the move — but it turns "assume it is
-    /// ours" into "check that it is", which is the difference between
-    /// silently destroying a concurrent writer's file and leaving it
-    /// alone.
+    /// See [`FileId`].
     pub id: FileId,
 }
 
-/// A filesystem entry's identity: `(device, inode)`, which the kernel
-/// keeps unique among the entries live at one moment.
+/// A filesystem entry's identity and version: the device and inode
+/// numbers `stat(2)` reports, plus the entry's ctime.
 ///
-/// Both numbers together, because inode numbers are only unique
-/// within a filesystem — a mount appearing at a path is enough for
-/// one inode number to name a different file than it did a moment
-/// earlier.
+/// A path answers "what is here now", and that answer changes under a
+/// caller whenever another process writes the same path. This answers
+/// "is this still the entry I left here", which is what a recovery
+/// step needs before it moves or removes something it believes it
+/// created.
 ///
-/// The [`Default`] is the pair of zeros a filesystem stub reports when
-/// it models no identity at all. Two such stubs compare equal, so a
+/// All four numbers, because none of the three parts is sufficient
+/// alone:
+///
+/// - Inode numbers are unique only within a filesystem, so `dev` comes
+///   with `ino` — a mount appearing at a path is enough for one inode
+///   number to name a different file than it did a moment earlier.
+/// - A freed inode number is handed straight back out: removing a file
+///   and writing a fresh one at the same path commonly lands on the
+///   *same* `ino` on ext4 and tmpfs, so identity alone reads a
+///   replaced file as the original. The ctime of the replacement is
+///   its creation, which is later than the one recorded, and that is
+///   what separates the two.
+///
+/// The comparison is not free of races — another process can still
+/// act between the read and the move — but it turns "assume it is
+/// ours" into "check that it is", which is the difference between
+/// silently destroying a concurrent writer's file and leaving it
+/// alone. Note what a match means, too: the entry has not been
+/// replaced *and* nothing has touched its metadata since. A `chmod`
+/// by another process reads as "not the same state", which fails
+/// toward leaving the path alone.
+///
+/// A `rename` changes the ctime of the entry it moves, so a caller
+/// recording an entry it renames reads the id at its destination, and
+/// uses the pre-rename `dev`/`ino` to prove the destination is still
+/// that entry rather than something that raced it there.
+///
+/// The [`Default`] is the zeros a filesystem stub reports when it
+/// models no identity at all. Two such stubs compare equal, so a
 /// caller that decides anything on identity has to run against a real
 /// filesystem to be testing what it thinks it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FileId {
     pub dev: u64,
     pub ino: u64,
+    /// Seconds and nanoseconds of the entry's last status change.
+    pub ctime: i64,
+    pub ctime_nsec: i64,
+}
+
+impl FileId {
+    /// Whether both ids name the same filesystem entry, disregarding
+    /// when it last changed.
+    ///
+    /// This is the question a caller asks across its own `rename`,
+    /// which carries the entry over but stamps it with a new ctime.
+    /// Everywhere else the full comparison is the one that answers
+    /// "is this still what I left here", because a reused inode
+    /// number passes this one.
+    pub fn same_entry(&self, other: &FileId) -> bool {
+        self.dev == other.dev && self.ino == other.ino
+    }
 }
 
 /// A single directory entry returned by [`Fs::read_dir`].

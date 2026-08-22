@@ -823,11 +823,12 @@ impl Preparation {
         plans: &[AdoptPlan],
         fs: &dyn Fs,
     ) -> Result<Published> {
-        let published: HashMap<PathBuf, FileId> = plans
+        let prepared_ids: Vec<Option<FileId>> = plans
             .iter()
-            .filter_map(|plan| {
-                let id = fs.lstat(&self.pack_root.join(&plan.in_pack)).ok()?.id;
-                Some((plan.in_pack.clone(), id))
+            .map(|plan| {
+                fs.lstat(&self.pack_root.join(&plan.in_pack))
+                    .ok()
+                    .map(|m| m.id)
             })
             .collect();
 
@@ -844,7 +845,17 @@ impl Preparation {
                     e
                 }
             })
-            .map(|()| Published::Ok(Publication::NewPack { published }))
+            .map(|()| {
+                let published = plans
+                    .iter()
+                    .zip(prepared_ids)
+                    .filter_map(|(plan, prepared)| {
+                        let id = published_identity(fs, prepared, &plan.pack_dest)?;
+                        Some((plan.in_pack.clone(), id))
+                    })
+                    .collect();
+                Published::Ok(Publication::NewPack { published })
+            })
     }
 
     /// Publish the prepared entries into a pack that already exists, or
@@ -962,15 +973,12 @@ impl Preparation {
             entry.displaced = Some(displaced);
         }
 
-        // Read before the rename rather than after it: the rename
-        // carries the id along with the entry, and reading the
-        // destination afterwards would record whatever won a race
-        // against it — which is exactly the content a rollback must
-        // not treat as its own.
-        entry.identity = fs.lstat(&entry.prepared).ok().map(|m| m.id);
-
+        let prepared_id = fs.lstat(&entry.prepared).ok().map(|m| m.id);
         let result = fs.rename_noreplace(&entry.prepared, &plan.pack_dest);
         entry.published = result.is_ok();
+        if entry.published {
+            entry.identity = published_identity(fs, prepared_id, &plan.pack_dest);
+        }
         record.entries.push(entry);
         result
     }
@@ -2445,6 +2453,27 @@ fn vacate(fs: &dyn Fs, entry: &PublishedEntry) -> bool {
         let _ = fs.rename_noreplace(&entry.final_path, &entry.prepared);
     }
     !occupied(fs, &entry.final_path)
+}
+
+/// The id to record for an entry publication has just moved to
+/// `final_path`, given `prepared` — the id it had at the path it came
+/// from, read before the move.
+///
+/// Read at the destination, because a `rename` stamps the entry it
+/// moves with a new ctime and the recorded id has to describe the
+/// entry as it now sits in the pack. Read *back* against `prepared`,
+/// because a destination read after the rename is a path another
+/// process can have taken in between, and recording that as this
+/// run's own is what would license a recovery to destroy it. The two
+/// reads agreeing on `dev`/`ino` is what says the path still holds
+/// the entry the rename moved.
+///
+/// `None` whenever that cannot be established, which reads downstream
+/// as "not provably ours" and leaves the path alone.
+fn published_identity(fs: &dyn Fs, prepared: Option<FileId>, final_path: &Path) -> Option<FileId> {
+    let prepared = prepared?;
+    let published = fs.lstat(final_path).ok()?.id;
+    published.same_entry(&prepared).then_some(published)
 }
 
 /// Whether `path` still holds the entry publication put there, whose
