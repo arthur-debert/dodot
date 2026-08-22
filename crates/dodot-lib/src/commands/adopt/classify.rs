@@ -11,8 +11,8 @@
 //! no `dodot up` and no `dodot status` ever reads.
 //!
 //! Dispatch-layer filters are deliberately absent. `[mappings] ignore`,
-//! `[mappings] skip`, and gate labels drop a file that discovery *did*
-//! read, and the user changes that by editing config rather than by
+//! `[mappings] skip`, and the gate labels dodot defines drop a file that
+//! discovery *did* read, and the user changes that by editing config rather than by
 //! moving files (`docs/user/filters.lex` §§2, 5).
 //!
 //! One more verdict joins the three, for the same reason and with a
@@ -222,7 +222,8 @@ impl SkipRule {
                 "a pack's top-level scan skips names starting with `.` (except .config)".to_string()
             }
             SkipRule::UnknownGate { label, .. } => format!(
-                "`_{label}` names a gate label dodot does not define, and a pack scan                  fails on it rather than reading it"
+                "`_{label}` names a gate label dodot does not define, and a pack \
+                 scan fails on it rather than reading it"
             ),
         }
     }
