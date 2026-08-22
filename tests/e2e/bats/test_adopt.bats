@@ -282,3 +282,188 @@ teardown() {
     assert_output_contains "nvim"
     assert_output_not_contains "dodot-adopt"
 }
+
+
+# ── Classification and the one-run report ────────────────────────
+#
+# docs/proposals/adopt-safety.lex §3–§4: adopt classifies where the
+# pack scan reads a name, refuses a typed source no scan would read,
+# and leaves a discovered one where it is with a single report line.
+
+@test "adopt leaves an ignored child in place, reports it once, and succeeds" {
+    create_home_file ".config/zed/settings.json" "{}"
+    create_home_file ".config/zed/keymap.json" "[]"
+    create_home_file ".config/zed/.DS_Store" "finder noise"
+
+    run dodot adopt "$HOME/.config/zed"
+    [ "$status" -eq 0 ]
+    assert_output_contains "left in place"
+    assert_output_contains ".DS_Store"
+    assert_output_contains "[pack] ignore"
+
+    # The adoptable siblings completed.
+    assert_file_contents "$DOTFILES_ROOT/zed/settings.json" "{}"
+    [ -L "$HOME/.config/zed/settings.json" ]
+
+    # The ignored child is untouched and never entered the pack.
+    assert_not_exists "$DOTFILES_ROOT/zed/.DS_Store"
+    [ ! -L "$HOME/.config/zed/.DS_Store" ]
+    assert_file_contents "$HOME/.config/zed/.DS_Store" "finder noise"
+
+    # And no later command mentions it: [pack] ignore is silent by design.
+    run dodot status zed
+    [ "$status" -eq 0 ]
+    assert_output_not_contains ".DS_Store"
+}
+
+@test "adopt refuses an explicitly named ignored source, naming pattern and layer" {
+    create_home_file ".config/zed/scratch.tmp" "junk"
+    create_root_config '[pack]\nignore = ["*.tmp"]\n'
+
+    run dodot adopt "$HOME/.config/zed/scratch.tmp"
+    [ "$status" -ne 0 ]
+    assert_output_contains "*.tmp"
+    assert_output_contains "the root .dodot.toml"
+
+    assert_not_exists "$DOTFILES_ROOT/zed"
+    assert_file_contents "$HOME/.config/zed/scratch.tmp" "junk"
+}
+
+@test "adopt refuses an explicitly named hidden source without offering a setting" {
+    create_home_file ".config/nvim/.luarc.json" "{}"
+
+    run dodot adopt "$HOME/.config/nvim/.luarc.json"
+    [ "$status" -ne 0 ]
+    assert_output_contains "No config setting changes that"
+
+    assert_not_exists "$DOTFILES_ROOT/nvim"
+    [ ! -L "$HOME/.config/nvim/.luarc.json" ]
+}
+
+@test "adopt refuses a directory with no adoptable children and writes nothing" {
+    create_home_file ".config/cache-only/.DS_Store" "noise"
+    create_home_file ".config/cache-only/index.swp" "swap"
+
+    run dodot adopt "$HOME/.config/cache-only"
+    [ "$status" -ne 0 ]
+    assert_output_contains "no adoptable entries"
+    assert_output_contains ".DS_Store"
+    assert_output_contains "index.swp"
+
+    assert_not_exists "$DOTFILES_ROOT/cache-only"
+    [ -z "$(find "$DOTFILES_ROOT" -maxdepth 1 -name '.dodot-adopt-*' -print -quit)" ]
+    assert_file_contents "$HOME/.config/cache-only/.DS_Store" "noise"
+}
+
+@test "adopt refuses a reserved filename whether named or discovered" {
+    create_home_file ".config/zed/.dodot.toml" "[pack]\n"
+
+    run dodot adopt "$HOME/.config/zed/.dodot.toml"
+    [ "$status" -ne 0 ]
+    assert_output_contains "dodot's own pack configuration file"
+    assert_not_exists "$DOTFILES_ROOT/zed"
+
+    create_home_file ".config/zed/settings.json" "{}"
+    run dodot adopt "$HOME/.config/zed"
+    [ "$status" -ne 0 ]
+    assert_output_contains ".dodot.toml"
+    assert_not_exists "$DOTFILES_ROOT/zed"
+}
+
+@test "adopt --force changes no classification outcome" {
+    create_home_file ".config/zed/settings.json" "{}"
+    create_home_file ".config/zed/.DS_Store" "finder noise"
+
+    run dodot adopt --force "$HOME/.config/zed"
+    [ "$status" -eq 0 ]
+    assert_output_contains "left in place"
+    assert_not_exists "$DOTFILES_ROOT/zed/.DS_Store"
+    assert_file_contents "$HOME/.config/zed/.DS_Store" "finder noise"
+
+    create_home_file ".config/nvim/.luarc.json" "{}"
+    run dodot adopt --force "$HOME/.config/nvim/.luarc.json"
+    [ "$status" -ne 0 ]
+    assert_output_contains "No config setting changes that"
+}
+
+@test "adopt classifies below the first component the way a pack scan does" {
+    # `plugins` matches a pattern but sits below the position the
+    # top-level walk reads, so the adoption proceeds — the scan reads
+    # `lua` and hands the whole directory to the symlink handler.
+    create_home_file ".config/nvim/lua/plugins/init.lua" "-- plugins"
+    create_root_config '[pack]\nignore = ["plugins"]\n'
+
+    run dodot adopt "$HOME/.config/nvim/lua/plugins/init.lua"
+    [ "$status" -eq 0 ]
+    assert_file_contents "$DOTFILES_ROOT/nvim/lua/plugins/init.lua" "-- plugins"
+}
+
+# ── The pack directory the scan reads ────────────────────────────
+#
+# §3 applies at every position a later scan reads, and the pack
+# directory is one of them. Adopt picks that name by inference, so it
+# is the position adopt can get wrong on the user's behalf.
+
+@test "adopt refuses an inferred pack name the dotfiles-root scan ignores" {
+    create_home_file ".config/node_modules/settings.json" "{}"
+
+    run dodot adopt "$HOME/.config/node_modules/settings.json"
+    [ "$status" -ne 0 ]
+    assert_output_contains "node_modules"
+    assert_output_contains "[pack] ignore"
+
+    assert_not_exists "$DOTFILES_ROOT/node_modules"
+    [ ! -L "$HOME/.config/node_modules/settings.json" ]
+    assert_file_contents "$HOME/.config/node_modules/settings.json" "{}"
+}
+
+@test "adopt refuses a hidden inferred pack name" {
+    create_home_file ".config/.foo/settings" "x"
+
+    run dodot adopt "$HOME/.config/.foo/settings"
+    [ "$status" -ne 0 ]
+    assert_output_contains "No config setting changes that"
+
+    assert_not_exists "$DOTFILES_ROOT/.foo"
+    assert_file_contents "$HOME/.config/.foo/settings" "x"
+}
+
+@test "an explicit --into pack takes a source whose inferred name is ignored" {
+    create_pack "editor"
+    create_home_file ".config/node_modules/settings.json" "{}"
+
+    run dodot adopt "$HOME/.config/node_modules/settings.json" --into editor
+    [ "$status" -eq 0 ]
+
+    assert_file_contents "$DOTFILES_ROOT/editor/_xdg/node_modules/settings.json" "{}"
+    [ -L "$HOME/.config/node_modules/settings.json" ]
+}
+
+@test "adopt refuses a source behind an undefined gate directory" {
+    create_home_file ".config/nvim/_bogus/init.lua" "-- config"
+
+    run dodot adopt "$HOME/.config/nvim/_bogus/init.lua"
+    [ "$status" -ne 0 ]
+    assert_output_contains "gate label"
+
+    assert_not_exists "$DOTFILES_ROOT/nvim"
+    assert_file_contents "$HOME/.config/nvim/_bogus/init.lua" "-- config"
+}
+
+@test "an undefined gate directory found by expansion is left in place and the pack still scans" {
+    create_home_file ".config/nvim/init.lua" "-- config"
+    create_home_file ".config/nvim/_bogus/extra.lua" "-- extra"
+
+    run dodot adopt "$HOME/.config/nvim"
+    [ "$status" -eq 0 ]
+    assert_output_contains "left in place"
+    assert_output_contains "_bogus"
+
+    assert_file_contents "$DOTFILES_ROOT/nvim/init.lua" "-- config"
+    assert_not_exists "$DOTFILES_ROOT/nvim/_bogus"
+    assert_file_contents "$HOME/.config/nvim/_bogus/extra.lua" "-- extra"
+
+    # The published pack is one a scan reads end to end.
+    run dodot status nvim
+    [ "$status" -eq 0 ]
+}

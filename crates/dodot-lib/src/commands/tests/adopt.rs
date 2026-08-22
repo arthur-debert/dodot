@@ -3959,3 +3959,894 @@ fn adopt_existing_pack_rollback_that_cannot_unpublish_leaves_the_content_in_plac
     env.assert_regular_file(&sources[0], "NEW-1");
     env.assert_regular_file(&sources[1], "NEW-2");
 }
+
+// ── Classification and the one-run report ──────────────────────────
+//
+// `docs/proposals/adopt-safety.lex` §3 decides which entries adopt
+// creates, §4 decides what it says about the ones it does not. The
+// cases below are that document's §8 matrix.
+
+/// Convenience wrapper for the classification tests: one source, no
+/// flags but the ones a case is about.
+fn adopt_source(
+    env: &TempEnvironment,
+    into: Option<&str>,
+    source: &std::path::Path,
+    force: bool,
+) -> Result<commands::PackStatusResult> {
+    let ctx = make_ctx(env);
+    commands::adopt::adopt(
+        into,
+        std::slice::from_ref(&source.to_path_buf()),
+        force,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+}
+
+/// Write a `.dodot.toml` at `dir`.
+fn write_config(dir: &std::path::Path, contents: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join(".dodot.toml"), contents).unwrap();
+}
+
+/// The gate label that passes on whatever host runs the suite, so a
+/// `--only-os` test exercises the *expanding* gate directory rather
+/// than the failing one.
+fn passing_gate_label() -> String {
+    crate::gates::HostFacts::detect().os
+}
+
+/// An ignored child found by expansion is the case §1.1 opens with: it
+/// is the noise the user already told dodot to leave alone, so the run
+/// adopts its siblings, leaves it a real file at its original path, and
+/// says so once.
+#[test]
+fn adopt_expansion_leaves_an_ignored_child_in_place_and_reports_it() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/settings.json", "{}")
+        .home_file(".config/zed/keymap.json", "[]")
+        .home_file(".config/zed/.DS_Store", "finder noise")
+        .build();
+
+    let source = env.home.join(".config/zed");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+
+    let pack = env.dotfiles_root.join("zed");
+    env.assert_regular_file(&pack.join("settings.json"), "{}");
+    env.assert_regular_file(&pack.join("keymap.json"), "[]");
+    env.assert_not_exists(&pack.join(".DS_Store"));
+
+    // The ignored child is untouched: still a real file, still its own
+    // content, among siblings that are now symlinks.
+    env.assert_regular_file(&env.home.join(".config/zed/.DS_Store"), "finder noise");
+    assert!(env
+        .fs
+        .is_symlink(&env.home.join(".config/zed/settings.json")));
+
+    let report: Vec<&String> = result
+        .warnings
+        .iter()
+        .filter(|w| w.starts_with("left in place:"))
+        .collect();
+    assert_eq!(report.len(), 1, "reported once, got: {:?}", result.warnings);
+    assert!(
+        report[0].contains(".DS_Store") && report[0].contains("[pack] ignore"),
+        "expected the path and the matched pattern, got: {}",
+        report[0]
+    );
+}
+
+/// A hidden child is handled the same way, and the report names the
+/// rule rather than a pattern — there is no pattern to name (§3.3).
+#[test]
+fn adopt_expansion_leaves_a_hidden_child_in_place_and_names_the_rule() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- init")
+        .home_file(".config/nvim/.luarc.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/nvim");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("nvim/init.lua"), "-- init");
+    env.assert_not_exists(&env.dotfiles_root.join("nvim/.luarc.json"));
+    env.assert_regular_file(&env.home.join(".config/nvim/.luarc.json"), "{}");
+
+    let report = result
+        .warnings
+        .iter()
+        .find(|w| w.starts_with("left in place:"))
+        .expect("the hidden child is reported");
+    assert!(
+        report.contains(".luarc.json") && report.contains("starting with `.`"),
+        "expected the hidden-entry rule, got: {report}"
+    );
+    assert!(
+        !report.contains("[pack] ignore"),
+        "the hidden rule has no pattern to quote, got: {report}"
+    );
+}
+
+/// `.config` is the exception the top-level walk makes, so a discovered
+/// child named `.config` is adoptable (§3.3).
+#[test]
+fn adopt_expansion_adopts_a_child_named_dot_config() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/.config/inner.toml", "x = 1")
+        .home_file(".config/zed/settings.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/zed");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("zed/.config/inner.toml"), "x = 1");
+    assert!(
+        !result
+            .warnings
+            .iter()
+            .any(|w| w.starts_with("left in place:")),
+        "nothing was left behind, got: {:?}",
+        result.warnings
+    );
+}
+
+/// A directory whose children are all unadoptable is an error, not a
+/// report and a success: exiting zero would claim an adoption that did
+/// not happen (§3.4). The message lists every child and its rule.
+#[test]
+fn adopt_expansion_with_no_adoptable_children_errors_and_writes_nothing() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/cache-only/.DS_Store", "noise")
+        .home_file(".config/cache-only/index.swp", "swap")
+        .home_file(".config/cache-only/.cache", "cache")
+        .build();
+
+    let source = env.home.join(".config/cache-only");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("no adoptable entries"),
+        "expected the zero-adoptable refusal, got: {msg}"
+    );
+    for (child, rule) in [
+        (".DS_Store", "[pack] ignore"),
+        ("index.swp", "[pack] ignore"),
+        (".cache", "hidden top-level name"),
+    ] {
+        assert!(
+            msg.contains(child) && msg.contains(rule),
+            "expected `{child}` listed with `{rule}`, got: {msg}"
+        );
+    }
+
+    env.assert_not_exists(&env.dotfiles_root.join("cache-only"));
+    assert!(preparation_dirs(&env).is_empty());
+    env.assert_regular_file(&env.home.join(".config/cache-only/.DS_Store"), "noise");
+}
+
+/// An empty directory is the same refusal with nothing to list — there
+/// is nothing to adopt either way (§3.4).
+#[test]
+fn adopt_expansion_of_an_empty_directory_errors() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/other/keep", "x")
+        .build();
+
+    let source = env.config_home.join("empty");
+    std::fs::create_dir_all(&source).unwrap();
+
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    assert!(
+        err.to_string().contains("no adoptable entries"),
+        "expected the zero-adoptable refusal, got: {err}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("empty"));
+}
+
+/// A directory whose children are all hidden is the same §3.4 error,
+/// listing the hidden-entry rule against each one.
+#[test]
+fn adopt_expansion_with_only_hidden_children_errors() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/hidden-only/.luarc.json", "{}")
+        .home_file(".config/hidden-only/.other", "x")
+        .build();
+
+    let source = env.home.join(".config/hidden-only");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(msg.contains("no adoptable entries"), "got: {msg}");
+    assert_eq!(
+        msg.matches("hidden top-level name").count(),
+        2,
+        "both children cite the hidden-entry rule, got: {msg}"
+    );
+}
+
+/// A source the user typed that no pack scan would read is a refusal.
+/// The message quotes the pattern and names the layer that supplied the
+/// effective list, because editing that layer is the remedy (§3.2).
+#[test]
+fn adopt_named_ignored_source_errors_naming_pattern_and_default_layer() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/.DS_Store", "noise")
+        .build();
+
+    let source = env.home.join(".config/zed/.DS_Store");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`.DS_Store`") && msg.contains("[pack] ignore"),
+        "expected the matched pattern, got: {msg}"
+    );
+    assert!(
+        msg.contains("dodot's default list"),
+        "expected the default layer named, got: {msg}"
+    );
+    assert!(
+        msg.contains("override [pack] ignore"),
+        "an ignore match has a configuration remedy, got: {msg}"
+    );
+    env.assert_regular_file(&source, "noise");
+}
+
+/// The root `.dodot.toml`'s list is named when it is the one in force.
+#[test]
+fn adopt_named_ignored_source_names_the_root_layer() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/scratch.tmp", "junk")
+        .build();
+    write_config(&env.dotfiles_root, "[pack]\nignore = [\"*.tmp\"]\n");
+
+    let source = env.home.join(".config/zed/scratch.tmp");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`*.tmp`") && msg.contains("the root .dodot.toml"),
+        "expected the root layer named, got: {msg}"
+    );
+}
+
+/// With a pack-level list in force, the pack is named even for a
+/// pattern the default list also carries — exactly one layer decides,
+/// and it is the one the user edits (§3.2).
+#[test]
+fn adopt_named_ignored_source_names_the_pack_layer_for_a_default_pattern() {
+    let env = TempEnvironment::builder()
+        .pack("zed")
+        .file("placeholder", "")
+        .config("[pack]\nignore = [\".DS_Store\", \"*.swp\"]\n")
+        .done()
+        .home_file(".config/zed/.DS_Store", "noise")
+        .build();
+
+    let source = env.home.join(".config/zed/.DS_Store");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("pack zed's .dodot.toml"),
+        "expected the pack layer named, got: {msg}"
+    );
+}
+
+/// A pack-level list *replaces* the root list rather than extending it,
+/// so a pattern the root carries and the pack's list omits does not
+/// leave its match behind, while a pattern only the pack's list carries
+/// does (§3.1). Both assert against the same list `dodot up` applies to
+/// this pack.
+#[test]
+fn adopt_pack_level_ignore_replaces_the_root_list() {
+    let env = TempEnvironment::builder()
+        .pack("zed")
+        .file("placeholder", "")
+        .config("[pack]\nignore = [\"*.swp\"]\n")
+        .done()
+        .home_file(".config/zed/debug.log", "kept on purpose")
+        .home_file(".config/zed/notes.swp", "swap")
+        .build();
+    write_config(&env.dotfiles_root, "[pack]\nignore = [\"*.log\"]\n");
+
+    let source = env.home.join(".config/zed");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+
+    // The root's `*.log` pattern is not in force for this pack.
+    env.assert_regular_file(&env.dotfiles_root.join("zed/debug.log"), "kept on purpose");
+    // A pattern present only in the pack's list still leaves its match.
+    env.assert_not_exists(&env.dotfiles_root.join("zed/notes.swp"));
+    env.assert_regular_file(&env.home.join(".config/zed/notes.swp"), "swap");
+
+    let report: Vec<&String> = result
+        .warnings
+        .iter()
+        .filter(|w| w.starts_with("left in place:"))
+        .collect();
+    assert_eq!(
+        report.len(),
+        1,
+        "only the pack-listed match, got: {report:?}"
+    );
+    assert!(
+        report[0].contains("notes.swp") && report[0].contains("pack zed's .dodot.toml"),
+        "expected the pack layer credited, got: {}",
+        report[0]
+    );
+}
+
+/// Classification stops at the first component of the in-pack path,
+/// because that is where the top-level walk reads a name. An ignored
+/// first component refuses the adoption and names the component the
+/// scan would skip (§3.1).
+#[test]
+fn adopt_ignored_first_component_errors_naming_that_component() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .build();
+    write_config(&env.dotfiles_root, "[pack]\nignore = [\"lua\"]\n");
+
+    let source = env.home.join(".config/nvim/lua/plugins/init.lua");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`lua`") && msg.contains("lua/plugins/init.lua"),
+        "expected the skipped component and the in-pack path, got: {msg}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("nvim"));
+}
+
+/// A match below the first component does not refuse: the scan reads
+/// `lua`, and what happens beneath it is a handler's business (§3.5).
+#[test]
+fn adopt_ignored_component_below_the_first_is_adopted() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .build();
+    write_config(
+        &env.dotfiles_root,
+        "[pack]\nignore = [\"plugins\", \"init.lua\"]\n",
+    );
+
+    let source = env.home.join(".config/nvim/lua/plugins/init.lua");
+    adopt_source(&env, None, &source, false).unwrap();
+
+    env.assert_regular_file(
+        &env.dotfiles_root.join("nvim/lua/plugins/init.lua"),
+        "-- plugins",
+    );
+}
+
+/// The reserved-filename rule refuses a named source, quotes no pattern
+/// and no layer, and says what dodot uses the name for (§3.2).
+#[test]
+fn adopt_named_reserved_filename_errors_without_a_pattern_or_layer() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/.dodot.toml", "[pack]\n")
+        .build();
+
+    let source = env.home.join(".config/zed/.dodot.toml");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("dodot's own pack configuration file"),
+        "expected the reserved-name message, got: {msg}"
+    );
+    // A reserved name is hidden too, and is also matched by no pattern:
+    // neither of the other two messages may leak into this one.
+    assert!(
+        !msg.contains("[pack] ignore") && !msg.contains("No config setting changes that"),
+        "the reserved-name message stands alone, got: {msg}"
+    );
+}
+
+/// A discovered `.dodot.toml` or `.dodotignore` is the one discovered
+/// entry that refuses the run: copying either into the pack would
+/// replace the pack's configuration or hide the pack (§3.3).
+#[test]
+fn adopt_discovered_reserved_filename_errors() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/settings.json", "{}")
+        .home_file(".config/zed/.dodotignore", "")
+        .build();
+
+    let source = env.home.join(".config/zed");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+
+    assert!(
+        err.to_string().contains(".dodotignore"),
+        "expected the reserved-name refusal, got: {err}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("zed"));
+}
+
+/// Nothing reads a `.dodot.toml` below the pack's top level, so a
+/// source landing at `lua/.dodot.toml` is not refused (§3.5).
+#[test]
+fn adopt_reserved_filename_below_the_first_component_is_adopted() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/lua/.dodot.toml", "# not dodot's")
+        .build();
+
+    let source = env.home.join(".config/nvim/lua/.dodot.toml");
+    adopt_source(&env, None, &source, false).unwrap();
+
+    env.assert_regular_file(
+        &env.dotfiles_root.join("nvim/lua/.dodot.toml"),
+        "# not dodot's",
+    );
+}
+
+/// A hidden source the user typed errors, names the position and the
+/// rule, and suggests no configuration override — there is none to
+/// suggest (§3.2, §3.7).
+#[test]
+fn adopt_named_hidden_source_errors_without_suggesting_a_config_change() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/.luarc.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/nvim/.luarc.json");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains(".luarc.json") && msg.contains("starting with `.`"),
+        "expected the position and the rule, got: {msg}"
+    );
+    assert!(
+        msg.contains("No config setting changes that"),
+        "expected the rule stated as unconfigurable, got: {msg}"
+    );
+    assert!(
+        !msg.contains("override [pack] ignore"),
+        "the hidden rule has no configuration remedy to offer, got: {msg}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("nvim"));
+}
+
+/// The hidden rule does not apply where handler recursion reads the
+/// name, so `lua/.hidden.lua` and `_home/foo/.bar` are adoptable (§3.1).
+#[test]
+fn adopt_hidden_name_below_the_top_level_position_is_adopted() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/lua/.hidden.lua", "-- hidden")
+        .build();
+
+    let source = env.home.join(".config/nvim/lua/.hidden.lua");
+    adopt_source(&env, None, &source, false).unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("nvim/lua/.hidden.lua"), "-- hidden");
+}
+
+/// A routing prefix sits at a classified position and is tested there
+/// like any other name — neither hidden nor reserved, so `_home` never
+/// refuses on its own, and the hidden name it carries is adoptable
+/// because the walk hands the whole directory to a handler (§3.1).
+#[test]
+fn adopt_routing_prefix_position_never_refuses_on_its_own() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("placeholder", "")
+        .done()
+        .home_file(".gitstuff/.gitconfig", "[user]")
+        .build();
+
+    let source = env.home.join(".gitstuff");
+    adopt_source(&env, Some("git"), &source, false).unwrap();
+
+    env.assert_regular_file(
+        &env.dotfiles_root.join("git/_home/gitstuff/.gitconfig"),
+        "[user]",
+    );
+}
+
+/// A gate directory that passes on this host expands transparently and
+/// surfaces its children at pack-root level, so classification applies
+/// at the position inside it (§3.1).
+#[test]
+fn adopt_classifies_inside_a_passing_only_os_directory() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/settings.json", "{}")
+        .home_file(".config/zed/.DS_Store", "noise")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/zed");
+    let label = passing_gate_label();
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        Some(&label),
+        &ctx,
+    )
+    .unwrap();
+
+    env.assert_regular_file(
+        &env.dotfiles_root
+            .join(format!("zed/_{label}/settings.json")),
+        "{}",
+    );
+    env.assert_not_exists(&env.dotfiles_root.join(format!("zed/_{label}/.DS_Store")));
+    env.assert_regular_file(&env.home.join(".config/zed/.DS_Store"), "noise");
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.starts_with("left in place:") && w.contains(".DS_Store")),
+        "expected the gate-position match reported, got: {:?}",
+        result.warnings
+    );
+}
+
+/// Dispatch-layer filters do not participate: a child matching
+/// `[mappings] ignore` or `[mappings] skip` is discovered by the scan
+/// and then routed, so adopt treats it as an ordinary entry (§3.1).
+#[test]
+fn adopt_dispatch_layer_filters_do_not_refuse_or_report() {
+    let env = TempEnvironment::builder()
+        .pack("zed")
+        .file("placeholder", "")
+        .config("[mappings]\nignore = [\"*.bak\"]\n")
+        .done()
+        .home_file(".config/zed/settings.json", "{}")
+        .home_file(".config/zed/old.bak", "backup")
+        .home_file(".config/zed/README.md", "docs")
+        .home_file(".config/zed/theme._darwin.toml", "dark")
+        .build();
+
+    let source = env.home.join(".config/zed");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+
+    // `[mappings] ignore`, the `[mappings] skip` defaults, and a
+    // host-conditional label all leave the entry a live pack member.
+    env.assert_regular_file(&env.dotfiles_root.join("zed/old.bak"), "backup");
+    env.assert_regular_file(&env.dotfiles_root.join("zed/README.md"), "docs");
+    env.assert_regular_file(&env.dotfiles_root.join("zed/theme._darwin.toml"), "dark");
+    assert!(
+        !result
+            .warnings
+            .iter()
+            .any(|w| w.starts_with("left in place:")),
+        "dispatch filters leave nothing behind, got: {:?}",
+        result.warnings
+    );
+}
+
+/// `--force` answers one question — may adopt replace an existing
+/// destination — and answers it after classification has decided which
+/// entries exist. It changes none of the outcomes above (§3.6).
+#[test]
+fn adopt_force_changes_no_classification_outcome() {
+    // Ignored child under expansion: still left in place.
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/settings.json", "{}")
+        .home_file(".config/zed/.DS_Store", "noise")
+        .build();
+    let result = adopt_source(&env, None, &env.home.join(".config/zed"), true).unwrap();
+    env.assert_not_exists(&env.dotfiles_root.join("zed/.DS_Store"));
+    env.assert_regular_file(&env.home.join(".config/zed/.DS_Store"), "noise");
+    assert!(result
+        .warnings
+        .iter()
+        .any(|w| w.starts_with("left in place:")));
+
+    // Named ignored source: still a refusal.
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/.DS_Store", "noise")
+        .build();
+    let err = adopt_source(&env, None, &env.home.join(".config/zed/.DS_Store"), true).unwrap_err();
+    assert!(err.to_string().contains("[pack] ignore"), "got: {err}");
+
+    // Named hidden source: still a refusal.
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/.luarc.json", "{}")
+        .build();
+    let err =
+        adopt_source(&env, None, &env.home.join(".config/nvim/.luarc.json"), true).unwrap_err();
+    assert!(err.to_string().contains("No config setting"), "got: {err}");
+
+    // Named reserved filename: still a refusal.
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/.dodot.toml", "[pack]\n")
+        .build();
+    let err =
+        adopt_source(&env, None, &env.home.join(".config/zed/.dodot.toml"), true).unwrap_err();
+    assert!(err.to_string().contains("dodot's own pack"), "got: {err}");
+
+    // Zero adoptable children: still a refusal, not a warning.
+    let env = TempEnvironment::builder()
+        .home_file(".config/cache-only/.DS_Store", "noise")
+        .build();
+    let err = adopt_source(&env, None, &env.home.join(".config/cache-only"), true).unwrap_err();
+    assert!(
+        err.to_string().contains("no adoptable entries"),
+        "got: {err}"
+    );
+}
+
+/// The report exists for one run: adopt writes no record of what it left
+/// behind, and `dodot status` afterwards stays silent about it — which
+/// is the intentional silence of `[pack] ignore`, not an omission (§4).
+#[test]
+fn adopt_persists_no_record_of_left_in_place_entries() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/settings.json", "{}")
+        .home_file(".config/zed/.DS_Store", "noise")
+        .build();
+
+    let source = env.home.join(".config/zed");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+    assert!(!result.failed, "left-in-place entries never fail the run");
+
+    let ctx = make_ctx(&env);
+    let status = commands::status::status(Some(&["zed".to_string()]), &ctx).unwrap();
+    let rendered = format!("{status:?}");
+    assert!(
+        !rendered.contains(".DS_Store"),
+        "status stays silent about [pack] ignore matches, got: {rendered}"
+    );
+
+    // Nothing under the dotfiles root or the data dir names it either.
+    for root in [&env.dotfiles_root, &env.data_dir] {
+        assert!(
+            !tree_mentions(root, ".DS_Store"),
+            "no record of the left-in-place entry under {}",
+            root.display()
+        );
+    }
+}
+
+// ── The pack directory is a scanned position too ───────────────────
+
+/// Inference takes the pack name from the source's own path, so it can
+/// land on a name the *dotfiles-root* scan skips. `node_modules` is on
+/// the default `[pack] ignore` list: publishing it would replace the
+/// source with a symlink into a pack no later `dodot up` or `dodot
+/// status` ever reads.
+#[test]
+fn adopt_refuses_an_inferred_pack_name_the_root_scan_ignores() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/node_modules/settings.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/node_modules/settings.json");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`node_modules`") && msg.contains("[pack] ignore"),
+        "expected the pack name and the matched rule, got: {msg}"
+    );
+    assert!(
+        msg.contains("dodot's default list"),
+        "expected the layer named, got: {msg}"
+    );
+
+    // Refused before any write: no pack, and the source is still a file.
+    env.assert_not_exists(&env.dotfiles_root.join("node_modules"));
+    env.assert_regular_file(&source, "{}");
+}
+
+/// The root `.dodot.toml`'s list decides the same question, and the
+/// refusal names that file so the user edits the one that matters.
+#[test]
+fn adopt_refuses_an_inferred_pack_name_the_root_config_ignores() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/settings.json", "{}")
+        .build();
+    write_config(&env.dotfiles_root, "[pack]\nignore = [\"zed\"]\n");
+
+    let source = env.home.join(".config/zed/settings.json");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`zed`") && msg.contains("the root .dodot.toml"),
+        "expected the root layer named, got: {msg}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("zed"));
+}
+
+/// The root scan skips every dot-prefixed directory but `.config`, so a
+/// hidden inferred pack name is unreadable however the file is written.
+#[test]
+fn adopt_refuses_a_hidden_inferred_pack_name() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/.foo/settings", "x")
+        .build();
+
+    let source = env.home.join(".config/.foo/settings");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`.foo`"),
+        "expected the pack named, got: {msg}"
+    );
+    assert!(
+        msg.contains("No config setting changes that"),
+        "the hidden rule has no configuration remedy, got: {msg}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join(".foo"));
+    env.assert_regular_file(&source, "x");
+}
+
+/// `--force` is an opt-in to replacing a destination, not to publishing
+/// a pack dodot cannot read.
+#[test]
+fn force_does_not_bypass_the_pack_directory_rules() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/node_modules/settings.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/node_modules/settings.json");
+    let err = adopt_source(&env, None, &source, true).unwrap_err();
+    assert!(err.to_string().contains("[pack] ignore"), "got: {err}");
+    env.assert_not_exists(&env.dotfiles_root.join("node_modules"));
+}
+
+/// Adopting a whole directory refuses on the same rule, before it
+/// expands a single child.
+#[test]
+fn adopt_refuses_an_ignored_pack_name_for_a_directory_source() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/node_modules/settings.json", "{}")
+        .home_file(".config/node_modules/keymap.json", "[]")
+        .build();
+
+    let source = env.home.join(".config/node_modules");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    assert!(err.to_string().contains("[pack] ignore"), "got: {err}");
+    env.assert_not_exists(&env.dotfiles_root.join("node_modules"));
+    env.assert_regular_file(&source.join("settings.json"), "{}");
+}
+
+/// `--into` names a pack the root scan already read, so the rules
+/// cannot fire on it — the same source adopts cleanly once the user says
+/// where it goes.
+#[test]
+fn an_explicit_pack_takes_a_source_whose_inferred_name_is_ignored() {
+    let env = TempEnvironment::builder()
+        .pack("editor")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/node_modules/settings.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/node_modules/settings.json");
+    adopt_source(&env, Some("editor"), &source, false).unwrap();
+
+    env.assert_regular_file(
+        &env.dotfiles_root
+            .join("editor/_xdg/node_modules/settings.json"),
+        "{}",
+    );
+    assert!(env.fs.is_symlink(&source));
+}
+
+// ── Undefined gate directories ─────────────────────────────────────
+
+/// A pack scan does not *skip* an undefined `_<label>` directory — it
+/// stops with a hard error, and that error fails the scan of the whole
+/// pack. Adopting one would break a pack that read fine before the
+/// command ran, so it refuses.
+#[test]
+fn adopt_refuses_a_source_behind_an_undefined_gate_directory() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/_bogus/init.lua", "-- config")
+        .build();
+
+    let source = env.home.join(".config/nvim/_bogus/init.lua");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`_bogus`") && msg.contains("gate label"),
+        "expected the directory and the rule, got: {msg}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("nvim"));
+    env.assert_regular_file(&source, "-- config");
+}
+
+/// Discovered by expansion, it is an ordinary skip: it stays where it
+/// is, its adoptable siblings complete, and the run reports it once —
+/// which is what keeps the published pack scannable.
+#[test]
+fn an_undefined_gate_directory_found_by_expansion_is_left_in_place() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- config")
+        .home_file(".config/nvim/_bogus/extra.lua", "-- extra")
+        .build();
+
+    let source = env.home.join(".config/nvim");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("nvim/init.lua"), "-- config");
+    env.assert_not_exists(&env.dotfiles_root.join("nvim/_bogus"));
+    env.assert_regular_file(&env.home.join(".config/nvim/_bogus/extra.lua"), "-- extra");
+
+    let report: Vec<&String> = result
+        .warnings
+        .iter()
+        .filter(|w| w.starts_with("left in place:"))
+        .collect();
+    assert_eq!(report.len(), 1, "reported once, got: {report:?}");
+    assert!(
+        report[0].contains("_bogus") && report[0].contains("gate label"),
+        "expected the rule named, got: {}",
+        report[0]
+    );
+
+    // The published pack is one a scan reads end to end.
+    let ctx = make_ctx(&env);
+    commands::status::status(Some(&["nvim".to_string()]), &ctx)
+        .expect("the published pack still scans");
+}
+
+/// A gate label the table *does* define stays adoptable — the rule is
+/// about undefined labels, not about gate directories.
+#[test]
+fn a_defined_gate_directory_stays_adoptable() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/_darwin/init.lua", "-- config")
+        .build();
+
+    let source = env.home.join(".config/nvim/_darwin/init.lua");
+    adopt_source(&env, None, &source, false).unwrap();
+    env.assert_regular_file(
+        &env.dotfiles_root.join("nvim/_darwin/init.lua"),
+        "-- config",
+    );
+}
+
+/// Routing prefixes are not gate labels, so `_home/` is an ordinary
+/// adoptable name and this rule does not touch it.
+#[test]
+fn routing_prefixes_are_not_undefined_gate_labels() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/_home/gitconfig", "[user]")
+        .build();
+
+    let source = env.home.join(".config/nvim/_home/gitconfig");
+    adopt_source(&env, None, &source, false).unwrap();
+    env.assert_regular_file(&env.dotfiles_root.join("nvim/_home/gitconfig"), "[user]");
+}
+
+/// Does any path or file content under `root` mention `needle`?
+fn tree_mentions(root: &std::path::Path, needle: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.to_string_lossy().contains(needle) {
+            return true;
+        }
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.is_dir() {
+            if tree_mentions(&path, needle) {
+                return true;
+            }
+        } else if meta.is_file() {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                if text.contains(needle) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}

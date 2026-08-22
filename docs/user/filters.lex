@@ -77,6 +77,8 @@ Filters & ignores — keeping files out of dodot's way
 
     `[pack] ignore` is the broadest in-pack hammer. Everything below operates on files dodot has already discovered.
 
+    `dodot adopt` reads this list too, and reads the same single layer a scan of that pack applies. A path you name that matches it is refused — adopting it would put a file in your pack that no later run reads — and a match `adopt` finds while expanding a directory you named is left where it is and reported once. See [./commands/adopt.lex] §5.
+
 5. Silent drop at dispatch — `[mappings] ignore`
 
     Glob patterns that drop matched files silently from handler dispatch. No entry in `dodot status`. Same mental model as `.gitignore`:

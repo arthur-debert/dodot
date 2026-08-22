@@ -31,17 +31,34 @@ pub fn should_skip_entry(name: &str, ignore_patterns: &[String]) -> bool {
 }
 
 fn is_ignored(name: &str, patterns: &[String]) -> bool {
+    matched_ignore_pattern(name, patterns).is_some()
+}
+
+/// The first `[pack] ignore` pattern `name` matches, if any.
+///
+/// Callers that only need a verdict go through [`should_skip_entry`];
+/// this one exists for the callers that have to say *which* pattern
+/// decided, because their message is what the user acts on. `dodot
+/// adopt` refuses an explicitly named ignored source and quotes the
+/// pattern back (`docs/proposals/adopt-safety.lex` §3.2), so the
+/// matcher that decides and the matcher that is quoted have to be the
+/// same one.
+///
+/// A pattern that does not compile as a glob is still compared
+/// literally, matching the tolerance the scan has always had for a
+/// malformed entry in the list.
+pub fn matched_ignore_pattern<'a>(name: &str, patterns: &'a [String]) -> Option<&'a str> {
     for pattern in patterns {
         if let Ok(glob) = glob::Pattern::new(pattern) {
             if glob.matches(name) {
-                return true;
+                return Some(pattern);
             }
         }
         if name == pattern {
-            return true;
+            return Some(pattern);
         }
     }
-    false
+    None
 }
 
 /// Scans pack directories and matches files against rules.
