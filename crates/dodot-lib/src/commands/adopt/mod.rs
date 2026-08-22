@@ -20,31 +20,66 @@
 //!   in which case we expand it into per-child plans rather than making
 //!   the whole directory one big symlink-to-pack-root.
 //!
-//! ## Two-phase model
+//! ## Order of operations
 //!
-//! 1. **Copy phase** — recursively copy each source into the pack, preserving
-//!    inner symlinks and Unix permissions. Originals are never touched in this
-//!    phase. If anything fails, the partial copies are removed and the error
-//!    surfaces; home is pristine throughout.
+//! `docs/proposals/adopt-safety.lex` §5 fixes the order, and its first
+//! rule is that nothing reaches a final pack path until every check
+//! that can refuse the run has passed:
 //!
-//! 2. **Swap phase** — per source, atomically replace the original with a
-//!    symlink to the pack copy. Files use a symlink-at-temp + rename-over-original
-//!    trick (POSIX atomic). Directories use a rename-to-backup + symlink + rm-backup
-//!    dance (one-step recoverable). A per-file failure cleans up that source's pack
-//!    copy only; previously-adopted sources remain adopted.
+//! 1. **Plan** ([`plan`]) — resolve the destination pack, infer each
+//!    source's in-pack path, classify entries, check destination
+//!    conflicts, check that the sources are readable and the dotfiles
+//!    root writable, and reject duplicate or overlapping entries.
+//!    Writes nothing, including no inferred pack directory.
 //!
-//! Cross-pack deployment conflicts are detected after the copy phase and before
-//! the swap phase — adoption is refused if deploying the adopted files would
-//! collide with another pack. This check is not bypassed by `--force`.
+//! 2. **Prepare** ([`Preparation`]) — copy the prospective content into
+//!    a hidden preparation directory inside the dotfiles root, laid out
+//!    at the in-pack paths the plan assigned. A failure here removes the
+//!    preparation directory and leaves every final path untouched.
+//!
+//! 3. **Validate** ([`check_deploy_conflicts`]) — run the cross-pack
+//!    deployment conflict analysis against the *prospective* pack tree,
+//!    read out of the preparation directory. `--force` does not bypass
+//!    it. `--dry-run` reports the plan here and stops.
+//!
+//! 4. **Publish** — for an inferred pack that did not exist at plan
+//!    time, one `rename` of the prepared pack directory onto the pack
+//!    path: the pack appears complete or does not appear. A pack path
+//!    that came into existence after planning makes publication refuse
+//!    rather than merge into it.
+//!
+//! 5. **Replace sources** ([`swap_all`]) — per source, replace the
+//!    original with a symlink to its published pack path. Files use a
+//!    symlink-at-temp + rename-over-original (POSIX atomic).
+//!    Directories use rename-to-backup + symlink + rm-backup
+//!    (recoverable, not atomic). A per-source failure removes that
+//!    source's pack entry and is reported; sources already replaced
+//!    stay replaced.
+//!
+//! 6. **Finish** — remove the preparation directory.
+//!
+//! Two pieces of `adopt-safety.lex` are deliberately not here yet, and
+//! each has its own work stream:
+//!
+//! - Publication **into a pack that already exists** still copies into
+//!   final pack paths and then validates, which is the pre-proposal
+//!   behavior. `#377` (WS03) is where that path moves behind the
+//!   preparation directory and gains its recovery record.
+//! - The **rest of a failed source replacement's recovery** — removing
+//!   the intermediate directories publication created for that entry,
+//!   and removing a newly published pack when no source was replaced at
+//!   all — is `#378` (WS04). Step 5 currently removes the failed
+//!   source's own pack entry and no more.
 //!
 //! ## Auto-creating packs
 //!
 //! When all sources point at a single inferred pack name and that pack
-//! doesn't exist on disk, adopt creates it (an empty directory — no
-//! `.dodot.toml` is written; the user can run `dodot config gen` later
-//! if they want one). When `--into <pack>` is supplied and `<pack>` does
-//! not exist, adopt refuses — explicit pack names are typo-checked
-//! against the existing pack inventory.
+//! doesn't exist on disk, adopt creates it — at publication, by
+//! renaming the prepared tree into place, so a refused run leaves no
+//! pack behind. No `.dodot.toml` is written; the user can run `dodot
+//! config gen` later if they want one. When `--into <pack>` is supplied
+//! and `<pack>` does not exist, adopt refuses — explicit pack names are
+//! typo-checked against the existing pack inventory.
 
 mod infer;
 
@@ -52,7 +87,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::commands::status;
-use crate::commands::{DisplayFile, DisplayNote, PackStatusResult};
+use crate::commands::{DisplayFile, DisplayNote, DisplayPack, PackStatusResult};
 use crate::conflicts;
 use crate::fs::Fs;
 use crate::packs;
@@ -77,6 +112,10 @@ pub(crate) use self::infer::derive_home_in_pack as derive_pack_filename;
 struct AdoptPlan {
     /// The resolved source (post --no-follow handling).
     source: PathBuf,
+    /// Path relative to the pack root — `home.vimrc`, `lua/plugins/init.lua`,
+    /// `_darwin/config`. The preparation directory lays content out at
+    /// this path, and overlap detection compares entries on it.
+    in_pack: PathBuf,
     pack_dest: PathBuf,
     /// `true` if the source is a directory (after --no-follow resolution).
     is_dir: bool,
@@ -146,13 +185,11 @@ pub fn adopt(
     let pack_display = resolved.display_name.clone();
     let pack_path = ctx.paths.pack_path(&pack_dir);
 
-    // ── Auto-create the pack if inferred and missing ─────────────────
-    //
-    // Only inferred names reach here: an explicit `--into` naming a
-    // missing pack already errored in `resolve_pack_for_sources`.
-    if !ctx.fs.exists(&pack_path) {
-        ctx.fs.mkdir_all(&pack_path)?;
-    }
+    // Whether the destination pack is already on disk decides which
+    // publication path runs. Only an *inferred* name can be missing:
+    // an explicit `--into` naming a missing pack already errored in
+    // `resolve_pack_for_sources`.
+    let pack_existed = ctx.fs.exists(&pack_path);
 
     if ctx.fs.exists(&pack_path.join(".dodotignore")) {
         return Err(DodotError::PackInvalid {
@@ -161,9 +198,14 @@ pub fn adopt(
         });
     }
 
-    let (plans, skipped_already_adopted) = preflight(
+    // ── Step 1: Plan ─────────────────────────────────────────────────
+    //
+    // Nothing on disk changes here, so every refusal below leaves the
+    // dotfiles root as it was — an inferred pack included.
+    let (plans, skipped_already_adopted) = plan(
         &pack_dir,
         &pack_path,
+        pack_existed,
         sources,
         pack_override,
         force,
@@ -174,7 +216,7 @@ pub fn adopt(
 
     // If every input was already adopted, there's nothing to do.
     if plans.is_empty() {
-        let mut result = status::status(Some(std::slice::from_ref(&pack_display)), ctx)?;
+        let mut result = adopt_result(&pack_display, &pack_path, &plans, ctx)?;
         result.dry_run = dry_run;
         for msg in skipped_already_adopted {
             result.warnings.push(msg);
@@ -182,31 +224,70 @@ pub fn adopt(
         return Ok(result);
     }
 
-    // Phase 1 — copy every source into the pack. On failure, cleanup and bail.
-    if let Err(e) = copy_all(&plans, ctx.fs.as_ref()) {
-        cleanup_pack_copies(&plans, ctx.fs.as_ref());
-        return Err(e);
-    }
-
-    // Cross-pack deploy conflict simulation happens with the copies in place.
-    if let Err(e) = check_deploy_conflicts(ctx) {
-        cleanup_pack_copies(&plans, ctx.fs.as_ref());
-        return Err(e);
-    }
-
-    // Dry-run stops here: we've verified the plan is viable, now unwind.
-    if dry_run {
-        cleanup_pack_copies(&plans, ctx.fs.as_ref());
-        let mut result = status::status(Some(std::slice::from_ref(&pack_display)), ctx)?;
-        result.dry_run = true;
-        for msg in skipped_already_adopted {
-            result.warnings.push(msg);
+    // ── Steps 2–4: Prepare, Validate, Publish ────────────────────────
+    //
+    // A new pack goes through the preparation directory and publishes
+    // with one rename. An existing pack still copies into final paths
+    // and validates afterwards — the pre-`adopt-safety` behavior that
+    // #377 (WS03) replaces.
+    let mut preparation: Option<Preparation> = None;
+    if pack_existed {
+        if let Err(e) = copy_all(&plans, ctx.fs.as_ref()) {
+            cleanup_pack_copies(&plans, ctx.fs.as_ref());
+            return Err(e);
         }
-        return Ok(result);
+        if let Err(e) = check_deploy_conflicts(ctx, None) {
+            cleanup_pack_copies(&plans, ctx.fs.as_ref());
+            return Err(e);
+        }
+        if dry_run {
+            cleanup_pack_copies(&plans, ctx.fs.as_ref());
+            let mut result = adopt_result(&pack_display, &pack_path, &plans, ctx)?;
+            result.dry_run = true;
+            for msg in skipped_already_adopted {
+                result.warnings.push(msg);
+            }
+            return Ok(result);
+        }
+    } else {
+        let prep = Preparation::create(ctx.fs.as_ref(), ctx.paths.dotfiles_root(), &pack_dir)?;
+
+        if let Err(e) = prep.fill(&plans, ctx.fs.as_ref()) {
+            prep.discard(ctx.fs.as_ref());
+            return Err(e);
+        }
+
+        if let Err(e) = check_deploy_conflicts(ctx, Some((&pack_dir, prep.pack_root()))) {
+            prep.discard(ctx.fs.as_ref());
+            return Err(e);
+        }
+
+        if dry_run {
+            prep.discard(ctx.fs.as_ref());
+            let mut result = adopt_result(&pack_display, &pack_path, &plans, ctx)?;
+            result.dry_run = true;
+            for msg in skipped_already_adopted {
+                result.warnings.push(msg);
+            }
+            return Ok(result);
+        }
+
+        if let Err(e) = prep.publish_new_pack(&pack_path, ctx.fs.as_ref()) {
+            prep.discard(ctx.fs.as_ref());
+            return Err(e);
+        }
+        preparation = Some(prep);
     }
 
-    // Phase 2 — per-source atomic swap. Failures are recorded, not fatal.
+    // ── Step 5: Replace sources ──────────────────────────────────────
+    //
+    // Per-source, and failures are recorded rather than fatal.
     let failures = swap_all(&plans, ctx.fs.as_ref());
+
+    // ── Step 6: Finish ───────────────────────────────────────────────
+    if let Some(prep) = preparation {
+        prep.discard(ctx.fs.as_ref());
+    }
 
     let mut result = status::status(Some(std::slice::from_ref(&pack_display)), ctx)?;
     result.dry_run = false;
@@ -384,6 +465,153 @@ pub fn adopt(
     Ok(result)
 }
 
+// ── Preparation directory ────────────────────────────────────────────
+
+/// Name prefix of the preparation directory a run stages content in.
+///
+/// It begins with `.`, and that is what keeps the directory out of pack
+/// discovery: [`packs::scan_packs`] skips every dotfiles-root directory
+/// whose name starts with `.` except `.config`, so a `dodot status`
+/// running mid-adopt reports the user's packs and not a half-copied one.
+///
+/// Adopt writes no marker file inside the directory to achieve that. A
+/// `.dodotignore` there would travel with the rename that publishes the
+/// pack and hide the pack it had just published, so the exclusion has to
+/// be a property of the directory's *name* — the published tree holds
+/// the user's content and nothing else.
+const PREPARATION_PREFIX: &str = ".dodot-adopt-";
+
+/// A run's staging area: `<dotfiles_root>/.dodot-adopt-<nonce>/`, holding
+/// the prospective pack tree at `<prefix><nonce>/<pack_dir>/<in_pack>`.
+///
+/// It lives inside the dotfiles root because publication is a `rename`
+/// of the prepared pack directory onto the final pack path, and `rename`
+/// does not cross filesystems. Copying *into* it may cross one — the
+/// user's `$HOME` and their dotfiles repo can sit on different
+/// filesystems — which is the same work adopt already did before.
+///
+/// The `<nonce>` suffix makes concurrent runs independent, and the fixed
+/// prefix makes a leftover from a killed process identifiable. Adopt
+/// never publishes from a leftover and never deletes one: only the run
+/// that created a preparation directory has a handle on it.
+struct Preparation {
+    /// The `.dodot-adopt-<nonce>` directory itself.
+    root: PathBuf,
+    /// The prospective pack tree, `root/<pack_dir>`. Publishing a new
+    /// pack renames this onto the final pack path.
+    pack_root: PathBuf,
+}
+
+impl Preparation {
+    /// Create an empty preparation directory in `dotfiles_root` holding
+    /// a prospective pack directory named `pack_dir`.
+    fn create(fs: &dyn Fs, dotfiles_root: &Path, pack_dir: &str) -> Result<Self> {
+        let root = dotfiles_root.join(format!("{PREPARATION_PREFIX}{}", nonce()));
+        let pack_root = root.join(pack_dir);
+        fs.mkdir_all(&pack_root)?;
+        Ok(Preparation { root, pack_root })
+    }
+
+    fn pack_root(&self) -> &Path {
+        &self.pack_root
+    }
+
+    /// Copy every plan's source into the prospective pack tree at the
+    /// in-pack path the plan assigned.
+    ///
+    /// Nothing outside the preparation directory is written, so the
+    /// caller answers a failure by discarding the whole directory.
+    fn fill(&self, plans: &[AdoptPlan], fs: &dyn Fs) -> Result<()> {
+        for plan in plans {
+            let dest = self.pack_root.join(&plan.in_pack);
+            if let Some(parent) = dest.parent() {
+                if !parent.as_os_str().is_empty() && !fs.exists(parent) {
+                    fs.mkdir_all(parent)?;
+                }
+            }
+            copy_tree(&plan.source, &dest, fs)?;
+        }
+        Ok(())
+    }
+
+    /// Publish the prospective tree as a new pack: one `rename` onto
+    /// `pack_path`.
+    ///
+    /// The pack appears complete or does not appear. If `pack_path` came
+    /// into existence between planning and here, publication refuses
+    /// rather than merging into it — nothing has been published yet, so
+    /// refusing costs the run nothing.
+    fn publish_new_pack(&self, pack_path: &Path, fs: &dyn Fs) -> Result<()> {
+        if fs.exists(pack_path) || fs.is_symlink(pack_path) {
+            return Err(DodotError::Other(format!(
+                "pack path {} appeared while adopt was preparing; refusing to \
+                 merge into it. Re-run adopt to plan against the pack that now \
+                 exists.",
+                pack_path.display()
+            )));
+        }
+        fs.rename(&self.pack_root, pack_path)
+    }
+
+    /// Remove the preparation directory and everything still in it.
+    ///
+    /// Best effort: this runs on the way out of both the refusal and the
+    /// success paths, and a failure to clean up is not a reason to fail
+    /// a run that has otherwise done what it said.
+    fn discard(&self, fs: &dyn Fs) {
+        remove_best_effort(fs, &self.root);
+    }
+}
+
+// ── Result assembly ──────────────────────────────────────────────────
+
+/// The command's result: the destination pack's status, or — when the
+/// pack is not on disk — a listing of what the plan would have adopted.
+///
+/// A `--dry-run` against an inferred pack that does not exist yet has no
+/// pack to report the status of, and creating one to have something to
+/// render is exactly what `docs/proposals/adopt-safety.lex` §5.3 forbids.
+/// The synthesized rows report the same plan the real run then executes.
+fn adopt_result(
+    pack_display: &str,
+    pack_path: &Path,
+    plans: &[AdoptPlan],
+    ctx: &ExecutionContext,
+) -> Result<PackStatusResult> {
+    if ctx.fs.exists(pack_path) {
+        return status::status(Some(&[pack_display.to_string()]), ctx);
+    }
+
+    let files: Vec<DisplayFile> = plans
+        .iter()
+        .map(|p| DisplayFile {
+            name: p.in_pack.display().to_string(),
+            symbol: "+".into(),
+            description: format!("would adopt {}", p.source.display()),
+            status: "pending".into(),
+            status_label: "planned".into(),
+            handler: String::new(),
+            note_ref: None,
+        })
+        .collect();
+
+    Ok(PackStatusResult {
+        message: None,
+        dry_run: false,
+        packs: vec![DisplayPack::new(pack_display.to_string(), files)],
+        warnings: Vec::new(),
+        notes: Vec::new(),
+        conflicts: Vec::new(),
+        ignored_packs: Vec::new(),
+        inactive_packs: Vec::new(),
+        view_mode: ctx.view_mode.as_str().into(),
+        group_mode: ctx.group_mode.as_str().into(),
+        diffs: Vec::new(),
+        shell_hookup: status::shell_hookup_notice(ctx),
+        failed: false,
+    })
+}
+
 // ── Pack resolution (override / inference / aggregation) ─────────────
 
 /// Outcome of resolving the (single) pack the entire adopt invocation
@@ -498,12 +726,24 @@ fn resolve_pack_for_sources(
     }
 }
 
-// ── Pre-flight ───────────────────────────────────────────────────────
+// ── Step 1: Plan ─────────────────────────────────────────────────────
 
+/// Resolve every source into an [`AdoptPlan`] and run every check that
+/// can refuse the run, writing nothing.
+///
+/// `pack_exists` says whether `pack_path` is on disk. When it is not,
+/// the pack is one this run would publish, so the writability probe goes
+/// to the dotfiles root — the directory the preparation directory is
+/// created in and the rename lands in — instead of a pack path that does
+/// not exist yet and must not be created to be tested.
+///
+/// Returns the plans and the human-readable messages for sources that
+/// were skipped because they are already adopted.
 #[allow(clippy::too_many_arguments)]
-fn preflight(
+fn plan(
     pack_name: &str,
     pack_path: &Path,
+    pack_exists: bool,
     sources: &[PathBuf],
     pack_override: Option<&str>,
     force: bool,
@@ -673,10 +913,21 @@ fn preflight(
         }
     }
 
+    // Entries are also checked against each other: two entries landing
+    // at the same in-pack path, or one entry containing another.
+    check_overlaps(&plans)?;
+
     // Permission pre-flight. We do this after planning so every error up to
     // this point gives precise guidance; perms check catches late issues.
     let _ = pack_name;
-    check_writable(fs, pack_path)?;
+    check_writable(
+        fs,
+        if pack_exists {
+            pack_path
+        } else {
+            &dotfiles_root
+        },
+    )?;
     for plan in &plans {
         // Pass the plan's `is_dir` (already resolved with `--no-follow`
         // semantics) so a symlink-to-dir under `--no-follow` isn't probed
@@ -688,6 +939,43 @@ fn preflight(
     }
 
     Ok((plans, skipped))
+}
+
+/// Refuse a plan set in which one entry contains another, on either
+/// side of the adoption.
+///
+/// No publication order makes such a pair come out right. Given
+/// `dodot adopt ~/.config/nvim/lua ~/.config/nvim/lua/plugins/init.lua`:
+/// replace the directory source first and the file source now resolves
+/// through the new symlink back into the pack, so replacing it
+/// overwrites the pack's own entry with a symlink to itself; replace the
+/// file first and publishing the directory buries it.
+///
+/// The check runs on source paths *and* in-pack paths, and treats
+/// entries that arrived through directory expansion no differently from
+/// ones the user typed. Same-path duplicates are caught earlier, in
+/// [`push_plan`], where the second entry's in-pack path is compared
+/// against the plans already built.
+fn check_overlaps(plans: &[AdoptPlan]) -> Result<()> {
+    for (i, a) in plans.iter().enumerate() {
+        for b in &plans[i + 1..] {
+            let (outer, inner) =
+                if b.source.starts_with(&a.source) || b.in_pack.starts_with(&a.in_pack) {
+                    (a, b)
+                } else if a.source.starts_with(&b.source) || a.in_pack.starts_with(&b.in_pack) {
+                    (b, a)
+                } else {
+                    continue;
+                };
+            return Err(DodotError::Other(format!(
+                "{} contains {}; adopt the outer one alone — adopting a \
+                 directory already carries its contents",
+                outer.source.display(),
+                inner.source.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Compute the in-pack path for one child of an expanded pack-root
@@ -812,6 +1100,7 @@ fn push_plan(
 
     plans.push(AdoptPlan {
         source: source.to_path_buf(),
+        in_pack: in_pack.to_path_buf(),
         pack_dest,
         is_dir,
         destructive_overwrite: dest_exists,
@@ -838,7 +1127,11 @@ fn absolutize(raw: &Path) -> Result<PathBuf> {
 
 fn check_writable(fs: &dyn Fs, dir: &Path) -> Result<()> {
     // Probe write by creating and removing a unique marker file.
-    let probe = dir.join(format!(".dodot-adopt-probe-{}", nonce()));
+    //
+    // Deliberately not under `PREPARATION_PREFIX`: that prefix names
+    // preparation directories, and a leftover probe file wearing it
+    // would read as one.
+    let probe = dir.join(format!(".dodot-write-probe-{}", nonce()));
     fs.write_file(&probe, b"").map_err(|e| {
         DodotError::Other(format!("not writable: {}: {}", dir.display(), err_msg(&e)))
     })?;
@@ -857,7 +1150,7 @@ fn check_readable(fs: &dyn Fs, path: &Path, is_dir: bool) -> Result<()> {
     }
 }
 
-// ── Phase 1: copy ─────────────────────────────────────────────────
+// ── Publication into an existing pack (pre-adopt-safety; #377) ────
 
 fn copy_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Result<()> {
     for plan in plans {
@@ -956,9 +1249,27 @@ fn remove_best_effort(fs: &dyn Fs, path: &Path) {
     }
 }
 
-// ── Deploy conflict check ─────────────────────────────────────────
+// ── Step 3: Validate ──────────────────────────────────────────────
 
-fn check_deploy_conflicts(ctx: &ExecutionContext) -> Result<()> {
+/// Refuse the run if deploying the pack tree would collide with another
+/// pack. `--force` does not bypass this.
+///
+/// `prospective` is `Some((pack_dir, prepared_root))` when the entries
+/// being adopted are still in the preparation directory — the new-pack
+/// path. The prepared tree is planned as a pack named `pack_dir` but
+/// read out of `prepared_root`, and its intents join whatever the pack
+/// of that name already contributes, so the analysis sees the pack's
+/// current entries composed with the prepared ones at their final
+/// in-pack paths. `detect_cross_pack_conflicts` only flags claims from
+/// *different* packs, so composing under one name is what keeps a pack
+/// from conflicting with its own prospective content.
+///
+/// `None` means the entries are already at their final pack paths, which
+/// is how an existing pack still publishes until #377 (WS03).
+fn check_deploy_conflicts(
+    ctx: &ExecutionContext,
+    prospective: Option<(&str, &Path)>,
+) -> Result<()> {
     let root_config = ctx.config_manager.root_config()?;
     let packs::DiscoveredPacks { packs: all, .. } = packs::scan_packs(
         ctx.fs.as_ref(),
@@ -978,6 +1289,22 @@ fn check_deploy_conflicts(ctx: &ExecutionContext) -> Result<()> {
         pack_intents.push((pack.display_name.clone(), intents));
     }
 
+    if let Some((pack_dir, prepared_root)) = prospective {
+        let mut prospective_pack = packs::Pack::new(
+            pack_dir.to_string(),
+            prepared_root.to_path_buf(),
+            Default::default(),
+        );
+        let pack_config = ctx.config_manager.config_for_pack(prepared_root)?;
+        prospective_pack.config = pack_config.to_handler_config();
+        let intents = orchestration::collect_pack_intents(&prospective_pack, ctx)?;
+        let display = prospective_pack.display_name.clone();
+        match pack_intents.iter_mut().find(|(name, _)| *name == display) {
+            Some((_, already)) => already.extend(intents),
+            None => pack_intents.push((display, intents)),
+        }
+    }
+
     let conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
     if !conflicts.is_empty() {
         return Err(DodotError::CrossPackConflict { conflicts });
@@ -985,7 +1312,7 @@ fn check_deploy_conflicts(ctx: &ExecutionContext) -> Result<()> {
     Ok(())
 }
 
-// ── Phase 2: atomic swap ──────────────────────────────────────────
+// ── Step 5: Replace sources ───────────────────────────────────────
 
 struct AdoptFailure {
     source: PathBuf,

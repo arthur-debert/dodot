@@ -122,3 +122,71 @@ teardown() {
     assert_output_contains "--into"
     assert_output_contains "could not infer"
 }
+
+# ── Safe new-pack adoption path ──────────────────────────────────
+#
+# docs/proposals/adopt-safety.lex §2.3: a refused adopt leaves the
+# dotfiles repo as it found it, an inferred pack included.
+
+@test "adopt --dry-run of a new inferred pack reports the plan and creates no pack" {
+    create_home_file ".config/ghostty/config" "theme = dark"
+
+    run dodot adopt --dry-run "$HOME/.config/ghostty/config"
+    [ "$status" -eq 0 ]
+    assert_output_contains "ghostty"
+    assert_output_contains "config"
+
+    # Nothing at a final path: no pack, no preparation directory left
+    # behind, and the source is still the user's own file.
+    assert_not_exists "$DOTFILES_ROOT/ghostty"
+    [ -z "$(find "$DOTFILES_ROOT" -maxdepth 1 -name '.dodot-adopt-*' -print -quit)" ]
+    [ ! -L "$HOME/.config/ghostty/config" ]
+    assert_file_contents "$HOME/.config/ghostty/config" "theme = dark"
+}
+
+@test "adopt refused by a cross-pack conflict creates no inferred pack" {
+    # `other` already deploys to ~/.config/ghostty/config via the _xdg/
+    # routing prefix, so publishing a `ghostty` pack would collide.
+    create_pack_file "other" "_xdg/ghostty/config" "from the other pack"
+    create_home_file ".config/ghostty/config" "theme = dark"
+
+    run dodot adopt "$HOME/.config/ghostty/config"
+    [ "$status" -ne 0 ]
+
+    assert_not_exists "$DOTFILES_ROOT/ghostty"
+    [ -z "$(find "$DOTFILES_ROOT" -maxdepth 1 -name '.dodot-adopt-*' -print -quit)" ]
+    [ ! -L "$HOME/.config/ghostty/config" ]
+    assert_file_contents "$HOME/.config/ghostty/config" "theme = dark"
+    assert_file_contents "$DOTFILES_ROOT/other/_xdg/ghostty/config" "from the other pack"
+}
+
+@test "adopt refuses a source that contains another source" {
+    create_home_file ".config/nvim/lua/init.lua" "-- init"
+
+    run dodot adopt "$HOME/.config/nvim/lua" "$HOME/.config/nvim/lua/init.lua"
+    [ "$status" -ne 0 ]
+    assert_output_contains "contains"
+
+    assert_not_exists "$DOTFILES_ROOT/nvim"
+    [ ! -L "$HOME/.config/nvim/lua" ]
+    assert_file_contents "$HOME/.config/nvim/lua/init.lua" "-- init"
+}
+
+@test "adopt publishes a new inferred pack whole and leaves no marker in it" {
+    create_home_file ".config/helix/config.toml" 'theme = "onedark"'
+    create_home_file ".config/helix/themes/extra.toml" 'fg = "white"'
+
+    run dodot adopt "$HOME/.config/helix"
+    [ "$status" -eq 0 ]
+
+    assert_file_contents "$DOTFILES_ROOT/helix/config.toml" 'theme = "onedark"'
+    assert_file_contents "$DOTFILES_ROOT/helix/themes/extra.toml" 'fg = "white"'
+    assert_not_exists "$DOTFILES_ROOT/helix/.dodotignore"
+    [ -z "$(find "$DOTFILES_ROOT" -maxdepth 1 -name '.dodot-adopt-*' -print -quit)" ]
+
+    # Immediately discoverable, with the sources replaced by links.
+    run dodot list
+    assert_output_contains "helix"
+    [ -L "$HOME/.config/helix/config.toml" ]
+    [ -L "$HOME/.config/helix/themes" ]
+}
