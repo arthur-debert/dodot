@@ -3490,6 +3490,222 @@ fn adopt_persists_no_record_of_left_in_place_entries() {
     }
 }
 
+// ── The pack directory is a scanned position too ───────────────────
+
+/// Inference takes the pack name from the source's own path, so it can
+/// land on a name the *dotfiles-root* scan skips. `node_modules` is on
+/// the default `[pack] ignore` list: publishing it would replace the
+/// source with a symlink into a pack no later `dodot up` or `dodot
+/// status` ever reads.
+#[test]
+fn adopt_refuses_an_inferred_pack_name_the_root_scan_ignores() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/node_modules/settings.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/node_modules/settings.json");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`node_modules`") && msg.contains("[pack] ignore"),
+        "expected the pack name and the matched rule, got: {msg}"
+    );
+    assert!(
+        msg.contains("dodot's default list"),
+        "expected the layer named, got: {msg}"
+    );
+
+    // Refused before any write: no pack, and the source is still a file.
+    env.assert_not_exists(&env.dotfiles_root.join("node_modules"));
+    env.assert_regular_file(&source, "{}");
+}
+
+/// The root `.dodot.toml`'s list decides the same question, and the
+/// refusal names that file so the user edits the one that matters.
+#[test]
+fn adopt_refuses_an_inferred_pack_name_the_root_config_ignores() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/settings.json", "{}")
+        .build();
+    write_config(&env.dotfiles_root, "[pack]\nignore = [\"zed\"]\n");
+
+    let source = env.home.join(".config/zed/settings.json");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`zed`") && msg.contains("the root .dodot.toml"),
+        "expected the root layer named, got: {msg}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("zed"));
+}
+
+/// The root scan skips every dot-prefixed directory but `.config`, so a
+/// hidden inferred pack name is unreadable however the file is written.
+#[test]
+fn adopt_refuses_a_hidden_inferred_pack_name() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/.foo/settings", "x")
+        .build();
+
+    let source = env.home.join(".config/.foo/settings");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`.foo`"),
+        "expected the pack named, got: {msg}"
+    );
+    assert!(
+        msg.contains("No config setting changes that"),
+        "the hidden rule has no configuration remedy, got: {msg}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join(".foo"));
+    env.assert_regular_file(&source, "x");
+}
+
+/// `--force` is an opt-in to replacing a destination, not to publishing
+/// a pack dodot cannot read.
+#[test]
+fn force_does_not_bypass_the_pack_directory_rules() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/node_modules/settings.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/node_modules/settings.json");
+    let err = adopt_source(&env, None, &source, true).unwrap_err();
+    assert!(err.to_string().contains("[pack] ignore"), "got: {err}");
+    env.assert_not_exists(&env.dotfiles_root.join("node_modules"));
+}
+
+/// Adopting a whole directory refuses on the same rule, before it
+/// expands a single child.
+#[test]
+fn adopt_refuses_an_ignored_pack_name_for_a_directory_source() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/node_modules/settings.json", "{}")
+        .home_file(".config/node_modules/keymap.json", "[]")
+        .build();
+
+    let source = env.home.join(".config/node_modules");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    assert!(err.to_string().contains("[pack] ignore"), "got: {err}");
+    env.assert_not_exists(&env.dotfiles_root.join("node_modules"));
+    env.assert_regular_file(&source.join("settings.json"), "{}");
+}
+
+/// `--into` names a pack the root scan already read, so the rules
+/// cannot fire on it — the same source adopts cleanly once the user says
+/// where it goes.
+#[test]
+fn an_explicit_pack_takes_a_source_whose_inferred_name_is_ignored() {
+    let env = TempEnvironment::builder()
+        .pack("editor")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/node_modules/settings.json", "{}")
+        .build();
+
+    let source = env.home.join(".config/node_modules/settings.json");
+    adopt_source(&env, Some("editor"), &source, false).unwrap();
+
+    env.assert_regular_file(
+        &env.dotfiles_root
+            .join("editor/_xdg/node_modules/settings.json"),
+        "{}",
+    );
+    assert!(env.fs.is_symlink(&source));
+}
+
+// ── Undefined gate directories ─────────────────────────────────────
+
+/// A pack scan does not *skip* an undefined `_<label>` directory — it
+/// stops with a hard error, and that error fails the scan of the whole
+/// pack. Adopting one would break a pack that read fine before the
+/// command ran, so it refuses.
+#[test]
+fn adopt_refuses_a_source_behind_an_undefined_gate_directory() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/_bogus/init.lua", "-- config")
+        .build();
+
+    let source = env.home.join(".config/nvim/_bogus/init.lua");
+    let err = adopt_source(&env, None, &source, false).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        msg.contains("`_bogus`") && msg.contains("gate label"),
+        "expected the directory and the rule, got: {msg}"
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("nvim"));
+    env.assert_regular_file(&source, "-- config");
+}
+
+/// Discovered by expansion, it is an ordinary skip: it stays where it
+/// is, its adoptable siblings complete, and the run reports it once —
+/// which is what keeps the published pack scannable.
+#[test]
+fn an_undefined_gate_directory_found_by_expansion_is_left_in_place() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- config")
+        .home_file(".config/nvim/_bogus/extra.lua", "-- extra")
+        .build();
+
+    let source = env.home.join(".config/nvim");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("nvim/init.lua"), "-- config");
+    env.assert_not_exists(&env.dotfiles_root.join("nvim/_bogus"));
+    env.assert_regular_file(&env.home.join(".config/nvim/_bogus/extra.lua"), "-- extra");
+
+    let report: Vec<&String> = result
+        .warnings
+        .iter()
+        .filter(|w| w.starts_with("left in place:"))
+        .collect();
+    assert_eq!(report.len(), 1, "reported once, got: {report:?}");
+    assert!(
+        report[0].contains("_bogus") && report[0].contains("gate label"),
+        "expected the rule named, got: {}",
+        report[0]
+    );
+
+    // The published pack is one a scan reads end to end.
+    let ctx = make_ctx(&env);
+    commands::status::status(Some(&["nvim".to_string()]), &ctx)
+        .expect("the published pack still scans");
+}
+
+/// A gate label the table *does* define stays adoptable — the rule is
+/// about undefined labels, not about gate directories.
+#[test]
+fn a_defined_gate_directory_stays_adoptable() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/_darwin/init.lua", "-- config")
+        .build();
+
+    let source = env.home.join(".config/nvim/_darwin/init.lua");
+    adopt_source(&env, None, &source, false).unwrap();
+    env.assert_regular_file(
+        &env.dotfiles_root.join("nvim/_darwin/init.lua"),
+        "-- config",
+    );
+}
+
+/// Routing prefixes are not gate labels, so `_home/` is an ordinary
+/// adoptable name and this rule does not touch it.
+#[test]
+fn routing_prefixes_are_not_undefined_gate_labels() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/_home/gitconfig", "[user]")
+        .build();
+
+    let source = env.home.join(".config/nvim/_home/gitconfig");
+    adopt_source(&env, None, &source, false).unwrap();
+    env.assert_regular_file(&env.dotfiles_root.join("nvim/_home/gitconfig"), "[user]");
+}
+
 /// Does any path or file content under `root` mention `needle`?
 fn tree_mentions(root: &std::path::Path, needle: &str) -> bool {
     let Ok(entries) = std::fs::read_dir(root) else {

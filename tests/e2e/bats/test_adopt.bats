@@ -324,3 +324,73 @@ teardown() {
     [ "$status" -eq 0 ]
     assert_file_contents "$DOTFILES_ROOT/nvim/lua/plugins/init.lua" "-- plugins"
 }
+
+# ── The pack directory the scan reads ────────────────────────────
+#
+# §3 applies at every position a later scan reads, and the pack
+# directory is one of them. Adopt picks that name by inference, so it
+# is the position adopt can get wrong on the user's behalf.
+
+@test "adopt refuses an inferred pack name the dotfiles-root scan ignores" {
+    create_home_file ".config/node_modules/settings.json" "{}"
+
+    run dodot adopt "$HOME/.config/node_modules/settings.json"
+    [ "$status" -ne 0 ]
+    assert_output_contains "node_modules"
+    assert_output_contains "[pack] ignore"
+
+    assert_not_exists "$DOTFILES_ROOT/node_modules"
+    [ ! -L "$HOME/.config/node_modules/settings.json" ]
+    assert_file_contents "$HOME/.config/node_modules/settings.json" "{}"
+}
+
+@test "adopt refuses a hidden inferred pack name" {
+    create_home_file ".config/.foo/settings" "x"
+
+    run dodot adopt "$HOME/.config/.foo/settings"
+    [ "$status" -ne 0 ]
+    assert_output_contains "No config setting changes that"
+
+    assert_not_exists "$DOTFILES_ROOT/.foo"
+    assert_file_contents "$HOME/.config/.foo/settings" "x"
+}
+
+@test "an explicit --into pack takes a source whose inferred name is ignored" {
+    create_pack "editor"
+    create_home_file ".config/node_modules/settings.json" "{}"
+
+    run dodot adopt "$HOME/.config/node_modules/settings.json" --into editor
+    [ "$status" -eq 0 ]
+
+    assert_file_contents "$DOTFILES_ROOT/editor/_xdg/node_modules/settings.json" "{}"
+    [ -L "$HOME/.config/node_modules/settings.json" ]
+}
+
+@test "adopt refuses a source behind an undefined gate directory" {
+    create_home_file ".config/nvim/_bogus/init.lua" "-- config"
+
+    run dodot adopt "$HOME/.config/nvim/_bogus/init.lua"
+    [ "$status" -ne 0 ]
+    assert_output_contains "gate label"
+
+    assert_not_exists "$DOTFILES_ROOT/nvim"
+    assert_file_contents "$HOME/.config/nvim/_bogus/init.lua" "-- config"
+}
+
+@test "an undefined gate directory found by expansion is left in place and the pack still scans" {
+    create_home_file ".config/nvim/init.lua" "-- config"
+    create_home_file ".config/nvim/_bogus/extra.lua" "-- extra"
+
+    run dodot adopt "$HOME/.config/nvim"
+    [ "$status" -eq 0 ]
+    assert_output_contains "left in place"
+    assert_output_contains "_bogus"
+
+    assert_file_contents "$DOTFILES_ROOT/nvim/init.lua" "-- config"
+    assert_not_exists "$DOTFILES_ROOT/nvim/_bogus"
+    assert_file_contents "$HOME/.config/nvim/_bogus/extra.lua" "-- extra"
+
+    # The published pack is one a scan reads end to end.
+    run dodot status nvim
+    [ "$status" -eq 0 ]
+}

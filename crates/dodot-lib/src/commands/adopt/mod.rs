@@ -69,8 +69,13 @@
 //!
 //! - Publication **into a pack that already exists** still copies into
 //!   final pack paths and then validates, which is the pre-proposal
-//!   behavior. `#377` (WS03) is where that path moves behind the
-//!   preparation directory and gains its recovery record.
+//!   behavior. Two consequences of that ordering survive here and are
+//!   `#377` (WS03)'s to remove, when that path moves behind the
+//!   preparation directory and gains its recovery record: `--dry-run`
+//!   against an existing pack has already written the final paths by the
+//!   time it reports, and under `--force` a destination it displaced is
+//!   gone rather than retained for restoration — which is what
+//!   `AdoptPlan::destructive_overwrite` exempts from cleanup.
 //! - The **rest of a failed source replacement's recovery** — removing
 //!   the intermediate directories publication created for that entry,
 //!   and removing a newly published pack when no source was replaced at
@@ -127,7 +132,7 @@ use crate::packs;
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::{DodotError, Result};
 
-use self::classify::{classify, EffectiveIgnore, SkipRule};
+use self::classify::{classify, pack_dir_refusal, EffectiveIgnore, SkipRule};
 use self::infer::{infer_target, InferredTarget};
 
 /// Re-export so the round-trip property test in `commands::tests` can
@@ -158,6 +163,13 @@ struct AdoptPlan {
     /// place; on later failure the new content is committed-destructively
     /// per the user's --force opt-in, and we can't restore the old content
     /// anyway.
+    ///
+    /// "Can't restore" is a property of the copy-into-final-paths order
+    /// this flag serves, not of what adopt owes the user.
+    /// `adopt-safety.lex` §5.4 keeps a displaced destination until §5.6
+    /// and renames it back on failure; reaching that means displacing
+    /// into the preparation directory instead of overwriting, which is
+    /// `#377` (WS03)'s work and retires this flag with it.
     destructive_overwrite: bool,
 }
 
@@ -249,6 +261,25 @@ pub fn adopt(
     // an explicit `--into` naming a missing pack already errored in
     // `resolve_pack_for_sources`.
     let pack_existed = ctx.fs.exists(&pack_path);
+
+    // The pack directory is a scanned position too, and it is the one
+    // adopt can pick for the user: an inferred name comes from the
+    // source's own path, so `~/.config/node_modules/settings.json`
+    // infers a `node_modules` pack that the default `[pack] ignore`
+    // list makes the dotfiles-root scan skip. Publishing it would
+    // replace the source with a symlink into a pack no later `dodot up`
+    // and no `dodot status` ever reads. Checked before the
+    // `.dodotignore` refusal below, in the order the scan applies the
+    // two: it filters directory names first, and only reads the marker
+    // inside the ones it kept.
+    let root_ignore = EffectiveIgnore::root(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        ctx.config_manager.root_config()?.pack.ignore.clone(),
+    );
+    if let Some(message) = pack_dir_refusal(&pack_dir, &root_ignore, ctx.paths.dotfiles_root()) {
+        return Err(DodotError::Other(message));
+    }
 
     if ctx.fs.exists(&pack_path.join(".dodotignore")) {
         return Err(DodotError::PackInvalid {
@@ -1041,7 +1072,7 @@ fn plan(
                     child_in_pack
                 };
                 let child_source = abs.join(&entry.name);
-                match classify(&child_in_pack, &ignore, &gates, host) {
+                match classify(&child_in_pack, entry.is_dir, &ignore, &gates, host) {
                     // A discovered `.dodot.toml` or `.dodotignore` is
                     // the one discovered entry that refuses the run
                     // (§3.3). Copying either into the pack would
@@ -1088,7 +1119,7 @@ fn plan(
             // A source the user typed that no pack scan would read is a
             // refusal, not a report: answering it with a success would
             // be a lie about what the command did (§3.2).
-            if let Some(rule) = classify(&in_pack, &ignore, &gates, host) {
+            if let Some(rule) = classify(&in_pack, is_dir, &ignore, &gates, host) {
                 return Err(DodotError::Other(rule.refusal(
                     &abs,
                     &in_pack,
@@ -1177,9 +1208,16 @@ fn no_adoptable_children(dir: &Path, children: &[(String, SkipRule)], pack: &str
 /// The §4 report: each left-in-place path once, with the rule that
 /// matched it.
 ///
-/// These are not failures and they never move the exit status — §5.5
-/// sets that from what happened to the *planned* sources, and a
-/// left-in-place entry was never planned.
+/// These are not failures. §5.5 draws the exit status from what happened
+/// to the *planned* sources, and a left-in-place entry was never
+/// planned, so nothing here belongs on that signal.
+///
+/// Nothing here sets it either, and neither does anything else adopt
+/// does today: `swap_all`'s per-source failures render as error rows and
+/// leave `PackStatusResult::failed` false, so a partially adopted run
+/// still exits 0. Making a failed planned source exit nonzero is an
+/// acceptance criterion of `#378` (WS04), which owns per-source
+/// replacement recovery and the exit-status contract together.
 fn report_left_in_place(result: &mut PackStatusResult, left: &[LeftInPlace], pack: &str) {
     for entry in left {
         result.warnings.push(format!(
