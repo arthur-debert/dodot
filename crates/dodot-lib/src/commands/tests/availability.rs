@@ -251,6 +251,9 @@ impl Fs for StagedStat {
     fn remove_dir_all(&self, path: &Path) -> Result<()> {
         self.inner.remove_dir_all(path)
     }
+    fn remove_dir_empty(&self, path: &Path) -> Result<()> {
+        self.inner.remove_dir_empty(path)
+    }
     fn exists(&self, path: &Path) -> bool {
         self.inner.exists(path)
     }

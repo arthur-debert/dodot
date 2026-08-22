@@ -168,6 +168,17 @@ pub trait Fs: Send + Sync {
     /// Removes a directory and all of its contents.
     fn remove_dir_all(&self, path: &Path) -> Result<()>;
 
+    /// Removes a directory only if it is empty, failing with
+    /// [`std::io::ErrorKind::DirectoryNotEmpty`] if it is not.
+    ///
+    /// The kernel decides emptiness inside the same operation that
+    /// removes, which is what a cleanup needs: "list it, see nothing,
+    /// then `remove_dir_all`" deletes whatever another process put
+    /// there between the two calls. A caller undoing its own work asks
+    /// here so that a directory which has since picked up someone
+    /// else's content survives.
+    fn remove_dir_empty(&self, path: &Path) -> Result<()>;
+
     /// Returns `true` if `path` exists (follows symlinks).
     fn exists(&self, path: &Path) -> bool;
 
@@ -389,6 +400,9 @@ mod tests {
         }
         fn remove_dir_all(&self, path: &Path) -> Result<()> {
             self.inner.remove_dir_all(path)
+        }
+        fn remove_dir_empty(&self, path: &Path) -> Result<()> {
+            self.inner.remove_dir_empty(path)
         }
         fn exists(&self, path: &Path) -> bool {
             self.inner.exists(path)

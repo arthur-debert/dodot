@@ -211,6 +211,79 @@ teardown() {
     assert_file_contents "$HOME/.config/ghostty/config" "theme = dark"
 }
 
+@test "adopt into an existing pack publishes through a staging directory it then removes" {
+    create_pack_file "nvim" "init.lua" "-- existing"
+    create_home_file ".config/nvim/lua/plugins/init.lua" "-- plugins"
+
+    run dodot adopt "$HOME/.config/nvim/lua/plugins/init.lua"
+    [ "$status" -eq 0 ]
+
+    # The pack keeps what it had and gains the entry at its nested path.
+    assert_file_contents "$DOTFILES_ROOT/nvim/init.lua" "-- existing"
+    assert_file_contents "$DOTFILES_ROOT/nvim/lua/plugins/init.lua" "-- plugins"
+    [ -L "$HOME/.config/nvim/lua/plugins/init.lua" ]
+    [ -z "$(find "$DOTFILES_ROOT" -maxdepth 1 -name '.dodot-adopt-*' -print -quit)" ]
+}
+
+@test "adopt refused by a cross-pack conflict leaves an existing pack byte-identical" {
+    # `unix` already deploys ~/.bashrc, so adopting a second one into
+    # `work` is refused — and the refusal comes before anything is
+    # written, so the destination --force was allowed to replace still
+    # holds its own content.
+    create_pack_file "unix" "bashrc" "unix owns ~/.bashrc"
+    create_pack_file "work" "home.vimrc" "OLD"
+    create_home_file ".vimrc" "NEW"
+    create_home_file ".bashrc" "also new"
+
+    run dodot adopt --into work --force "$HOME/.vimrc" "$HOME/.bashrc"
+    [ "$status" -ne 0 ]
+
+    assert_file_contents "$DOTFILES_ROOT/work/home.vimrc" "OLD"
+    assert_not_exists "$DOTFILES_ROOT/work/bashrc"
+    [ -z "$(find "$DOTFILES_ROOT" -maxdepth 1 -name '.dodot-adopt-*' -print -quit)" ]
+    [ ! -L "$HOME/.vimrc" ]
+    [ ! -L "$HOME/.bashrc" ]
+    assert_file_contents "$HOME/.vimrc" "NEW"
+}
+
+@test "adopt --dry-run into an existing pack writes nothing" {
+    create_pack_file "nvim" "init.lua" "-- existing"
+    create_home_file ".config/nvim/lua/plugins/init.lua" "-- plugins"
+
+    run dodot adopt --dry-run "$HOME/.config/nvim/lua/plugins/init.lua"
+    [ "$status" -eq 0 ]
+
+    assert_not_exists "$DOTFILES_ROOT/nvim/lua"
+    assert_file_contents "$DOTFILES_ROOT/nvim/init.lua" "-- existing"
+    [ -z "$(find "$DOTFILES_ROOT" -maxdepth 1 -name '.dodot-adopt-*' -print -quit)" ]
+    [ ! -L "$HOME/.config/nvim/lua/plugins/init.lua" ]
+    assert_file_contents "$HOME/.config/nvim/lua/plugins/init.lua" "-- plugins"
+}
+
+@test "adopt leaves a leftover staging directory alone and does not read it as a pack" {
+    create_pack_file "nvim" "init.lua" "-- existing"
+    create_home_file ".config/nvim/opts.lua" "-- opts"
+
+    # What a process killed mid-publication leaves: an identifiable
+    # staging directory holding an unpublished entry and a displaced
+    # destination.
+    mkdir -p "$DOTFILES_ROOT/.dodot-adopt-deadbeef/nvim/lua"
+    echo "-- never published" > "$DOTFILES_ROOT/.dodot-adopt-deadbeef/nvim/lua/two.lua"
+
+    run dodot adopt "$HOME/.config/nvim/opts.lua"
+    [ "$status" -eq 0 ]
+
+    assert_file_contents "$DOTFILES_ROOT/nvim/opts.lua" "-- opts"
+    assert_not_exists "$DOTFILES_ROOT/nvim/lua"
+    # Neither published from nor deleted.
+    assert_file_contents "$DOTFILES_ROOT/.dodot-adopt-deadbeef/nvim/lua/two.lua" "-- never published"
+
+    run dodot list
+    assert_output_contains "nvim"
+    assert_output_not_contains "dodot-adopt"
+}
+
+
 # ── Classification and the one-run report ────────────────────────
 #
 # docs/proposals/adopt-safety.lex §3–§4: adopt classifies where the
