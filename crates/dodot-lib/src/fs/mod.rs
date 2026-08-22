@@ -143,6 +143,19 @@ pub trait Fs: Send + Sync {
     /// Creates `path` and all parent directories.
     fn mkdir_all(&self, path: &Path) -> Result<()>;
 
+    /// Creates `path` as a new directory, failing with
+    /// [`std::io::ErrorKind::AlreadyExists`] if anything is there
+    /// already. Parent directories must exist.
+    ///
+    /// The exclusive counterpart to [`Fs::mkdir_all`], which treats an
+    /// existing directory as success. A caller that needs the
+    /// directory to be *its own* — a staging area no other process is
+    /// also writing into — creates it with this and reads
+    /// `AlreadyExists` as "choose another name", never as success.
+    /// Creation and the existence test are one operation, so two
+    /// processes racing for the same name cannot both win.
+    fn mkdir_exclusive(&self, path: &Path) -> Result<()>;
+
     /// Creates a symbolic link at `link` pointing to `original`.
     fn symlink(&self, original: &Path, link: &Path) -> Result<()>;
 
@@ -167,8 +180,23 @@ pub trait Fs: Send + Sync {
     /// Lists entries in a directory, sorted by name.
     fn read_dir(&self, path: &Path) -> Result<Vec<DirEntry>>;
 
-    /// Renames (moves) `from` to `to`.
+    /// Renames (moves) `from` to `to`, replacing `to` if it exists —
+    /// POSIX `rename` semantics, including replacing an empty
+    /// directory or a symlink.
     fn rename(&self, from: &Path, to: &Path) -> Result<()>;
+
+    /// Renames `from` to `to` unless `to` exists, in which case it
+    /// fails with [`std::io::ErrorKind::AlreadyExists`] and leaves
+    /// both paths as they were.
+    ///
+    /// Because [`Fs::rename`] replaces its destination, "test that
+    /// `to` is free, then rename" still overwrites a destination that
+    /// appeared between the two calls — an empty directory or a
+    /// symlink is enough. Here the kernel makes that decision in the
+    /// same operation that moves the file: `renameat2` with
+    /// `RENAME_NOREPLACE` on Linux, `renamex_np` with `RENAME_EXCL` on
+    /// macOS.
+    fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()>;
 
     /// Copies a file from `from` to `to`.
     fn copy_file(&self, from: &Path, to: &Path) -> Result<()>;
@@ -197,6 +225,20 @@ pub trait Fs: Send + Sync {
     fn set_modified(&self, _path: &Path, _time: std::time::SystemTime) -> Result<()> {
         unimplemented!("Fs::set_modified is only implemented by OsFs")
     }
+}
+
+/// `true` when `e` is the "something is already there" refusal of
+/// [`Fs::mkdir_exclusive`] or [`Fs::rename_noreplace`].
+///
+/// Both report it as an [`std::io::ErrorKind::AlreadyExists`] inside
+/// [`DodotError::Fs`](crate::DodotError::Fs); callers that retry under
+/// another name, or turn the collision into their own message, ask
+/// here rather than matching the variant themselves.
+pub(crate) fn is_already_exists(e: &crate::DodotError) -> bool {
+    matches!(
+        e,
+        crate::DodotError::Fs { source, .. } if source.kind() == std::io::ErrorKind::AlreadyExists
+    )
 }
 
 /// A dotted temp path in `path`'s own directory, for the write-then-
@@ -333,6 +375,9 @@ mod tests {
         fn mkdir_all(&self, path: &Path) -> Result<()> {
             self.inner.mkdir_all(path)
         }
+        fn mkdir_exclusive(&self, path: &Path) -> Result<()> {
+            self.inner.mkdir_exclusive(path)
+        }
         fn symlink(&self, original: &Path, link: &Path) -> Result<()> {
             self.inner.symlink(original, link)
         }
@@ -359,6 +404,9 @@ mod tests {
         }
         fn rename(&self, from: &Path, to: &Path) -> Result<()> {
             self.inner.rename(from, to)
+        }
+        fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()> {
+            self.inner.rename_noreplace(from, to)
         }
         fn copy_file(&self, from: &Path, to: &Path) -> Result<()> {
             self.inner.copy_file(from, to)

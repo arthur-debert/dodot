@@ -43,10 +43,11 @@
 //!    it. `--dry-run` reports the plan here and stops.
 //!
 //! 4. **Publish** — for an inferred pack that did not exist at plan
-//!    time, one `rename` of the prepared pack directory onto the pack
-//!    path: the pack appears complete or does not appear. A pack path
-//!    that came into existence after planning makes publication refuse
-//!    rather than merge into it.
+//!    time, one no-replace rename of the prepared pack directory onto
+//!    the pack path: the pack appears complete or does not appear. A
+//!    pack path that came into existence after planning makes
+//!    publication refuse rather than replace it, and the kernel decides
+//!    that inside the same operation that moves the tree.
 //!
 //! 5. **Replace sources** ([`swap_all`]) — per source, replace the
 //!    original with a symlink to its published pack path. Files use a
@@ -481,6 +482,15 @@ pub fn adopt(
 /// the user's content and nothing else.
 const PREPARATION_PREFIX: &str = ".dodot-adopt-";
 
+/// How many names [`Preparation::create`] tries before giving up.
+///
+/// [`nonce`] cannot repeat among live processes, so a taken name means
+/// a leftover from a dead process whose pid this one now carries, and
+/// the next name differs by the counter. More than a couple of those in
+/// a row is not a collision to ride out — it is a dotfiles root in a
+/// state worth reporting.
+const PREPARATION_NAME_ATTEMPTS: u32 = 8;
+
 /// A run's staging area: `<dotfiles_root>/.dodot-adopt-<nonce>/`, holding
 /// the prospective pack tree at `<prefix><nonce>/<pack_dir>/<in_pack>`.
 ///
@@ -490,10 +500,13 @@ const PREPARATION_PREFIX: &str = ".dodot-adopt-";
 /// user's `$HOME` and their dotfiles repo can sit on different
 /// filesystems — which is the same work adopt already did before.
 ///
-/// The `<nonce>` suffix makes concurrent runs independent, and the fixed
-/// prefix makes a leftover from a killed process identifiable. Adopt
-/// never publishes from a leftover and never deletes one: only the run
-/// that created a preparation directory has a handle on it.
+/// The `<nonce>` suffix names one run's directory, and creating it
+/// exclusively ([`Preparation::create`]) is what makes that ownership
+/// real: a run either makes the directory or picks another name, never
+/// joins one. The fixed prefix makes a leftover from a killed process
+/// identifiable. Adopt never publishes from a leftover and never
+/// deletes one: only the run that created a preparation directory has a
+/// handle on it.
 struct Preparation {
     /// The `.dodot-adopt-<nonce>` directory itself.
     root: PathBuf,
@@ -505,11 +518,40 @@ struct Preparation {
 impl Preparation {
     /// Create an empty preparation directory in `dotfiles_root` holding
     /// a prospective pack directory named `pack_dir`.
+    ///
+    /// The root is created exclusively, which is what makes the
+    /// returned `Preparation` this run's alone: a name that is already
+    /// taken — a concurrent run's directory, or a leftover from a
+    /// killed one — sends the loop to the next name instead of being
+    /// adopted as if this run had made it. Without that, two runs could
+    /// fill and discard one directory, and either could publish the
+    /// other's content or delete the tree the other was still
+    /// validating.
+    ///
+    /// Failing to create the pack directory inside removes the root
+    /// just claimed, so a failure here leaves the dotfiles root exactly
+    /// as it was.
     fn create(fs: &dyn Fs, dotfiles_root: &Path, pack_dir: &str) -> Result<Self> {
-        let root = dotfiles_root.join(format!("{PREPARATION_PREFIX}{}", nonce()));
-        let pack_root = root.join(pack_dir);
-        fs.mkdir_all(&pack_root)?;
-        Ok(Preparation { root, pack_root })
+        let mut attempt = 0;
+        loop {
+            let root = dotfiles_root.join(format!("{PREPARATION_PREFIX}{}", nonce()));
+            match fs.mkdir_exclusive(&root) {
+                Ok(()) => {
+                    let pack_root = root.join(pack_dir);
+                    if let Err(e) = fs.mkdir_all(&pack_root) {
+                        remove_best_effort(fs, &root);
+                        return Err(e);
+                    }
+                    return Ok(Preparation { root, pack_root });
+                }
+                Err(e) => {
+                    attempt += 1;
+                    if !crate::fs::is_already_exists(&e) || attempt >= PREPARATION_NAME_ATTEMPTS {
+                        return Err(e);
+                    }
+                }
+            }
+        }
     }
 
     fn pack_root(&self) -> &Path {
@@ -534,23 +576,35 @@ impl Preparation {
         Ok(())
     }
 
-    /// Publish the prospective tree as a new pack: one `rename` onto
-    /// `pack_path`.
+    /// Publish the prospective tree as a new pack: one no-replace
+    /// rename onto `pack_path`.
     ///
-    /// The pack appears complete or does not appear. If `pack_path` came
-    /// into existence between planning and here, publication refuses
-    /// rather than merging into it — nothing has been published yet, so
-    /// refusing costs the run nothing.
+    /// The pack appears complete or does not appear. A `pack_path` that
+    /// came into existence between planning and here makes publication
+    /// refuse rather than replace it — nothing has been published yet,
+    /// so refusing costs the run nothing.
+    ///
+    /// The kernel decides that in the same operation that moves the
+    /// tree ([`Fs::rename_noreplace`]). Testing `pack_path` here and
+    /// then calling a plain `rename` would leave an interval in which
+    /// the newcomer arrives after the test and gets replaced by the
+    /// rename — and a plain `rename` replaces a symlink or an empty
+    /// directory silently, which is exactly the shape a half-finished
+    /// concurrent run leaves behind.
     fn publish_new_pack(&self, pack_path: &Path, fs: &dyn Fs) -> Result<()> {
-        if fs.exists(pack_path) || fs.is_symlink(pack_path) {
-            return Err(DodotError::Other(format!(
-                "pack path {} appeared while adopt was preparing; refusing to \
-                 merge into it. Re-run adopt to plan against the pack that now \
-                 exists.",
-                pack_path.display()
-            )));
-        }
-        fs.rename(&self.pack_root, pack_path)
+        fs.rename_noreplace(&self.pack_root, pack_path)
+            .map_err(|e| {
+                if crate::fs::is_already_exists(&e) {
+                    DodotError::Other(format!(
+                        "pack path {} appeared while adopt was preparing; refusing to \
+                         merge into it. Re-run adopt to plan against the pack that now \
+                         exists.",
+                        pack_path.display()
+                    ))
+                } else {
+                    e
+                }
+            })
     }
 
     /// Remove the preparation directory and everything still in it.
@@ -956,26 +1010,70 @@ fn plan(
 /// ones the user typed. Same-path duplicates are caught earlier, in
 /// [`push_plan`], where the second entry's in-pack path is compared
 /// against the plans already built.
+///
+/// Which of the two overlapped decides what the refusal says. Source
+/// containment is a directory the user already asked for wholesale, so
+/// the remedy is to name it alone. Two sources that don't contain each
+/// other can still nest once inference has placed them: with `--into
+/// nvim`, `~/.config/other/lua` lands at `_xdg/other/lua` because the
+/// override reroutes it, while `~/.config/nvim/_xdg/other` is already
+/// written in that encoding and lands at `_xdg/other`. Calling one of
+/// those sources the container would describe a containment the user's
+/// arguments do not have, so that refusal names the two pack paths
+/// instead and asks for destinations that don't nest.
 fn check_overlaps(plans: &[AdoptPlan]) -> Result<()> {
     for (i, a) in plans.iter().enumerate() {
         for b in &plans[i + 1..] {
-            let (outer, inner) =
-                if b.source.starts_with(&a.source) || b.in_pack.starts_with(&a.in_pack) {
-                    (a, b)
-                } else if a.source.starts_with(&b.source) || a.in_pack.starts_with(&b.in_pack) {
-                    (b, a)
-                } else {
-                    continue;
-                };
-            return Err(DodotError::Other(format!(
-                "{} contains {}; adopt the outer one alone — adopting a \
-                 directory already carries its contents",
-                outer.source.display(),
-                inner.source.display()
-            )));
+            if let Some((outer, inner)) = source_containment(a, b) {
+                return Err(DodotError::Other(format!(
+                    "{} contains {}; adopt the outer one alone — adopting a \
+                     directory already carries its contents",
+                    outer.source.display(),
+                    inner.source.display()
+                )));
+            }
+            if let Some((outer, inner)) = in_pack_containment(a, b) {
+                return Err(DodotError::Other(format!(
+                    "{} and {} would land at {} and {} in the pack, one inside \
+                     the other; adopt them in one run only if their pack paths \
+                     don't nest, or adopt them separately",
+                    outer.source.display(),
+                    inner.source.display(),
+                    outer.in_pack.display(),
+                    inner.in_pack.display()
+                )));
+            }
         }
     }
     Ok(())
+}
+
+/// `(outer, inner)` when one plan's source path contains the other's.
+fn source_containment<'a>(
+    a: &'a AdoptPlan,
+    b: &'a AdoptPlan,
+) -> Option<(&'a AdoptPlan, &'a AdoptPlan)> {
+    if b.source.starts_with(&a.source) {
+        Some((a, b))
+    } else if a.source.starts_with(&b.source) {
+        Some((b, a))
+    } else {
+        None
+    }
+}
+
+/// `(outer, inner)` when one plan's in-pack path contains the other's.
+fn in_pack_containment<'a>(
+    a: &'a AdoptPlan,
+    b: &'a AdoptPlan,
+) -> Option<(&'a AdoptPlan, &'a AdoptPlan)> {
+    if b.in_pack.starts_with(&a.in_pack) {
+        Some((a, b))
+    } else if a.in_pack.starts_with(&b.in_pack) {
+        Some((b, a))
+    } else {
+        None
+    }
 }
 
 /// Compute the in-pack path for one child of an expanded pack-root
@@ -1266,6 +1364,18 @@ fn remove_best_effort(fs: &dyn Fs, path: &Path) {
 ///
 /// `None` means the entries are already at their final pack paths, which
 /// is how an existing pack still publishes until #377 (WS03).
+///
+/// Intents are collected in [`PreprocessMode::Passive`](crate::preprocessing::PreprocessMode::Passive):
+/// the question here is only which deployment targets each pack claims,
+/// and answering it actively would render every staged `*.tmpl` and
+/// resolve every staged secret — writing the rendered output and its
+/// baseline into the datastore, and prompting the user's secret
+/// provider — before adopt has decided whether the run goes ahead. A
+/// conflict refusal and `--dry-run` both leave that behind, which is the
+/// same reason `status` reads passively (`docs/proposals/secrets.lex`
+/// §7.4). Passive planning reads a preprocessor entry's cached baseline
+/// and falls back to a passthrough placeholder when it has none, so the
+/// entry still claims its target and still takes part in the analysis.
 fn check_deploy_conflicts(
     ctx: &ExecutionContext,
     prospective: Option<(&str, &Path)>,
@@ -1285,7 +1395,7 @@ fn check_deploy_conflicts(
         // truthfully say "no conflict with that pack," so refuse outright
         // rather than risk a false negative that lets us mutate into a
         // state `dodot up` will later reject.
-        let intents = orchestration::collect_pack_intents(&pack, ctx)?;
+        let intents = collect_intents_passive(&pack, ctx)?;
         pack_intents.push((pack.display_name.clone(), intents));
     }
 
@@ -1297,7 +1407,7 @@ fn check_deploy_conflicts(
         );
         let pack_config = ctx.config_manager.config_for_pack(prepared_root)?;
         prospective_pack.config = pack_config.to_handler_config();
-        let intents = orchestration::collect_pack_intents(&prospective_pack, ctx)?;
+        let intents = collect_intents_passive(&prospective_pack, ctx)?;
         let display = prospective_pack.display_name.clone();
         match pack_intents.iter_mut().find(|(name, _)| *name == display) {
             Some((_, already)) => already.extend(intents),
@@ -1310,6 +1420,18 @@ fn check_deploy_conflicts(
         return Err(DodotError::CrossPackConflict { conflicts });
     }
     Ok(())
+}
+
+/// The intents a pack would deploy, planned without preprocessing side
+/// effects — see [`check_deploy_conflicts`] for why adopt reads this
+/// way. Handler warnings are dropped: conflict analysis reads targets,
+/// and the run reports through `status` afterwards.
+fn collect_intents_passive(
+    pack: &packs::Pack,
+    ctx: &ExecutionContext,
+) -> Result<Vec<crate::operations::HandlerIntent>> {
+    orchestration::plan_pack(pack, ctx, crate::preprocessing::PreprocessMode::Passive)
+        .map(|plan| plan.intents)
 }
 
 // ── Step 5: Replace sources ───────────────────────────────────────
@@ -1379,13 +1501,27 @@ fn temp_sibling(path: &Path, tag: &str) -> PathBuf {
     parent.join(format!(".dodot-adopt-{}-{}-{}", tag, name, nonce()))
 }
 
+/// A name component no other live run can pick: this process's id, a
+/// process-global counter, and the current time.
+///
+/// Pids are unique among live processes and the counter is unique
+/// within this one, so two concurrent runs — or two names taken by one
+/// run — never coincide; uniqueness is structural rather than a bet on
+/// the clock. Time only separates this run from a leftover of a dead
+/// process whose pid has since been reused, and
+/// [`Preparation::create`] does not rest on even that: it creates the
+/// directory exclusively and moves to the next name if it is taken.
 fn nonce() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
     let n = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    format!("{:x}", n)
+    format!("{:x}-{:x}-{:x}", std::process::id(), seq, n)
 }
 
 fn err_msg(e: &DodotError) -> String {

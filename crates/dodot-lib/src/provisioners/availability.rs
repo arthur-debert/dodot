@@ -507,6 +507,9 @@ mod tests {
         fn mkdir_all(&self, _: &Path) -> crate::Result<()> {
             unimplemented!("the presence probe never writes")
         }
+        fn mkdir_exclusive(&self, _: &Path) -> crate::Result<()> {
+            unimplemented!("the presence probe never writes")
+        }
         fn symlink(&self, _: &Path, _: &Path) -> crate::Result<()> {
             unimplemented!("the presence probe never writes")
         }
@@ -532,6 +535,9 @@ mod tests {
             unimplemented!("the presence probe stats and does nothing else")
         }
         fn rename(&self, _: &Path, _: &Path) -> crate::Result<()> {
+            unimplemented!("the presence probe never writes")
+        }
+        fn rename_noreplace(&self, _: &Path, _: &Path) -> crate::Result<()> {
             unimplemented!("the presence probe never writes")
         }
         fn copy_file(&self, _: &Path, _: &Path) -> crate::Result<()> {

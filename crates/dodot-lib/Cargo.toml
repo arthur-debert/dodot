@@ -13,9 +13,11 @@ confique = "0.4"
 diffy = "0.4"
 flate2 = "1"
 glob = "0.3"
-# Two Unix facts std does not expose: killing a process group (the
-# shell-hookup probe's timeout, `shell::probe`) and the login shell in
-# the user database (`shell::rc`).
+# Three Unix facts std does not expose: killing a process group (the
+# shell-hookup probe's timeout, `shell::probe`), the login shell in the
+# user database (`shell::rc`), and a rename that refuses an existing
+# destination instead of replacing it (`fs::os`, `renameat2` /
+# `renamex_np`).
 libc = "0.2"
 minijinja = "2"
 plist = "1.7"

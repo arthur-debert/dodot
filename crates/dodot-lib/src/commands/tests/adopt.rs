@@ -1243,11 +1243,17 @@ fn adopt_filename_matching_pack_ignore_refused() {
     );
 }
 
+/// Validating a run reads what the other packs claim; it does not
+/// evaluate them. A pack holding a template that cannot render is no
+/// reason to refuse an unrelated adoption — and, more to the point,
+/// nothing is rendered on the way to finding that out. Rendering during
+/// validation would write the output and its baseline into the
+/// datastore (and prompt the user's secret provider) before adopt has
+/// decided whether the run goes ahead at all, and a refusal or a
+/// `--dry-run` would leave that behind. Same contract as `status`,
+/// `docs/proposals/secrets.lex` §7.4.
 #[test]
-fn adopt_broken_pack_blocks_conflict_check() {
-    // If another pack fails intent collection, adoption must refuse rather
-    // than silently proceed — otherwise the conflict check produces a false
-    // negative and we'd mutate into a state `dodot up` would later reject.
+fn adopt_validation_does_not_render_another_packs_templates() {
     let env = TempEnvironment::builder()
         .pack("broken")
         .file("config.toml.tmpl", "{{ missing_var }}")
@@ -1258,10 +1264,51 @@ fn adopt_broken_pack_blocks_conflict_check() {
         .home_file(".vimrc", "content")
         .build();
 
+    let before = tree_snapshot(&env.data_dir);
+
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
-    let err = commands::adopt::adopt(
+    commands::adopt::adopt(
         Some("target"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("target/home.vimrc"), "content");
+    assert!(env.fs.is_symlink(&source));
+    assert_eq!(
+        tree_snapshot(&env.data_dir),
+        before,
+        "validating an adoption must not write anything to the datastore"
+    );
+}
+
+/// The other half of that: reading passively still reads the claims. The
+/// unrenderable template deploys to the very path this adoption would
+/// claim, and the run is refused on that basis — a template's deployed
+/// name comes from its filename, so passive planning surfaces the claim
+/// without ever evaluating the content.
+#[test]
+fn adopt_deploy_conflict_refused_against_an_unrendered_template() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("bashrc.tmpl", "{{ missing_var }}")
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".bashrc");
+    let err = commands::adopt::adopt(
+        Some("work"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1271,15 +1318,34 @@ fn adopt_broken_pack_blocks_conflict_check() {
     )
     .unwrap_err();
 
-    // The error surfaces from the broken pack's intent collection
-    // (template render failure), not a silent success.
     assert!(
-        matches!(err, crate::DodotError::TemplateRender { .. }),
-        "expected the broken pack's error to surface, got: {err}"
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "expected the cross-pack conflict to surface, got: {err}"
     );
+    env.assert_regular_file(&source, "new");
+    env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
+}
 
-    env.assert_regular_file(&source, "content");
-    env.assert_not_exists(&env.dotfiles_root.join("target/vimrc"));
+/// Every path under `root`, sorted — what a test compares before and
+/// after to say a directory was left alone. Missing root reads as empty,
+/// which is the state a run that wrote nothing leaves it in.
+fn tree_snapshot(root: &std::path::Path) -> Vec<String> {
+    fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = format!("{prefix}{}", entry.file_name().to_string_lossy());
+            if entry.path().is_dir() && !entry.path().is_symlink() {
+                walk(&entry.path(), &format!("{name}/"), out);
+            }
+            out.push(name);
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, "", &mut out);
+    out.sort();
+    out
 }
 
 #[test]
@@ -1675,6 +1741,54 @@ fn adopt_overlap_through_directory_expansion_refused_during_plan() {
     env.assert_regular_file(&file, "-- init");
 }
 
+/// Two sources with no containment between them can still nest once
+/// inference has placed them, and that refusal says what actually went
+/// wrong. Here `~/.config/other/lua` lands at `_xdg/other/lua` because
+/// `--into nvim` reroutes it, and `~/.config/nvim/_xdg/other` is already
+/// written in that encoding, so one pack path sits inside the other.
+/// Neither source contains the other, and telling the user to "adopt the
+/// outer one alone" would name a directory that carries nothing of the
+/// other source.
+#[test]
+fn adopt_overlapping_in_pack_paths_refused_with_their_pack_paths() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/other/lua/init.lua", "-- other")
+        .home_file(".config/nvim/_xdg/other/keep", "-- kept")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let rerouted = env.home.join(".config/other/lua");
+    let already_encoded = env.home.join(".config/nvim/_xdg/other");
+
+    let err = commands::adopt::adopt(
+        Some("nvim"),
+        &[rerouted.clone(), already_encoded.clone()],
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("_xdg/other/lua") && msg.contains("would land at"),
+        "expected a refusal naming both pack paths, got: {msg}"
+    );
+    assert!(
+        !msg.contains("contains"),
+        "neither source contains the other, so the refusal must not say so: {msg}"
+    );
+    // And Plan refused before writing: both sources are as they were.
+    env.assert_regular_file(&rerouted.join("init.lua"), "-- other");
+    env.assert_regular_file(&already_encoded.join("keep"), "-- kept");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
 /// Prospective content is copied beneath a `.dodot-adopt-` directory in
 /// the dotfiles root, and a pack scan running at that moment reports the
 /// user's packs rather than the half-copied one (§5.2).
@@ -1890,7 +2004,7 @@ fn adopt_new_pack_publication_failure_leaves_no_pack() {
     let pack_path = env.dotfiles_root.join("helix");
     let target = pack_path.clone();
     let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| match op {
-        super::support::FsOp::Rename { to, .. } if to == target => {
+        super::support::FsOp::RenameNoReplace { to, .. } if to == target => {
             Err(crate::DodotError::Other("injected publish failure".into()))
         }
         _ => Ok(()),
@@ -1943,7 +2057,7 @@ fn adopt_new_pack_publishes_with_one_rename_and_replaces_sources() {
     let sink = publishes.clone();
     let target = pack_path.clone();
     let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
-        if let super::support::FsOp::Rename { from, to } = op {
+        if let super::support::FsOp::RenameNoReplace { from, to } = op {
             if to == target {
                 sink.lock().unwrap().push(from.to_path_buf());
             }
@@ -2049,6 +2163,167 @@ fn adopt_new_pack_refuses_when_the_pack_path_appears_after_planning() {
     env.assert_file_contents(&pack_path.join("nested/other.toml"), "someone else's");
     assert_eq!(env.list_dir_names(&pack_path), vec!["nested".to_string()]);
     assert!(preparation_dirs(&env).is_empty());
+    env.assert_regular_file(&source, "theme = dark");
+}
+
+/// The tighter half of the same guarantee: the pack path appears at the
+/// last possible instant — after publication has begun and before the
+/// kernel moves the tree. A publication that tested the path and then
+/// renamed would replace the newcomer here; a no-replace rename refuses
+/// it, so what the other writer put there survives untouched.
+#[test]
+fn adopt_new_pack_refuses_when_the_pack_path_appears_at_the_instant_of_publication() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/ghostty/config", "theme = dark")
+        .build();
+
+    let pack_path = env.dotfiles_root.join("ghostty");
+    let racer = pack_path.clone();
+    // An empty directory, which is what a plain `rename` replaces
+    // without a word — the case a check-then-rename publication cannot
+    // see coming.
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if let super::support::FsOp::RenameNoReplace { to, .. } = op {
+            if to == racer {
+                std::fs::create_dir(&racer).unwrap();
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let source = env.home.join(".config/ghostty/config");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("appeared") && msg.contains("refusing to merge into it"),
+        "expected a publication refusal naming the race, got: {msg}"
+    );
+    // The newcomer is exactly as the other writer left it, and adopt
+    // published nothing into it.
+    assert!(env.fs.is_dir(&pack_path));
+    assert!(
+        env.list_dir_names(&pack_path).is_empty(),
+        "the directory that appeared must be left as it was found, got: {:?}",
+        env.list_dir_names(&pack_path)
+    );
+    assert!(preparation_dirs(&env).is_empty());
+    env.assert_regular_file(&source, "theme = dark");
+}
+
+/// The preparation directory is claimed, not merely named: a name
+/// already taken — a concurrent run's, or a leftover from a killed one —
+/// sends the run to the next name instead of filling a directory
+/// someone else may also be filling, validating, or deleting.
+#[test]
+fn adopt_new_pack_claims_another_name_when_the_preparation_name_is_taken() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/ghostty/config", "theme = dark")
+        .build();
+
+    // Squat the first name adopt tries, right before it tries it, and
+    // leave content in it so a run that adopted the directory instead of
+    // refusing it would be visible.
+    let squatted: Arc<std::sync::Mutex<Option<std::path::PathBuf>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let sink = squatted.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if let super::support::FsOp::MkdirExclusive { path } = op {
+            let mut first = sink.lock().unwrap();
+            if first.is_none() {
+                std::fs::create_dir(path).unwrap();
+                std::fs::write(path.join("squatter"), b"another run's").unwrap();
+                *first = Some(path.to_path_buf());
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let source = env.home.join(".config/ghostty/config");
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    // The run published its own pack from a directory of its own.
+    assert_eq!(pack_names(&env), vec!["ghostty".to_string()]);
+    env.assert_file_contents(&env.dotfiles_root.join("ghostty/config"), "theme = dark");
+
+    // And never touched the one it found taken.
+    let squatted = squatted.lock().unwrap().clone().expect("a name was taken");
+    env.assert_file_contents(&squatted.join("squatter"), "another run's");
+    assert_eq!(
+        preparation_dirs(&env),
+        vec![squatted.file_name().unwrap().to_string_lossy().to_string()],
+        "only the taken directory survives; the run removed its own"
+    );
+}
+
+/// Failing to create the pack directory inside a freshly claimed
+/// preparation root removes the root, so the promise that a preparation
+/// failure leaves nothing behind covers the allocation step too (§6).
+#[test]
+fn adopt_new_pack_preparation_child_failure_removes_the_claimed_root() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/ghostty/config", "theme = dark")
+        .build();
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| match op {
+        // The pack directory inside the preparation root — the one
+        // `mkdir_all` that lands under a `.dodot-adopt-` name.
+        super::support::FsOp::MkdirAll { path }
+            if path
+                .parent()
+                .and_then(|p| p.file_name())
+                .is_some_and(|n| n.to_string_lossy().starts_with(".dodot-adopt-")) =>
+        {
+            Err(crate::DodotError::Other(
+                "injected preparation failure".into(),
+            ))
+        }
+        _ => Ok(()),
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let source = env.home.join(".config/ghostty/config");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("injected preparation failure"),
+        "expected the injected failure to surface, got: {err}"
+    );
+    assert!(
+        preparation_dirs(&env).is_empty(),
+        "the root claimed for this run must not outlive the failure, got: {:?}",
+        preparation_dirs(&env)
+    );
+    env.assert_not_exists(&env.dotfiles_root.join("ghostty"));
     env.assert_regular_file(&source, "theme = dark");
 }
 

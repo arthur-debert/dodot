@@ -156,7 +156,9 @@ pub(super) fn make_ctx_with_fs(env: &TempEnvironment, fs: Arc<dyn Fs>) -> Execut
 /// else on [`Fs`] passes straight through.
 pub(super) enum FsOp<'a> {
     CopyFile { from: &'a Path, to: &'a Path },
-    Rename { from: &'a Path, to: &'a Path },
+    RenameNoReplace { from: &'a Path, to: &'a Path },
+    MkdirAll { path: &'a Path },
+    MkdirExclusive { path: &'a Path },
 }
 
 /// Wraps a real filesystem and runs a hook immediately before each
@@ -192,8 +194,11 @@ impl Fs for InterposedFs {
         self.inner.copy_file(from, to)
     }
     fn rename(&self, from: &Path, to: &Path) -> Result<()> {
-        (self.before)(FsOp::Rename { from, to })?;
         self.inner.rename(from, to)
+    }
+    fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()> {
+        (self.before)(FsOp::RenameNoReplace { from, to })?;
+        self.inner.rename_noreplace(from, to)
     }
     fn stat(&self, path: &Path) -> Result<crate::fs::FsMetadata> {
         self.inner.stat(path)
@@ -211,7 +216,12 @@ impl Fs for InterposedFs {
         self.inner.read_to_string(path)
     }
     fn mkdir_all(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::MkdirAll { path })?;
         self.inner.mkdir_all(path)
+    }
+    fn mkdir_exclusive(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::MkdirExclusive { path })?;
+        self.inner.mkdir_exclusive(path)
     }
     fn symlink(&self, original: &Path, link: &Path) -> Result<()> {
         self.inner.symlink(original, link)
