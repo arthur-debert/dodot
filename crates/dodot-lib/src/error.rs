@@ -71,6 +71,67 @@ pub enum DodotError {
     },
 
     #[error(
+        "adopt could not finish publishing into pack `{pack}`: {reason}\n  \
+         the entries it had already published are back where they were, so the pack \
+         holds its pre-adopt content: {}\n  \
+         no source file was changed — nothing was adopted.",
+        if .restored.is_empty() {
+            "the failure came before the first entry was published".to_string()
+        } else {
+            format!("restored {}", .restored.join(", "))
+        }
+    )]
+    PublicationRolledBack {
+        /// Display name of the pack publication was writing into.
+        pack: String,
+        /// What went wrong at the entry publication stopped on.
+        reason: String,
+        /// In-pack paths whose pre-adopt content publication put back,
+        /// in plan order. An entry `--force` displaced is restored to
+        /// the content it held before the run; an entry that had no
+        /// prior content is restored to not existing.
+        restored: Vec<String>,
+    },
+
+    #[error(
+        "adopt could not finish publishing into pack `{pack}`: {reason}\n  \
+         and could not put the pack back the way it was:\n{}\n  \
+         nothing was deleted — that content is still on disk at the paths above, and \
+         this run has left `{preparation}` in place rather than cleaning it up. Move \
+         what you need back by hand, then remove that directory.{}\n  \
+         no source file was changed — nothing was adopted.",
+        .stranded
+            .iter()
+            .map(|s| format!("  - `{}` is at `{}`", s.in_pack, s.at))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        if .restored.is_empty() {
+            String::new()
+        } else {
+            format!("\n  the rest of the pack is back as it was: {}", .restored.join(", "))
+        }
+    )]
+    PublicationRollbackIncomplete {
+        /// Display name of the pack publication was writing into.
+        pack: String,
+        /// What went wrong at the entry publication stopped on.
+        reason: String,
+        /// In-pack paths whose pre-adopt content the rollback did put
+        /// back, in plan order.
+        restored: Vec<String>,
+        /// Entries the rollback could not put back, and where their
+        /// content is now — in the preparation directory for a
+        /// displacement that could not return, or at the in-pack path
+        /// for content publication put there and the rollback could not
+        /// move back out.
+        stranded: Vec<crate::commands::adopt::StrandedEntry>,
+        /// The preparation directory, kept rather than discarded
+        /// because it holds the only remaining copy of some of the
+        /// above.
+        preparation: String,
+    },
+
+    #[error(
         "routing override conflict in pack `{pack}` for `{rel_path}`:\n  \
          filename routes via its prefix, and `[symlink.targets]` declares `{config_target}`.\n  \
          pick one — either rename the file (drop the `home.`/`app.`/`xdg.`/`lib.` or `_home/`/`_xdg/`/`_app/`/`_lib/` prefix) \

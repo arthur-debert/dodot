@@ -522,6 +522,9 @@ mod tests {
         fn remove_dir_all(&self, _: &Path) -> crate::Result<()> {
             unimplemented!("the presence probe never writes")
         }
+        fn remove_dir_empty(&self, _: &Path) -> crate::Result<()> {
+            unimplemented!("the presence probe never writes")
+        }
         fn exists(&self, _: &Path) -> bool {
             unimplemented!("the presence probe asks for mode bits, not existence")
         }

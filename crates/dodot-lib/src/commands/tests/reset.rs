@@ -375,6 +375,9 @@ impl Fs for AbsentObservationProbe {
     fn remove_dir_all(&self, path: &std::path::Path) -> crate::Result<()> {
         self.inner.remove_dir_all(path)
     }
+    fn remove_dir_empty(&self, path: &std::path::Path) -> crate::Result<()> {
+        self.inner.remove_dir_empty(path)
+    }
     fn exists(&self, path: &std::path::Path) -> bool {
         self.inner.exists(path)
     }

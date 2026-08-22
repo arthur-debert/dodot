@@ -107,6 +107,10 @@ impl Fs for OsFs {
         fs::remove_dir_all(path).map_err(|e| fs_err(path, e))
     }
 
+    fn remove_dir_empty(&self, path: &Path) -> Result<()> {
+        fs::remove_dir(path).map_err(|e| fs_err(path, e))
+    }
+
     fn exists(&self, path: &Path) -> bool {
         path.exists()
     }

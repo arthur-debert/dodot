@@ -1780,13 +1780,18 @@ fn adopt_reads_externals_claims_from_the_cached_baseline() {
 
 /// Every path under `root`, sorted — what a test compares before and
 /// after to say a directory was left alone. Missing root reads as empty,
-/// which is the state a run that wrote nothing leaves it in.
+/// which is the state a run that wrote nothing leaves it in; any other
+/// read failure is the test's own bug and panics rather than reading as
+/// an empty directory that compares equal to whatever was there.
 fn tree_snapshot(root: &std::path::Path) -> Vec<String> {
     fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+            Err(e) => panic!("reading {}: {e}", dir.display()),
         };
-        for entry in entries.flatten() {
+        for entry in entries {
+            let entry = entry.unwrap_or_else(|e| panic!("listing {}: {e}", dir.display()));
             let name = format!("{prefix}{}", entry.file_name().to_string_lossy());
             if entry.path().is_dir() && !entry.path().is_symlink() {
                 walk(&entry.path(), &format!("{name}/"), out);
@@ -2841,4 +2846,1116 @@ fn adopt_classification_refusal_creates_no_inferred_pack() {
     env.assert_not_exists(&env.dotfiles_root.join("junk"));
     assert!(preparation_dirs(&env).is_empty());
     env.assert_regular_file(&source, "noise");
+}
+
+// ── Recoverable existing-pack publication ────────────────────────
+//
+// `docs/proposals/adopt-safety.lex` §5.4 splits publication in two. A
+// new pack is one rename and is atomic; a pack that already exists takes
+// a sequence of renames and is *recoverable* instead — adopt undoes its
+// own renames on failure and says what it put back. These tests pin the
+// second half: what the pack holds after a refusal, after a failure at
+// entry N, and after a `--force` run that never got to commit.
+
+/// The recorded content of one path in a [`file_snapshot`]: raw bytes
+/// for a regular file, the link target for a symlink.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Snapshot {
+    File(Vec<u8>),
+    Link(std::path::PathBuf),
+}
+
+impl Snapshot {
+    /// The expected content of a text file, for an assertion written
+    /// against a literal.
+    fn file(contents: &str) -> Snapshot {
+        Snapshot::File(contents.as_bytes().to_vec())
+    }
+}
+
+/// Every file under `root` as `relative path => content`, sorted. Two
+/// of these taken either side of a refused run is how a test says the
+/// pack was left byte-identical.
+///
+/// Bytes rather than text, and every read is unwrapped: reading each
+/// file as a lossy or defaulted string would let a changed file compare
+/// equal to the one before it — non-UTF-8 content reads the same
+/// whatever the bytes are, and a read that fails reads as empty — which
+/// is precisely the change these tests exist to catch. An absent `root`
+/// snapshots as empty; anything present has to be readable.
+fn file_snapshot(root: &std::path::Path) -> Vec<(String, Snapshot)> {
+    fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<(String, Snapshot)>) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+            Err(e) => panic!("reading {}: {e}", dir.display()),
+        };
+        for entry in entries {
+            let entry = entry.unwrap_or_else(|e| panic!("listing {}: {e}", dir.display()));
+            let name = format!("{prefix}{}", entry.file_name().to_string_lossy());
+            let path = entry.path();
+            if path.is_symlink() {
+                let target = std::fs::read_link(&path)
+                    .unwrap_or_else(|e| panic!("reading link {}: {e}", path.display()));
+                out.push((name, Snapshot::Link(target)));
+            } else if path.is_dir() {
+                walk(&path, &format!("{name}/"), out);
+            } else {
+                let bytes = std::fs::read(&path)
+                    .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
+                out.push((name, Snapshot::File(bytes)));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, "", &mut out);
+    out.sort();
+    out
+}
+
+/// The `.displaced` subtree of whichever preparation directory is
+/// currently in the dotfiles root, as `relative path => content`.
+/// Empty when no run is in flight or nothing has been displaced.
+fn displaced_snapshot(env: &TempEnvironment) -> Vec<(String, Snapshot)> {
+    preparation_dirs(env)
+        .into_iter()
+        .flat_map(|name| file_snapshot(&env.dotfiles_root.join(name).join(".displaced")))
+        .collect()
+}
+
+/// Validation reads the pack's current entries composed with the
+/// prepared ones (§5.3), so it catches a conflict the *prepared* entry
+/// causes — and it catches it without a final pack path having been
+/// written, so the refusal leaves the pack byte-identical (§6).
+///
+/// The `--force` entry in the same run is what makes the second half
+/// worth asserting: before this, a destination `--force` was allowed to
+/// replace could be overwritten by an earlier plan and stay overwritten
+/// after a later check refused the run (§1.2).
+#[test]
+fn adopt_existing_pack_refused_by_validation_stays_byte_identical() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("bashrc", "unix owns ~/.bashrc")
+        .done()
+        .pack("work")
+        .file("home.vimrc", "OLD")
+        .done()
+        .home_file(".vimrc", "NEW")
+        .home_file(".bashrc", "also new")
+        .build();
+
+    let pack = env.dotfiles_root.join("work");
+    let before = file_snapshot(&pack);
+
+    let ctx = make_ctx(&env);
+    // `.vimrc` would replace `work/home.vimrc` under --force; `.bashrc`
+    // would land at `work/bashrc`, which `unix/bashrc` already claims.
+    let sources = vec![env.home.join(".vimrc"), env.home.join(".bashrc")];
+    let err =
+        commands::adopt::adopt(Some("work"), &sources, true, false, false, None, &ctx).unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "expected the prepared entry's conflict to refuse the run, got: {err}"
+    );
+    assert_eq!(
+        file_snapshot(&pack),
+        before,
+        "a refused check must leave the existing pack byte-identical"
+    );
+    env.assert_regular_file(&env.home.join(".vimrc"), "NEW");
+    env.assert_regular_file(&env.home.join(".bashrc"), "also new");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// Publication creates the intermediate directories the plan needs and
+/// no others, then renames each prepared entry into its final path
+/// (§5.4).
+#[test]
+fn adopt_existing_pack_creates_only_the_intermediate_dirs_the_plan_needs() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- existing")
+        .done()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let created: Arc<std::sync::Mutex<Vec<std::path::PathBuf>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = created.clone();
+    let pack_probe = pack.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if let super::support::FsOp::MkdirExclusive { path } = op {
+            if path.starts_with(&pack_probe) {
+                sink.lock().unwrap().push(path.to_path_buf());
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let source = env.home.join(".config/nvim/lua/plugins/init.lua");
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(
+        created.lock().unwrap().clone(),
+        vec![pack.join("lua"), pack.join("lua/plugins")],
+        "publication creates exactly the intermediate directories the plan needs"
+    );
+    env.assert_regular_file(&pack.join("lua/plugins/init.lua"), "-- plugins");
+    env.assert_regular_file(&pack.join("init.lua"), "-- existing");
+    env.assert_symlink(&source, &pack.join("lua/plugins/init.lua"));
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// Under `--force`, the existing destination is renamed into the
+/// preparation directory before the prepared entry is published, and it
+/// stays there until every source has been replaced (§5.4, §5.6) — the
+/// window in which #378 can still put an individual entry back.
+#[test]
+fn adopt_existing_pack_force_retains_displaced_content_through_source_replacement() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- OLD")
+        .done()
+        .home_file(".config/nvim/init.lua", "-- NEW")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+
+    // What the pack and the preparation directory held at the moment
+    // source replacement created its symlink.
+    type Seen = Arc<std::sync::Mutex<Vec<(String, Vec<(String, Snapshot)>)>>>;
+    let seen: Seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    let probe_env = env.dotfiles_root.clone();
+    let pack_probe = pack.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if let super::support::FsOp::Symlink { .. } = op {
+            let published = std::fs::read_to_string(pack_probe.join("init.lua")).unwrap();
+            let displaced = std::fs::read_dir(&probe_env)
+                .unwrap()
+                .flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with(".dodot-adopt-"))
+                .flat_map(|e| file_snapshot(&e.path().join(".displaced")))
+                .collect();
+            sink.lock().unwrap().push((published, displaced));
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let source = env.home.join(".config/nvim/init.lua");
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1, "expected one source replacement");
+    let (published, displaced) = &seen[0];
+    assert_eq!(published, "-- NEW", "the prepared entry publishes first");
+    assert_eq!(
+        displaced,
+        &vec![("init.lua".to_string(), Snapshot::file("-- OLD"))],
+        "the displaced destination waits in the preparation directory \
+         while sources are replaced"
+    );
+
+    // Finish discards it, which is where the user's --force takes effect.
+    env.assert_regular_file(&pack.join("init.lua"), "-- NEW");
+    env.assert_symlink(&source, &pack.join("init.lua"));
+    assert!(preparation_dirs(&env).is_empty());
+    assert!(displaced_snapshot(&env).is_empty());
+}
+
+/// A failure at entry N of M restores the pre-adopt content of every
+/// entry publication changed through N, removes the intermediate
+/// directories it created and left empty, leaves the sources untouched,
+/// and names what it restored (§5.4, §6).
+#[test]
+fn adopt_existing_pack_failure_at_entry_two_restores_entry_one() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- existing")
+        .done()
+        .home_file(".config/nvim/lua/plugins/one.lua", "-- one")
+        .home_file(".config/nvim/lua/plugins/two.lua", "-- two")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let before = file_snapshot(&pack);
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
+        if let super::support::FsOp::RenameNoReplace { to, .. } = op {
+            if to.ends_with("two.lua") {
+                return Err(crate::DodotError::Other("injected publish failure".into()));
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![
+        env.home.join(".config/nvim/lua/plugins/one.lua"),
+        env.home.join(".config/nvim/lua/plugins/two.lua"),
+    ];
+    let err = commands::adopt::adopt(None, &sources, false, false, false, None, &ctx).unwrap_err();
+
+    match &err {
+        crate::DodotError::PublicationRolledBack { restored, .. } => assert_eq!(
+            restored,
+            &vec!["lua/plugins/one.lua".to_string()],
+            "the report names the entry publication put back"
+        ),
+        other => panic!("expected PublicationRolledBack, got: {other}"),
+    }
+    assert!(
+        err.to_string().contains("injected publish failure"),
+        "the report keeps the failure that caused the rollback: {err}"
+    );
+    assert_eq!(
+        file_snapshot(&pack),
+        before,
+        "rollback restores the entries it published and removes the \
+         intermediate directories it created"
+    );
+    env.assert_not_exists(&pack.join("lua"));
+    env.assert_regular_file(&sources[0], "-- one");
+    env.assert_regular_file(&sources[1], "-- two");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A `--force` publication failure puts every displaced destination
+/// back, rather than committing an overwrite for a run that ended in a
+/// refusal (§1.2, §6). Entries one and two were displaced and published;
+/// entry three was displaced and then failed to publish.
+#[test]
+fn adopt_existing_pack_force_failure_restores_every_displaced_destination() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("home.vimrc", "OLD-1")
+        .file("home.gvimrc", "OLD-2")
+        .file("home.exrc", "OLD-3")
+        .done()
+        .home_file(".vimrc", "NEW-1")
+        .home_file(".gvimrc", "NEW-2")
+        .home_file(".exrc", "NEW-3")
+        .build();
+
+    let pack = env.dotfiles_root.join("vim");
+    let before = file_snapshot(&pack);
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
+        if let super::support::FsOp::RenameNoReplace { to, .. } = op {
+            if to.ends_with("home.exrc") {
+                return Err(crate::DodotError::Other("injected publish failure".into()));
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![
+        env.home.join(".vimrc"),
+        env.home.join(".gvimrc"),
+        env.home.join(".exrc"),
+    ];
+    let err =
+        commands::adopt::adopt(Some("vim"), &sources, true, false, false, None, &ctx).unwrap_err();
+
+    match &err {
+        crate::DodotError::PublicationRolledBack { restored, .. } => assert_eq!(
+            restored,
+            &vec![
+                "home.vimrc".to_string(),
+                "home.gvimrc".to_string(),
+                "home.exrc".to_string(),
+            ],
+            "every entry publication displaced is named, including the one \
+             whose publish is what failed"
+        ),
+        other => panic!("expected PublicationRolledBack, got: {other}"),
+    }
+    assert_eq!(
+        file_snapshot(&pack),
+        before,
+        "--force must not commit an overwrite for a run that then refused"
+    );
+    env.assert_regular_file(&sources[0], "NEW-1");
+    env.assert_regular_file(&sources[1], "NEW-2");
+    env.assert_regular_file(&sources[2], "NEW-3");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A failure before anything is displaced leaves the pack exactly as it
+/// was and says so: there is no restored list because nothing had moved.
+#[test]
+fn adopt_existing_pack_failure_before_displacement_restores_nothing() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("home.vimrc", "OLD")
+        .done()
+        .home_file(".vimrc", "NEW")
+        .build();
+
+    let pack = env.dotfiles_root.join("vim");
+    let before = file_snapshot(&pack);
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
+        if let super::support::FsOp::Rename { to, .. } = op {
+            if to.to_string_lossy().contains(".displaced") {
+                return Err(crate::DodotError::Other("injected displace failure".into()));
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let source = env.home.join(".vimrc");
+    let err = commands::adopt::adopt(
+        Some("vim"),
+        std::slice::from_ref(&source),
+        true,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    match &err {
+        crate::DodotError::PublicationRolledBack { restored, .. } => {
+            assert!(
+                restored.is_empty(),
+                "nothing had been published or displaced, got: {restored:?}"
+            );
+        }
+        other => panic!("expected PublicationRolledBack, got: {other}"),
+    }
+    assert!(
+        err.to_string()
+            .contains("the failure came before the first entry was published"),
+        "the report says nothing had moved: {err}"
+    );
+    assert_eq!(file_snapshot(&pack), before);
+    env.assert_regular_file(&source, "NEW");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// The same recovery for the shapes a file-only test misses: a directory
+/// source displacing a directory destination under `--force`, alongside
+/// a nested destination whose intermediate directories publication had
+/// to create.
+#[test]
+fn adopt_existing_pack_failure_restores_a_displaced_directory_and_clears_nested_dirs() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("lua/plugins/old.lua", "-- pack's own")
+        .done()
+        .home_file(".config/nvim/lua/init.lua", "-- adopted")
+        .home_file(".config/nvim/after/ftplugin/rust.lua", "-- after")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let before = file_snapshot(&pack);
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
+        if let super::support::FsOp::RenameNoReplace { to, .. } = op {
+            if to.ends_with("rust.lua") {
+                return Err(crate::DodotError::Other("injected publish failure".into()));
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![
+        env.home.join(".config/nvim/lua"),
+        env.home.join(".config/nvim/after/ftplugin/rust.lua"),
+    ];
+    let err = commands::adopt::adopt(None, &sources, true, false, false, None, &ctx).unwrap_err();
+
+    match &err {
+        // Only `lua`: the nested entry is the one publication stopped
+        // on, and with no prior content at its destination it displaced
+        // nothing, so there was nothing of it to restore.
+        crate::DodotError::PublicationRolledBack { restored, .. } => {
+            assert_eq!(restored, &vec!["lua".to_string()])
+        }
+        other => panic!("expected PublicationRolledBack, got: {other}"),
+    }
+    assert_eq!(
+        file_snapshot(&pack),
+        before,
+        "the displaced directory comes back whole and the directories \
+         created for the nested entry come out"
+    );
+    env.assert_not_exists(&pack.join("after"));
+    // The directory source is still a real directory, not a symlink.
+    assert!(!env.fs.is_symlink(&sources[0]));
+    env.assert_regular_file(&sources[0].join("init.lua"), "-- adopted");
+    env.assert_regular_file(&sources[1], "-- after");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// The successful path for those same shapes: a directory source
+/// replacing a directory destination under `--force`, and a nested
+/// destination created on the way. Source replacement still happens and
+/// the CLI behavior around it is unchanged.
+#[test]
+fn adopt_existing_pack_publishes_directories_and_nested_destinations() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("lua/plugins/old.lua", "-- pack's own")
+        .done()
+        .home_file(".config/nvim/lua/init.lua", "-- adopted")
+        .home_file(".config/nvim/after/ftplugin/rust.lua", "-- after")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let ctx = make_ctx(&env);
+    let sources = vec![
+        env.home.join(".config/nvim/lua"),
+        env.home.join(".config/nvim/after/ftplugin/rust.lua"),
+    ];
+    commands::adopt::adopt(None, &sources, true, false, false, None, &ctx).unwrap();
+
+    assert_eq!(
+        file_snapshot(&pack),
+        vec![
+            (
+                "after/ftplugin/rust.lua".to_string(),
+                Snapshot::file("-- after")
+            ),
+            ("lua/init.lua".to_string(), Snapshot::file("-- adopted")),
+        ],
+        "the displaced `lua/` is gone at Finish and the adopted tree stands"
+    );
+    env.assert_symlink(&sources[0], &pack.join("lua"));
+    env.assert_symlink(&sources[1], &pack.join("after/ftplugin/rust.lua"));
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A process killed mid-publication leaves an intermediate pack and an
+/// identifiable `.dodot-adopt-` directory behind (§5.4). Neither is a
+/// later run's to use or to clean up: pack discovery skips the
+/// preparation directory on its name, and adopt publishes only from the
+/// directory it created itself.
+#[test]
+fn adopt_into_existing_pack_leaves_a_leftover_preparation_directory_alone() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- existing")
+        // The intermediate pack a killed run would have left: one entry
+        // of a two-entry publication, already at its final path.
+        .file("lua/one.lua", "-- published before the kill")
+        .done()
+        .home_file(".config/nvim/opts.lua", "-- opts")
+        .build();
+
+    // The killed run's preparation directory, with its unpublished entry
+    // and the destination it had displaced.
+    let leftover = env.dotfiles_root.join(".dodot-adopt-deadbeef");
+    std::fs::create_dir_all(leftover.join("nvim/lua")).unwrap();
+    std::fs::write(leftover.join("nvim/lua/two.lua"), b"-- never published").unwrap();
+    std::fs::create_dir_all(leftover.join(".displaced")).unwrap();
+    std::fs::write(leftover.join(".displaced/init.lua"), b"-- displaced").unwrap();
+    let leftover_before = file_snapshot(&leftover);
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/opts.lua");
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(
+        pack_names(&env),
+        vec!["nvim".to_string()],
+        "pack discovery reads the leftover as nothing at all"
+    );
+    assert_eq!(
+        file_snapshot(&leftover),
+        leftover_before,
+        "a later adopt neither publishes from a leftover nor deletes one"
+    );
+    // The intermediate pack stands as the killed run left it, and this
+    // run's own entry published alongside it.
+    let pack = env.dotfiles_root.join("nvim");
+    env.assert_regular_file(&pack.join("lua/one.lua"), "-- published before the kill");
+    env.assert_regular_file(&pack.join("opts.lua"), "-- opts");
+    env.assert_symlink(&source, &pack.join("opts.lua"));
+    assert_eq!(
+        preparation_dirs(&env),
+        vec![".dodot-adopt-deadbeef".to_string()]
+    );
+}
+
+/// `--dry-run` into a pack that already exists reports the plan and
+/// writes nothing — not into the pack, and not a preparation directory
+/// left behind (§5.3).
+#[test]
+fn adopt_existing_pack_dry_run_writes_no_final_path() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- existing")
+        .done()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let before = file_snapshot(&pack);
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/lua/plugins/init.lua");
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        true, // --dry-run
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(result.dry_run);
+    assert_eq!(file_snapshot(&pack), before);
+    env.assert_not_exists(&pack.join("lua"));
+    env.assert_regular_file(&source, "-- plugins");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A rollback step can fail too, and when it does the run must not
+/// claim the pack is back the way it was — the caller would then
+/// discard the preparation directory holding the only copy of the
+/// displaced content.
+///
+/// Publication fails at entry three; the rename that puts entry two's
+/// displaced destination back fails in turn. The two entries whose
+/// pre-adopt content did return are reported as restored, entry two is
+/// reported with the path its content is at, and the preparation
+/// directory survives the run.
+#[test]
+fn adopt_existing_pack_rollback_that_cannot_restore_keeps_the_displaced_content() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("home.vimrc", "OLD-1")
+        .file("home.gvimrc", "OLD-2")
+        .file("home.exrc", "OLD-3")
+        .done()
+        .home_file(".vimrc", "NEW-1")
+        .home_file(".gvimrc", "NEW-2")
+        .home_file(".exrc", "NEW-3")
+        .build();
+
+    let pack = env.dotfiles_root.join("vim");
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
+        match op {
+            // Publication stops here.
+            super::support::FsOp::RenameNoReplace { to, .. } if to.ends_with("home.exrc") => {
+                Err(crate::DodotError::Other("injected publish failure".into()))
+            }
+            // …and this entry's displaced destination cannot go back.
+            super::support::FsOp::Rename { from, to }
+                if from.to_string_lossy().contains(".displaced") && to.ends_with("home.gvimrc") =>
+            {
+                Err(crate::DodotError::Other("injected restore failure".into()))
+            }
+            _ => Ok(()),
+        }
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![
+        env.home.join(".vimrc"),
+        env.home.join(".gvimrc"),
+        env.home.join(".exrc"),
+    ];
+    let err =
+        commands::adopt::adopt(Some("vim"), &sources, true, false, false, None, &ctx).unwrap_err();
+
+    match &err {
+        crate::DodotError::PublicationRollbackIncomplete {
+            restored, stranded, ..
+        } => {
+            assert_eq!(
+                restored,
+                &vec!["home.vimrc".to_string(), "home.exrc".to_string()],
+                "only the entries whose pre-adopt content actually went back"
+            );
+            assert_eq!(stranded.len(), 1, "got: {stranded:?}");
+            assert_eq!(stranded[0].in_pack, "home.gvimrc");
+            assert!(
+                stranded[0].at.contains(".dodot-adopt-") && stranded[0].at.contains(".displaced"),
+                "the report points at where the content actually is: {}",
+                stranded[0].at
+            );
+        }
+        other => panic!("expected PublicationRollbackIncomplete, got: {other}"),
+    }
+
+    // The entries that could be restored were.
+    env.assert_regular_file(&pack.join("home.vimrc"), "OLD-1");
+    env.assert_regular_file(&pack.join("home.exrc"), "OLD-3");
+    // The one that could not is still on disk, and the run left the
+    // preparation directory in place rather than deleting it.
+    assert_eq!(preparation_dirs(&env).len(), 1);
+    assert_eq!(
+        displaced_snapshot(&env),
+        vec![("home.gvimrc".to_string(), Snapshot::file("OLD-2"))],
+        "the pre-adopt content the rollback could not move is still there"
+    );
+    // Sources are untouched, as on every publication failure.
+    env.assert_regular_file(&sources[0], "NEW-1");
+    env.assert_regular_file(&sources[1], "NEW-2");
+    env.assert_regular_file(&sources[2], "NEW-3");
+}
+
+/// Rollback removes the intermediate directories it created only while
+/// they are still empty, and the kernel is what decides that: content
+/// another process writes into one after adopt would have looked
+/// survives, because `remove_dir_empty` refuses a directory that is not
+/// empty inside the same operation that would remove it.
+#[test]
+fn adopt_existing_pack_rollback_keeps_a_directory_that_gained_content() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- existing")
+        .done()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let racer = pack.join("lua/someone-elses.lua");
+    let race_target = pack.join("lua");
+    let racer_probe = racer.clone();
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| match op {
+        super::support::FsOp::RenameNoReplace { to, .. } if to.ends_with("init.lua") => {
+            Err(crate::DodotError::Other("injected publish failure".into()))
+        }
+        // Another process writes into the directory adopt created,
+        // after adopt would have observed it empty.
+        super::support::FsOp::RemoveDirEmpty { path } if path == race_target => {
+            std::fs::write(&racer_probe, b"-- not adopt's to delete").unwrap();
+            Ok(())
+        }
+        _ => Ok(()),
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let source = env.home.join(".config/nvim/lua/plugins/init.lua");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::PublicationRolledBack { .. }),
+        "got: {err}"
+    );
+    env.assert_regular_file(&racer, "-- not adopt's to delete");
+    // The innermost directory is gone — nothing raced it — while the
+    // one that gained content stands with what was put there.
+    env.assert_not_exists(&pack.join("lua/plugins"));
+    env.assert_regular_file(&source, "-- plugins");
+}
+
+/// Validation reads the tree publication will leave, not the union of
+/// before and after (§5.3). An entry `--force` replaces will not be in
+/// the published pack, so the targets it claims today must not refuse
+/// the run — which also lets `adopt --force` repair a cross-pack
+/// conflict that already exists.
+///
+/// Here `work/externals.toml` declares `~/.bashrc`, which `unix` also
+/// claims: the repo is already in conflict. The adopted file replaces
+/// that manifest with one declaring `~/.zshrc`, so the claim that
+/// collides is not in the tree publication leaves and the run goes
+/// ahead.
+#[test]
+fn adopt_force_validates_the_tree_publication_leaves_not_the_one_on_disk() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("home.bashrc", "unix owns ~/.bashrc")
+        .done()
+        .pack("work")
+        .file(
+            "externals.toml",
+            r#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/.bashrc"
+            sha256 = "abc"
+        "#,
+        )
+        .done()
+        .home_file(
+            ".config/work/externals.toml",
+            r#"
+            [zshrc]
+            type   = "file"
+            url    = "https://example.com/zshrc"
+            target = "~/.zshrc"
+            sha256 = "def"
+        "#,
+        )
+        .build();
+
+    let pack = env.dotfiles_root.join("work");
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    let source = env.home.join(".config/work/externals.toml");
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .expect("the replacement drops the colliding claim, so validation accepts");
+
+    assert!(
+        std::fs::read_to_string(pack.join("externals.toml"))
+            .unwrap()
+            .contains("~/.zshrc"),
+        "the adopted manifest is what the pack now holds"
+    );
+    env.assert_symlink(&source, &pack.join("externals.toml"));
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A conflict the `--force` run does *not* remove still refuses it: the
+/// overlay drops only the entries publication replaces, and every other
+/// pack keeps every claim it has.
+///
+/// Same shape as above, with the adopted manifest declaring the very
+/// target `unix` claims.
+#[test]
+fn adopt_force_still_refuses_a_conflict_the_replacement_leaves_standing() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("home.bashrc", "unix owns ~/.bashrc")
+        .done()
+        .pack("work")
+        .file(
+            "externals.toml",
+            r#"
+            [zshrc]
+            type   = "file"
+            url    = "https://example.com/zshrc"
+            target = "~/.zshrc"
+            sha256 = "def"
+        "#,
+        )
+        .done()
+        .home_file(
+            ".config/work/externals.toml",
+            r#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/.bashrc"
+            sha256 = "abc"
+        "#,
+        )
+        .build();
+
+    let pack = env.dotfiles_root.join("work");
+    let before = file_snapshot(&pack);
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    let source = env.home.join(".config/work/externals.toml");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "got: {err}"
+    );
+    assert_eq!(
+        file_snapshot(&pack),
+        before,
+        "a refused run leaves the existing pack byte-identical"
+    );
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A regular file where an intermediate directory has to go is refused
+/// at that level and named, rather than descending past it and failing
+/// later with the rename's error. The pack is left as it was.
+#[test]
+fn adopt_existing_pack_refuses_an_intermediate_that_is_not_a_directory() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("lua", "-- a file, where a directory has to go")
+        .done()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let before = file_snapshot(&pack);
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/lua/plugins/init.lua");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("is not a directory"),
+        "the refusal names the level that is not a directory: {err}"
+    );
+    assert_eq!(file_snapshot(&pack), before);
+    env.assert_not_exists(&pack.join("lua/plugins"));
+    env.assert_regular_file(&source, "-- plugins");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// The paths validation supersedes are the ones publication writes,
+/// which for an `--only-os` run carry the `_<label>/` gate segment. A
+/// pack walk hands back a passing gate directory's children with that
+/// segment stripped, so matching the two on the walked path would keep
+/// every entry such a run replaces and plan the old claims alongside
+/// the new ones.
+///
+/// Same repair as the ungated case: `work/_<label>/externals.toml`
+/// declares `~/.bashrc`, which `unix` also claims, and the adopted
+/// manifest replacing it declares `~/.zshrc`. The gate passes on this
+/// host, so the entry is live and its claim is what refuses the run
+/// unless the replacement is what gets planned.
+#[test]
+fn adopt_force_supersedes_an_entry_behind_a_passing_directory_gate() {
+    let label = if cfg!(target_os = "macos") {
+        "darwin"
+    } else {
+        "linux"
+    };
+    let gated = format!("_{label}/externals.toml");
+
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("home.bashrc", "unix owns ~/.bashrc")
+        .done()
+        .pack("work")
+        .file(
+            &gated,
+            r#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/.bashrc"
+            sha256 = "abc"
+        "#,
+        )
+        .done()
+        .home_file(
+            ".config/work/externals.toml",
+            r#"
+            [zshrc]
+            type   = "file"
+            url    = "https://example.com/zshrc"
+            target = "~/.zshrc"
+            sha256 = "def"
+        "#,
+        )
+        .build();
+
+    let pack = env.dotfiles_root.join("work");
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    let source = env.home.join(".config/work/externals.toml");
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        Some(label),
+        &ctx,
+    )
+    .expect("the gated entry is superseded too, so the colliding claim is not planned");
+
+    assert!(
+        std::fs::read_to_string(pack.join(&gated))
+            .unwrap()
+            .contains("~/.zshrc"),
+        "the adopted manifest is what the gated path now holds"
+    );
+    env.assert_symlink(&source, &pack.join(&gated));
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A superseded path *inside* a top-level entry supersedes nothing:
+/// publication replaces that one path and leaves the directory holding
+/// it in the pack with the rest of its contents, so the entry stays in
+/// the plan and keeps claiming what it claims.
+///
+/// `other` claims `~/.config/nvim/lua` through its `_xdg/nvim/lua`
+/// entry, and the `nvim` pack's own `lua` directory claims the same
+/// path: the repo is in conflict, and adopting a file *under* `lua`
+/// does not resolve it. Dropping the directory because a path below it
+/// is being replaced would hide the collision and publish into it.
+#[test]
+fn adopt_nested_replacement_keeps_the_top_level_entry_holding_it() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("lua/plugins/init.lua", "-- the pack's own")
+        .done()
+        .pack("other")
+        .file("_xdg/nvim/lua", "other claims ~/.config/nvim/lua")
+        .done()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let before = file_snapshot(&pack);
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/lua/plugins/init.lua");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "got: {err}"
+    );
+    assert_eq!(
+        file_snapshot(&pack),
+        before,
+        "a refused run leaves the existing pack byte-identical"
+    );
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A rollback that cannot take published content back out of the pack
+/// reports that entry and leaves the content where it is. Removing it
+/// to free the path would make the recovery the step that destroys
+/// something — and what stands there is not necessarily what
+/// publication put there.
+///
+/// Publication fails at entry two; the rename that would move entry
+/// one's published content back into the preparation directory fails in
+/// turn. Entry one is reported at its in-pack path with its content
+/// intact, nothing is reported as restored, and the preparation
+/// directory survives the run.
+#[test]
+fn adopt_existing_pack_rollback_that_cannot_unpublish_leaves_the_content_in_place() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("home.zshrc", "an entry this run does not touch")
+        .done()
+        .home_file(".vimrc", "NEW-1")
+        .home_file(".gvimrc", "NEW-2")
+        .build();
+
+    let pack = env.dotfiles_root.join("vim");
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
+        match op {
+            // Publication stops here.
+            super::support::FsOp::RenameNoReplace { to, .. } if to.ends_with("home.gvimrc") => {
+                Err(crate::DodotError::Other("injected publish failure".into()))
+            }
+            // …and entry one's published content cannot go back into
+            // the preparation directory.
+            super::support::FsOp::Rename { from, to }
+                if from.ends_with("home.vimrc")
+                    && to.to_string_lossy().contains(".dodot-adopt-") =>
+            {
+                Err(crate::DodotError::Other(
+                    "injected unpublish failure".into(),
+                ))
+            }
+            _ => Ok(()),
+        }
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![env.home.join(".vimrc"), env.home.join(".gvimrc")];
+    let err =
+        commands::adopt::adopt(Some("vim"), &sources, false, false, false, None, &ctx).unwrap_err();
+
+    match &err {
+        crate::DodotError::PublicationRollbackIncomplete {
+            restored, stranded, ..
+        } => {
+            assert!(restored.is_empty(), "nothing was put back: {restored:?}");
+            assert_eq!(stranded.len(), 1, "got: {stranded:?}");
+            assert_eq!(stranded[0].in_pack, "home.vimrc");
+            assert_eq!(
+                stranded[0].at,
+                pack.join("home.vimrc").display().to_string(),
+                "the report points at the in-pack path the content is still at"
+            );
+        }
+        other => panic!("expected PublicationRollbackIncomplete, got: {other}"),
+    }
+
+    // The published content is still where the rollback could not move
+    // it from, rather than deleted to clear the path.
+    env.assert_regular_file(&pack.join("home.vimrc"), "NEW-1");
+    env.assert_regular_file(&pack.join("home.zshrc"), "an entry this run does not touch");
+    assert_eq!(preparation_dirs(&env).len(), 1);
+    // Sources are untouched, as on every publication failure.
+    env.assert_regular_file(&sources[0], "NEW-1");
+    env.assert_regular_file(&sources[1], "NEW-2");
 }
