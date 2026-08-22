@@ -73,9 +73,12 @@
 //!    the in-pack paths it put back. A rollback step that fails in turn
 //!    is reported too, naming where the content it could not move is;
 //!    that run keeps its preparation directory rather than discarding
-//!    what may be the last copy. Only in-process, though: a killed
-//!    process leaves the pack mid-sequence with its preparation
-//!    directory still on disk.
+//!    what may be the last copy. So is a path another process has
+//!    written since publication: a recovery moves a published entry
+//!    out only while the path still holds that entry, and returns
+//!    displaced content only onto a path that is still free. Only
+//!    in-process, though: a killed process leaves the pack
+//!    mid-sequence with its preparation directory still on disk.
 //!
 //! 5. **Replace sources** ([`swap_all`]) — per source, replace the
 //!    original with a symlink to its published pack path. Files use a
@@ -91,9 +94,10 @@
 //!    renamed back to its final path, the intermediate directories
 //!    publication created and this leaves empty removed, and a pack
 //!    this run published removed when no source was replaced at all.
-//!    A step of that can fail in turn, and then nothing is deleted to
-//!    get past it: the entry is named along with the path its content
-//!    is at, exactly as a publication rollback does it.
+//!    A step of that can fail in turn — or find a path another writer
+//!    has taken over — and then nothing is deleted to get past it: the
+//!    entry is named along with the path its content is at, exactly as
+//!    a publication rollback does it.
 //!    Any failed planned source makes the command exit nonzero
 //!    ([`PackStatusResult::failed`](crate::commands::PackStatusResult::failed)),
 //!    while the result still renders every source, replaced and failed
@@ -148,13 +152,13 @@
 mod classify;
 mod infer;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use crate::commands::status;
 use crate::commands::{DisplayFile, DisplayNote, DisplayPack, PackStatusResult};
 use crate::conflicts;
-use crate::fs::Fs;
+use crate::fs::{FileId, Fs};
 use crate::packs;
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::{DodotError, Result};
@@ -392,7 +396,15 @@ pub fn adopt(
     let published = if pack_existed {
         prep.publish_into_existing(&pack_path, &pack_display, &plans, ctx.fs.as_ref())
     } else {
-        Published::new_pack(prep.publish_new_pack(&pack_path, ctx.fs.as_ref()))
+        // A publication that never moved the tree touched nothing, so
+        // its failure leaves nothing behind worth keeping.
+        match prep.publish_new_pack(&pack_path, &plans, ctx.fs.as_ref()) {
+            Ok(published) => published,
+            Err(error) => Published::Failed {
+                error,
+                keep_preparation: false,
+            },
+        }
     };
     let publication = match published {
         Published::Ok(publication) => publication,
@@ -798,7 +810,27 @@ impl Preparation {
     /// rename — and a plain `rename` replaces a symlink or an empty
     /// directory silently, which is exactly the shape a half-finished
     /// concurrent run leaves behind.
-    fn publish_new_pack(&self, pack_path: &Path, fs: &dyn Fs) -> Result<()> {
+    ///
+    /// The ids of the entries the tree carries in are read before the
+    /// rename and returned with it, for the same reason
+    /// [`Preparation::publish_one`] records them: the recovery at §5.5
+    /// removes an entry from a pack this run published, and removing
+    /// is only this run's to do while the path still holds what this
+    /// run put there.
+    fn publish_new_pack(
+        &self,
+        pack_path: &Path,
+        plans: &[AdoptPlan],
+        fs: &dyn Fs,
+    ) -> Result<Published> {
+        let published: HashMap<PathBuf, FileId> = plans
+            .iter()
+            .filter_map(|plan| {
+                let id = fs.lstat(&self.pack_root.join(&plan.in_pack)).ok()?.id;
+                Some((plan.in_pack.clone(), id))
+            })
+            .collect();
+
         fs.rename_noreplace(&self.pack_root, pack_path)
             .map_err(|e| {
                 if crate::fs::is_already_exists(&e) {
@@ -812,6 +844,7 @@ impl Preparation {
                     e
                 }
             })
+            .map(|()| Published::Ok(Publication::NewPack { published }))
     }
 
     /// Publish the prepared entries into a pack that already exists, or
@@ -908,6 +941,7 @@ impl Preparation {
             prepared: self.pack_root.join(&plan.in_pack),
             displaced: None,
             published: false,
+            identity: None,
         };
 
         // Only a plan that *planned* to replace something displaces.
@@ -927,6 +961,13 @@ impl Preparation {
             fs.rename(&plan.pack_dest, &displaced)?;
             entry.displaced = Some(displaced);
         }
+
+        // Read before the rename rather than after it: the rename
+        // carries the id along with the entry, and reading the
+        // destination afterwards would record whatever won a race
+        // against it — which is exactly the content a rollback must
+        // not treat as its own.
+        entry.identity = fs.lstat(&entry.prepared).ok().map(|m| m.id);
 
         let result = fs.rename_noreplace(&entry.prepared, &plan.pack_dest);
         entry.published = result.is_ok();
@@ -988,6 +1029,18 @@ struct PublishedEntry {
     /// Whether the rename into `final_path` succeeded. A recorded entry
     /// with this `false` displaced something and then failed to publish.
     published: bool,
+    /// Which entry publication moved to `final_path`, read from
+    /// `prepared` just before the rename that carried the id across
+    /// with it.
+    ///
+    /// A rollback compares it against what stands at `final_path` now,
+    /// and moves that content only while the two agree: an in-pack
+    /// path can hold something else by then — another process's file
+    /// at the same path — and sweeping that into the preparation
+    /// directory hands it to [`Preparation::discard`]. `None` is the
+    /// answer when the id could not be read, and reads as "not
+    /// provably ours" for the same reason.
+    identity: Option<FileId>,
 }
 
 /// What a rollback reversed, and what it could not.
@@ -1016,8 +1069,10 @@ pub struct StrandedEntry {
     pub in_pack: String,
     /// Where its content currently is: inside the preparation
     /// directory when the rename back into the pack failed, or at its
-    /// final in-pack path when adopt could not move what it had
-    /// published there back out.
+    /// final in-pack path when what publication put there is still
+    /// standing — because the rename out of the pack failed, or
+    /// because the path no longer holds the entry this run published
+    /// and moving it would be adopt destroying a stranger's file.
     pub at: String,
 }
 
@@ -1039,36 +1094,39 @@ impl PublicationRecord {
     /// with the path its content is at while the caller keeps the
     /// preparation directory rather than discarding what may be the
     /// last copy. A rollback that cannot move published content out of
-    /// the pack reports that entry rather than clearing the path — the
-    /// content there is not necessarily what publication put there, and
-    /// a recovery that deletes is the failure mode this whole sequence
+    /// the pack reports that entry rather than clearing the path, and a
+    /// recovery that deletes is the failure mode this whole sequence
     /// exists to avoid. The only removals are the intermediate
-    /// directories below, and only while they are still empty. The
-    /// failure that caused the rollback is still the error the user
-    /// reads — a recovery failure is reported alongside it, not instead
-    /// of it.
+    /// directories below, and only while they are still empty.
+    ///
+    /// Nothing here assumes a path is still what this run left at it,
+    /// either. An in-pack path can hold another process's file by now:
+    /// [`vacate`] moves out only the entry it can identify as
+    /// publication's own, and [`restore_displaced`] refuses a
+    /// destination that has since been taken rather than replacing it.
+    /// Both cases report the entry instead. The failure that caused
+    /// the rollback is still the error the user reads — a recovery
+    /// failure is reported alongside it, not instead of it.
     fn undo(&self, fs: &dyn Fs) -> UndoOutcome {
         let mut outcome = UndoOutcome::default();
         for entry in self.entries.iter().rev() {
             let in_pack = entry.in_pack.display().to_string();
 
             // Take this publication's content back out of the pack, so
-            // the final path is free for whatever was there before. A
-            // rename that fails leaves it standing: removing it instead
-            // would make this recovery the thing that destroys content,
-            // and what sits there is not necessarily what publication
-            // put there — another process can have written into that
-            // path since. The entry is reported instead, and the
-            // displaced content it blocks stays in the preparation
-            // directory the caller then keeps.
-            let final_path_free =
-                !entry.published || fs.rename(&entry.final_path, &entry.prepared).is_ok();
+            // the final path is free for whatever was there before.
+            // `vacate` moves only what publication put there and never
+            // deletes, so a step that cannot finish leaves the entry
+            // standing and reports it; the displaced content it blocks
+            // stays in the preparation directory the caller then keeps.
+            let final_path_free = !entry.published || vacate(fs, entry);
 
             match &entry.displaced {
                 // `--force` moved something out; the entry is restored
-                // only once that something is back.
+                // only once that something is back. `rename_noreplace`,
+                // so a path that has picked up someone else's content
+                // since keeps it: see `restore_displaced`.
                 Some(displaced) => {
-                    if final_path_free && fs.rename(displaced, &entry.final_path).is_ok() {
+                    if final_path_free && restore_displaced(fs, displaced, &entry.final_path) {
                         outcome.restored.push(in_pack);
                     } else {
                         outcome.stranded.push(StrandedEntry {
@@ -1145,26 +1203,17 @@ enum Publication {
     /// One rename brought the whole prepared tree in, so nothing in the
     /// pack predates the run and the last failed source takes the pack
     /// directory with it.
-    NewPack,
+    ///
+    /// `published` is the id each planned entry had inside the
+    /// prepared tree, which the one rename carried into the pack with
+    /// it. A recovery removing such an entry checks it first: "nothing
+    /// here predates the run" is true of the tree publication moved,
+    /// and says nothing about a path another process has written since.
+    NewPack { published: HashMap<PathBuf, FileId> },
     /// Entries published one at a time into a pack that already
     /// existed, with the record of what each one displaced and which
     /// intermediate directories the sequence created.
     Existing(PublicationRecord),
-}
-
-impl Published {
-    /// The verdict on the one-rename new-pack publication, which either
-    /// moved the prepared tree or did not touch anything — so its
-    /// failure leaves nothing behind worth keeping.
-    fn new_pack(result: Result<()>) -> Self {
-        match result {
-            Ok(()) => Published::Ok(Publication::NewPack),
-            Err(error) => Published::Failed {
-                error,
-                keep_preparation: false,
-            },
-        }
-    }
 }
 
 /// Create the directories `in_pack` needs inside `pack_path`, appending
@@ -2115,7 +2164,7 @@ fn check_deploy_conflicts(ctx: &ExecutionContext, prospective: ProspectiveTree<'
         // truthfully say "no conflict with that pack," so refuse outright
         // rather than risk a false negative that lets us mutate into a
         // state `dodot up` will later reject.
-        let plan = collect_intents_passive(&pack, ctx, superseded)?;
+        let plan = collect_intents_passive(&pack, &pack.path, ctx, superseded)?;
         unresolved.extend(plan.unresolved_claims);
         pack_intents.push((pack.display_name.clone(), plan.intents));
     }
@@ -2127,7 +2176,12 @@ fn check_deploy_conflicts(ctx: &ExecutionContext, prospective: ProspectiveTree<'
     );
     let pack_config = ctx.config_manager.config_for_pack(prospective.config_at)?;
     prospective_pack.config = pack_config.to_handler_config();
-    let plan = collect_intents_passive(&prospective_pack, ctx, &[])?;
+    // Scanned at the staging path, governed by the destination pack's
+    // configuration: the prepared tree is what the pack will hold, so
+    // the pack's own rules, gates, ignore list and preprocessor
+    // settings are the ones that decide what it claims. The staging
+    // directory has no `.dodot.toml` of its own to answer with.
+    let plan = collect_intents_passive(&prospective_pack, prospective.config_at, ctx, &[])?;
     unresolved.extend(plan.unresolved_claims);
     let display = prospective_pack.display_name.clone();
     match pack_intents.iter_mut().find(|(name, _)| *name == display) {
@@ -2164,13 +2218,20 @@ fn check_deploy_conflicts(ctx: &ExecutionContext, prospective: ProspectiveTree<'
 ///
 /// `superseded` names in-pack paths this plan should leave out, which
 /// is empty for every pack but the one publication is about to rewrite.
+///
+/// `config_at` is the pack path whose configuration governs the scan.
+/// It is the pack's own path for a pack on disk, and the *destination*
+/// pack's path for the prospective tree, which sits in the staging
+/// directory and carries no configuration of its own.
 fn collect_intents_passive(
     pack: &packs::Pack,
+    config_at: &Path,
     ctx: &ExecutionContext,
     superseded: &[PathBuf],
 ) -> Result<orchestration::PackPlan> {
     orchestration::plan_pack_without(
         pack,
+        config_at,
         ctx,
         crate::preprocessing::PreprocessMode::Passive,
         superseded,
@@ -2266,8 +2327,14 @@ fn swap_all(
 /// bytes stay reachable for the rest of the run at no cost. The one
 /// place that deletes is a pack this run published, where there is no
 /// preparation directory left to rename into — the whole prepared tree
-/// became the pack — and where nothing at the path can predate the
-/// run.
+/// became the pack — and where nothing that arrived with that tree
+/// predates the run.
+///
+/// Both of them act on the path only while it still holds the entry
+/// publication put there. What stands at an in-pack path now is not
+/// necessarily what publication left: another process can have
+/// written it since, and moving or removing *that* is the recovery
+/// destroying a file adopt never adopted.
 ///
 /// No step is assumed to have worked, and none of them deletes anything
 /// to get past a failure: that is §5.4's rule and §5.5 restores "what it
@@ -2275,7 +2342,7 @@ fn swap_all(
 /// not move is returned as a [`StrandedEntry`] naming the path its
 /// content is at — the preparation directory for a `--force`
 /// displacement that could not go back, the in-pack path for a published
-/// entry that could not come out. The caller keeps the preparation
+/// entry that could not come out or was not this run's to touch. The caller keeps the preparation
 /// directory whenever one comes back: discarding it can destroy the
 /// pre-adopt destination that `--force` promised to hold until the run
 /// committed.
@@ -2289,34 +2356,46 @@ fn restore_failed_entry(
         // there is nothing to put back and removing the entry is the
         // whole restoration. The pack path did not exist before this
         // run and arrived as one rename of a tree this run built, so
-        // what stands inside it is this run's to remove — the doubt
-        // §5.4 has about an in-pack path does not arise here.
-        Publication::NewPack => None,
+        // what stands inside it came in with that tree.
+        //
+        // Which is a statement about the rename, not about the path
+        // now: another process can have replaced the entry since, and
+        // removing *that* is the recovery destroying a file adopt
+        // never adopted. So the removal happens only while the path
+        // still holds the entry publication carried in, and anything
+        // else is left standing and reported — the same answer
+        // [`vacate`] gives for a pack that already existed.
+        Publication::NewPack { published } => {
+            if still_published(fs, &plan.pack_dest, published.get(&plan.in_pack).copied()) {
+                remove_best_effort(fs, &plan.pack_dest);
+            }
+            // A removal that failed, or one this declined to make,
+            // leaves something standing at the path; saying the entry
+            // was taken back out would be a lie the user cannot check.
+            return occupied(fs, &plan.pack_dest).then(|| StrandedEntry {
+                in_pack: plan.in_pack.display().to_string(),
+                at: plan.pack_dest.display().to_string(),
+            });
+        }
         Publication::Existing(record) => record.entries.iter().find(|e| e.in_pack == plan.in_pack),
     };
-    let Some(entry) = entry else {
-        remove_best_effort(fs, &plan.pack_dest);
-        // A removal that failed leaves the duplicate standing, and
-        // saying it was taken back out would be a lie the user cannot
-        // check.
-        return occupied(fs, &plan.pack_dest).then(|| StrandedEntry {
-            in_pack: plan.in_pack.display().to_string(),
-            at: plan.pack_dest.display().to_string(),
-        });
-    };
+    // Publication records every plan it reaches, so a plan missing
+    // from the record is one publication never touched: nothing of
+    // this run's is at its final path, and there is nothing to undo.
+    let entry = entry?;
 
     let in_pack = entry.in_pack.display().to_string();
     // An entry publication recorded but never got into the pack has
     // nothing of this run's at its final path, so there is nothing to
     // take out and nothing to rename into the preparation directory —
     // what stands there, if anything, is the user's own.
-    let vacated = !entry.published || vacate(fs, &entry.final_path, &entry.prepared);
+    let vacated = !entry.published || vacate(fs, entry);
     match &entry.displaced {
         // `--force` moved something out; the entry is restored only
         // once that something is back, and until it is, the only copy
         // of it is the one in the preparation directory.
         Some(displaced) => {
-            if vacated && fs.rename(displaced, &entry.final_path).is_ok() {
+            if vacated && restore_displaced(fs, displaced, &entry.final_path) {
                 None
             } else {
                 Some(StrandedEntry {
@@ -2334,24 +2413,72 @@ fn restore_failed_entry(
     }
 }
 
-/// Take this run's published copy out of `final_path` and say whether
-/// the path ended up free for whatever was there before it.
+/// Take this run's published copy out of `entry.final_path` and say
+/// whether the path ended up free for whatever was there before it.
 ///
-/// A rename back to `prepared`: that path was vacated by publication
-/// and step 6 discards it, so the bytes stay reachable until the run
-/// ends. A rename that fails leaves the entry standing rather than
-/// deleting it — removing it instead would make this recovery the thing
-/// that destroys content, and what sits at an in-pack path is not
-/// necessarily what publication put there (§5.4, which §5.5 restores
+/// A rename back to `entry.prepared`: that path was vacated by
+/// publication and step 6 discards it, so the bytes stay reachable
+/// until the run ends. A rename that fails leaves the entry standing
+/// rather than deleting it — removing it instead would make this
+/// recovery the thing that destroys content (§5.4, which §5.5 restores
 /// by).
+///
+/// What sits at an in-pack path is not necessarily what publication
+/// put there, so the move happens only while the path still holds the
+/// entry publication recorded. Sweeping a stranger's file into the
+/// preparation directory is not a rescue: step 6 discards that
+/// directory, so a run whose every other step succeeded would delete a
+/// file adopt never adopted. A path holding anything else is left as
+/// it is and reported, which is the same answer this function gives a
+/// rename it could not do.
+///
+/// The rename into `prepared` is `rename_noreplace` for the same
+/// reason as the one out of it: publication emptied that path, so
+/// anything at it now arrived from outside this run.
 ///
 /// The answer is what the path holds afterwards rather than what the
 /// rename returned: another process can have taken it away, and a
 /// caller about to rename a displaced destination back needs to know
 /// the path is actually free.
-fn vacate(fs: &dyn Fs, final_path: &Path, prepared: &Path) -> bool {
-    let _ = fs.rename(final_path, prepared);
-    !occupied(fs, final_path)
+fn vacate(fs: &dyn Fs, entry: &PublishedEntry) -> bool {
+    if still_published(fs, &entry.final_path, entry.identity) {
+        let _ = fs.rename_noreplace(&entry.final_path, &entry.prepared);
+    }
+    !occupied(fs, &entry.final_path)
+}
+
+/// Whether `path` still holds the entry publication put there, whose
+/// id at that moment is `published`.
+///
+/// `false` whenever that cannot be established — the id was
+/// unreadable at publication, the path is unreadable now, or the two
+/// ids differ. Each of those means a recovery about to move the path's
+/// content cannot say the content is this run's, and the safe answer
+/// is the one that moves nothing.
+///
+/// A check, not a lock: another process can replace the path between
+/// this `lstat` and the caller's rename. It converts the silent case
+/// — recovery assumes the path is its own and destroys what is there
+/// — into the reported one, which is as far as POSIX renames reach.
+fn still_published(fs: &dyn Fs, path: &Path, published: Option<FileId>) -> bool {
+    match (published, fs.lstat(path)) {
+        (Some(published), Ok(now)) => published == now.id,
+        _ => false,
+    }
+}
+
+/// Put displaced content back at `final_path`, and say whether it
+/// landed.
+///
+/// `rename_noreplace`: the caller has just freed `final_path`, and a
+/// plain `rename` would replace whatever appeared at it in the
+/// meantime — a file another process wrote between the vacating and
+/// this call, destroyed by the step whose whole purpose is to avoid
+/// destroying content. Refusing instead leaves the displaced content
+/// in the preparation directory, which the caller then reports and
+/// keeps rather than discarding.
+fn restore_displaced(fs: &dyn Fs, displaced: &Path, final_path: &Path) -> bool {
+    fs.rename_noreplace(displaced, final_path).is_ok()
 }
 
 /// Whether anything stands at `path` — a broken symlink included, which
@@ -2392,7 +2519,7 @@ fn prune_emptied_dirs(
                 let _ = fs.remove_dir_empty(dir);
             }
         }
-        Publication::NewPack => {
+        Publication::NewPack { .. } => {
             for plan in failed {
                 let mut dir = plan.pack_dest.parent().map(Path::to_path_buf);
                 while let Some(current) = dir {
@@ -2448,7 +2575,11 @@ fn swap_dir(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
             let _ = fs.remove_dir_all(&backup);
             Ok(())
         }
-        Err(e) if fs.rename(&backup, source).is_ok() => Err(e),
+        // `rename_noreplace`: the symlink that failed left `source`
+        // free, and anything standing there now arrived from outside
+        // this run — a plain `rename` back would destroy it. A refusal
+        // takes the branch below, which names the backup path.
+        Err(e) if fs.rename_noreplace(&backup, source).is_ok() => Err(e),
         Err(e) => Err(DodotError::Other(format!(
             "{e}; and the directory could not be moved back to {} — it is \
              at {}",

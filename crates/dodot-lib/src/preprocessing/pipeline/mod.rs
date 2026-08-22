@@ -943,10 +943,19 @@ fn preprocess_pack_passive(
 /// answer decides whether adopt may mutate the dotfiles tree, and a
 /// source dodot cannot read is a render it cannot vouch for.
 ///
-/// A baseline written before `context_hash` existed carries an empty
-/// string, and a preprocessor with no context of its own reports
-/// `None`; neither case can be compared, so both are left to the
-/// source-bytes check alone.
+/// Neither side's absence is read as agreement. A preprocessor with no
+/// context of its own reports `None`, and there the source bytes are
+/// the whole of what decides a render, so the source-bytes check
+/// alone is the complete answer. A baseline written before
+/// `context_hash` existed carries an empty string, and that is a gap
+/// rather than an answer: a preprocessor that *does* have a context
+/// offers nothing to compare it against, so the cached render cannot
+/// be shown to match the current one and counts as superseded. An
+/// `externals.toml.tmpl` upgraded across that change keeps its bytes
+/// and its `vars` can have moved since — treating the pair as current
+/// would let passive planning claim the old rendered targets while
+/// the next `dodot up` writes different ones. One render puts the
+/// baseline back on the current footing.
 ///
 /// Reading the source here is a hash, not an expansion: no template
 /// evaluation, no provider calls, nothing written — inside the
@@ -965,9 +974,11 @@ fn superseded_reason(
         Ok(_) => {}
     }
 
-    let current = preprocessor.context_hash().as_ref().map(hex_encode_32);
-    match current {
-        Some(current) if !baseline.context_hash.is_empty() && current != baseline.context_hash => {
+    match preprocessor.context_hash().as_ref().map(hex_encode_32) {
+        Some(_) if baseline.context_hash.is_empty() => {
+            Some("cached render predates rendering-context tracking")
+        }
+        Some(current) if current != baseline.context_hash => {
             Some("rendering context changed since the cached render")
         }
         _ => None,

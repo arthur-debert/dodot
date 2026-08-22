@@ -211,6 +211,8 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
         A rollback step can fail in turn — the rename that takes a published entry back out of the pack, or the one that puts a displaced destination back, hits the same I/O or permission error that stopped publication. Adopt does not report those entries as restored, and does not delete anything to get past them: a recovery that destroys content is the failure this whole sequence exists to avoid, and what stands at an in-pack path is not necessarily what publication put there. It names the entries, says where the content it could not move is, and keeps the preparation directory rather than discarding what is then the only copy of a destination's pre-adopt content. §5.6 does not run for such a run.
 
+        A path that has changed hands is the same case as a step that failed, and gets the same answer. Between publication and a rollback, another process can write the in-pack path adopt published to, or take the one a displaced destination is about to return to. Adopt takes a published entry back out — by rename into the preparation directory, or by removal for a pack this run created — only while that path still holds the entry it published, and returns displaced content only onto a path that is still free, which the kernel decides inside the rename rather than in a test before it. Anything else is left where it stands and named in the report: moving it would make the recovery the step that destroys a file adopt never adopted.
+
         Displaced content is kept until §5.6, not discarded here.
 
     5.5. Replace Sources

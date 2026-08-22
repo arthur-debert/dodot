@@ -15,6 +15,42 @@ pub struct FsMetadata {
     pub len: u64,
     /// Unix permission mode (e.g. `0o755`).
     pub mode: u32,
+    /// Which entry this is, independent of the path it was read
+    /// through: the device and inode numbers `stat(2)` reports.
+    ///
+    /// A path answers "what is here now", and that answer changes
+    /// under a caller whenever another process writes the same path.
+    /// This pair answers "is this still the same entry", which is what
+    /// a recovery step needs before it moves something it believes it
+    /// created: two reads of one path that report different ids read
+    /// two different entries, whatever the path suggests.
+    ///
+    /// A `rename` carries the id with the entry, so an id read before
+    /// a rename still names the same content afterwards. Comparing
+    /// ids is not free of races — another process can still act
+    /// between the read and the move — but it turns "assume it is
+    /// ours" into "check that it is", which is the difference between
+    /// silently destroying a concurrent writer's file and leaving it
+    /// alone.
+    pub id: FileId,
+}
+
+/// A filesystem entry's identity: `(device, inode)`, which the kernel
+/// keeps unique among the entries live at one moment.
+///
+/// Both numbers together, because inode numbers are only unique
+/// within a filesystem — a mount appearing at a path is enough for
+/// one inode number to name a different file than it did a moment
+/// earlier.
+///
+/// The [`Default`] is the pair of zeros a filesystem stub reports when
+/// it models no identity at all. Two such stubs compare equal, so a
+/// caller that decides anything on identity has to run against a real
+/// filesystem to be testing what it thinks it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FileId {
+    pub dev: u64,
+    pub ino: u64,
 }
 
 /// A single directory entry returned by [`Fs::read_dir`].

@@ -328,7 +328,7 @@ pub struct DisplayDiff {
 }
 
 /// Result type for commands that display pack status
-/// (status, up, down).
+/// (status, up, down, adopt).
 #[derive(Debug, Clone, Serialize)]
 pub struct PackStatusResult {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -388,14 +388,22 @@ pub struct PackStatusResult {
     pub shell_hookup: Option<crate::shell::ActivationNotice>,
     /// True when this run left at least one operation failed — a
     /// provisioning command that exited non-zero, a symlink that hit
-    /// an occupied target, a pack that failed as a whole. This is the
-    /// data behind [`PackStatusResult::exit_code`].
+    /// an occupied target, a pack that failed as a whole, a source
+    /// `adopt` could not replace. This is the data behind
+    /// [`PackStatusResult::exit_code`].
     ///
-    /// Set by `up` on an active run only. A `--dry-run` leaves it
-    /// false however much it reports as failing: nothing was attempted,
-    /// so a preview must not fail a script that runs it. `status` and
-    /// `down` leave it false — they report, and neither has an
-    /// exit-code contract of its own.
+    /// Set by the two commands that act on an active run: `up`, and
+    /// `adopt` when some planned source could not be replaced while
+    /// others were (`adopt-safety.lex` §5.5 — sources are independent,
+    /// so such a run is partially adopted rather than refused, and its
+    /// status is what tells a script the two apart). A `--dry-run`
+    /// leaves it false for either command however much it reports as
+    /// failing: nothing was attempted, so a preview must not fail a
+    /// script that runs it. `status` and `down` leave it false — they
+    /// report, and neither has an exit-code contract of its own.
+    ///
+    /// An `adopt` that refuses outright never reaches here: refusals
+    /// propagate as `Err` and the CLI exits on the error's own status.
     pub failed: bool,
 }
 
@@ -405,7 +413,10 @@ impl PackStatusResult {
     ///
     /// 1 is dodot's existing "the command ran and found something
     /// wrong" code — the same one `dodot transform check` returns for
-    /// its findings. Hard errors (a pack that doesn't exist, a
+    /// its findings. It covers a partially adopted `adopt` too, whose
+    /// report renders every entry, adopted and failed alike; the
+    /// status is the only thing that separates it from a run where
+    /// every source landed. Hard errors (a pack that doesn't exist, a
     /// refused root) never reach here; those propagate as `Err` and
     /// the CLI exits on the error's own status.
     pub fn exit_code(&self) -> i32 {

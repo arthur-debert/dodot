@@ -200,7 +200,8 @@ pub fn plan_pack(
 }
 
 /// [`plan_pack`], with the pack's own entries at `superseded` left out
-/// of the scan.
+/// of the scan and its configuration taken from `config_at` rather
+/// than from the directory being scanned.
 ///
 /// `adopt` is the caller: to decide whether the pack it is about to
 /// publish into would collide with another pack, it has to plan the
@@ -233,13 +234,27 @@ pub fn plan_pack(
 /// ([`Handler::targets_from_content`](crate::handlers::Handler::targets_from_content))
 /// therefore only ever reads a top-level file, which `superseded` names
 /// directly.
+///
+/// `config_at` is the pack path whose configuration governs the scan:
+/// the rules, gates, `[pack] ignore` list and preprocessor settings
+/// [`ConfigManager::config_for_pack`](crate::config::ConfigManager::config_for_pack)
+/// resolves there decide what the walk reads and how it reads it. It
+/// is `pack.path` for a pack on disk. It is not for the prepared tree,
+/// which sits in adopt's staging directory and carries no
+/// `.dodot.toml` of its own: resolving configuration from that path
+/// answers with the root layer and plans a pack nobody has. A
+/// destination pack whose `[pack] ignore` replaces the root list would
+/// then have its prospective entries dropped here while the scan of
+/// the real pack keeps them — and the cross-pack conflict this plan
+/// exists to find can be among exactly those entries.
 pub fn plan_pack_without(
     pack: &Pack,
+    config_at: &Path,
     ctx: &ExecutionContext,
     mode: crate::preprocessing::PreprocessMode,
     superseded: &[PathBuf],
 ) -> Result<PackPlan> {
-    let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+    let pack_config = ctx.config_manager.config_for_pack(config_at)?;
     let root_config = ctx.config_manager.root_config()?;
     let (registry, _secret_registry) = crate::preprocessing::default_registry(
         &pack_config.preprocessor,

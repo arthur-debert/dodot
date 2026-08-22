@@ -544,11 +544,13 @@ fn passive_reports_a_source_it_cannot_read_as_unrendered() {
 }
 
 #[test]
-fn passive_falls_back_to_the_source_check_for_a_baseline_without_a_context_hash() {
+fn passive_falls_back_to_the_source_check_for_a_preprocessor_without_a_context() {
     // A preprocessor with no rendering context of its own reports
-    // `None`, and a baseline written before `context_hash` existed
-    // carries an empty string. Neither is a mismatch — only the source
-    // bytes decide — or every such entry would refuse forever.
+    // `None`, and its baselines carry an empty `context_hash` because
+    // there is nothing to hash. That is not a mismatch: the source
+    // bytes are the whole of what decides such a render, and reading
+    // the empty field as staleness would make every one of these
+    // entries refuse forever.
     let env = TempEnvironment::builder()
         .pack("app")
         .file("config.toml.scripted", "src")
@@ -567,7 +569,7 @@ fn passive_falls_back_to_the_source_check_for_a_baseline_without_a_context_hash(
             deploy_mode: None,
         }],
         supports_reverse_merge: true,
-        context_hash: Some([0x42; 32]),
+        context_hash: None,
         ..Default::default()
     };
 
@@ -610,7 +612,51 @@ fn passive_falls_back_to_the_source_check_for_a_baseline_without_a_context_hash(
 
     assert!(
         result.unrendered.is_empty(),
-        "an uncomparable context must not be read as a changed one: {:?}",
+        "a preprocessor with no context has nothing to compare, and the \
+         source bytes are unchanged: {:?}",
         result.unrendered
+    );
+}
+
+/// A baseline written before `context_hash` existed cannot vouch for a
+/// preprocessor that has a context now.
+///
+/// The template's bytes are untouched and its `vars` have moved, which
+/// is precisely what the empty field cannot tell anyone. Passive
+/// planning reports the entry rather than serving last render's
+/// targets as the current ones — the same conservative answer it gives
+/// a source it cannot read, for the same reason: adopt mutates the
+/// dotfiles tree on this verdict.
+#[test]
+fn passive_reports_a_legacy_baseline_as_superseded_when_the_context_moved() {
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .done()
+        .build();
+
+    render_once(&env, &[("name", "Alice")]);
+
+    // Rewrite the baseline the way an upgrade finds one: every field
+    // as this dodot writes it, minus the context hash that did not
+    // exist when it was written.
+    let path = env
+        .paths
+        .preprocessor_baseline_path("app", "preprocessed", "greet");
+    let raw = env.fs.read_to_string(&path).unwrap();
+    let mut json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    json["context_hash"] = serde_json::Value::String(String::new());
+    env.fs
+        .write_file(&path, json.to_string().as_bytes())
+        .unwrap();
+
+    // The source bytes are what they were; only the vars have moved.
+    let result = plan_passively(&env, &[("name", "Bob")]);
+
+    assert_eq!(
+        result.unrendered,
+        vec![virtual_key(&env, "app", "greet")],
+        "a cached render whose context cannot be compared is not one \
+         passive planning may vouch for"
     );
 }

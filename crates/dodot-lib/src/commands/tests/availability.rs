@@ -203,6 +203,7 @@ impl StagedStat {
                 is_symlink: false,
                 len: 0,
                 mode: 0o755,
+                id: Default::default(),
             }),
         }
     }

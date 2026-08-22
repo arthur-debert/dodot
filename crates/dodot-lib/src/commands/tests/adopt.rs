@@ -1742,12 +1742,18 @@ fn adopt_reads_externals_claims_from_the_cached_baseline() {
     let source_bytes = std::fs::read(&source_path).unwrap();
     let mut ctx = make_ctx(&env);
     ctx.no_provision = false;
+    // Including the rendering context the template preprocessor
+    // reports for this environment, which is what a real `dodot up`
+    // records. A baseline without one describes a render whose
+    // context nothing can compare, and passive planning does not
+    // vouch for those.
+    let context = current_template_context(&env);
     crate::preprocessing::baseline::Baseline::build(
         &source_path,
         rendered,
         &source_bytes,
         None,
-        None,
+        context.as_ref(),
     )
     .write(
         ctx.fs.as_ref(),
@@ -1776,6 +1782,21 @@ fn adopt_reads_externals_claims_from_the_cached_baseline() {
     );
     env.assert_regular_file(&source, "new");
     env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
+}
+
+/// The rendering context the template preprocessor reports in `env`,
+/// for a test standing in for the `dodot up` that would have written a
+/// baseline. Empty `vars`, which is what a `TempEnvironment` with no
+/// `[preprocessor.template.vars]` gives the real run.
+fn current_template_context(env: &TempEnvironment) -> Option<[u8; 32]> {
+    use crate::preprocessing::Preprocessor;
+    crate::preprocessing::template::TemplatePreprocessor::new(
+        vec!["tmpl".into()],
+        Default::default(),
+        env.paths.as_ref(),
+    )
+    .unwrap()
+    .context_hash()
 }
 
 /// Every path under `root`, sorted — what a test compares before and
@@ -1869,6 +1890,62 @@ fn adopt_deploy_conflict_not_bypassed_by_force() {
         matches!(err, crate::DodotError::CrossPackConflict { .. }),
         "--force must not bypass deploy conflicts, got: {err}"
     );
+}
+
+/// The prepared tree is planned under the *destination pack's*
+/// configuration, not the configuration of the staging directory it
+/// physically sits in.
+///
+/// The staging directory holds no `.dodot.toml`, so resolving
+/// configuration from its path answers with the root layer — and a
+/// destination pack whose `[pack] ignore` replaces that layer reads
+/// entries the root list hides. Planning the prepared tree under the
+/// root list would drop exactly those entries, and a cross-pack
+/// conflict among them would go unseen: adopt would publish a pack
+/// whose next `dodot up` refuses.
+///
+/// Here the root list hides the name the adopted entry lands at, both
+/// packs override that list, and the two claim `~/.bashrc`.
+#[test]
+fn adopt_plans_the_prepared_tree_under_the_destination_packs_config() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("bashrc", "existing")
+        .config("[pack]\nignore = [\"*.swp\"]\n")
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .config("[pack]\nignore = [\"*.swp\"]\n")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+    write_config(
+        &env.dotfiles_root,
+        "[pack]\nignore = [\"bashrc\", \"home.bashrc\"]\n",
+    );
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".bashrc");
+    let err = commands::adopt::adopt(
+        Some("work"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "the prepared entry claims `~/.bashrc` under pack work's own \
+         ignore list, so the conflict with pack unix is found: {err}"
+    );
+    // Refused before anything was published, as every refusal is.
+    env.assert_regular_file(&source, "new");
+    env.assert_not_exists(&env.dotfiles_root.join("work/home.bashrc"));
+    assert!(preparation_dirs(&env).is_empty());
 }
 
 #[test]
@@ -3164,10 +3241,8 @@ fn adopt_existing_pack_force_failure_restores_every_displaced_destination() {
     let before = file_snapshot(&pack);
 
     let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
-        if let super::support::FsOp::RenameNoReplace { to, .. } = op {
-            if to.ends_with("home.exrc") {
-                return Err(crate::DodotError::Other("injected publish failure".into()));
-            }
+        if is_publication_of(&op, "home.exrc") {
+            return Err(crate::DodotError::Other("injected publish failure".into()));
         }
         Ok(())
     });
@@ -3476,19 +3551,15 @@ fn adopt_existing_pack_rollback_that_cannot_restore_keeps_the_displaced_content(
     let pack = env.dotfiles_root.join("vim");
 
     let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
-        match op {
-            // Publication stops here.
-            super::support::FsOp::RenameNoReplace { to, .. } if to.ends_with("home.exrc") => {
-                Err(crate::DodotError::Other("injected publish failure".into()))
-            }
-            // …and this entry's displaced destination cannot go back.
-            super::support::FsOp::Rename { from, to }
-                if from.to_string_lossy().contains(".displaced") && to.ends_with("home.gvimrc") =>
-            {
-                Err(crate::DodotError::Other("injected restore failure".into()))
-            }
-            _ => Ok(()),
+        // Publication stops here…
+        if is_publication_of(&op, "home.exrc") {
+            return Err(crate::DodotError::Other("injected publish failure".into()));
         }
+        // …and this entry's displaced destination cannot go back.
+        if is_displaced_restore_of(&op, "home.gvimrc") {
+            return Err(crate::DodotError::Other("injected restore failure".into()));
+        }
+        Ok(())
     });
 
     let ctx = make_ctx_with_fs(&env, fs);
@@ -3909,24 +3980,20 @@ fn adopt_existing_pack_rollback_that_cannot_unpublish_leaves_the_content_in_plac
 
     let pack = env.dotfiles_root.join("vim");
 
-    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
-        match op {
-            // Publication stops here.
-            super::support::FsOp::RenameNoReplace { to, .. } if to.ends_with("home.gvimrc") => {
-                Err(crate::DodotError::Other("injected publish failure".into()))
-            }
-            // …and entry one's published content cannot go back into
-            // the preparation directory.
-            super::support::FsOp::Rename { from, to }
-                if from.ends_with("home.vimrc")
-                    && to.to_string_lossy().contains(".dodot-adopt-") =>
-            {
-                Err(crate::DodotError::Other(
-                    "injected unpublish failure".into(),
-                ))
-            }
-            _ => Ok(()),
+    let unpublished = pack.join("home.vimrc");
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        // Publication stops here…
+        if is_publication_of(&op, "home.gvimrc") {
+            return Err(crate::DodotError::Other("injected publish failure".into()));
         }
+        // …and entry one's published content cannot go back into the
+        // preparation directory.
+        if is_unpublish_of(&op, &unpublished) {
+            return Err(crate::DodotError::Other(
+                "injected unpublish failure".into(),
+            ));
+        }
+        Ok(())
     });
 
     let ctx = make_ctx_with_fs(&env, fs);
@@ -3956,6 +4023,148 @@ fn adopt_existing_pack_rollback_that_cannot_unpublish_leaves_the_content_in_plac
     env.assert_regular_file(&pack.join("home.zshrc"), "an entry this run does not touch");
     assert_eq!(preparation_dirs(&env).len(), 1);
     // Sources are untouched, as on every publication failure.
+    env.assert_regular_file(&sources[0], "NEW-1");
+    env.assert_regular_file(&sources[1], "NEW-2");
+}
+
+/// A rollback does not put displaced content back over something that
+/// appeared at the final path in the meantime.
+///
+/// The path was free when the rollback vacated it and is taken by the
+/// time the restore runs — an ordinary concurrent write, and the one
+/// case a plain `rename` back would silently destroy. `rename_noreplace`
+/// makes the kernel refuse it inside the move, so the other writer's
+/// file survives, the displaced content stays staged, and the entry is
+/// reported rather than claimed as restored.
+#[test]
+fn adopt_existing_pack_rollback_does_not_overwrite_a_destination_taken_since() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("home.vimrc", "OLD-1")
+        .file("home.gvimrc", "OLD-2")
+        .done()
+        .home_file(".vimrc", "NEW-1")
+        .home_file(".gvimrc", "NEW-2")
+        .build();
+
+    let pack = env.dotfiles_root.join("vim");
+    let raced = pack.join("home.vimrc");
+    let racer = raced.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        // Publication stops at entry two…
+        if is_publication_of(&op, "home.gvimrc") {
+            return Err(crate::DodotError::Other("injected publish failure".into()));
+        }
+        // …and another writer takes entry one's path in the instant
+        // between the rollback vacating it and putting `OLD-1` back.
+        if is_displaced_restore_of(&op, "home.vimrc") {
+            std::fs::write(&racer, b"SOMEONE ELSE").unwrap();
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![env.home.join(".vimrc"), env.home.join(".gvimrc")];
+    let err =
+        commands::adopt::adopt(Some("vim"), &sources, true, false, false, None, &ctx).unwrap_err();
+
+    match &err {
+        crate::DodotError::PublicationRollbackIncomplete {
+            restored, stranded, ..
+        } => {
+            assert_eq!(
+                restored,
+                &vec!["home.gvimrc".to_string()],
+                "the entry whose path was free is restored"
+            );
+            assert_eq!(stranded.len(), 1, "got: {stranded:?}");
+            assert_eq!(stranded[0].in_pack, "home.vimrc");
+            assert!(
+                stranded[0].at.contains(".displaced"),
+                "the report points at the staged copy, not at the path \
+                 someone else now holds: {}",
+                stranded[0].at
+            );
+        }
+        other => panic!("expected PublicationRollbackIncomplete, got: {other}"),
+    }
+
+    // The concurrent write is intact: the rollback refused the path
+    // rather than replacing what it found there.
+    env.assert_regular_file(&raced, "SOMEONE ELSE");
+    env.assert_regular_file(&pack.join("home.gvimrc"), "OLD-2");
+    assert_eq!(
+        displaced_snapshot(&env),
+        vec![("home.vimrc".to_string(), Snapshot::file("OLD-1"))],
+        "the pre-adopt content the rollback could not put back is still staged"
+    );
+    assert_eq!(preparation_dirs(&env).len(), 1);
+    env.assert_regular_file(&sources[0], "NEW-1");
+    env.assert_regular_file(&sources[1], "NEW-2");
+}
+
+/// A rollback takes an entry back out of the pack only while the path
+/// still holds what publication put there.
+///
+/// Another process replaces the published file before the rollback
+/// reaches it. Moving that into the preparation directory would hand a
+/// stranger's file to the discard at step 6 — a deletion by a recovery
+/// whose whole rule is that it deletes nothing. The entry is left alone
+/// and reported at its in-pack path instead.
+#[test]
+fn adopt_existing_pack_rollback_leaves_a_path_another_writer_replaced() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("home.zshrc", "an entry this run does not touch")
+        .done()
+        .home_file(".vimrc", "NEW-1")
+        .home_file(".gvimrc", "NEW-2")
+        .build();
+
+    let pack = env.dotfiles_root.join("vim");
+    let raced = pack.join("home.vimrc");
+    let replaced = raced.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if is_publication_of(&op, "home.gvimrc") {
+            // Entry one is published by now. Another process replaces
+            // it — a new file at the same path, which is a different
+            // entry however identical the path looks — and then
+            // publication of entry two fails, so the rollback runs
+            // against a pack that is no longer the one it published
+            // into.
+            std::fs::remove_file(&replaced).unwrap();
+            std::fs::write(&replaced, b"SOMEONE ELSE").unwrap();
+            return Err(crate::DodotError::Other("injected publish failure".into()));
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![env.home.join(".vimrc"), env.home.join(".gvimrc")];
+    let err =
+        commands::adopt::adopt(Some("vim"), &sources, false, false, false, None, &ctx).unwrap_err();
+
+    match &err {
+        crate::DodotError::PublicationRollbackIncomplete {
+            restored, stranded, ..
+        } => {
+            assert!(restored.is_empty(), "nothing was put back: {restored:?}");
+            assert_eq!(stranded.len(), 1, "got: {stranded:?}");
+            assert_eq!(stranded[0].in_pack, "home.vimrc");
+            assert_eq!(
+                stranded[0].at,
+                raced.display().to_string(),
+                "the report points at the in-pack path the content is still at"
+            );
+        }
+        other => panic!("expected PublicationRollbackIncomplete, got: {other}"),
+    }
+
+    // The other writer's file is where they left it, and no copy of it
+    // rode into the preparation directory to be discarded.
+    env.assert_regular_file(&raced, "SOMEONE ELSE");
+    assert_eq!(preparation_dirs(&env).len(), 1);
+    env.assert_regular_file(&pack.join("home.zshrc"), "an entry this run does not touch");
     env.assert_regular_file(&sources[0], "NEW-1");
     env.assert_regular_file(&sources[1], "NEW-2");
 }
@@ -4860,6 +5069,49 @@ fn tree_mentions(root: &std::path::Path, needle: &str) -> bool {
 // and to keep whatever it achieved. Any failed planned source makes the
 // command exit nonzero, while the result still renders all of them.
 
+/// True when `op` is publication's rename of a prepared entry into the
+/// pack — the one §5.4 does with `rename_noreplace`.
+///
+/// Told apart from the `rename_noreplace` a rollback uses to put a
+/// displaced destination back at the same in-pack path by where the
+/// content comes *from*: publication moves it out of the prepared pack
+/// tree, a rollback out of the `.displaced` subtree beside it. A hook
+/// that matched on the destination alone would inject its "publication
+/// failed" error into the recovery it is trying to observe.
+fn is_publication_of(op: &super::support::FsOp<'_>, in_pack: &str) -> bool {
+    matches!(
+        op,
+        super::support::FsOp::RenameNoReplace { from, to }
+            if to.ends_with(in_pack) && !is_displaced(from)
+    )
+}
+
+/// True when `op` is a rollback putting displaced content back at
+/// `in_pack` — the counterpart of [`is_publication_of`].
+fn is_displaced_restore_of(op: &super::support::FsOp<'_>, in_pack: &str) -> bool {
+    matches!(
+        op,
+        super::support::FsOp::RenameNoReplace { from, to }
+            if to.ends_with(in_pack) && is_displaced(from)
+    )
+}
+
+/// True when `op` is a rollback taking a published entry back out of
+/// the pack: a `rename_noreplace` *from* the in-pack path into the
+/// preparation directory.
+fn is_unpublish_of(op: &super::support::FsOp<'_>, final_path: &std::path::Path) -> bool {
+    matches!(
+        op,
+        super::support::FsOp::RenameNoReplace { from, .. } if *from == final_path
+    )
+}
+
+/// True when `path` is inside the `.displaced` subtree of a
+/// preparation directory.
+fn is_displaced(path: &std::path::Path) -> bool {
+    path.components().any(|c| c.as_os_str() == ".displaced")
+}
+
 /// True when `op` is the symlink step 5 creates for `source`.
 ///
 /// Two shapes, because §5.5 replaces the two kinds of source
@@ -5443,8 +5695,8 @@ fn a_recovery_that_cannot_put_a_displacement_back_keeps_the_staged_copy() {
                 "injected replacement failure".into(),
             ));
         }
-        if let super::support::FsOp::Rename { from, .. } = &op {
-            if from.components().any(|c| c.as_os_str() == ".displaced") {
+        if let super::support::FsOp::RenameNoReplace { from, .. } = &op {
+            if is_displaced(from) {
                 return Err(crate::DodotError::Other("injected recovery failure".into()));
             }
         }
@@ -5497,6 +5749,67 @@ fn a_recovery_that_cannot_put_a_displacement_back_keeps_the_staged_copy() {
     assert_stranded_failure_note(&result, &source);
 }
 
+/// The §5.5 recovery refuses a destination another writer has taken,
+/// the same way §5.4's rollback does.
+///
+/// The source replacement fails, the recovery vacates the published
+/// entry, and the path is occupied again before the displaced content
+/// can go back. A plain `rename` would replace that file; the run
+/// keeps the staged copy and reports the entry instead, and the other
+/// writer's file stands.
+#[test]
+fn a_recovery_does_not_put_a_displacement_back_over_a_path_taken_since() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- OLD")
+        .done()
+        .home_file(".config/nvim/init.lua", "-- NEW")
+        .build();
+
+    let source = env.home.join(".config/nvim/init.lua");
+    let watched = source.clone();
+    let raced = env.dotfiles_root.join("nvim/init.lua");
+    let racer = raced.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if is_source_replacement(&op, &watched) {
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        // The recovery has just vacated the in-pack path and is about
+        // to put `-- OLD` back; another writer gets there first.
+        if is_displaced_restore_of(&op, "init.lua") {
+            std::fs::write(&racer, b"-- SOMEONE ELSE").unwrap();
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        /*force=*/ true,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+    env.assert_regular_file(&source, "-- NEW");
+    // Neither the pre-adopt content nor this run's copy replaced what
+    // the other writer put there.
+    env.assert_regular_file(&raced, "-- SOMEONE ELSE");
+    assert_eq!(
+        displaced_snapshot(&env),
+        vec![("init.lua".to_string(), Snapshot::file("-- OLD"))],
+        "the destination's pre-adopt content is still staged"
+    );
+    assert_eq!(preparation_dirs(&env).len(), 1);
+    assert_stranded_failure_note(&result, &source);
+}
+
 /// The same rule with nothing displaced: a recovery that cannot take
 /// the published entry back out of an existing pack leaves it standing
 /// and says so. Deleting it to get past the failed rename is what §5.4
@@ -5523,12 +5836,11 @@ fn a_recovery_that_cannot_take_the_entry_out_of_an_existing_pack_names_it() {
             ));
         }
         // The rename that takes the published entry back out into the
-        // preparation directory. Publication got it in with
-        // `rename_noreplace`, so this hits the recovery only.
-        if let super::support::FsOp::Rename { from, .. } = &op {
-            if *from == blocked {
-                return Err(crate::DodotError::Other("injected recovery failure".into()));
-            }
+        // preparation directory, matched on the in-pack path it moves
+        // *from* — publication moves in the other direction, so this
+        // hits the recovery only.
+        if is_unpublish_of(&op, &blocked) {
+            return Err(crate::DodotError::Other("injected recovery failure".into()));
         }
         Ok(())
     });
@@ -5570,6 +5882,69 @@ fn a_recovery_that_cannot_take_the_entry_out_of_an_existing_pack_names_it() {
     assert!(
         named[0].contains("init.lua") && named[0].contains(&published.display().to_string()),
         "the note names the entry and where its content is: {}",
+        named[0]
+    );
+    assert_stranded_failure_note(&result, &source);
+}
+
+/// A pack this run published is this run's to remove — while the entry
+/// at the path is the one the run put there.
+///
+/// "Nothing here predates the run" describes the tree the single
+/// rename carried in, and says nothing about a path another process
+/// has written since. The recovery leaves that file alone and names
+/// the entry, rather than deleting a file adopt never adopted.
+#[test]
+fn a_recovery_leaves_a_new_packs_entry_another_writer_replaced() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- NEW")
+        .build();
+
+    let source = env.home.join(".config/nvim/init.lua");
+    let published = env.dotfiles_root.join("nvim/init.lua");
+    let watched = source.clone();
+    let replaced = published.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if is_source_replacement(&op, &watched) {
+            // The pack is published by now; another process replaces
+            // the entry inside it, and then the replacement of the
+            // source fails, so the recovery runs against a path that
+            // is no longer holding what the run published.
+            std::fs::remove_file(&replaced).unwrap();
+            std::fs::write(&replaced, b"-- SOMEONE ELSE").unwrap();
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        /*force=*/ false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+    env.assert_regular_file(&source, "-- NEW");
+    env.assert_file_contents(&published, "-- SOMEONE ELSE");
+
+    let named: Vec<&String> = result
+        .notes
+        .iter()
+        .map(|n| &n.body)
+        .filter(|t| t.contains("could not put back"))
+        .collect();
+    assert_eq!(named.len(), 1, "got: {named:?}");
+    assert!(
+        named[0].contains("init.lua") && named[0].contains(&published.display().to_string()),
+        "the note names the entry and the path its content is at: {}",
         named[0]
     );
     assert_stranded_failure_note(&result, &source);

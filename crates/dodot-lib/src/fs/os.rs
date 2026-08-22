@@ -1,9 +1,9 @@
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use crate::error::fs_err;
-use crate::fs::{DirEntry, Fs, FsMetadata};
+use crate::fs::{DirEntry, FileId, Fs, FsMetadata};
 use crate::Result;
 
 /// Filesystem implementation that delegates to `std::fs`.
@@ -256,6 +256,10 @@ fn metadata_from_std(meta: &fs::Metadata, is_symlink: bool) -> FsMetadata {
         is_symlink,
         len: meta.len(),
         mode: meta.permissions().mode(),
+        id: FileId {
+            dev: meta.dev(),
+            ino: meta.ino(),
+        },
     }
 }
 
