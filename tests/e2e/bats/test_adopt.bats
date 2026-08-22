@@ -485,8 +485,9 @@ teardown() {
 # A filename long enough that the adjacent temporary name adopt builds
 # from it exceeds NAME_MAX, and short enough to create.
 long_source_name() {
-	printf '%0.sn' $(seq 1 240)
-	printf '.lua'
+	local padding
+	printf -v padding '%*s' 240 ''
+	printf '%s.lua' "${padding// /n}"
 }
 
 @test "adopt attempts every planned source, keeps the ones that landed, and exits nonzero" {

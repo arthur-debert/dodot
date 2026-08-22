@@ -4883,12 +4883,32 @@ fn is_source_replacement(op: &super::support::FsOp<'_>, source: &std::path::Path
     link.parent() == Some(parent)
         && link
             .file_name()
-            .map(|link_name| {
-                let link_name = link_name.to_string_lossy();
-                link_name.starts_with(".dodot-adopt-tmp-")
-                    && link_name.contains(&*name.to_string_lossy())
-            })
+            .map(|link_name| is_temp_sibling(&link_name.to_string_lossy(), &name.to_string_lossy()))
             .unwrap_or(false)
+}
+
+/// True when `link_name` is the temporary name step 5 builds for a file
+/// source called `source_name`.
+///
+/// `temp_sibling` formats `.dodot-adopt-tmp-<name>-<pid>-<seq>-<nanos>`,
+/// the three trailing components hex. Matching that whole shape rather
+/// than looking for the name anywhere in the string is what keeps one
+/// source from claiming another's temporary name: with `contains`, an
+/// injected failure aimed at `init.lua` also fires on `init.lua.bak`,
+/// and the test then asserts about a source it never meant to break.
+fn is_temp_sibling(link_name: &str, source_name: &str) -> bool {
+    let Some(nonce) = link_name
+        .strip_prefix(".dodot-adopt-tmp-")
+        .and_then(|rest| rest.strip_prefix(source_name))
+        .and_then(|rest| rest.strip_prefix('-'))
+    else {
+        return false;
+    };
+    let parts: Vec<&str> = nonce.split('-').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 /// An `Fs` that fails every source replacement for the given sources
@@ -5430,6 +5450,142 @@ fn a_recovery_that_cannot_put_a_displacement_back_keeps_the_staged_copy() {
     assert_eq!(named.len(), 1, "got: {named:?}");
     assert!(
         named[0].contains("init.lua") && named[0].contains(&kept[0]),
+        "the note names the entry and where its content is: {}",
+        named[0]
+    );
+}
+
+/// The same rule with nothing displaced: a recovery that cannot take
+/// the published entry back out of an existing pack leaves it standing
+/// and says so. Deleting it to get past the failed rename is what §5.4
+/// forbids and §5.5 restores by — and a run that reported the entry
+/// removed while it is still there would send the user to a pack they
+/// think is clean.
+#[test]
+fn a_recovery_that_cannot_take_the_entry_out_of_an_existing_pack_names_it() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("keep.lua", "-- keep")
+        .done()
+        .home_file(".config/nvim/init.lua", "-- NEW")
+        .build();
+
+    let source = env.home.join(".config/nvim/init.lua");
+    let published = env.dotfiles_root.join("nvim/init.lua");
+    let watched = source.clone();
+    let blocked = published.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if is_source_replacement(&op, &watched) {
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        // The rename that takes the published entry back out into the
+        // preparation directory. Publication got it in with
+        // `rename_noreplace`, so this hits the recovery only.
+        if let super::support::FsOp::Rename { from, .. } = &op {
+            if *from == blocked {
+                return Err(crate::DodotError::Other("injected recovery failure".into()));
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        /*force=*/ false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+
+    // The source is untouched and the copy that could not come out is
+    // still where publication put it — a duplicate, not a deletion.
+    env.assert_regular_file(&source, "-- NEW");
+    env.assert_file_contents(&published, "-- NEW");
+    env.assert_file_contents(&env.dotfiles_root.join("nvim/keep.lua"), "-- keep");
+
+    let kept = preparation_dirs(&env);
+    assert_eq!(
+        kept.len(),
+        1,
+        "the staging directory is kept, got: {kept:?}"
+    );
+
+    let named: Vec<&String> = result
+        .notes
+        .iter()
+        .map(|n| &n.body)
+        .filter(|t| t.contains("could not put back"))
+        .collect();
+    assert_eq!(named.len(), 1, "got: {named:?}");
+    assert!(
+        named[0].contains("init.lua") && named[0].contains(&published.display().to_string()),
+        "the note names the entry and where its content is: {}",
+        named[0]
+    );
+}
+
+/// A pack this run published is this run's to remove, but the removal
+/// can still fail — and then the entry is named rather than reported
+/// gone. The pack survives with it: `remove_dir_empty` refuses a
+/// directory that still holds something.
+#[test]
+fn a_recovery_that_cannot_remove_a_new_packs_entry_names_it() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- NEW")
+        .build();
+
+    let source = env.home.join(".config/nvim/init.lua");
+    let published = env.dotfiles_root.join("nvim/init.lua");
+    let watched = source.clone();
+    let blocked = published.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if is_source_replacement(&op, &watched) {
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        if let super::support::FsOp::RemoveFile { path } = &op {
+            if *path == blocked {
+                return Err(crate::DodotError::Other("injected recovery failure".into()));
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        /*force=*/ false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+    env.assert_regular_file(&source, "-- NEW");
+    env.assert_file_contents(&published, "-- NEW");
+    assert_eq!(pack_names(&env), vec!["nvim".to_string()]);
+
+    let named: Vec<&String> = result
+        .notes
+        .iter()
+        .map(|n| &n.body)
+        .filter(|t| t.contains("could not put back"))
+        .collect();
+    assert_eq!(named.len(), 1, "got: {named:?}");
+    assert!(
+        named[0].contains("init.lua") && named[0].contains(&published.display().to_string()),
         "the note names the entry and where its content is: {}",
         named[0]
     );

@@ -91,6 +91,9 @@
 //!    renamed back to its final path, the intermediate directories
 //!    publication created and this leaves empty removed, and a pack
 //!    this run published removed when no source was replaced at all.
+//!    A step of that can fail in turn, and then nothing is deleted to
+//!    get past it: the entry is named along with the path its content
+//!    is at, exactly as a publication rollback does it.
 //!    Any failed planned source makes the command exit nonzero
 //!    ([`PackStatusResult::failed`](crate::commands::PackStatusResult::failed)),
 //!    while the result still renders every source, replaced and failed
@@ -102,9 +105,9 @@
 //!    `--force` displacement stays recoverable until every source has
 //!    been replaced or reported. Two runs do not reach this step: one
 //!    whose publication rollback could not finish, and one whose step-5
-//!    recovery could not put a displaced destination back. Both leave
-//!    content that belongs in the pack inside the preparation
-//!    directory, and both name it rather than deleting it.
+//!    recovery could not finish either. Both can leave content that
+//!    belongs elsewhere inside the preparation directory, and both name
+//!    what they could not move rather than deleting it.
 //!
 //! ## What adopt refuses, and what it leaves alone
 //!
@@ -421,9 +424,10 @@ pub fn adopt(
     //
     // Every source outcome is known now, so the displacements that
     // survived go — that discard is where a successful `--force` takes
-    // effect. The exception is a recovery that could not put a displaced
-    // destination back: the preparation directory then holds the only
-    // copy of that content, and the notes below say where it is.
+    // effect. The exception is a recovery step that failed in turn: the
+    // preparation directory can then hold the only copy of a
+    // destination's pre-adopt content, and the notes below say where
+    // everything the recovery could not move is.
     if replacement.stranded.is_empty() {
         prep.discard(ctx.fs.as_ref());
     }
@@ -623,16 +627,20 @@ pub fn adopt(
         pack.recompute_summary();
     }
 
-    // A recovery that could not put a displaced destination back is the
-    // one outcome that leaves the user's own content somewhere other
-    // than where it belongs. Nothing was deleted to get past it and the
-    // preparation directory is still on disk, so the note is a pair of
-    // paths and an instruction, not an apology.
+    // A recovery step that failed in turn is the one outcome that
+    // leaves content somewhere other than where it belongs: the
+    // destination `--force` displaced still in the staging directory,
+    // or the copy publication put in the pack still standing there.
+    // Nothing was deleted to get past it and the staging directory is
+    // still on disk, so the note is a pair of paths and an instruction,
+    // not an apology.
     for entry in &replacement.stranded {
         result.notes.push(DisplayNote::error(format!(
-            "adopt could not put back the content --force displaced for {}: \
-             it is at {}. The staging directory {} is kept rather than \
-             discarded — move the content back by hand.",
+            "adopt could not put back the pack's pre-adopt state for {}: \
+             the content it could not move is at {}. Nothing was deleted \
+             to get past that, and the staging directory {} is kept rather \
+             than discarded — move what you need back by hand, then remove \
+             that directory.",
             entry.in_pack,
             entry.at,
             prep.root.display()
@@ -2170,13 +2178,17 @@ struct AdoptFailure {
 #[derive(Default)]
 struct Replacement {
     /// The sources that could not be replaced, in plan order. Each one's
-    /// pack entry has been taken back out, and any of these makes the
-    /// command exit nonzero (§5.5).
+    /// pack entry has been taken back out unless it is also in
+    /// `stranded`, and any of these makes the command exit nonzero
+    /// (§5.5).
     failures: Vec<AdoptFailure>,
-    /// Entries whose `--force` displacement a recovery could not put
-    /// back, with the path its content is at now. Any of these keeps the
-    /// preparation directory instead of discarding it: what is in there
-    /// is then the only copy of the destination's pre-adopt content.
+    /// Entries whose pre-adopt pack state a recovery could not put back,
+    /// with the path the content it could not move is at now: the
+    /// preparation directory for a `--force` displacement that could not
+    /// return, the in-pack path for a published entry that could not
+    /// come out. Any of these keeps the preparation directory instead of
+    /// discarding it: what is in there can be the only copy of a
+    /// destination's pre-adopt content.
     stranded: Vec<StrandedEntry>,
 }
 
@@ -2191,7 +2203,9 @@ struct Replacement {
 /// duplicated state that makes the next `dodot up` report a conflict the
 /// user never created. Continuing means each source ends in exactly one
 /// of two states, replaced or untouched-with-its-pack-entry-rolled-back,
-/// whatever happened to the others.
+/// whatever happened to the others — or, when the rollback of that entry
+/// fails in turn, untouched with what the rollback could not move named
+/// in the report rather than deleted.
 ///
 /// The directory sweep runs once at the end rather than per failure, and
 /// only when something failed. `remove_dir_empty` is what keeps it from
@@ -2234,19 +2248,26 @@ fn swap_all(
 ///
 /// "Where it was" is whatever publication did for this entry, undone
 /// (§5.5). Under `--force` that is the displaced destination renamed
-/// back; otherwise it is the published entry gone. Removing the entry is
-/// safe in a way it is not during a publication rollback: the
-/// replacement is what failed, so the user's own file is still a real
-/// file at its original path and the pack copy is a duplicate of it.
+/// back; otherwise it is the published entry gone.
 ///
-/// The copy is renamed back into the preparation directory rather than
-/// deleted where that works, which costs nothing — step 6 discards it —
-/// and keeps the bytes reachable if what fails is the removal.
+/// Gone by a rename into the preparation directory, not a deletion: the
+/// path the entry came from is empty until step 6 discards it, so the
+/// bytes stay reachable for the rest of the run at no cost. The one
+/// place that deletes is a pack this run published, where there is no
+/// preparation directory left to rename into — the whole prepared tree
+/// became the pack — and where nothing at the path can predate the
+/// run.
 ///
-/// Returns the entry whose displaced content is still in the preparation
-/// directory when the rename back could not happen. The caller keeps the
-/// directory in that case: deleting it there would destroy the pre-adopt
-/// destination that `--force` promised to hold until the run committed.
+/// No step is assumed to have worked, and none of them deletes anything
+/// to get past a failure: that is §5.4's rule and §5.5 restores "what it
+/// means in §5.4, and for the same reason". Whatever the recovery could
+/// not move is returned as a [`StrandedEntry`] naming the path its
+/// content is at — the preparation directory for a `--force`
+/// displacement that could not go back, the in-pack path for a published
+/// entry that could not come out. The caller keeps the preparation
+/// directory whenever one comes back: discarding it can destroy the
+/// pre-adopt destination that `--force` promised to hold until the run
+/// committed.
 fn restore_failed_entry(
     plan: &AdoptPlan,
     publication: &Publication,
@@ -2255,41 +2276,77 @@ fn restore_failed_entry(
     let entry = match publication {
         // Nothing in a pack this run published predates the run, so
         // there is nothing to put back and removing the entry is the
-        // whole restoration.
+        // whole restoration. The pack path did not exist before this
+        // run and arrived as one rename of a tree this run built, so
+        // what stands inside it is this run's to remove — the doubt
+        // §5.4 has about an in-pack path does not arise here.
         Publication::NewPack => None,
         Publication::Existing(record) => record.entries.iter().find(|e| e.in_pack == plan.in_pack),
     };
     let Some(entry) = entry else {
         remove_best_effort(fs, &plan.pack_dest);
-        return None;
+        // A removal that failed leaves the duplicate standing, and
+        // saying it was taken back out would be a lie the user cannot
+        // check.
+        return occupied(fs, &plan.pack_dest).then(|| StrandedEntry {
+            in_pack: plan.in_pack.display().to_string(),
+            at: plan.pack_dest.display().to_string(),
+        });
     };
 
-    let vacated = vacate(fs, &entry.final_path, &entry.prepared);
-    let displaced = entry.displaced.as_ref()?;
-    if vacated && fs.rename(displaced, &entry.final_path).is_ok() {
-        return None;
+    let in_pack = entry.in_pack.display().to_string();
+    // An entry publication recorded but never got into the pack has
+    // nothing of this run's at its final path, so there is nothing to
+    // take out and nothing to rename into the preparation directory —
+    // what stands there, if anything, is the user's own.
+    let vacated = !entry.published || vacate(fs, &entry.final_path, &entry.prepared);
+    match &entry.displaced {
+        // `--force` moved something out; the entry is restored only
+        // once that something is back, and until it is, the only copy
+        // of it is the one in the preparation directory.
+        Some(displaced) => {
+            if vacated && fs.rename(displaced, &entry.final_path).is_ok() {
+                None
+            } else {
+                Some(StrandedEntry {
+                    in_pack,
+                    at: displaced.display().to_string(),
+                })
+            }
+        }
+        // Nothing was displaced, so the pre-adopt state is an absence
+        // and clearing the final path is the whole restoration.
+        None => (!vacated).then(|| StrandedEntry {
+            in_pack,
+            at: entry.final_path.display().to_string(),
+        }),
     }
-    Some(StrandedEntry {
-        in_pack: entry.in_pack.display().to_string(),
-        at: displaced.display().to_string(),
-    })
 }
 
 /// Take this run's published copy out of `final_path` and say whether
 /// the path ended up free for whatever was there before it.
 ///
-/// A rename back to `prepared` first — that path was vacated by
-/// publication and step 6 discards it, so the bytes stay reachable
-/// until the run ends. Removal is the fallback, and the answer is what
-/// the path holds afterwards rather than what either call returned:
-/// another process can have written there, and a caller about to rename
-/// a displaced destination back needs to know the path is actually
-/// free.
+/// A rename back to `prepared`: that path was vacated by publication
+/// and step 6 discards it, so the bytes stay reachable until the run
+/// ends. A rename that fails leaves the entry standing rather than
+/// deleting it — removing it instead would make this recovery the thing
+/// that destroys content, and what sits at an in-pack path is not
+/// necessarily what publication put there (§5.4, which §5.5 restores
+/// by).
+///
+/// The answer is what the path holds afterwards rather than what the
+/// rename returned: another process can have taken it away, and a
+/// caller about to rename a displaced destination back needs to know
+/// the path is actually free.
 fn vacate(fs: &dyn Fs, final_path: &Path, prepared: &Path) -> bool {
-    if fs.rename(final_path, prepared).is_err() {
-        remove_best_effort(fs, final_path);
-    }
-    !fs.exists(final_path) && !fs.is_symlink(final_path)
+    let _ = fs.rename(final_path, prepared);
+    !occupied(fs, final_path)
+}
+
+/// Whether anything stands at `path` — a broken symlink included, which
+/// [`Fs::exists`] follows past.
+fn occupied(fs: &dyn Fs, path: &Path) -> bool {
+    fs.exists(path) || fs.is_symlink(path)
 }
 
 /// Remove the directories publication created that the failed entries

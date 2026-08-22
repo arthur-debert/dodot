@@ -165,6 +165,8 @@ pub(super) enum FsOp<'a> {
     MkdirAll { path: &'a Path },
     MkdirExclusive { path: &'a Path },
     Symlink { original: &'a Path, link: &'a Path },
+    RemoveFile { path: &'a Path },
+    RemoveDirAll { path: &'a Path },
     RemoveDirEmpty { path: &'a Path },
 }
 
@@ -242,9 +244,11 @@ impl Fs for InterposedFs {
         self.inner.readlink(path)
     }
     fn remove_file(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::RemoveFile { path })?;
         self.inner.remove_file(path)
     }
     fn remove_dir_all(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::RemoveDirAll { path })?;
         self.inner.remove_dir_all(path)
     }
     fn remove_dir_empty(&self, path: &Path) -> Result<()> {
