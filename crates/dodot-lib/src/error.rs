@@ -122,7 +122,8 @@ pub enum DodotError {
         /// Entries the rollback could not put back, and where their
         /// content is now — in the preparation directory for a
         /// displacement that could not return, or at the in-pack path
-        /// for content adopt could neither move nor remove.
+        /// for content publication put there and the rollback could not
+        /// move back out.
         stranded: Vec<crate::commands::adopt::StrandedEntry>,
         /// The preparation directory, kept rather than discarded
         /// because it holds the only remaining copy of some of the

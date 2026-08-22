@@ -3761,3 +3761,201 @@ fn adopt_existing_pack_refuses_an_intermediate_that_is_not_a_directory() {
     env.assert_regular_file(&source, "-- plugins");
     assert!(preparation_dirs(&env).is_empty());
 }
+
+/// The paths validation supersedes are the ones publication writes,
+/// which for an `--only-os` run carry the `_<label>/` gate segment. A
+/// pack walk hands back a passing gate directory's children with that
+/// segment stripped, so matching the two on the walked path would keep
+/// every entry such a run replaces and plan the old claims alongside
+/// the new ones.
+///
+/// Same repair as the ungated case: `work/_<label>/externals.toml`
+/// declares `~/.bashrc`, which `unix` also claims, and the adopted
+/// manifest replacing it declares `~/.zshrc`. The gate passes on this
+/// host, so the entry is live and its claim is what refuses the run
+/// unless the replacement is what gets planned.
+#[test]
+fn adopt_force_supersedes_an_entry_behind_a_passing_directory_gate() {
+    let label = if cfg!(target_os = "macos") {
+        "darwin"
+    } else {
+        "linux"
+    };
+    let gated = format!("_{label}/externals.toml");
+
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("home.bashrc", "unix owns ~/.bashrc")
+        .done()
+        .pack("work")
+        .file(
+            &gated,
+            r#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/.bashrc"
+            sha256 = "abc"
+        "#,
+        )
+        .done()
+        .home_file(
+            ".config/work/externals.toml",
+            r#"
+            [zshrc]
+            type   = "file"
+            url    = "https://example.com/zshrc"
+            target = "~/.zshrc"
+            sha256 = "def"
+        "#,
+        )
+        .build();
+
+    let pack = env.dotfiles_root.join("work");
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    let source = env.home.join(".config/work/externals.toml");
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        Some(label),
+        &ctx,
+    )
+    .expect("the gated entry is superseded too, so the colliding claim is not planned");
+
+    assert!(
+        std::fs::read_to_string(pack.join(&gated))
+            .unwrap()
+            .contains("~/.zshrc"),
+        "the adopted manifest is what the gated path now holds"
+    );
+    env.assert_symlink(&source, &pack.join(&gated));
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A superseded path *inside* a top-level entry supersedes nothing:
+/// publication replaces that one path and leaves the directory holding
+/// it in the pack with the rest of its contents, so the entry stays in
+/// the plan and keeps claiming what it claims.
+///
+/// `other` claims `~/.config/nvim/lua` through its `_xdg/nvim/lua`
+/// entry, and the `nvim` pack's own `lua` directory claims the same
+/// path: the repo is in conflict, and adopting a file *under* `lua`
+/// does not resolve it. Dropping the directory because a path below it
+/// is being replaced would hide the collision and publish into it.
+#[test]
+fn adopt_nested_replacement_keeps_the_top_level_entry_holding_it() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("lua/plugins/init.lua", "-- the pack's own")
+        .done()
+        .pack("other")
+        .file("_xdg/nvim/lua", "other claims ~/.config/nvim/lua")
+        .done()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let before = file_snapshot(&pack);
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/lua/plugins/init.lua");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "got: {err}"
+    );
+    assert_eq!(
+        file_snapshot(&pack),
+        before,
+        "a refused run leaves the existing pack byte-identical"
+    );
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A rollback that cannot take published content back out of the pack
+/// reports that entry and leaves the content where it is. Removing it
+/// to free the path would make the recovery the step that destroys
+/// something — and what stands there is not necessarily what
+/// publication put there.
+///
+/// Publication fails at entry two; the rename that would move entry
+/// one's published content back into the preparation directory fails in
+/// turn. Entry one is reported at its in-pack path with its content
+/// intact, nothing is reported as restored, and the preparation
+/// directory survives the run.
+#[test]
+fn adopt_existing_pack_rollback_that_cannot_unpublish_leaves_the_content_in_place() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("home.zshrc", "an entry this run does not touch")
+        .done()
+        .home_file(".vimrc", "NEW-1")
+        .home_file(".gvimrc", "NEW-2")
+        .build();
+
+    let pack = env.dotfiles_root.join("vim");
+
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), |op| {
+        match op {
+            // Publication stops here.
+            super::support::FsOp::RenameNoReplace { to, .. } if to.ends_with("home.gvimrc") => {
+                Err(crate::DodotError::Other("injected publish failure".into()))
+            }
+            // …and entry one's published content cannot go back into
+            // the preparation directory.
+            super::support::FsOp::Rename { from, to }
+                if from.ends_with("home.vimrc")
+                    && to.to_string_lossy().contains(".dodot-adopt-") =>
+            {
+                Err(crate::DodotError::Other(
+                    "injected unpublish failure".into(),
+                ))
+            }
+            _ => Ok(()),
+        }
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![env.home.join(".vimrc"), env.home.join(".gvimrc")];
+    let err =
+        commands::adopt::adopt(Some("vim"), &sources, false, false, false, None, &ctx).unwrap_err();
+
+    match &err {
+        crate::DodotError::PublicationRollbackIncomplete {
+            restored, stranded, ..
+        } => {
+            assert!(restored.is_empty(), "nothing was put back: {restored:?}");
+            assert_eq!(stranded.len(), 1, "got: {stranded:?}");
+            assert_eq!(stranded[0].in_pack, "home.vimrc");
+            assert_eq!(
+                stranded[0].at,
+                pack.join("home.vimrc").display().to_string(),
+                "the report points at the in-pack path the content is still at"
+            );
+        }
+        other => panic!("expected PublicationRollbackIncomplete, got: {other}"),
+    }
+
+    // The published content is still where the rollback could not move
+    // it from, rather than deleted to clear the path.
+    env.assert_regular_file(&pack.join("home.vimrc"), "NEW-1");
+    env.assert_regular_file(&pack.join("home.zshrc"), "an entry this run does not touch");
+    assert_eq!(preparation_dirs(&env).len(), 1);
+    // Sources are untouched, as on every publication failure.
+    env.assert_regular_file(&sources[0], "NEW-1");
+    env.assert_regular_file(&sources[1], "NEW-2");
+}

@@ -11,7 +11,7 @@
 //! the runner functions there then take the resulting intents and feed
 //! them to the executor.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tracing::{debug, info};
 
@@ -211,9 +211,28 @@ pub fn plan_pack(
 /// replaces drops them here, and the caller plans the prepared
 /// replacements separately and composes the two.
 ///
-/// `superseded` holds paths relative to the pack root. A path that
-/// names a directory excludes everything under it, because an adopted
-/// directory replaces the whole subtree.
+/// `superseded` holds paths relative to the pack root **as they sit on
+/// disk**, `_<label>/` gate segments included — the paths publication
+/// writes, not the rewritten ones a passing directory gate produces
+/// (see [`is_superseded`]). A path that names a directory excludes
+/// everything under it, because an adopted directory replaces the whole
+/// subtree.
+///
+/// A path *nested inside* a top-level entry excludes nothing, and that
+/// is the tree publication leaves rather than an approximation of it:
+/// replacing `lua/plugins/init.lua` leaves the `lua` directory in the
+/// pack with the rest of its contents, so the entry has to stay in the
+/// plan. What it claims does not change across the replacement either.
+/// Only the top-level entries a pack walk returns reach the rule
+/// matcher and the handlers — a directory entry is handed to its
+/// handler whole, and preprocessing partitions the same top-level list
+/// rather than descending — so a nested file produces no claim of its
+/// own. The claims the entry does produce are derived from paths, which
+/// the replacement occupies identically. The one handler that reads its
+/// targets out of file content instead
+/// ([`Handler::targets_from_content`](crate::handlers::Handler::targets_from_content))
+/// therefore only ever reads a top-level file, which `superseded` names
+/// directly.
 pub fn plan_pack_without(
     pack: &Pack,
     ctx: &ExecutionContext,
@@ -389,6 +408,28 @@ pub(crate) fn filter_pre_preprocess_gates(
     Ok(out)
 }
 
+/// Does `entry` sit at one of the pack paths the caller's plan
+/// replaces, or inside one of them?
+///
+/// The comparison is against the entry's path *as it sits in the pack*
+/// — `absolute_path` minus the pack root — not against
+/// `relative_path`, which the walk has already rewritten wherever a
+/// directory gate passed: a `_darwin/externals.toml` on a Darwin host
+/// surfaces as `externals.toml`, while the caller names the path
+/// publication writes, `_darwin/externals.toml`. Comparing the
+/// rewritten form would keep every entry an `--only-os` adoption
+/// replaces, planning both the old claims and the new ones. Comparing
+/// the on-disk path also drops the whole subtree of a gate directory
+/// the caller supersedes wholesale, since each child's on-disk path
+/// still carries the `_<label>/` segment.
+fn is_superseded(pack_path: &Path, entry: &rules::PackEntry, superseded: &[PathBuf]) -> bool {
+    let in_pack = entry
+        .absolute_path
+        .strip_prefix(pack_path)
+        .unwrap_or(entry.absolute_path.as_path());
+    superseded.iter().any(|s| in_pack.starts_with(s))
+}
+
 fn collect_pack_intents_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
@@ -458,15 +499,15 @@ fn plan_pack_inner(
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
 
     // Phase 1.1: Drop entries a caller has told us this plan supersedes
-    // — see `plan_pack_without`. Done on the walked paths, before the
-    // basename gates in phase 1.5 rewrite any `relative_path`, so the
-    // exclusion is matched against what is actually on disk.
+    // — see `plan_pack_without`. Matched on each entry's on-disk path
+    // rather than its `relative_path`, which the walk has already
+    // rewritten for a passing directory gate; `is_superseded` says why.
     let entries = if superseded.is_empty() {
         entries
     } else {
         let kept: Vec<_> = entries
             .into_iter()
-            .filter(|e| !superseded.iter().any(|s| e.relative_path.starts_with(s)))
+            .filter(|e| !is_superseded(&pack.path, e, superseded))
             .collect();
         debug!(pack = %pack.name, entries = kept.len(), "dropped superseded entries");
         kept

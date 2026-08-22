@@ -22,7 +22,7 @@ Pack name is inferred from the source's deployed location when it can be — pas
 
     `adopt` doesn't run handlers, doesn't update the datastore, and doesn't deploy anything. The next `dodot up` is what wires the adopted file into the deployment chain.
 
-    Every check that can refuse the run happens before anything is written, whichever pack the files are headed for. `adopt` resolves the destination, checks each source, and looks for deployment conflicts with your other packs while the prospective content sits in a staging directory named `.dodot-adopt-<id>` inside your dotfiles root — a name pack discovery skips, so a `dodot status` running at the same time reports your packs and not a half-copied one. A refusal removes that directory and leaves your repo as it found it, an existing pack byte-identical and an inferred one still absent.
+    Every check that can refuse the run happens before anything lands in a pack, whichever pack the files are headed for. `adopt` resolves the destination, checks each source, and looks for deployment conflicts with your other packs while the prospective content sits in a staging directory named `.dodot-adopt-<id>` inside your dotfiles root — a name pack discovery skips, so a `dodot status` running at the same time reports your packs and not a half-copied one. A refusal removes that directory and leaves your repo as it found it, an existing pack byte-identical and an inferred one still absent.
 
     What differs is how the staged content reaches the pack:
 

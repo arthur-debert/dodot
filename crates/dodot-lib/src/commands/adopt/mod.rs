@@ -859,8 +859,8 @@ pub struct StrandedEntry {
     pub in_pack: String,
     /// Where its content currently is: inside the preparation
     /// directory when the rename back into the pack failed, or at its
-    /// final in-pack path when adopt could neither move nor remove
-    /// what it had published there.
+    /// final in-pack path when adopt could not move what it had
+    /// published there back out.
     pub at: String,
 }
 
@@ -876,26 +876,36 @@ impl PublicationRecord {
     /// content then returns to the final path, which is the pre-adopt
     /// state for a `--force` entry and an absence for every other one.
     ///
-    /// No step is assumed to have worked. An entry reaches `restored`
-    /// only once its final path actually holds its pre-adopt state;
-    /// anything else lands in `stranded` with the path its content is
-    /// at, and the caller keeps the preparation directory rather than
-    /// discarding what may be the last copy. The failure that caused
-    /// the rollback is still the error the user reads — a recovery
-    /// failure is reported alongside it, not instead of it.
+    /// No step is assumed to have worked, and no step deletes anything:
+    /// an entry reaches `restored` only once its final path actually
+    /// holds its pre-adopt state, and anything else lands in `stranded`
+    /// with the path its content is at while the caller keeps the
+    /// preparation directory rather than discarding what may be the
+    /// last copy. A rollback that cannot move published content out of
+    /// the pack reports that entry rather than clearing the path — the
+    /// content there is not necessarily what publication put there, and
+    /// a recovery that deletes is the failure mode this whole sequence
+    /// exists to avoid. The only removals are the intermediate
+    /// directories below, and only while they are still empty. The
+    /// failure that caused the rollback is still the error the user
+    /// reads — a recovery failure is reported alongside it, not instead
+    /// of it.
     fn undo(&self, fs: &dyn Fs) -> UndoOutcome {
         let mut outcome = UndoOutcome::default();
         for entry in self.entries.iter().rev() {
             let in_pack = entry.in_pack.display().to_string();
 
             // Take this publication's content back out of the pack, so
-            // the final path is free for whatever was there before.
-            let mut final_path_free = true;
-            if entry.published && fs.rename(&entry.final_path, &entry.prepared).is_err() {
-                remove_best_effort(fs, &entry.final_path);
-                final_path_free =
-                    !fs.exists(&entry.final_path) && !fs.is_symlink(&entry.final_path);
-            }
+            // the final path is free for whatever was there before. A
+            // rename that fails leaves it standing: removing it instead
+            // would make this recovery the thing that destroys content,
+            // and what sits there is not necessarily what publication
+            // put there — another process can have written into that
+            // path since. The entry is reported instead, and the
+            // displaced content it blocks stays in the preparation
+            // directory the caller then keeps.
+            let final_path_free =
+                !entry.published || fs.rename(&entry.final_path, &entry.prepared).is_ok();
 
             match &entry.displaced {
                 // `--force` moved something out; the entry is restored
@@ -1714,9 +1724,13 @@ struct ProspectiveTree<'a> {
     /// which is the same answer the published pack would give.
     config_at: &'a Path,
     /// The in-pack paths publication will replace, relative to the pack
-    /// root. The prepared entry at each one is the tree's version of it,
-    /// so the pack's own copy is left out of the scan rather than
-    /// claiming its old deployment targets alongside the replacement.
+    /// root and exactly as they will sit on disk — an `--only-os` run's
+    /// `_<label>/` segment included. The prepared entry at each one is
+    /// the tree's version of it, so the pack's own copy is left out of
+    /// the scan rather than claiming its old deployment targets
+    /// alongside the replacement. [`plan_pack_without`](orchestration::plan_pack_without)
+    /// documents how a path here is matched against a walked entry and
+    /// why a nested path leaves the entry holding it in the plan.
     superseded: &'a [PathBuf],
 }
 
