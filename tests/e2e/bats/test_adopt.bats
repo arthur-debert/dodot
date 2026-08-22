@@ -190,3 +190,23 @@ teardown() {
     [ -L "$HOME/.config/helix/config.toml" ]
     [ -L "$HOME/.config/helix/themes" ]
 }
+
+@test "adopt refuses while another pack's externals manifest is an unrendered template" {
+    # `shared` declares its fetch targets inside externals.toml, and that
+    # file only exists as a template dodot has never rendered — so adopt
+    # cannot know what `shared` claims, and refuses rather than publish
+    # into a collision it could not see.
+    create_pack_file "shared" "externals.toml.tmpl" \
+        '[bashrc]\ntype = "file"\nurl = "https://example.com/bashrc"\ntarget = "~/{{ name }}"\nsha256 = "abc"\n'
+    create_home_file ".config/ghostty/config" "theme = dark"
+
+    run dodot adopt "$HOME/.config/ghostty/config"
+    [ "$status" -ne 0 ]
+    assert_output_contains "externals.toml.tmpl"
+    assert_output_contains "dodot up"
+
+    assert_not_exists "$DOTFILES_ROOT/ghostty"
+    [ -z "$(find "$DOTFILES_ROOT" -maxdepth 1 -name '.dodot-adopt-*' -print -quit)" ]
+    [ ! -L "$HOME/.config/ghostty/config" ]
+    assert_file_contents "$HOME/.config/ghostty/config" "theme = dark"
+}

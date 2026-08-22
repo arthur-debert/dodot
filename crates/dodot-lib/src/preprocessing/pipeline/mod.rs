@@ -116,15 +116,36 @@ pub struct PreprocessResult {
     /// Maps virtual entry absolute_path → original source path in pack.
     pub source_map: HashMap<PathBuf, PathBuf>,
     /// Maps virtual entry absolute_path → in-memory rendered bytes.
-    /// Populated for every virtual entry the pipeline produces, in
-    /// both Active and Passive modes (Passive sources the bytes from
-    /// `baseline.rendered_content`). Handlers that need the rendered
-    /// content for sentinel hashing (`install`, `homebrew`) consult
-    /// this map first and fall back to disk read for non-template
-    /// files. Without this, Passive callers — where the rendered
-    /// file isn't on disk — couldn't produce correct sentinels for
-    /// templated install scripts or Brewfiles.
+    /// Populated for every virtual entry in Active mode, and in
+    /// Passive mode for every entry that has a cached baseline to
+    /// source the bytes from. Handlers that need the rendered content
+    /// for sentinel hashing (`install`, `homebrew`) consult this map
+    /// first and fall back to disk read for non-template files.
+    /// Without this, Passive callers — where the rendered file isn't
+    /// on disk — couldn't produce correct sentinels for templated
+    /// install scripts or Brewfiles.
+    ///
+    /// A Passive entry with no baseline has no bytes here and is
+    /// listed in [`Self::unrendered`] instead.
     pub rendered_bytes: HashMap<PathBuf, Arc<[u8]>>,
+    /// Virtual entries the pipeline surfaced without rendering them:
+    /// Passive mode reached a preprocessor entry that has never been
+    /// rendered, so there is no baseline to read and evaluating the
+    /// template here would be the §7.4 violation Passive exists to
+    /// avoid. Keyed by the virtual entry's absolute (datastore) path,
+    /// the same key `rendered_bytes` and `source_map` use.
+    ///
+    /// Always empty in Active mode, which renders every entry it
+    /// surfaces.
+    ///
+    /// Handlers reading these entries see a file that is not on disk
+    /// and carries no bytes, so a handler that derives its claims from
+    /// file *content* — `externals`, whose targets live inside
+    /// `externals.toml` — emits nothing for them. Callers that must
+    /// know a pack's full set of claims before mutating anything read
+    /// this list to tell "no claims" apart from "claims dodot did not
+    /// compute"; see `commands::adopt`'s deployment conflict check.
+    pub unrendered: Vec<PathBuf>,
     /// Files whose deployed bytes diverged from the cached baseline and
     /// were therefore preserved instead of being overwritten. Empty
     /// outside of `dodot up` runs that pass `force = false` and have a
@@ -161,6 +182,7 @@ impl PreprocessResult {
             virtual_entries: Vec::new(),
             source_map: HashMap::new(),
             rendered_bytes: HashMap::new(),
+            unrendered: Vec::new(),
             skipped: Vec::new(),
         }
     }
@@ -346,6 +368,7 @@ pub fn preprocess_pack(
             virtual_entries: Vec::new(),
             source_map: HashMap::new(),
             rendered_bytes: HashMap::new(),
+            unrendered: Vec::new(),
             skipped: Vec::new(),
         });
     }
@@ -680,6 +703,8 @@ pub fn preprocess_pack(
         virtual_entries,
         source_map,
         rendered_bytes,
+        // Active rendered every entry it surfaced.
+        unrendered: Vec::new(),
         skipped,
     })
 }
@@ -699,12 +724,21 @@ pub fn preprocess_pack(
 ///   skipped-render rows for divergent deployed files.
 /// - **No baseline** (first-time pack template, never `up`'d):
 ///   surfaces a placeholder virtual entry under the stripped name,
-///   with empty `rendered_bytes`. Status renders this as "pending"
-///   under the logical name (`config.toml` rather than the source
-///   `config.toml.tmpl`); handlers that need rendered content for
-///   sentinel hashing (install, homebrew, nix) skip intent generation
-///   for these placeholders rather than crashing. The next real
-///   `dodot up` populates the baseline and plans intents normally.
+///   with no `rendered_bytes` and the entry recorded in
+///   [`PreprocessResult::unrendered`]. Status renders this as
+///   "pending" under the logical name (`config.toml` rather than the
+///   source `config.toml.tmpl`); handlers that need rendered content
+///   for sentinel hashing (install, homebrew, nix) skip intent
+///   generation for these placeholders rather than crashing, and so
+///   does `externals`, whose targets are declared inside the file. The
+///   next real `dodot up` populates the baseline and plans intents
+///   normally.
+///
+///   A placeholder therefore makes the resulting plan *incomplete*,
+///   not merely empty, for the handlers that skip it. Callers that
+///   read a plan to prove something about a pack before mutating —
+///   adopt's cross-pack conflict analysis — must consult `unrendered`
+///   and refuse rather than read "no intent" as "no claim".
 ///
 /// Source files are not read (no marker scan); the datastore is
 /// not written; the baseline cache is not written.
@@ -732,6 +766,7 @@ fn preprocess_pack_passive(
     let mut virtual_entries = Vec::new();
     let mut source_map = HashMap::new();
     let mut rendered_bytes: HashMap<PathBuf, Arc<[u8]>> = HashMap::new();
+    let mut unrendered: Vec<PathBuf> = Vec::new();
     let mut skipped: Vec<SkippedRender> = Vec::new();
 
     for entry in preprocessor_entries {
@@ -812,9 +847,16 @@ fn preprocess_pack_passive(
         // baseline, handlers fall back to a disk read that correctly
         // fails for the missing datastore file and shows up as
         // "pending" in status.
-        if let Some(b) = baseline {
-            let bytes: Arc<[u8]> = Arc::from(b.rendered_content.into_bytes());
-            rendered_bytes.insert(datastore_path.clone(), bytes);
+        match baseline {
+            Some(b) => {
+                let bytes: Arc<[u8]> = Arc::from(b.rendered_content.into_bytes());
+                rendered_bytes.insert(datastore_path.clone(), bytes);
+            }
+            // No bytes to offer. Record the entry so callers can tell
+            // "this file claims nothing" apart from "dodot has not
+            // computed what this file claims" — see
+            // `PreprocessResult::unrendered`.
+            None => unrendered.push(datastore_path.clone()),
         }
         source_map.insert(datastore_path.clone(), entry.absolute_path.clone());
         virtual_entries.push(PackEntry {
@@ -837,6 +879,7 @@ fn preprocess_pack_passive(
         virtual_entries,
         source_map,
         rendered_bytes,
+        unrendered,
         skipped,
     })
 }

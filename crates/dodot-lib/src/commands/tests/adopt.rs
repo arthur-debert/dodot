@@ -1326,6 +1326,237 @@ fn adopt_deploy_conflict_refused_against_an_unrendered_template() {
     env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
 }
 
+/// An `externals.toml` declares each target it claims *inside the
+/// file*, so validation has to read the file to learn them. When that
+/// manifest is a template dodot has never rendered, there is nothing to
+/// read: the entry surfaces as a placeholder, the handler emits no
+/// `Fetch`, and a clean conflict report would be a report about claims
+/// nobody looked at. Adopt refuses instead of publishing into the
+/// collision — the same refusal it makes for a pack it cannot scan.
+#[test]
+fn adopt_refused_while_an_externals_manifest_is_still_unrendered() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file(
+            "externals.toml.tmpl",
+            r#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/{{ name }}"
+            sha256 = "abc"
+        "#,
+        )
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+
+    let before = tree_snapshot(&env.data_dir);
+    // `--no-provision` is an `up`-only flag; adopt always plans with
+    // the code-execution handlers on, and `externals` is one of them.
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    let source = env.home.join(".bashrc");
+    let err = commands::adopt::adopt(
+        Some("work"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    match &err {
+        crate::DodotError::ConflictCheckIncomplete { unresolved } => {
+            assert_eq!(unresolved.len(), 1, "expected one unresolved claim: {err}");
+            assert_eq!(unresolved[0].pack, "unix");
+            assert_eq!(unresolved[0].source, "externals.toml.tmpl");
+        }
+        other => panic!("expected ConflictCheckIncomplete, got: {other}"),
+    }
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("externals.toml.tmpl") && msg.contains("dodot up"),
+        "the refusal must name the file to render and how to render it, got: {msg}"
+    );
+
+    env.assert_regular_file(&source, "new");
+    env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
+    assert_eq!(
+        tree_snapshot(&env.data_dir),
+        before,
+        "refusing must not render the template it refused over"
+    );
+}
+
+/// `--force` does not bypass an incomplete analysis either. It overrides
+/// what dodot knows to be in the way; it cannot override what dodot has
+/// not looked at.
+#[test]
+fn unrendered_externals_refusal_not_bypassed_by_force() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file(
+            "externals.toml.tmpl",
+            r#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/{{ name }}"
+            sha256 = "abc"
+        "#,
+        )
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    let source = env.home.join(".bashrc");
+    let err = commands::adopt::adopt(
+        Some("work"),
+        std::slice::from_ref(&source),
+        true,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::ConflictCheckIncomplete { .. }),
+        "--force must not bypass an analysis dodot could not complete, got: {err}"
+    );
+}
+
+/// The claim itself is real, and a readable manifest proves it: the same
+/// `externals.toml` as plain content collides with the adoption and the
+/// run is refused on the collision, not on incompleteness.
+#[test]
+fn adopt_deploy_conflict_refused_against_an_externals_manifest() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file(
+            "externals.toml",
+            r#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/.bashrc"
+            sha256 = "abc"
+        "#,
+        )
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    let source = env.home.join(".bashrc");
+    let err = commands::adopt::adopt(
+        Some("work"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "expected the externals target to collide with the adoption, got: {err}"
+    );
+    env.assert_regular_file(&source, "new");
+    env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
+}
+
+/// And the refusal is narrow: once the template has been rendered once,
+/// its baseline carries the rendered manifest and passive planning reads
+/// the claims straight out of it. Adopt then reports the collision it
+/// was previously unable to see — no second refusal, no re-render.
+#[test]
+fn adopt_reads_externals_claims_from_the_cached_baseline() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file(
+            "externals.toml.tmpl",
+            r#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/{{ name }}"
+            sha256 = "abc"
+        "#,
+        )
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+
+    // Stand in for the `dodot up` that would have written this.
+    let rendered = br#"
+            [bashrc]
+            type   = "file"
+            url    = "https://example.com/bashrc"
+            target = "~/.bashrc"
+            sha256 = "abc"
+        "#;
+    let source_path = env.dotfiles_root.join("unix/externals.toml.tmpl");
+    let source_bytes = std::fs::read(&source_path).unwrap();
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    crate::preprocessing::baseline::Baseline::build(
+        &source_path,
+        rendered,
+        &source_bytes,
+        None,
+        None,
+    )
+    .write(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+        "unix",
+        "preprocessed",
+        &crate::preprocessing::baseline::cache_filename_for(std::path::Path::new("externals.toml")),
+    )
+    .unwrap();
+
+    let source = env.home.join(".bashrc");
+    let err = commands::adopt::adopt(
+        Some("work"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "a baselined manifest must be read, not refused as unresolved, got: {err}"
+    );
+    env.assert_regular_file(&source, "new");
+    env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
+}
+
 /// Every path under `root`, sorted — what a test compares before and
 /// after to say a directory was left alone. Missing root reads as empty,
 /// which is the state a run that wrote nothing leaves it in.

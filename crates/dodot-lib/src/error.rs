@@ -54,6 +54,22 @@ pub enum DodotError {
     },
 
     #[error(
+        "cannot check for cross-pack deployment conflicts yet (--force does not override this):\n{}\n  \
+         each of these files declares the paths it deploys to inside its own contents, and \
+         dodot has not rendered it. Rendering it here would resolve its secrets and write \
+         its output for a run you have not agreed to yet.\n  \
+         run `dodot up` for the pack(s) above, then re-run this command.",
+        .unresolved
+            .iter()
+            .map(|u| format!("  - pack '{}' ({} handler): {}", u.pack, u.handler, u.source))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )]
+    ConflictCheckIncomplete {
+        unresolved: Vec<crate::packs::orchestration::UnresolvedClaim>,
+    },
+
+    #[error(
         "routing override conflict in pack `{pack}` for `{rel_path}`:\n  \
          filename routes via its prefix, and `[symlink.targets]` declares `{config_target}`.\n  \
          pick one — either rename the file (drop the `home.`/`app.`/`xdg.`/`lib.` or `_home/`/`_xdg/`/`_app/`/`_lib/` prefix) \

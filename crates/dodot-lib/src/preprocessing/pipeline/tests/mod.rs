@@ -297,6 +297,7 @@ fn merged_entries_combines_and_sorts() {
         }],
         source_map: HashMap::new(),
         rendered_bytes: HashMap::new(),
+        unrendered: Vec::new(),
         skipped: Vec::new(),
     };
 

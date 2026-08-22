@@ -40,7 +40,11 @@
 //! 3. **Validate** ([`check_deploy_conflicts`]) — run the cross-pack
 //!    deployment conflict analysis against the *prospective* pack tree,
 //!    read out of the preparation directory. `--force` does not bypass
-//!    it. `--dry-run` reports the plan here and stops.
+//!    it. It refuses on a collision and equally on an analysis it
+//!    cannot complete — an `externals.toml` that only exists as an
+//!    unrendered template declares targets dodot has not read, and
+//!    rendering it here is the side effect this step must not have.
+//!    `--dry-run` reports the plan here and stops.
 //!
 //! 4. **Publish** — for an inferred pack that did not exist at plan
 //!    time, one no-replace rename of the prepared pack directory onto
@@ -1373,9 +1377,23 @@ fn remove_best_effort(fs: &dyn Fs, path: &Path) {
 /// provider — before adopt has decided whether the run goes ahead. A
 /// conflict refusal and `--dry-run` both leave that behind, which is the
 /// same reason `status` reads passively (`docs/proposals/secrets.lex`
-/// §7.4). Passive planning reads a preprocessor entry's cached baseline
-/// and falls back to a passthrough placeholder when it has none, so the
-/// entry still claims its target and still takes part in the analysis.
+/// §7.4).
+///
+/// Passive planning reads a preprocessor entry's cached baseline, and a
+/// first-time template has none — it surfaces as a placeholder with no
+/// rendered content. For most handlers that costs nothing here: a
+/// symlink target follows from the file's path, so an unrendered
+/// `config.toml.tmpl` still claims `~/.config/…/config.toml`. It is
+/// decisive for `externals`, which reads every target it claims out of
+/// `externals.toml`; an unrendered `externals.toml.tmpl` produces no
+/// `Fetch` intent at all, and reading that silence as "claims nothing"
+/// would let adopt publish into exactly the collision this analysis
+/// exists to refuse. `plan_pack` names those files in
+/// [`PackPlan::unresolved_claims`](crate::packs::orchestration::PackPlan::unresolved_claims),
+/// and this function refuses on any of them — the same posture it takes
+/// toward a pack it cannot scan, for the same reason: an answer dodot
+/// cannot compute must not be mutated on. The user renders the template
+/// with one `dodot up` and re-runs adopt.
 fn check_deploy_conflicts(
     ctx: &ExecutionContext,
     prospective: Option<(&str, &Path)>,
@@ -1388,6 +1406,7 @@ fn check_deploy_conflicts(
     )?;
 
     let mut pack_intents = Vec::new();
+    let mut unresolved = Vec::new();
     for mut pack in all {
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
         pack.config = pack_config.to_handler_config();
@@ -1395,8 +1414,9 @@ fn check_deploy_conflicts(
         // truthfully say "no conflict with that pack," so refuse outright
         // rather than risk a false negative that lets us mutate into a
         // state `dodot up` will later reject.
-        let intents = collect_intents_passive(&pack, ctx)?;
-        pack_intents.push((pack.display_name.clone(), intents));
+        let plan = collect_intents_passive(&pack, ctx)?;
+        unresolved.extend(plan.unresolved_claims);
+        pack_intents.push((pack.display_name.clone(), plan.intents));
     }
 
     if let Some((pack_dir, prepared_root)) = prospective {
@@ -1407,12 +1427,22 @@ fn check_deploy_conflicts(
         );
         let pack_config = ctx.config_manager.config_for_pack(prepared_root)?;
         prospective_pack.config = pack_config.to_handler_config();
-        let intents = collect_intents_passive(&prospective_pack, ctx)?;
+        let plan = collect_intents_passive(&prospective_pack, ctx)?;
+        unresolved.extend(plan.unresolved_claims);
         let display = prospective_pack.display_name.clone();
         match pack_intents.iter_mut().find(|(name, _)| *name == display) {
-            Some((_, already)) => already.extend(intents),
-            None => pack_intents.push((display, intents)),
+            Some((_, already)) => already.extend(plan.intents),
+            None => pack_intents.push((display, plan.intents)),
         }
+    }
+
+    // Incompleteness first: a conflict found among the claims dodot did
+    // compute is still a true conflict, but reporting it would tell the
+    // user to resolve that one and re-run into a second refusal. Naming
+    // the unrendered files first gets them to one `dodot up` and a run
+    // whose verdict is complete.
+    if !unresolved.is_empty() {
+        return Err(DodotError::ConflictCheckIncomplete { unresolved });
     }
 
     let conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
@@ -1422,16 +1452,21 @@ fn check_deploy_conflicts(
     Ok(())
 }
 
-/// The intents a pack would deploy, planned without preprocessing side
+/// What a pack would deploy, planned without preprocessing side
 /// effects — see [`check_deploy_conflicts`] for why adopt reads this
-/// way. Handler warnings are dropped: conflict analysis reads targets,
-/// and the run reports through `status` afterwards.
+/// way.
+///
+/// The whole [`PackPlan`](crate::packs::orchestration::PackPlan) comes
+/// back because the caller needs two of its fields: `intents` are the
+/// claims to compare, and `unresolved_claims` are the claims this plan
+/// does not contain, which decide whether comparing the intents proves
+/// anything. Handler warnings are still dropped — the run reports
+/// through `status` afterwards.
 fn collect_intents_passive(
     pack: &packs::Pack,
     ctx: &ExecutionContext,
-) -> Result<Vec<crate::operations::HandlerIntent>> {
+) -> Result<orchestration::PackPlan> {
     orchestration::plan_pack(pack, ctx, crate::preprocessing::PreprocessMode::Passive)
-        .map(|plan| plan.intents)
 }
 
 // ── Step 5: Replace sources ───────────────────────────────────────
