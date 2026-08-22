@@ -15,7 +15,7 @@ use crate::datastore::DataStore;
 use crate::fs::Fs;
 use crate::packs::Pack;
 use crate::paths::Pather;
-use crate::preprocessing::baseline::{cache_filename_for, hex_sha256, Baseline};
+use crate::preprocessing::baseline::{cache_filename_for, hex_encode_32, hex_sha256, Baseline};
 use crate::preprocessing::divergence::DivergenceState;
 use crate::preprocessing::PreprocessorRegistry;
 use crate::rules::PackEntry;
@@ -126,25 +126,36 @@ pub struct PreprocessResult {
     /// install scripts or Brewfiles.
     ///
     /// A Passive entry with no baseline has no bytes here and is
-    /// listed in [`Self::unrendered`] instead.
+    /// listed in [`Self::unrendered`] instead. An entry whose baseline
+    /// is superseded appears in both: the bytes it carries are the
+    /// previous render, which is what is deployed today.
     pub rendered_bytes: HashMap<PathBuf, Arc<[u8]>>,
-    /// Virtual entries the pipeline surfaced without rendering them:
-    /// Passive mode reached a preprocessor entry that has never been
-    /// rendered, so there is no baseline to read and evaluating the
-    /// template here would be the §7.4 violation Passive exists to
-    /// avoid. Keyed by the virtual entry's absolute (datastore) path,
-    /// the same key `rendered_bytes` and `source_map` use.
+    /// Virtual entries whose *current* source has not been rendered.
+    /// Keyed by the virtual entry's absolute (datastore) path, the
+    /// same key `rendered_bytes` and `source_map` use. Passive mode
+    /// produces them two ways:
+    ///
+    /// - **Never rendered.** No baseline exists, and evaluating the
+    ///   template here to get one would be the §7.4 violation Passive
+    ///   exists to avoid. The entry carries no `rendered_bytes`.
+    /// - **Superseded baseline.** A baseline exists but was rendered
+    ///   from source bytes or a rendering context that have since
+    ///   changed, so what it holds is the previous render rather than
+    ///   what the next `dodot up` will produce. Its bytes are still in
+    ///   `rendered_bytes`, because they describe what is deployed
+    ///   right now — which is the question `status` asks.
     ///
     /// Always empty in Active mode, which renders every entry it
     /// surfaces.
     ///
-    /// Handlers reading these entries see a file that is not on disk
-    /// and carries no bytes, so a handler that derives its claims from
-    /// file *content* — `externals`, whose targets live inside
-    /// `externals.toml` — emits nothing for them. Callers that must
-    /// know a pack's full set of claims before mutating anything read
-    /// this list to tell "no claims" apart from "claims dodot did not
-    /// compute"; see `commands::adopt`'s deployment conflict check.
+    /// A handler that derives its claims from file *content* —
+    /// `externals`, whose targets live inside `externals.toml` — emits
+    /// either nothing (never rendered) or the previous render's claims
+    /// (superseded) for these entries, and neither is this pack's
+    /// current claim set. Callers that must know that set before
+    /// mutating anything read this list to tell "no claims" apart from
+    /// "claims dodot did not compute"; see `commands::adopt`'s
+    /// deployment conflict check.
     pub unrendered: Vec<PathBuf>,
     /// Files whose deployed bytes diverged from the cached baseline and
     /// were therefore preserved instead of being overwritten. Empty
@@ -297,7 +308,11 @@ fn check_divergence(
 ///    scans; preprocessors are never invoked (no provider calls); the
 ///    datastore is not touched. Virtual entries are still produced so
 ///    the rest of the planner can compute intents — their bytes come
-///    from `baseline.rendered_content` when a baseline exists.
+///    from `baseline.rendered_content` when a baseline exists, and a
+///    baseline rendered from source bytes or a context that have since
+///    changed is additionally recorded in
+///    [`PreprocessResult::unrendered`], because those bytes are the
+///    previous render rather than the next one.
 ///    First-time pack templates with no baseline still surface a
 ///    placeholder virtual entry (so `dodot status` can render them as
 ///    "pending" under the stripped name) but with empty
@@ -721,7 +736,13 @@ pub fn preprocess_pack(
 ///   location with `rendered_bytes` sourced from
 ///   `baseline.rendered_content`. Runs the read-only divergence
 ///   check so callers (status's `Health::Preserved` row) still see
-///   skipped-render rows for divergent deployed files.
+///   skipped-render rows for divergent deployed files. The baseline's
+///   own inputs are checked too ([`superseded_reason`]): a template
+///   edited since the last `up`, or one whose `vars` changed, has a
+///   baseline holding the *previous* render, so the entry is also
+///   recorded in [`PreprocessResult::unrendered`] — it keeps its
+///   bytes (they are what is deployed) while telling callers that the
+///   claims it yields are last render's, not this source's.
 /// - **No baseline** (first-time pack template, never `up`'d):
 ///   surfaces a placeholder virtual entry under the stripped name,
 ///   with no `rendered_bytes` and the entry recorded in
@@ -740,8 +761,9 @@ pub fn preprocess_pack(
 ///   adopt's cross-pack conflict analysis — must consult `unrendered`
 ///   and refuse rather than read "no intent" as "no claim".
 ///
-/// Source files are not read (no marker scan); the datastore is
-/// not written; the baseline cache is not written.
+/// Source files are read only to be hashed against the baseline (no
+/// marker scan, no expansion); the datastore is not written; the
+/// baseline cache is not written.
 ///
 /// This contract is what `secrets.lex` §7.4 demands: `dodot status`
 /// and `dodot up --dry-run` MUST NOT trigger template evaluation,
@@ -849,6 +871,24 @@ fn preprocess_pack_passive(
         // "pending" in status.
         match baseline {
             Some(b) => {
+                // The bytes describe what is deployed right now, which
+                // is what status reports — but they describe the last
+                // render's inputs, and those can have moved on. When
+                // they have, the entry joins the never-rendered ones:
+                // still offering its bytes to status, and still telling
+                // a caller that reads the plan as evidence that this
+                // file's current claims are not in it.
+                if let Some(reason) = superseded_reason(fs, preprocessor, &entry.absolute_path, &b)
+                {
+                    debug!(
+                        pack = %pack.name,
+                        file = %virtual_relative.display(),
+                        reason,
+                        "passive: cached render no longer describes this source \
+                         (run `dodot up` to re-render)"
+                    );
+                    unrendered.push(datastore_path.clone());
+                }
                 let bytes: Arc<[u8]> = Arc::from(b.rendered_content.into_bytes());
                 rendered_bytes.insert(datastore_path.clone(), bytes);
             }
@@ -882,6 +922,56 @@ fn preprocess_pack_passive(
         unrendered,
         skipped,
     })
+}
+
+/// Why a cached render no longer describes what rendering the source
+/// would produce now — or `None` when it still does.
+///
+/// Two inputs decide a render and can both move without touching the
+/// datastore: the source bytes, hashed into
+/// [`Baseline::source_hash`], and everything else the preprocessor
+/// reads, hashed into [`Baseline::context_hash`] (for templates, the
+/// `dodot.*` namespace and the configured `vars`). Either one moving
+/// means the next `dodot up` produces different output than the
+/// baseline holds — and for a file that declares its deployment
+/// targets in its own contents, different output can mean different
+/// targets.
+///
+/// An unreadable source counts as superseded. The divergence walker
+/// makes the opposite call for the same comparison, because a report
+/// row is cheap to be wrong about and the user re-runs; here the
+/// answer decides whether adopt may mutate the dotfiles tree, and a
+/// source dodot cannot read is a render it cannot vouch for.
+///
+/// A baseline written before `context_hash` existed carries an empty
+/// string, and a preprocessor with no context of its own reports
+/// `None`; neither case can be compared, so both are left to the
+/// source-bytes check alone.
+///
+/// Reading the source here is a hash, not an expansion: no template
+/// evaluation, no provider calls, nothing written — inside the
+/// `secrets.lex` §7.4 envelope.
+fn superseded_reason(
+    fs: &dyn Fs,
+    preprocessor: &dyn crate::preprocessing::Preprocessor,
+    source_path: &Path,
+    baseline: &Baseline,
+) -> Option<&'static str> {
+    match fs.read_file(source_path) {
+        Ok(bytes) if hex_sha256(&bytes) != baseline.source_hash => {
+            return Some("source bytes changed since the cached render")
+        }
+        Err(_) => return Some("source file could not be read"),
+        Ok(_) => {}
+    }
+
+    let current = preprocessor.context_hash().as_ref().map(hex_encode_32);
+    match current {
+        Some(current) if !baseline.context_hash.is_empty() && current != baseline.context_hash => {
+            Some("rendering context changed since the cached render")
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]

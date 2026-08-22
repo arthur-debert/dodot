@@ -1394,6 +1394,227 @@ fn adopt_refused_while_an_externals_manifest_is_still_unrendered() {
     );
 }
 
+/// Render `pack`'s templates the way a `dodot up` would, leaving the
+/// baseline a later passive plan reads. The registry is the one
+/// planning builds for that pack, so the baseline's `context_hash`
+/// matches what the adopt run recomputes.
+///
+/// Only the preprocessing half of `up` runs: an `externals.toml` whose
+/// targets are fetched would need the network, and every question here
+/// is about the manifest's contents rather than what fetching it does.
+fn render_pack_templates(
+    env: &TempEnvironment,
+    ctx: &ExecutionContext,
+    pack_name: &str,
+    file: &str,
+) {
+    let pack_path = env.dotfiles_root.join(pack_name);
+    let pack_config = ctx.config_manager.config_for_pack(&pack_path).unwrap();
+    let root_config = ctx.config_manager.root_config().unwrap();
+    let (registry, _secrets) = crate::preprocessing::default_registry(
+        &pack_config.preprocessor,
+        &root_config.secret,
+        ctx.paths.as_ref(),
+        ctx.command_runner.clone(),
+    )
+    .unwrap();
+
+    let pack =
+        crate::packs::Pack::new(pack_name.to_string(), pack_path.clone(), Default::default());
+    crate::preprocessing::pipeline::preprocess_pack(
+        vec![crate::rules::PackEntry {
+            relative_path: file.into(),
+            absolute_path: pack_path.join(file),
+            is_dir: false,
+            gate_failure: None,
+        }],
+        &registry,
+        &pack,
+        ctx.fs.as_ref(),
+        ctx.datastore.as_ref(),
+        ctx.paths.as_ref(),
+        crate::preprocessing::PreprocessMode::Active,
+        false,
+    )
+    .expect("rendering the pack's template must succeed");
+}
+
+/// An externals manifest whose single entry, `name`, fetches to
+/// `target`. Written as a template, though most of these tests have
+/// nothing to substitute — what they turn on is the edit between one
+/// render and the next, not the templating.
+fn externals_manifest(name: &str, target: &str) -> String {
+    format!(
+        r#"
+        [{name}]
+        type   = "file"
+        url    = "https://example.com/{name}"
+        target = "{target}"
+        sha256 = "abc"
+    "#
+    )
+}
+
+/// A rendered manifest answers for the pack, so adoption proceeds: the
+/// refusal below has to come from the edit, not from a templated
+/// `externals.toml` being present at all.
+#[test]
+fn adopt_proceeds_against_an_externals_manifest_rendered_from_the_current_template() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file(
+            "externals.toml.tmpl",
+            &externals_manifest("other", "~/.other"),
+        )
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    render_pack_templates(&env, &ctx, "unix", "externals.toml.tmpl");
+
+    let source = env.home.join(".bashrc");
+    commands::adopt::adopt(
+        Some("work"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .expect("a manifest rendered from the current template claims ~/.other, not ~/.bashrc");
+
+    env.assert_regular_file(&env.dotfiles_root.join("work/bashrc"), "new");
+    assert!(env.fs.is_symlink(&source));
+}
+
+/// The baseline records what the template said at the last `dodot up`.
+/// Editing the template to claim the very path being adopted makes that
+/// record wrong about what the pack now deploys — and it is a record
+/// only `dodot up` may replace, since re-rendering here would resolve
+/// the manifest's secrets and write its output for a run the user has
+/// not agreed to. Adopt refuses on the gap instead of publishing into
+/// the collision the next `up` would reject.
+#[test]
+fn adopt_refused_while_an_externals_manifest_is_rendered_from_an_older_template() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file(
+            "externals.toml.tmpl",
+            &externals_manifest("other", "~/.other"),
+        )
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    render_pack_templates(&env, &ctx, "unix", "externals.toml.tmpl");
+
+    // The edit `dodot up` has not seen: this manifest now claims the
+    // path about to be adopted.
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join("unix/externals.toml.tmpl"),
+            externals_manifest("bashrc", "~/.bashrc").as_bytes(),
+        )
+        .unwrap();
+
+    let before = tree_snapshot(&env.data_dir);
+    let source = env.home.join(".bashrc");
+    let err = commands::adopt::adopt(
+        Some("work"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    match &err {
+        crate::DodotError::ConflictCheckIncomplete { unresolved } => {
+            assert_eq!(unresolved.len(), 1, "expected one unresolved claim: {err}");
+            assert_eq!(unresolved[0].pack, "unix");
+            assert_eq!(unresolved[0].source, "externals.toml.tmpl");
+        }
+        other => panic!("expected ConflictCheckIncomplete, got: {other}"),
+    }
+
+    env.assert_regular_file(&source, "new");
+    env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
+    assert_eq!(
+        tree_snapshot(&env.data_dir),
+        before,
+        "refusing must not re-render the template it refused over"
+    );
+}
+
+/// The same gap reached without touching the template: a rendered
+/// target can come from `vars`, and changing one changes what the next
+/// `up` fetches. Nothing on disk differs, which is exactly why the
+/// baseline's context hash has to be the thing that answers.
+#[test]
+fn adopt_refused_while_an_externals_manifest_was_rendered_with_other_vars() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file(
+            "externals.toml.tmpl",
+            &externals_manifest("other", "~/{{ target_name }}"),
+        )
+        .config("[preprocessor.template.vars]\ntarget_name = \".other\"\n")
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".bashrc", "new")
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    render_pack_templates(&env, &ctx, "unix", "externals.toml.tmpl");
+
+    // Same template bytes, different value for what they interpolate.
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join("unix/.dodot.toml"),
+            b"[preprocessor.template.vars]\ntarget_name = \".bashrc\"\n",
+        )
+        .unwrap();
+
+    // A fresh context: `ConfigManager` caches per pack path, so the
+    // one that rendered above would keep serving the old vars.
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    let source = env.home.join(".bashrc");
+    let err = commands::adopt::adopt(
+        Some("work"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::ConflictCheckIncomplete { .. }),
+        "a render made with vars this run no longer has cannot answer for the pack, got: {err}"
+    );
+    env.assert_regular_file(&source, "new");
+    env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
+}
+
 /// `--force` does not bypass an incomplete analysis either. It overrides
 /// what dodot knows to be in the way; it cannot override what dodot has
 /// not looked at.

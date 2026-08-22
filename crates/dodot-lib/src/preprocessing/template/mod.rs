@@ -308,6 +308,14 @@ impl Preprocessor for TemplatePreprocessor {
         TransformType::Generative
     }
 
+    fn context_hash(&self) -> Option<[u8; 32]> {
+        // The same hash every render of this preprocessor stamps onto
+        // its baseline, so a caller comparing the two learns whether
+        // the cached render came out of today's `dodot.*` namespace
+        // and `vars`.
+        Some(self.context_hash)
+    }
+
     fn supports_reverse_merge(&self) -> bool {
         // Templates emit a tracked_render and produce baselines; the
         // reverse-merge pipeline (transform check, clean filter) reads

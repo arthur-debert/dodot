@@ -53,6 +53,12 @@ pub(super) struct ScriptedPreprocessor {
     /// behaviour aren't accidentally affected by the source-content
     /// scan that the gate adds.
     pub(super) supports_reverse_merge: bool,
+    /// What [`Preprocessor::context_hash`] reports for this
+    /// preprocessor — the rendering inputs other than the source
+    /// file. `None` (the default) is a preprocessor with no such
+    /// inputs; tests of passive staleness set it to stand in for a
+    /// template whose `vars` changed.
+    pub(super) context_hash: Option<[u8; 32]>,
 }
 
 impl Default for ScriptedPreprocessor {
@@ -62,6 +68,7 @@ impl Default for ScriptedPreprocessor {
             extension: ".scripted",
             outputs: Vec::new(),
             supports_reverse_merge: false,
+            context_hash: None,
         }
     }
 }
@@ -87,6 +94,9 @@ impl Preprocessor for ScriptedPreprocessor {
     }
     fn supports_reverse_merge(&self) -> bool {
         self.supports_reverse_merge
+    }
+    fn context_hash(&self) -> Option<[u8; 32]> {
+        self.context_hash
     }
 }
 

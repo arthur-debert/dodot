@@ -136,6 +136,7 @@ fn conflict_marker_gate_skipped_for_preprocessors_without_reverse_merge() {
             ..Default::default()
         }],
         supports_reverse_merge: false,
+        context_hash: None,
     }));
 
     let datastore = make_datastore(&env);
@@ -195,6 +196,7 @@ fn conflict_marker_gate_runs_on_tracking_scripted_preprocessor() {
             deploy_mode: None,
         }],
         supports_reverse_merge: true,
+        context_hash: None,
     }));
 
     let datastore = make_datastore(&env);
@@ -260,6 +262,7 @@ fn gate_handles_non_utf8_source_via_lossy_decode() {
             deploy_mode: None,
         }],
         supports_reverse_merge: true,
+        context_hash: None,
     }));
 
     let datastore = make_datastore(&env);
@@ -325,6 +328,7 @@ fn gate_detects_markers_in_non_utf8_source() {
             deploy_mode: None,
         }],
         supports_reverse_merge: true,
+        context_hash: None,
     }));
 
     let datastore = make_datastore(&env);

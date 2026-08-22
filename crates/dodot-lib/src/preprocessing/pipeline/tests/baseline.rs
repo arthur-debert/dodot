@@ -352,3 +352,265 @@ fn end_to_end_baseline_for_real_template_preprocessor() {
     assert_eq!(baseline.context_hash.len(), 64);
     assert_eq!(baseline.rendered_hash.len(), 64);
 }
+
+// ── Passive: is the cached render still the current one? ─────────
+
+/// The datastore path a passive run keys its virtual entry on — the
+/// same key `unrendered` and `rendered_bytes` use.
+fn virtual_key(env: &TempEnvironment, pack: &str, filename: &str) -> PathBuf {
+    env.paths
+        .handler_data_dir(pack, "preprocessed")
+        .join(filename)
+}
+
+/// Render `greet.tmpl` for real, writing the baseline a later passive
+/// run reads. `vars` is the rendering context of that render.
+fn render_once(env: &TempEnvironment, vars: &[(&str, &str)]) {
+    let registry = template_registry(env, vars);
+    let datastore = make_datastore(env);
+    let pack = make_pack("app", env.dotfiles_root.join("app"));
+    preprocess_pack(
+        vec![PackEntry {
+            relative_path: "greet.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/greet.tmpl"),
+            is_dir: false,
+            gate_failure: None,
+        }],
+        &registry,
+        &pack,
+        env.fs.as_ref(),
+        &datastore,
+        env.paths.as_ref(),
+        PreprocessMode::Active,
+        false,
+    )
+    .expect("the active render must succeed");
+}
+
+/// Plan the same file passively, the way `status` and adopt's conflict
+/// analysis do.
+fn plan_passively(
+    env: &TempEnvironment,
+    vars: &[(&str, &str)],
+) -> crate::preprocessing::pipeline::PreprocessResult {
+    let registry = template_registry(env, vars);
+    let datastore = make_datastore(env);
+    let pack = make_pack("app", env.dotfiles_root.join("app"));
+    preprocess_pack(
+        vec![PackEntry {
+            relative_path: "greet.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/greet.tmpl"),
+            is_dir: false,
+            gate_failure: None,
+        }],
+        &registry,
+        &pack,
+        env.fs.as_ref(),
+        &datastore,
+        env.paths.as_ref(),
+        PreprocessMode::Passive,
+        false,
+    )
+    .expect("the passive plan must succeed")
+}
+
+fn template_registry(env: &TempEnvironment, vars: &[(&str, &str)]) -> PreprocessorRegistry {
+    let vars: HashMap<String, String> = vars
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    let mut registry = PreprocessorRegistry::new();
+    registry.register(Box::new(
+        crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars,
+            env.paths.as_ref(),
+        )
+        .unwrap(),
+    ));
+    registry
+}
+
+#[test]
+fn passive_trusts_a_baseline_rendered_from_the_current_source_and_context() {
+    // The case the two tests below are measured against: nothing has
+    // moved since the render, so the cached content answers for the
+    // pack and nothing is listed as awaiting one.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .done()
+        .build();
+
+    render_once(&env, &[("name", "Alice")]);
+    let result = plan_passively(&env, &[("name", "Alice")]);
+
+    assert!(
+        result.unrendered.is_empty(),
+        "a current baseline must not be reported as awaiting a render: {:?}",
+        result.unrendered
+    );
+    let key = virtual_key(&env, "app", "greet");
+    assert_eq!(
+        result.rendered_bytes.get(&key).map(|b| b.to_vec()),
+        Some(b"hello Alice".to_vec())
+    );
+}
+
+#[test]
+fn passive_reports_a_template_edited_since_its_render_as_unrendered() {
+    // The baseline records `source_hash` precisely so an edited
+    // template can be told apart from a current one. A caller that
+    // reads a plan as evidence — adopt, deciding whether publishing
+    // collides with what another pack claims — must not be handed the
+    // previous render's claims as this pack's current ones.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .done()
+        .build();
+
+    render_once(&env, &[("name", "Alice")]);
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join("app/greet.tmpl"),
+            b"goodbye {{ name }}",
+        )
+        .unwrap();
+
+    let result = plan_passively(&env, &[("name", "Alice")]);
+
+    let key = virtual_key(&env, "app", "greet");
+    assert_eq!(
+        result.unrendered,
+        vec![key.clone()],
+        "an edited template's cached render describes the edit that came before it"
+    );
+    // Status still needs the previous render: it is what is deployed
+    // until the next `dodot up`.
+    assert_eq!(
+        result.rendered_bytes.get(&key).map(|b| b.to_vec()),
+        Some(b"hello Alice".to_vec()),
+        "the superseded bytes stay available — they are the deployed file"
+    );
+}
+
+#[test]
+fn passive_reports_a_template_whose_vars_changed_as_unrendered() {
+    // Same defect, reached without touching the source: a template's
+    // output depends on its rendering context too, and `vars` moving
+    // changes what the next `dodot up` writes. `context_hash` is what
+    // makes that visible without rendering anything here.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .done()
+        .build();
+
+    render_once(&env, &[("name", "Alice")]);
+    let result = plan_passively(&env, &[("name", "Bob")]);
+
+    assert_eq!(
+        result.unrendered,
+        vec![virtual_key(&env, "app", "greet")],
+        "the render that produced this baseline used vars this run no longer has"
+    );
+}
+
+#[test]
+fn passive_reports_a_source_it_cannot_read_as_unrendered() {
+    // Whether the cached render is current is unanswerable without the
+    // source bytes. The answer decides whether adopt may mutate the
+    // dotfiles tree, so an unreadable source counts against the cache
+    // rather than for it.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .done()
+        .build();
+
+    render_once(&env, &[("name", "Alice")]);
+    env.fs
+        .remove_file(&env.dotfiles_root.join("app/greet.tmpl"))
+        .unwrap();
+
+    let result = plan_passively(&env, &[("name", "Alice")]);
+
+    assert_eq!(
+        result.unrendered,
+        vec![virtual_key(&env, "app", "greet")],
+        "a source dodot cannot read is a render it cannot vouch for"
+    );
+}
+
+#[test]
+fn passive_falls_back_to_the_source_check_for_a_baseline_without_a_context_hash() {
+    // A preprocessor with no rendering context of its own reports
+    // `None`, and a baseline written before `context_hash` existed
+    // carries an empty string. Neither is a mismatch — only the source
+    // bytes decide — or every such entry would refuse forever.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.scripted", "src")
+        .done()
+        .build();
+
+    let scripted = || ScriptedPreprocessor {
+        extension: ".scripted",
+        outputs: vec![ExpandedFile {
+            relative_path: PathBuf::from("config.toml"),
+            content: b"rendered".to_vec(),
+            is_dir: false,
+            tracked_render: Some("rendered".into()),
+            context_hash: None,
+            secret_line_ranges: Vec::new(),
+            deploy_mode: None,
+        }],
+        supports_reverse_merge: true,
+        context_hash: Some([0x42; 32]),
+        ..Default::default()
+    };
+
+    let datastore = make_datastore(&env);
+    let pack = make_pack("app", env.dotfiles_root.join("app"));
+    let entries = || {
+        vec![PackEntry {
+            relative_path: "config.toml.scripted".into(),
+            absolute_path: env.dotfiles_root.join("app/config.toml.scripted"),
+            is_dir: false,
+            gate_failure: None,
+        }]
+    };
+    let mut registry = PreprocessorRegistry::new();
+    registry.register(Box::new(scripted()));
+
+    preprocess_pack(
+        entries(),
+        &registry,
+        &pack,
+        env.fs.as_ref(),
+        &datastore,
+        env.paths.as_ref(),
+        PreprocessMode::Active,
+        false,
+    )
+    .unwrap();
+
+    let result = preprocess_pack(
+        entries(),
+        &registry,
+        &pack,
+        env.fs.as_ref(),
+        &datastore,
+        env.paths.as_ref(),
+        PreprocessMode::Passive,
+        false,
+    )
+    .unwrap();
+
+    assert!(
+        result.unrendered.is_empty(),
+        "an uncomparable context must not be read as a changed one: {:?}",
+        result.unrendered
+    );
+}

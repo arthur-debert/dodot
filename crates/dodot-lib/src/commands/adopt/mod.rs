@@ -41,8 +41,9 @@
 //!    deployment conflict analysis against the *prospective* pack tree,
 //!    read out of the preparation directory. `--force` does not bypass
 //!    it. It refuses on a collision and equally on an analysis it
-//!    cannot complete — an `externals.toml` that only exists as an
-//!    unrendered template declares targets dodot has not read, and
+//!    cannot complete — an `externals.toml` that exists only as a
+//!    template dodot has not rendered, or has not re-rendered since
+//!    it last changed, declares targets dodot has not read, and
 //!    rendering it here is the side effect this step must not have.
 //!    `--dry-run` reports the plan here and stops.
 //!
@@ -1379,16 +1380,19 @@ fn remove_best_effort(fs: &dyn Fs, path: &Path) {
 /// same reason `status` reads passively (`docs/proposals/secrets.lex`
 /// §7.4).
 ///
-/// Passive planning reads a preprocessor entry's cached baseline, and a
+/// Passive planning reads a preprocessor entry's cached baseline. A
 /// first-time template has none — it surfaces as a placeholder with no
-/// rendered content. For most handlers that costs nothing here: a
-/// symlink target follows from the file's path, so an unrendered
-/// `config.toml.tmpl` still claims `~/.config/…/config.toml`. It is
+/// rendered content — and a template edited since the last `dodot up`
+/// has one describing the render before the edit. For most handlers
+/// neither costs anything here: a symlink target follows from the
+/// file's path, so an unrendered `config.toml.tmpl` still claims
+/// `~/.config/…/config.toml` whatever its contents say. Both are
 /// decisive for `externals`, which reads every target it claims out of
 /// `externals.toml`; an unrendered `externals.toml.tmpl` produces no
-/// `Fetch` intent at all, and reading that silence as "claims nothing"
-/// would let adopt publish into exactly the collision this analysis
-/// exists to refuse. `plan_pack` names those files in
+/// `Fetch` intent at all, and one rendered before its last edit
+/// produces the targets it used to claim. Reading either as this
+/// pack's current claims would let adopt publish into exactly the
+/// collision this analysis exists to refuse. `plan_pack` names those files in
 /// [`PackPlan::unresolved_claims`](crate::packs::orchestration::PackPlan::unresolved_claims),
 /// and this function refuses on any of them — the same posture it takes
 /// toward a pack it cannot scan, for the same reason: an answer dodot
@@ -1439,8 +1443,8 @@ fn check_deploy_conflicts(
     // Incompleteness first: a conflict found among the claims dodot did
     // compute is still a true conflict, but reporting it would tell the
     // user to resolve that one and re-run into a second refusal. Naming
-    // the unrendered files first gets them to one `dodot up` and a run
-    // whose verdict is complete.
+    // the files awaiting a render first gets them to one `dodot up` and
+    // a run whose verdict is complete.
     if !unresolved.is_empty() {
         return Err(DodotError::ConflictCheckIncomplete { unresolved });
     }

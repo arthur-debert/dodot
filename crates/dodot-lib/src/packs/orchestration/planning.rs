@@ -98,10 +98,10 @@ pub struct PackPlan {
     /// Ephemeral: an availability is a fact about this machine right
     /// now and is never written to the datastore.
     pub provision_unavailable: Vec<ProvisionUnavailable>,
-    /// Files whose deployment claims this plan does not contain,
-    /// because passive preprocessing surfaced them without rendered
-    /// content and their handler reads its targets out of that
-    /// content. See [`UnresolvedClaim`].
+    /// Files whose current deployment claims this plan does not
+    /// contain, because passive preprocessing surfaced them without a
+    /// current render and their handler reads its targets out of that
+    /// render. See [`UnresolvedClaim`].
     ///
     /// Always empty for an Active plan. A caller that only executes
     /// the plan can ignore it; a caller that reads the plan as
@@ -115,24 +115,31 @@ pub struct PackPlan {
 /// [`PackPlan`], rather than absent from the pack.
 ///
 /// Produced only in [`PreprocessMode::Passive`](crate::preprocessing::PreprocessMode::Passive),
-/// where a preprocessor entry with no cached baseline surfaces as a
-/// placeholder carrying no rendered bytes. A handler whose
+/// for the entries it lists in
+/// [`PreprocessResult::unrendered`](crate::preprocessing::pipeline::PreprocessResult::unrendered):
+/// a preprocessor entry dodot has never rendered, which surfaces as a
+/// placeholder carrying no bytes, and one whose cached render was
+/// produced from source bytes or a rendering context that have since
+/// changed, which carries the *previous* render's bytes. A handler whose
 /// [`targets_from_content`](crate::handlers::Handler::targets_from_content)
 /// is true — `externals`, whose every target is a field inside
-/// `externals.toml` — emits no intent for such a placeholder, so the
-/// plan understates what the pack will deploy once it is rendered.
+/// `externals.toml` — reads its claims out of those bytes, so for the
+/// first it emits no intent at all and for the second it emits the
+/// targets the pack claimed before the edit. Either way the plan is
+/// not what this pack deploys next.
 ///
 /// The remedy is one `dodot up` on the owning pack: it renders the
-/// template, writes the baseline, and every later passive plan reads
-/// the claims from that baseline.
+/// current source, writes the baseline, and every later passive plan
+/// reads the claims from that baseline.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnresolvedClaim {
     /// The pack the file belongs to.
     pub pack: String,
-    /// The handler that matched the placeholder and produced nothing.
+    /// The handler whose claims for this file the plan does not have.
     pub handler: String,
-    /// The unrendered source file, pack-relative — the path to name
-    /// when telling a user what to render, e.g. `externals.toml.tmpl`.
+    /// The source file whose current contents are unrendered,
+    /// pack-relative — the path to name when telling a user what to
+    /// render, e.g. `externals.toml.tmpl`.
     pub source: String,
 }
 
@@ -488,11 +495,12 @@ fn plan_pack_inner(
     let order = rules::handler_execution_order(&groups, &registry);
     debug!(pack = %pack.name, handlers = ?order, "handler execution order");
 
-    // Which matched files carry no rendered content, and therefore
-    // tell a content-reading handler nothing? Only passive planning
-    // produces any (`PreprocessResult::unrendered`); an active plan
-    // rendered everything it surfaced, so this set is empty and the
-    // loop below records nothing.
+    // Which matched files have no render of their current contents,
+    // and therefore tell a content-reading handler nothing or tell it
+    // something out of date? Only passive planning produces any
+    // (`PreprocessResult::unrendered`); an active plan rendered
+    // everything it surfaced, so this set is empty and the loop below
+    // records nothing.
     let unrendered: std::collections::HashSet<&PathBuf> =
         preprocess_result.unrendered.iter().collect();
     let mut unresolved_claims: Vec<UnresolvedClaim> = Vec::new();
@@ -609,8 +617,9 @@ fn plan_pack_inner(
             // already moved on, and a handler that generates no intent
             // leaves nothing for a caller to find incomplete. What is
             // recorded here are the files this handler was asked about
-            // and cannot answer for — an unrendered placeholder given
-            // to a handler that reads its targets out of file content.
+            // and cannot answer for as they stand now — a placeholder
+            // or a superseded render given to a handler that reads its
+            // targets out of file content.
             if !unrendered.is_empty() && handler.targets_from_content() {
                 for m in handler_matches {
                     if !unrendered.contains(&m.absolute_path) {
@@ -628,8 +637,8 @@ fn plan_pack_inner(
                         pack = %pack.name,
                         handler = %handler_name,
                         file = %source,
-                        "unrendered placeholder for a handler that reads its targets from \
-                         file content; the plan understates what this pack claims"
+                        "no current render for a handler that reads its targets from \
+                         file content; the plan does not state what this pack claims"
                     );
                     unresolved_claims.push(UnresolvedClaim {
                         pack: pack.name.clone(),

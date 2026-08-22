@@ -236,7 +236,8 @@ pub trait Handler: Send + Sync {
     /// the analysis is complete either way. `externals` is the
     /// exception: every `target` it claims is a field inside
     /// `externals.toml`, so an `externals.toml.tmpl` that has never
-    /// been rendered claims nothing dodot can see.
+    /// been rendered claims nothing dodot can see, and one rendered
+    /// before its last edit claims what it used to.
     ///
     /// Read this together with
     /// [`PreprocessResult::unrendered`](crate::preprocessing::pipeline::PreprocessResult::unrendered):
