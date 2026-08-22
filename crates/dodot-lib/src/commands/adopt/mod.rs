@@ -418,7 +418,7 @@ pub fn adopt(
     // it. Whatever `--force` displaced is still in the preparation
     // directory while this runs, which is what lets a failed source put
     // its destination's pre-adopt content back.
-    let replacement = swap_all(&plans, &publication, &pack_path, ctx.fs.as_ref());
+    let failures = swap_all(&plans, &publication, &pack_path, ctx.fs.as_ref());
 
     // ── Step 6: Finish ───────────────────────────────────────────────
     //
@@ -428,7 +428,7 @@ pub fn adopt(
     // preparation directory can then hold the only copy of a
     // destination's pre-adopt content, and the notes below say where
     // everything the recovery could not move is.
-    if replacement.stranded.is_empty() {
+    if failures.iter().all(|f| f.stranded.is_none()) {
         prep.discard(ctx.fs.as_ref());
     }
 
@@ -585,22 +585,53 @@ pub fn adopt(
     // command-wide notes list that drives `[N]` markers for status/up.
     // To keep the model consistent ("every note is referenced by a row"),
     // synthesize an error row in the target pack for the file we tried
-    // (and failed) to adopt. Post-rollback the pack doesn't actually
-    // contain that file, so this row is purely informational about the
-    // attempt — but it anchors the `[N]` back to a visible listing entry
-    // instead of leaving an orphaned footnote at the bottom.
-    for f in &replacement.failures {
+    // (and failed) to adopt. The row describes the attempt rather than
+    // the pack's contents: the recovery usually took that entry back
+    // out, and where it could not, the notes below the row are what say
+    // so. Either way the row anchors the `[N]` to a visible listing
+    // entry instead of leaving an orphaned footnote at the bottom.
+    for f in &failures {
         let src_name = f
             .source
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| f.source.display().to_string());
+        // What the note may claim depends on what the recovery
+        // achieved. Saying the entry was taken back out when it is
+        // still standing sends the user to a pack they think is clean,
+        // and it contradicts the note right below that names the path
+        // its content is at — so the stranded wording claims nothing
+        // about the pack and leaves that note to say what remains.
+        let outcome = match f.stranded {
+            None => "its pack entry was taken back out",
+            Some(_) => "putting the pack back the way it was failed too",
+        };
         result.notes.push(DisplayNote::error(format!(
-            "adopt failed: {}: {} — its pack entry was taken back out",
+            "adopt failed: {}: {} — {outcome}",
             f.source.display(),
             f.reason
         )));
         let note_ref = Some(result.notes.len() as u32);
+        // A recovery step that failed in turn is the one outcome that
+        // leaves content somewhere other than where it belongs: the
+        // destination `--force` displaced still in the staging
+        // directory, or the copy publication put in the pack still
+        // standing there. Nothing was deleted to get past it and the
+        // staging directory is still on disk, so the note is a pair of
+        // paths and an instruction, not an apology. It follows its own
+        // failure note so the two read as one account of one source.
+        if let Some(entry) = &f.stranded {
+            result.notes.push(DisplayNote::error(format!(
+                "adopt could not put back the pack's pre-adopt state for {}: \
+                 the content it could not move is at {}. Nothing was deleted \
+                 to get past that, and the staging directory {} is kept rather \
+                 than discarded — move what you need back by hand, then remove \
+                 that directory.",
+                entry.in_pack,
+                entry.at,
+                prep.root.display()
+            )));
+        }
         // The pack has no row of its own when `status` put it somewhere
         // other than the listing — a pack gated off on this host — and
         // none at all when this run published it and the last failed
@@ -627,33 +658,13 @@ pub fn adopt(
         pack.recompute_summary();
     }
 
-    // A recovery step that failed in turn is the one outcome that
-    // leaves content somewhere other than where it belongs: the
-    // destination `--force` displaced still in the staging directory,
-    // or the copy publication put in the pack still standing there.
-    // Nothing was deleted to get past it and the staging directory is
-    // still on disk, so the note is a pair of paths and an instruction,
-    // not an apology.
-    for entry in &replacement.stranded {
-        result.notes.push(DisplayNote::error(format!(
-            "adopt could not put back the pack's pre-adopt state for {}: \
-             the content it could not move is at {}. Nothing was deleted \
-             to get past that, and the staging directory {} is kept rather \
-             than discarded — move what you need back by hand, then remove \
-             that directory.",
-            entry.in_pack,
-            entry.at,
-            prep.root.display()
-        )));
-    }
-
     // Exit status (`adopt-safety.lex` §5.5): a partially adopted run is
     // not a successful one. The result still renders every planned
     // source, replaced and failed alike, so the user sees what did land
     // — but a script reading the exit status has to be able to tell the
     // two apart. The §4 left-in-place report does not reach here: those
     // entries were never planned for adoption.
-    result.failed = !replacement.failures.is_empty();
+    result.failed = !failures.is_empty();
     Ok(result)
 }
 
@@ -2168,28 +2179,25 @@ fn collect_intents_passive(
 
 // ── Step 5: Replace sources ───────────────────────────────────────
 
-/// One planned source that could not be replaced, and why.
+/// One planned source that could not be replaced, why, and what
+/// putting its pack entry back achieved.
+///
+/// The recovery outcome travels with the failure rather than in a list
+/// beside it because the report has to say different things about the
+/// two cases, and a note that guessed wrong would tell the user their
+/// pack is clean while a duplicate of an unreplaced source stands in
+/// it.
 struct AdoptFailure {
     source: PathBuf,
     reason: String,
-}
-
-/// What step 5 did across every planned source.
-#[derive(Default)]
-struct Replacement {
-    /// The sources that could not be replaced, in plan order. Each one's
-    /// pack entry has been taken back out unless it is also in
-    /// `stranded`, and any of these makes the command exit nonzero
-    /// (§5.5).
-    failures: Vec<AdoptFailure>,
-    /// Entries whose pre-adopt pack state a recovery could not put back,
-    /// with the path the content it could not move is at now: the
-    /// preparation directory for a `--force` displacement that could not
-    /// return, the in-pack path for a published entry that could not
-    /// come out. Any of these keeps the preparation directory instead of
-    /// discarding it: what is in there can be the only copy of a
-    /// destination's pre-adopt content.
-    stranded: Vec<StrandedEntry>,
+    /// What the recovery could not put back, if anything, and where
+    /// that content is now: the preparation directory for a `--force`
+    /// displacement that could not return, the in-pack path for a
+    /// published entry that could not come out. `None` means the pack
+    /// holds this entry's pre-adopt state again. `Some` keeps the
+    /// preparation directory instead of discarding it: what is in there
+    /// can be the only copy of a destination's pre-adopt content.
+    stranded: Option<StrandedEntry>,
 }
 
 /// Replace every planned source with a symlink to its published pack
@@ -2212,13 +2220,18 @@ struct Replacement {
 /// reaching a directory a successful source still occupies: emptiness is
 /// the kernel's verdict inside the same operation that removes, not a
 /// test this code makes and then acts on.
+///
+/// Returns one [`AdoptFailure`] per source that could not be replaced,
+/// in plan order, each carrying whatever its own recovery could not put
+/// back — which is what lets the report say the entry came out only
+/// where it did.
 fn swap_all(
     plans: &[AdoptPlan],
     publication: &Publication,
     pack_path: &Path,
     fs: &dyn Fs,
-) -> Replacement {
-    let mut out = Replacement::default();
+) -> Vec<AdoptFailure> {
+    let mut failures: Vec<AdoptFailure> = Vec::new();
     let mut failed: Vec<&AdoptPlan> = Vec::new();
     for plan in plans {
         let result = if plan.is_dir {
@@ -2227,20 +2240,18 @@ fn swap_all(
             swap_file_atomic(&plan.source, &plan.pack_dest, fs)
         };
         if let Err(e) = result {
-            if let Some(stranded) = restore_failed_entry(plan, publication, fs) {
-                out.stranded.push(stranded);
-            }
             failed.push(plan);
-            out.failures.push(AdoptFailure {
+            failures.push(AdoptFailure {
                 source: plan.source.clone(),
                 reason: err_msg(&e),
+                stranded: restore_failed_entry(plan, publication, fs),
             });
         }
     }
     if !failed.is_empty() {
         prune_emptied_dirs(&failed, publication, pack_path, fs);
     }
-    out
+    failures
 }
 
 /// Put the pack back where it was for one source that could not be

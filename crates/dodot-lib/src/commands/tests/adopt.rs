@@ -4937,6 +4937,33 @@ fn failure_notes(result: &commands::PackStatusResult) -> Vec<String> {
         .collect()
 }
 
+/// Assert the complete `adopt failed:` note of a one-source run whose
+/// step-5 recovery failed in turn.
+///
+/// The pack entry is still standing in that run, so no note may say it
+/// came back out: the note right after this one names the path its
+/// content is at, and a report carrying both would tell the user two
+/// opposite things about the same entry. Comparing the whole string
+/// rather than a substring is what makes that checkable — a claim
+/// re-appearing anywhere in the note fails here.
+fn assert_stranded_failure_note(result: &commands::PackStatusResult, source: &std::path::Path) {
+    let notes = failure_notes(result);
+    assert_eq!(notes.len(), 1, "one failure reported, got: {notes:?}");
+    assert_eq!(
+        notes[0],
+        format!(
+            "adopt failed: {}: injected replacement failure — putting the \
+             pack back the way it was failed too",
+            source.display()
+        )
+    );
+    let bodies: Vec<&String> = result.notes.iter().map(|n| &n.body).collect();
+    assert!(
+        !bodies.iter().any(|b| b.contains("taken back out")),
+        "no note may claim the entry came out while it is still there: {bodies:?}"
+    );
+}
+
 /// The names of the rows the result renders for the destination pack.
 fn rendered_rows(result: &commands::PackStatusResult, pack: &str) -> Vec<String> {
     let mut rows: Vec<String> = result
@@ -5157,12 +5184,26 @@ fn a_failure_on_the_second_of_three_sources_leaves_the_first_and_third_adopted()
             "expected {name} in {rows:?}"
         );
     }
+    // The recovery here did put the entry back, so the note says so —
+    // the whole string, because that clause is the one a run whose
+    // recovery failed must not carry.
     let notes = failure_notes(&result);
     assert_eq!(notes.len(), 1, "one failure reported, got: {notes:?}");
+    assert_eq!(
+        notes[0],
+        format!(
+            "adopt failed: {}: injected replacement failure — its pack entry \
+             was taken back out",
+            sources[1].display()
+        )
+    );
     assert!(
-        notes[0].contains("two.lua") && notes[0].contains("injected replacement failure"),
-        "the note names the source and the reason: {}",
-        notes[0]
+        !result
+            .notes
+            .iter()
+            .any(|n| n.body.contains("could not put back")),
+        "nothing was stranded: {:?}",
+        result.notes.iter().map(|n| &n.body).collect::<Vec<_>>()
     );
     assert!(preparation_dirs(&env).is_empty());
 }
@@ -5453,6 +5494,7 @@ fn a_recovery_that_cannot_put_a_displacement_back_keeps_the_staged_copy() {
         "the note names the entry and where its content is: {}",
         named[0]
     );
+    assert_stranded_failure_note(&result, &source);
 }
 
 /// The same rule with nothing displaced: a recovery that cannot take
@@ -5530,6 +5572,7 @@ fn a_recovery_that_cannot_take_the_entry_out_of_an_existing_pack_names_it() {
         "the note names the entry and where its content is: {}",
         named[0]
     );
+    assert_stranded_failure_note(&result, &source);
 }
 
 /// A pack this run published is this run's to remove, but the removal
@@ -5589,4 +5632,5 @@ fn a_recovery_that_cannot_remove_a_new_packs_entry_names_it() {
         "the note names the entry and where its content is: {}",
         named[0]
     );
+    assert_stranded_failure_note(&result, &source);
 }
