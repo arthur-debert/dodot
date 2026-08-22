@@ -21,6 +21,8 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
         A third thing goes wrong quietly. Concatenating the two layers is not how `[pack].ignore` resolves: a pack-level list *replaces* the inherited one rather than extending it [./../user/filters.lex] §4, and that replacement result is the list the pack scan applies. A pack whose `.dodot.toml` re-lists the defaults minus `.DS_Store` is therefore still refused by adopt — on a pattern no scan of that pack would use.
 
+        A fourth goes wrong in the other direction. The check tests only reserved filenames and the ignore list, but a pack's top-level walk also skips every name beginning with `.` except `.config`. `dodot adopt ~/.config/nvim/.luarc.json` therefore succeeds today, moves the file into the pack, symlinks the original at it — and produces a pack entry that no later `dodot up` or `dodot status` reads. Adopt refuses the harmless case and accepts the harmful one.
+
     1.2. Prospective Content Is Written to Final Paths
 
         Adoption today copies every source into its final in-pack path, then runs the cross-pack deployment conflict analysis with those copies in place, then replaces the originals with symlinks. Everything that can refuse the run — the conflict analysis, a permission failure on a later source, a mid-copy error — refuses after content is already sitting at final paths.
@@ -40,7 +42,7 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
         The remedy for "I actually want dodot to manage this file" is to change the configuration that ignores it — remove the pattern, or override `[pack].ignore` for the pack. Adopt adds no flag that adopts an ignored path for one run, because the resulting pack entry stays invisible to every subsequent `dodot up` and `dodot status`. A flag whose success leaves the user with a file dodot will not deploy is worse than the error it replaces.
 
-        One of the four rules in §3.1 has no such configuration remedy: the hidden-entry rule is the scanner's, not the user's. The reasoning above still decides adopt's behavior — an entry no run would read is not one adopt produces — but the error cannot end in "edit this setting." §3.7 says so plainly instead of implying a fix that does not exist.
+        Two of the four rules in §3.1 have no such configuration remedy: reserved filenames and the hidden-entry rule belong to dodot's own structure and to the scanner, not to the user's config. The reasoning above still decides adopt's behavior — an entry no run would read is not one adopt produces — but those two errors cannot end in "edit this setting." §3.7 says so plainly instead of implying a fix that does not exist.
 
     2.3. Nothing Final Is Written Until Everything Is Decided
 
@@ -64,9 +66,11 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
         Dispatch-layer filters do not participate. A file matching `[mappings].ignore`, `[mappings].skip`, or a gate label is discovered by the scan and then routed — it is a live pack entry whose routing the user can change by editing config, without moving files. Adopt classifies on discovery, where an omission means no dodot run can see the file at all.
 
-        The ignore and reserved-filename rules apply to every path component of the prospective in-pack path, not to the leaf alone. `dodot adopt ~/.config/nvim/lua/plugins/init.lua` produces the pack `nvim` and the in-pack path `lua/plugins/init.lua`; if `lua` matched an ignore pattern the scan would never descend, so the adoption is refused even though `init.lua` matches nothing. Routing prefixes (`_home/`, `_xdg/`, `_app/`, `_lib/`) and the gate directory `--only-os` prepends are components like any other and are tested the same way.
+        The first rule is about the destination pack rather than about any one entry: a pack carrying `.dodotignore` is invisible whatever is being adopted into it. The other three are *positional*. Each applies where a pack's top-level walk reads a name, and nowhere else — the first component of the prospective in-pack path, and, because a gate directory that passes on this host expands transparently and surfaces its children at pack-root level, the first component inside a leading `--only-os` directory. The scan applies those three filters at exactly those two positions and at no other.
 
-        The hidden-entry rule is positional instead. It applies wherever a pack's top-level walk reads a name: the first component of the in-pack path, or — because a gate directory that passes on this host expands transparently and surfaces its children at pack-root level — the first component inside a leading `--only-os` directory. Components below that position are reached by handler recursion, which does not filter hidden names, so `_home/.gitconfig` and `lua/.hidden.lua` are read normally and are adoptable.
+        `dodot adopt ~/.config/nvim/lua/plugins/init.lua` produces the pack `nvim` and the in-pack path `lua/plugins/init.lua`. Only `lua` is classified. If `lua` matches an ignore pattern, the top-level walk skips it and nothing beneath it is ever read, so the adoption is refused even though `init.lua` matches nothing. If `plugins` or `init.lua` matches instead, the adoption proceeds: the scan reads `lua`, and what happens below it is a handler's business, not discovery's. Routing prefixes (`_home/`, `_xdg/`, `_app/`, `_lib/`) sit at a classified position and are tested there like any other name.
+
+        Below those positions, whether a name is filtered depends on which handler claims the top-level entry and on how the pack is configured. The symlink handler links an ordinary pack-root directory wholesale — one symlink, no per-name filtering beneath it at all — and falls back to per-file recursion only when a `[symlink] protected_paths` entry or a `[symlink.targets]` key reaches inside it, or when the directory is a routing prefix; only that fallback applies `[pack].ignore` and the reserved filenames at every depth, and even it does not filter hidden names ([./../user/paths.lex] §6). Classification does not model any of that. It is handler behavior rather than discovery — a handler re-applying a discovery filter to a subtree the scan handed it whole — it turns on configuration the user was not asked about when they typed the adopt command, and reproducing it would refuse entries an ordinary scan and handler deploy today. `_home/.gitconfig`, `lua/.hidden.lua`, and `lua/plugins/init.lua` with an ignored `plugins` are all adoptable. §3.5 accepts the same silence for the contents of an adopted directory, for the same reason.
 
         :: note ::
             The recursive walk preprocessing uses to find templates applies the hidden filter at every depth, so a nested `.hidden.tmpl` is not rendered even though the symlink handler links it. That inconsistency is in the scanner, predates this document, and is not resolved here. Classification follows the top-level walk, which is what decides whether an entry is read at all.
@@ -74,7 +78,9 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
     3.2. Explicitly Named Sources
 
-        A source path the user typed on the command line that is not adoptable is an error. The message names the matched pattern and the layer that supplied the effective `[pack].ignore` list — the built-in default list, the root `.dodot.toml`, or the pack's own — so the user can act on it. Because pack-level replaces rather than extends, exactly one layer is in force, and that is the one named.
+        A source path the user typed on the command line that is not adoptable is an error. Nothing is written and no pack is created, and the message says which of the three entry-level rules matched, because the three call for three different things from the user.
+
+        A `[pack].ignore` match names the matched pattern and the layer that supplied the effective list — the built-in default list, the root `.dodot.toml`, or the pack's own — so the user can act on it. Because pack-level replaces rather than extends, exactly one layer is in force, and that is the one named.
 
         Error text:
 
@@ -85,7 +91,18 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
         :: text ::
 
-        A source that would land a hidden name at the pack's top-level position is an error too, with a different message. That rule comes from no configuration layer, so there is no pattern to quote and no override to suggest (§3.7).
+        A named source whose basename is one of dodot's reserved filenames has no pattern to quote and no layer to name: the name is taken, and the refusal is about what the name means rather than about a setting (§3.7). The message says which file dodot uses it for, since a user who wrote their own `.dodot.toml` and then tried to adopt it is asking dodot to manage dodot's own configuration.
+
+        Error text:
+
+            error: ~/.config/zed/.dodot.toml
+              `.dodot.toml` is dodot's own pack configuration file. Adopting
+              one into a pack would replace that pack's configuration rather
+              than add a managed file. Rename it if you want it deployed.
+
+        :: text ::
+
+        A source that would land a hidden name at the pack's top-level position is an error too. That rule also comes from no configuration layer, so there is nothing to quote and no override to suggest — but unlike the reserved names it refuses a file the user has every reason to expect dodot to manage, so the message says outright that no setting changes it (§3.7).
 
         Error text:
 
@@ -96,7 +113,7 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
         :: text ::
 
-        In both cases nothing is written, and no pack is created.
+        A reserved filename is hidden as well, and when both rules match it is the reserved-filename message that prints: it is the more specific fact about the path, and the more useful one.
 
     3.3. Discovered Children
 
@@ -126,19 +143,29 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
     3.5. What Adopt Does Not Classify
 
-        Classification covers the paths the user names and the immediate children expansion discovers. It does not descend into an adopted directory. `~/.config/helix/themes/` is copied whole, ignored files inside it included, and later scans omit those files silently — the behavior a user gets today from any directory they adopt. Refusing or reporting on subtree contents would make adopting a real config directory an exercise in clearing its noise first, for a payoff the ignore rules already deliver.
+        Classification reaches the pack-scan positions of §3.1 and stops. Two things sit outside it, for the same reason.
+
+        It does not descend into an adopted directory. `~/.config/helix/themes/` is copied whole, ignored files inside it included, and later scans omit those files silently — the behavior a user gets today from any directory they adopt. Refusing or reporting on subtree contents would make adopting a real config directory an exercise in clearing its noise first, for a payoff the ignore rules already deliver.
+
+        It does not test the components of a named source below the first. `dodot adopt ~/.config/nvim/lua/plugins/init.lua` is classified on `lua` alone; whether `plugins` or `init.lua` matches an ignore pattern is left to the handler that later claims `lua`, which for a wholesale-linked directory is nobody. Adopt could not answer it correctly in any case — the same path is filtered or not depending on `[symlink] protected_paths` and `[symlink.targets]`, which the user may change after adopting.
+
+        In both cases the outcome is a file that lands in the pack and may be deployed or silently omitted depending on configuration adopt does not control. That is a weaker guarantee than §3.1 gives at the scan positions, and it is the guarantee that matches what dodot actually does.
 
     3.6. `--force` Changes None of This
 
         `--force` answers exactly one question — may adopt replace an existing destination inside the pack — and answers it after classification has already decided which entries exist. It does not adopt an ignored path, does not adopt a reserved filename, does not adopt a hidden top-level name, and does not turn the zero-adoptable-children error into a warning.
 
-    3.7. The Hidden-Entry Rule Has No Remedy
+    3.7. Two Rules the User Cannot Configure Away
 
-        The other three rules are configuration. A user who wants `.DS_Store` managed edits `[pack].ignore`; a user who wants a pack read deletes its `.dodotignore`. The hidden-entry rule is not configuration: the top-level walk skips dot-prefixed names unconditionally, and nothing in `.dodot.toml` turns that off.
+        Two of the four rules are configuration, and their errors can end in a setting to edit. A user who wants `.DS_Store` managed edits `[pack].ignore`; a user who wants an ignored pack read deletes its `.dodotignore`. The other two cannot end that way, and they are unremediable in different senses.
+
+        The reserved-filename rule is structural and unsurprising. `.dodot.toml` and `.dodotignore` are the names dodot reads its own configuration from, so a pack cannot hold a user's file under either name without that file becoming the pack's configuration or hiding the pack. There is no setting to point at because none is wanted: the answer to "adopt my `.dodotignore`" is that the name is taken, and renaming the file is the whole remedy.
+
+        The hidden-entry rule is structural and surprising. The top-level walk skips dot-prefixed names unconditionally except `.config`, nothing in `.dodot.toml` turns that off, and the file being refused is often one the user is right to want managed — `.luarc.json` next to `init.lua` is a config file, not noise.
 
         Adopt reports the fact and stops there. An explicitly named hidden source errors (§3.2) rather than producing an entry no dodot run reads; a discovered hidden child is left in place and reported (§3.3) rather than failing the directory around it. Neither offers the user a fix, because adopt has none to offer: the pack top level is the only position expansion can put a child in, and the only position a single named source under a pack root resolves to.
 
-        Whether the scanner should read hidden top-level entries at all is a real question — `.luarc.json` next to `init.lua` is a config file, not noise — and it is out of scope here (§7). Answering it changes what every existing pack deploys, which is a decision for the scan, not for adopt.
+        Whether the scanner should read hidden top-level entries at all is a real question, and it is out of scope here (§7). Answering it changes what every existing pack deploys, which is a decision for the scan, not for adopt.
 
 
 4. The Ignored-Entry Report
@@ -194,6 +221,8 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
         Sources are independent. A failure on one replaces nothing for that source, restores that entry's pack state, reports the failure in the result, and leaves the sources already replaced alone. Adopt does not promise one transaction across unrelated source directories, and cannot: they may live on different filesystems from each other and from the pack.
 
+        A failure therefore does not stop the run. Adopt attempts every planned source and reports each as replaced or failed. Stopping early would be the worse of the two options: §5.4 has already published every planned entry into the pack, so abandoning the remaining sources would leave each of them as a real file at its original path *and* a copy of itself in the pack — the duplicated state that makes the next `dodot up` report a conflict the user never created. Continuing means each source ends in exactly one of two states, replaced or untouched-with-its-pack-entry-rolled-back, whatever happened to the others.
+
         Restoring that entry's pack state means what it means in §5.4, and for the same reason. Under `--force`, the displaced content is renamed back. Otherwise the published entry is removed — along with every intermediate directory §5.4 created for it and left empty, and along with a newly published pack when no source was replaced successfully. Removing the entry alone would leave `nvim/lua/plugins/` behind, or an empty `nvim/` for a one-source inferred pack, which is exactly the residue §1.2 describes. Publication's record of what it created therefore stays available until every source replacement has committed or rolled back; §5.6 is where that record is discarded.
 
         A source-replacement failure makes the command exit nonzero. The result still renders every entry, replaced and failed alike, so the user sees what did land — but a partially adopted run is not a successful one, and a script reading the exit status has to be able to tell the two apart. Exit `0` means every planned source was replaced. The §4 report of left-in-place entries does not change that, because those entries were never planned for adoption.
@@ -214,7 +243,7 @@ Proposal: Safe Directory Adoption and Recoverable Publication
         | `--dry-run` stop (§5.3) | untouched; preparation directory removed | untouched |
         | New-pack publication (§5.4) | pack does not exist | untouched |
         | Existing-pack publication (§5.4) | pre-adopt content restored; report names what was restored | untouched |
-        | One source replacement (§5.5) | that entry's pre-adopt content restored; nothing §5.4 created for it left behind | that source untouched; earlier sources adopted |
+        | One source replacement (§5.5) | that entry's pre-adopt content restored; nothing §5.4 created for it left behind | that source untouched; every other planned source attempted, and replaced or reported |
         | Process killed during §5.4 | intermediate; preparation directory left with displaced content | untouched |
         | Process killed during §5.5 | published | at most one source at an adjacent backup path |
 
@@ -231,7 +260,7 @@ Proposal: Safe Directory Adoption and Recoverable Publication
     - *No continue-on-ignores flag.* §2.2. An explicitly named unadoptable path is an error — with a configuration remedy where one exists (§3.7) — not a prompt with an override.
     - *No cross-filesystem all-or-nothing transaction.* §5.5. Sources are independent, and adopt says which unit is atomic instead of implying the invocation is.
     - *No crash-atomic existing-pack update.* §5.4. Recovery is in-process; a killed process leaves identifiable leftovers rather than a rolled-back pack.
-    - *No subtree classification.* §3.5. Ignored files inside an adopted directory are copied with it.
+    - *No classification below the pack-scan positions.* §3.5. Ignored files inside an adopted directory are copied with it, and the components of a named source below the first are not tested — adopt classifies where the scan reads names, not where a handler might.
     - *No handler execution and no datastore write.* Adopt continues to move files and create symlinks only; the next `dodot up` deploys what was adopted, unchanged from the current contract.
     - *No persisted record of ignored entries.* §4. The report exists for one run.
     - *No change to the hidden-entry scan rule.* §3.7. Adopt classifies against the rule the scanner has; making a hidden top-level pack entry readable is a scanner change with consequences for every existing pack.
@@ -246,15 +275,19 @@ Proposal: Safe Directory Adoption and Recoverable Publication
         - Expansion with every child ignored: errors, lists each child and its rule, creates no pack, writes nothing.
         - Expansion of an empty directory: same error, empty list.
         - Explicitly named ignored path: errors, names the pattern and the configuration layer it came from (default list, root `.dodot.toml`, pack `.dodot.toml`).
-        - Ignored component above the leaf: adopting `nvim/lua/plugins/init.lua` while `lua` matches a pattern errors, naming the component.
+        - Ignored first component: adopting `nvim/lua/plugins/init.lua` while `lua` matches a pattern errors, naming the component the scan would skip.
+        - Ignored component below the first does not refuse: the same adoption succeeds when `plugins` or `init.lua` matches a pattern and `lua` does not, and the adopted file is deployed by the wholesale link of `lua`.
+        - Classification at the gate position: with `--only-os darwin`, a child landing at `_darwin/.DS_Store` is classified exactly as one landing at `.DS_Store`, since a passing gate directory surfaces its children at pack-root level.
         - Pack-level `[pack].ignore` replaces rather than extends: a pack `.dodot.toml` re-listing the defaults minus `.DS_Store` makes a `.DS_Store` child adoptable even though the root list still carries the pattern; a pattern present only in the pack's list makes the matching child left-in-place. Both assert against the same list `dodot up` applies to that pack.
         - Provenance in the error names the layer that supplied the effective list: with a pack-level list in place, the pack is named even for a pattern the default list also carries.
-        - Reserved filename, named explicitly and discovered by expansion: error in both cases.
+        - Reserved filename, named explicitly and discovered by expansion: error in both cases. The explicit-source message names the file dodot uses that name for and quotes no pattern and no configuration layer; a path matching both the reserved-filename and hidden rules gets the reserved-filename message.
+        - Reserved filename below the first component: adopting a source that lands at `lua/.dodot.toml` is not refused, since nothing reads a `.dodot.toml` there.
         - Dispatch-layer filters do not refuse: a child matching `[mappings].skip` or `[mappings].ignore`, or carrying a gate label, is adopted normally.
         - Hidden child discovered by expansion: `~/.config/nvim/` holding a `.luarc.json` adopts every other child, leaves `.luarc.json` at its original path, and reports it as skipped by the hidden-entry rule rather than by a pattern.
         - Hidden source named explicitly: `dodot adopt ~/.config/nvim/.luarc.json` errors, names the top-level position and the rule, and suggests no configuration override.
         - `.config` is the hidden rule's exception: a discovered child named `.config` is adoptable, and so is an explicitly named source landing at `.config`.
         - Hidden below the top-level position: `_home/.gitconfig` and `lua/.hidden.lua` are adoptable, since the hidden rule does not apply where handler recursion reads the name.
+        - Routing prefixes are classified at the first component like any other name: `_home/`, `_xdg/`, `_app/`, and `_lib/` are neither hidden nor reserved, so they never refuse on their own.
         - A directory whose children are all hidden: the §3.4 zero-adoptable error, listing the hidden-entry rule against each child.
         - `--force` with an ignored child, a hidden child, a reserved filename, and a zero-adoptable directory: identical outcomes to the runs without it.
 
@@ -278,7 +311,7 @@ Proposal: Safe Directory Adoption and Recoverable Publication
     Source replacement:
         - A file source is replaced atomically: the original path is a readable file or the finished symlink at every observable moment.
         - A directory source whose symlink creation fails is restored to a real directory at its original path with its content intact.
-        - With several sources, an injected failure on the second leaves the first adopted, the second untouched, the second's pack entry restored to its pre-adopt state, and the failure reported.
+        - With three sources, an injected failure on the second leaves the first and third adopted, the second untouched, the second's pack entry restored to its pre-adopt state, and the failure reported — a failure does not abandon the sources after it.
         - Sources on different filesystems from the dotfiles root replace correctly and independently.
         - Rollback after a failed replacement into a nested destination removes the intermediate directories publication created for it, leaving no `nvim/lua/plugins/` behind.
         - A one-source inferred new pack whose source replacement fails leaves no pack directory.
