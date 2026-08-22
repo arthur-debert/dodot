@@ -154,11 +154,17 @@ pub(super) fn make_ctx_with_fs(env: &TempEnvironment, fs: Arc<dyn Fs>) -> Execut
 ///
 /// Only the operations tests need to intercept are listed; everything
 /// else on [`Fs`] passes straight through.
+// Each variant carries the whole operation, so a hook can match on any
+// part of it. Which parts the tests currently read is a property of the
+// tests, not of the shape a hook is offered.
+#[allow(dead_code)]
 pub(super) enum FsOp<'a> {
     CopyFile { from: &'a Path, to: &'a Path },
+    Rename { from: &'a Path, to: &'a Path },
     RenameNoReplace { from: &'a Path, to: &'a Path },
     MkdirAll { path: &'a Path },
     MkdirExclusive { path: &'a Path },
+    Symlink { original: &'a Path, link: &'a Path },
 }
 
 /// Wraps a real filesystem and runs a hook immediately before each
@@ -194,6 +200,7 @@ impl Fs for InterposedFs {
         self.inner.copy_file(from, to)
     }
     fn rename(&self, from: &Path, to: &Path) -> Result<()> {
+        (self.before)(FsOp::Rename { from, to })?;
         self.inner.rename(from, to)
     }
     fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()> {
@@ -224,6 +231,7 @@ impl Fs for InterposedFs {
         self.inner.mkdir_exclusive(path)
     }
     fn symlink(&self, original: &Path, link: &Path) -> Result<()> {
+        (self.before)(FsOp::Symlink { original, link })?;
         self.inner.symlink(original, link)
     }
     fn write_file(&self, path: &Path, contents: &[u8]) -> Result<()> {

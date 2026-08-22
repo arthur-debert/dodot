@@ -47,12 +47,29 @@
 //!    rendering it here is the side effect this step must not have.
 //!    `--dry-run` reports the plan here and stops.
 //!
-//! 4. **Publish** — for an inferred pack that did not exist at plan
-//!    time, one no-replace rename of the prepared pack directory onto
-//!    the pack path: the pack appears complete or does not appear. A
-//!    pack path that came into existence after planning makes
-//!    publication refuse rather than replace it, and the kernel decides
-//!    that inside the same operation that moves the tree.
+//! 4. **Publish** — the one step whose shape depends on the
+//!    destination.
+//!
+//!    For an inferred pack that did not exist at plan time
+//!    ([`Preparation::publish_new_pack`]), one no-replace rename of the
+//!    prepared pack directory onto the pack path: the pack appears
+//!    complete or does not appear. A pack path that came into existence
+//!    after planning makes publication refuse rather than replace it,
+//!    and the kernel decides that inside the same operation that moves
+//!    the tree.
+//!
+//!    For a pack that already exists
+//!    ([`Preparation::publish_into_existing`]), a sequence: per entry,
+//!    create the intermediate directories the plan needs, displace an
+//!    existing destination into the preparation directory when
+//!    `--force` planned to replace it, and rename the prepared entry
+//!    into its final path. Each entry appears atomically; the sequence
+//!    does not, and is *recoverable* instead — a failure at entry N
+//!    undoes every rename this publication made, removes the
+//!    intermediate directories it created and left empty, and reports
+//!    the in-pack paths it put back. Only in-process, though: a killed
+//!    process leaves the pack mid-sequence with its preparation
+//!    directory still on disk.
 //!
 //! 5. **Replace sources** ([`swap_all`]) — per source, replace the
 //!    original with a symlink to its published pack path. Files use a
@@ -62,20 +79,19 @@
 //!    source's pack entry and is reported; sources already replaced
 //!    stay replaced.
 //!
-//! 6. **Finish** — remove the preparation directory.
+//! 6. **Finish** — remove the preparation directory, discarding the
+//!    content step 4 displaced. Nothing before this point discards it:
+//!    step 5 may still need an entry's pre-adopt content back, so a
+//!    `--force` displacement stays recoverable until every source has
+//!    been replaced or reported.
 //!
-//! Two pieces of `adopt-safety.lex` are deliberately not here yet, and
-//! each has its own work stream:
-//!
-//! - Publication **into a pack that already exists** still copies into
-//!   final pack paths and then validates, which is the pre-proposal
-//!   behavior. `#377` (WS03) is where that path moves behind the
-//!   preparation directory and gains its recovery record.
-//! - The **rest of a failed source replacement's recovery** — removing
-//!   the intermediate directories publication created for that entry,
-//!   and removing a newly published pack when no source was replaced at
-//!   all — is `#378` (WS04). Step 5 currently removes the failed
-//!   source's own pack entry and no more.
+//! One piece of `adopt-safety.lex` is deliberately not here yet: the
+//! **rest of a failed source replacement's recovery** — renaming a
+//! displaced destination back out of the preparation directory,
+//! removing the intermediate directories publication created for that
+//! entry, and removing a newly published pack when no source was
+//! replaced at all — is `#378` (WS04). Step 5 currently removes the
+//! failed source's own pack entry and no more.
 //!
 //! ## Auto-creating packs
 //!
@@ -125,12 +141,13 @@ struct AdoptPlan {
     pack_dest: PathBuf,
     /// `true` if the source is a directory (after --no-follow resolution).
     is_dir: bool,
-    /// `true` when `pack_dest` already had content before adoption (only
-    /// possible with `--force`). Rollback paths must NOT remove this plan's
-    /// `pack_dest`: on copy failure we've preserved the old content in
-    /// place; on later failure the new content is committed-destructively
-    /// per the user's --force opt-in, and we can't restore the old content
-    /// anyway.
+    /// `true` when `pack_dest` already had content at plan time, which
+    /// only `--force` allows. Publication displaces that content into the
+    /// preparation directory before renaming this entry into place, so
+    /// the run can put it back until step 6 discards it. A destination
+    /// occupied at publication time by a plan with this `false` is one
+    /// that appeared after planning, and publication refuses it rather
+    /// than displacing something the user never agreed to overwrite.
     destructive_overwrite: bool,
 }
 
@@ -232,68 +249,61 @@ pub fn adopt(
 
     // ── Steps 2–4: Prepare, Validate, Publish ────────────────────────
     //
-    // A new pack goes through the preparation directory and publishes
-    // with one rename. An existing pack still copies into final paths
-    // and validates afterwards — the pre-`adopt-safety` behavior that
-    // #377 (WS03) replaces.
-    let mut preparation: Option<Preparation> = None;
-    if pack_existed {
-        if let Err(e) = copy_all(&plans, ctx.fs.as_ref()) {
-            cleanup_pack_copies(&plans, ctx.fs.as_ref());
-            return Err(e);
+    // Both destinations stage into the preparation directory and are
+    // validated out of it, so no final pack path is written until every
+    // check that can refuse the run has passed. They part only at
+    // publication: a new pack is one rename of the whole prepared tree,
+    // an existing pack a sequence of per-entry renames that undoes
+    // itself on failure.
+    let prep = Preparation::create(ctx.fs.as_ref(), ctx.paths.dotfiles_root(), &pack_dir)?;
+
+    if let Err(e) = prep.fill(&plans, ctx.fs.as_ref()) {
+        prep.discard(ctx.fs.as_ref());
+        return Err(e);
+    }
+
+    if let Err(e) = check_deploy_conflicts(
+        ctx,
+        ProspectiveTree {
+            pack_dir: &pack_dir,
+            prepared_root: prep.pack_root(),
+            config_at: &pack_path,
+        },
+    ) {
+        prep.discard(ctx.fs.as_ref());
+        return Err(e);
+    }
+
+    if dry_run {
+        prep.discard(ctx.fs.as_ref());
+        let mut result = adopt_result(&pack_display, &pack_path, &plans, ctx)?;
+        result.dry_run = true;
+        for msg in skipped_already_adopted {
+            result.warnings.push(msg);
         }
-        if let Err(e) = check_deploy_conflicts(ctx, None) {
-            cleanup_pack_copies(&plans, ctx.fs.as_ref());
-            return Err(e);
-        }
-        if dry_run {
-            cleanup_pack_copies(&plans, ctx.fs.as_ref());
-            let mut result = adopt_result(&pack_display, &pack_path, &plans, ctx)?;
-            result.dry_run = true;
-            for msg in skipped_already_adopted {
-                result.warnings.push(msg);
-            }
-            return Ok(result);
-        }
+        return Ok(result);
+    }
+
+    let published = if pack_existed {
+        prep.publish_into_existing(&pack_path, &pack_display, &plans, ctx.fs.as_ref())
     } else {
-        let prep = Preparation::create(ctx.fs.as_ref(), ctx.paths.dotfiles_root(), &pack_dir)?;
-
-        if let Err(e) = prep.fill(&plans, ctx.fs.as_ref()) {
-            prep.discard(ctx.fs.as_ref());
-            return Err(e);
-        }
-
-        if let Err(e) = check_deploy_conflicts(ctx, Some((&pack_dir, prep.pack_root()))) {
-            prep.discard(ctx.fs.as_ref());
-            return Err(e);
-        }
-
-        if dry_run {
-            prep.discard(ctx.fs.as_ref());
-            let mut result = adopt_result(&pack_display, &pack_path, &plans, ctx)?;
-            result.dry_run = true;
-            for msg in skipped_already_adopted {
-                result.warnings.push(msg);
-            }
-            return Ok(result);
-        }
-
-        if let Err(e) = prep.publish_new_pack(&pack_path, ctx.fs.as_ref()) {
-            prep.discard(ctx.fs.as_ref());
-            return Err(e);
-        }
-        preparation = Some(prep);
+        prep.publish_new_pack(&pack_path, ctx.fs.as_ref())
+    };
+    if let Err(e) = published {
+        prep.discard(ctx.fs.as_ref());
+        return Err(e);
     }
 
     // ── Step 5: Replace sources ──────────────────────────────────────
     //
-    // Per-source, and failures are recorded rather than fatal.
+    // Per-source, and failures are recorded rather than fatal. Whatever
+    // `--force` displaced is still in the preparation directory while
+    // this runs, which is what lets #378 (WS04) put an individual failed
+    // source's pack entry back; step 6 is where that content goes.
     let failures = swap_all(&plans, ctx.fs.as_ref());
 
     // ── Step 6: Finish ───────────────────────────────────────────────
-    if let Some(prep) = preparation {
-        prep.discard(ctx.fs.as_ref());
-    }
+    prep.discard(ctx.fs.as_ref());
 
     let mut result = status::status(Some(std::slice::from_ref(&pack_display)), ctx)?;
     result.dry_run = false;
@@ -496,6 +506,11 @@ const PREPARATION_PREFIX: &str = ".dodot-adopt-";
 /// state worth reporting.
 const PREPARATION_NAME_ATTEMPTS: u32 = 8;
 
+/// Name of the subdirectory inside a preparation directory that holds
+/// content `--force` displaced out of the pack — see
+/// [`Preparation::displaced_root`].
+const DISPLACED_DIR: &str = ".displaced";
+
 /// A run's staging area: `<dotfiles_root>/.dodot-adopt-<nonce>/`, holding
 /// the prospective pack tree at `<prefix><nonce>/<pack_dir>/<in_pack>`.
 ///
@@ -612,14 +627,232 @@ impl Preparation {
             })
     }
 
-    /// Remove the preparation directory and everything still in it.
+    /// Publish the prepared entries into a pack that already exists, or
+    /// undo the whole sequence and say what it put back.
+    ///
+    /// Per entry: create the intermediate directories the plan needs,
+    /// displace an existing destination into the preparation directory
+    /// when `--force` planned to replace it, then rename the prepared
+    /// entry into its final path. Each entry's appearance is atomic. The
+    /// sequence is not, and `docs/proposals/adopt-safety.lex` §5.4 does
+    /// not claim it is — it claims recovery instead. A failure at entry
+    /// N renames every entry published so far back into the preparation
+    /// directory, renames every displaced destination back to its final
+    /// path, removes the intermediate directories this call created and
+    /// left empty, and names the in-pack paths it restored in
+    /// [`DodotError::PublicationRolledBack`]. Sources are untouched
+    /// throughout: replacing them is step 5, and it has not started.
+    ///
+    /// The recovery is in-process only. A killed process leaves the pack
+    /// mid-sequence with its preparation directory still on disk holding
+    /// whatever was displaced — identifiable by the `.dodot-adopt-`
+    /// prefix, and neither published from nor deleted by any later run.
+    ///
+    /// Displaced content is left in the preparation directory on the way
+    /// out of a *successful* publication too, because step 5 may still
+    /// need an entry's pre-adopt content back. [`Preparation::discard`]
+    /// is where it goes.
+    fn publish_into_existing(
+        &self,
+        pack_path: &Path,
+        pack_display: &str,
+        plans: &[AdoptPlan],
+        fs: &dyn Fs,
+    ) -> Result<()> {
+        let mut record = PublicationRecord::default();
+        for plan in plans {
+            if let Err(e) = self.publish_one(pack_path, plan, fs, &mut record) {
+                let restored = record.undo(fs);
+                return Err(DodotError::PublicationRolledBack {
+                    pack: pack_display.to_string(),
+                    reason: err_msg(&e),
+                    restored,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Publish one prepared entry, appending to `record` everything a
+    /// rollback would have to reverse.
+    ///
+    /// The entry is recorded whether or not its final rename succeeded,
+    /// because a displacement that happened before a rename that did not
+    /// still has to go back. What is *not* recorded is a step that
+    /// failed before changing anything — an intermediate directory that
+    /// could not be created, or a displacement rename that did not move.
+    fn publish_one(
+        &self,
+        pack_path: &Path,
+        plan: &AdoptPlan,
+        fs: &dyn Fs,
+        record: &mut PublicationRecord,
+    ) -> Result<()> {
+        create_intermediates(fs, pack_path, &plan.in_pack, &mut record.created_dirs)?;
+
+        let mut entry = PublishedEntry {
+            in_pack: plan.in_pack.clone(),
+            final_path: plan.pack_dest.clone(),
+            prepared: self.pack_root.join(&plan.in_pack),
+            displaced: None,
+            published: false,
+        };
+
+        // Only a plan that *planned* to replace something displaces.
+        // Plan refused an occupied destination without `--force`, so a
+        // destination occupied here that no plan claimed is one that
+        // appeared since — and moving that into the preparation
+        // directory would discard at step 6 a file the user never
+        // agreed to overwrite. The no-replace rename below refuses it
+        // instead.
+        if plan.destructive_overwrite
+            && (fs.exists(&plan.pack_dest) || fs.is_symlink(&plan.pack_dest))
+        {
+            let displaced = self.displaced_root().join(&plan.in_pack);
+            if let Some(parent) = displaced.parent() {
+                fs.mkdir_all(parent)?;
+            }
+            fs.rename(&plan.pack_dest, &displaced)?;
+            entry.displaced = Some(displaced);
+        }
+
+        let result = fs.rename_noreplace(&entry.prepared, &plan.pack_dest);
+        entry.published = result.is_ok();
+        record.entries.push(entry);
+        result
+    }
+
+    /// Where content displaced out of the pack waits until
+    /// [`Preparation::discard`].
+    ///
+    /// A sibling of the prospective pack tree rather than a child of it,
+    /// so nothing displaced can ride a rename back into the pack. The
+    /// leading `.` is what keeps it from colliding with the pack
+    /// directory beside it: a pack scan skips dot-prefixed names, so no
+    /// pack adopt publishes into is named this.
+    fn displaced_root(&self) -> PathBuf {
+        self.root.join(DISPLACED_DIR)
+    }
+
+    /// Remove the preparation directory and everything still in it,
+    /// including whatever publication displaced out of the pack.
     ///
     /// Best effort: this runs on the way out of both the refusal and the
     /// success paths, and a failure to clean up is not a reason to fail
     /// a run that has otherwise done what it said.
+    ///
+    /// After it, a `--force` displacement has taken effect as the user
+    /// asked (`adopt-safety.lex` §5.6) — the pre-adopt content is gone.
     fn discard(&self, fs: &dyn Fs) {
         remove_best_effort(fs, &self.root);
     }
+}
+
+/// What one existing-pack publication has done so far, in the order it
+/// did it, and enough to reverse all of it.
+#[derive(Default)]
+struct PublicationRecord {
+    /// Intermediate directories this publication brought into existence
+    /// inside the pack, outermost first. Directories that were already
+    /// there are not in the list and are not a rollback's to remove.
+    created_dirs: Vec<PathBuf>,
+    /// One per entry publication reached, in plan order.
+    entries: Vec<PublishedEntry>,
+}
+
+/// One entry's share of a [`PublicationRecord`].
+struct PublishedEntry {
+    /// The entry's path relative to the pack root, which is how the
+    /// rollback report names it.
+    in_pack: PathBuf,
+    /// Where the entry belongs inside the pack.
+    final_path: PathBuf,
+    /// Where the prepared content sat before publication, and where a
+    /// rollback puts it back.
+    prepared: PathBuf,
+    /// Where `--force` moved the pre-adopt destination content to inside
+    /// the preparation directory. `None` when the destination was free.
+    displaced: Option<PathBuf>,
+    /// Whether the rename into `final_path` succeeded. A recorded entry
+    /// with this `false` displaced something and then failed to publish.
+    published: bool,
+}
+
+impl PublicationRecord {
+    /// Put the pack back the way publication found it, and name what it
+    /// put back.
+    ///
+    /// Reverse order, so an entry comes out before the directory holding
+    /// it. Published content goes back to the preparation directory it
+    /// came from rather than being deleted — the run is over either way,
+    /// but content that survives to [`Preparation::discard`] is content
+    /// the user can still find if the discard is what fails. Displaced
+    /// content then returns to the final path, which is the pre-adopt
+    /// state for a `--force` entry and an absence for every other one.
+    ///
+    /// Every step is best effort. A rollback that cannot finish still
+    /// reports what it did: replacing the failure that caused it with an
+    /// error about the recovery would cost the reader the more useful of
+    /// the two.
+    fn undo(&self, fs: &dyn Fs) -> Vec<String> {
+        let mut restored = Vec::new();
+        for entry in self.entries.iter().rev() {
+            if entry.published && fs.rename(&entry.final_path, &entry.prepared).is_err() {
+                remove_best_effort(fs, &entry.final_path);
+            }
+            if let Some(displaced) = &entry.displaced {
+                let _ = fs.rename(displaced, &entry.final_path);
+            }
+            // The entry publication stopped on is recorded but changed
+            // nothing unless it had displaced something first, and an
+            // entry that changed nothing was not restored.
+            if entry.published || entry.displaced.is_some() {
+                restored.push(entry.in_pack.display().to_string());
+            }
+        }
+        restored.reverse();
+
+        // Empty ones only. A directory that picked up something else's
+        // content between its creation and now is no longer describable
+        // as one this run left behind.
+        for dir in self.created_dirs.iter().rev() {
+            if matches!(fs.read_dir(dir), Ok(children) if children.is_empty()) {
+                let _ = fs.remove_dir_all(dir);
+            }
+        }
+        restored
+    }
+}
+
+/// Create the directories `in_pack` needs inside `pack_path`, appending
+/// the ones this call brought into existence to `created`.
+///
+/// One level at a time and exclusively, so `created` names exactly what
+/// a rollback may remove. A level that was already there — or that
+/// another process created between two of these calls — belongs to
+/// whoever made it, and the `AlreadyExists` arm leaves it alone.
+fn create_intermediates(
+    fs: &dyn Fs,
+    pack_path: &Path,
+    in_pack: &Path,
+    created: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let Some(parent) = in_pack.parent() else {
+        return Ok(());
+    };
+    let mut dir = pack_path.to_path_buf();
+    for component in parent.components() {
+        dir = dir.join(component);
+        if fs.exists(&dir) {
+            continue;
+        }
+        match fs.mkdir_exclusive(&dir) {
+            Ok(()) => created.push(dir.clone()),
+            Err(e) if crate::fs::is_already_exists(&e) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 // ── Result assembly ──────────────────────────────────────────────────
@@ -979,14 +1212,16 @@ fn plan(
     // Permission pre-flight. We do this after planning so every error up to
     // this point gives precise guidance; perms check catches late issues.
     let _ = pack_name;
-    check_writable(
-        fs,
-        if pack_exists {
-            pack_path
-        } else {
-            &dotfiles_root
-        },
-    )?;
+    // The dotfiles root always, because every run creates its
+    // preparation directory there. The pack path additionally when it is
+    // on disk, because publication renames into it; when it is not, the
+    // rename lands in the dotfiles root and there is no pack path to
+    // probe that creating it would not be the thing this step exists to
+    // avoid.
+    check_writable(fs, &dotfiles_root)?;
+    if pack_exists {
+        check_writable(fs, pack_path)?;
+    }
     for plan in &plans {
         // Pass the plan's `is_dir` (already resolved with `--no-follow`
         // semantics) so a symlink-to-dir under `--no-follow` isn't probed
@@ -1253,51 +1488,7 @@ fn check_readable(fs: &dyn Fs, path: &Path, is_dir: bool) -> Result<()> {
     }
 }
 
-// ── Publication into an existing pack (pre-adopt-safety; #377) ────
-
-fn copy_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Result<()> {
-    for plan in plans {
-        let had_existing_dest = fs.exists(&plan.pack_dest) || fs.is_symlink(&plan.pack_dest);
-        // Ensure parent directory exists. Expansion under XDG can place
-        // children at the pack root (no missing parent), but a deeply
-        // nested in-pack path (e.g. `lua/plugins/foo.lua`) needs the
-        // intermediate directories created before copy.
-        if let Some(parent) = plan.pack_dest.parent() {
-            if !parent.as_os_str().is_empty() && !fs.exists(parent) {
-                fs.mkdir_all(parent)?;
-            }
-        }
-        if had_existing_dest {
-            // --force path: stage the new content into a sibling temp path
-            // first so a failed copy leaves the old destination intact.
-            // Only after the copy succeeds do we remove the old content and
-            // move the stage into place.
-            let stage = temp_sibling(&plan.pack_dest, "stage");
-            if let Err(e) = copy_tree(&plan.source, &stage, fs) {
-                remove_best_effort(fs, &stage);
-                return Err(e);
-            }
-            remove_path(&plan.pack_dest, fs)?;
-            if let Err(e) = fs.rename(&stage, &plan.pack_dest) {
-                remove_best_effort(fs, &stage);
-                return Err(e);
-            }
-        } else {
-            copy_tree(&plan.source, &plan.pack_dest, fs)?;
-        }
-    }
-    Ok(())
-}
-
-fn remove_path(path: &Path, fs: &dyn Fs) -> Result<()> {
-    if fs.is_symlink(path) {
-        fs.remove_file(path)
-    } else if fs.is_dir(path) {
-        fs.remove_dir_all(path)
-    } else {
-        fs.remove_file(path)
-    }
-}
+// ── Copying ───────────────────────────────────────────────────────
 
 /// Recursively copy `src` into `dst`. Preserves inner symlinks as symlinks
 /// (does not follow them) and Unix permissions on files and directories.
@@ -1329,19 +1520,6 @@ fn copy_tree(src: &Path, dst: &Path, fs: &dyn Fs) -> Result<()> {
     )))
 }
 
-fn cleanup_pack_copies(plans: &[AdoptPlan], fs: &dyn Fs) {
-    for plan in plans {
-        // Destructive-overwrite plans: on copy failure, `pack_dest` still
-        // holds the preserved old content; on later failure the new
-        // content is committed-destructively per --force. Either way,
-        // don't remove.
-        if plan.destructive_overwrite {
-            continue;
-        }
-        remove_best_effort(fs, &plan.pack_dest);
-    }
-}
-
 fn remove_best_effort(fs: &dyn Fs, path: &Path) {
     if fs.is_symlink(path) {
         let _ = fs.remove_file(path);
@@ -1354,21 +1532,37 @@ fn remove_best_effort(fs: &dyn Fs, path: &Path) {
 
 // ── Step 3: Validate ──────────────────────────────────────────────
 
+/// The prepared entries as [`check_deploy_conflicts`] reads them.
+struct ProspectiveTree<'a> {
+    /// The destination pack's on-disk directory name. The prepared
+    /// entries are planned under it so they compose with what a pack of
+    /// that name already claims instead of conflicting with it.
+    pack_dir: &'a str,
+    /// Where the prepared entries are laid out, at the in-pack paths
+    /// publication will give them.
+    prepared_root: &'a Path,
+    /// The pack path the entries are headed for. Its `.dodot.toml` is
+    /// the configuration that governs them once published, and the
+    /// preparation directory is not underneath it, so the analysis has
+    /// to be told where to read that configuration from. For a pack that
+    /// does not exist yet the path resolves to the root configuration,
+    /// which is the same answer the published pack would give.
+    config_at: &'a Path,
+}
+
 /// Refuse the run if deploying the pack tree would collide with another
 /// pack. `--force` does not bypass this.
 ///
-/// `prospective` is `Some((pack_dir, prepared_root))` when the entries
-/// being adopted are still in the preparation directory — the new-pack
-/// path. The prepared tree is planned as a pack named `pack_dir` but
-/// read out of `prepared_root`, and its intents join whatever the pack
-/// of that name already contributes, so the analysis sees the pack's
-/// current entries composed with the prepared ones at their final
-/// in-pack paths. `detect_cross_pack_conflicts` only flags claims from
-/// *different* packs, so composing under one name is what keeps a pack
-/// from conflicting with its own prospective content.
-///
-/// `None` means the entries are already at their final pack paths, which
-/// is how an existing pack still publishes until #377 (WS03).
+/// The entries being adopted are still in the preparation directory
+/// whichever destination they are headed for, so the analysis always
+/// reads them from there. The prepared tree is planned as a pack named
+/// `pack_dir` but read out of `prepared_root`, and its intents join
+/// whatever the pack of that name already contributes: the analysis sees
+/// the pack's current entries composed with the prepared ones at their
+/// final in-pack paths, without a final pack path having been written.
+/// `detect_cross_pack_conflicts` only flags claims from *different*
+/// packs, so composing under one name is what keeps a pack from
+/// conflicting with its own prospective content.
 ///
 /// Intents are collected in [`PreprocessMode::Passive`](crate::preprocessing::PreprocessMode::Passive):
 /// the question here is only which deployment targets each pack claims,
@@ -1398,10 +1592,7 @@ fn remove_best_effort(fs: &dyn Fs, path: &Path) {
 /// toward a pack it cannot scan, for the same reason: an answer dodot
 /// cannot compute must not be mutated on. The user renders the template
 /// with one `dodot up` and re-runs adopt.
-fn check_deploy_conflicts(
-    ctx: &ExecutionContext,
-    prospective: Option<(&str, &Path)>,
-) -> Result<()> {
+fn check_deploy_conflicts(ctx: &ExecutionContext, prospective: ProspectiveTree<'_>) -> Result<()> {
     let root_config = ctx.config_manager.root_config()?;
     let packs::DiscoveredPacks { packs: all, .. } = packs::scan_packs(
         ctx.fs.as_ref(),
@@ -1423,21 +1614,19 @@ fn check_deploy_conflicts(
         pack_intents.push((pack.display_name.clone(), plan.intents));
     }
 
-    if let Some((pack_dir, prepared_root)) = prospective {
-        let mut prospective_pack = packs::Pack::new(
-            pack_dir.to_string(),
-            prepared_root.to_path_buf(),
-            Default::default(),
-        );
-        let pack_config = ctx.config_manager.config_for_pack(prepared_root)?;
-        prospective_pack.config = pack_config.to_handler_config();
-        let plan = collect_intents_passive(&prospective_pack, ctx)?;
-        unresolved.extend(plan.unresolved_claims);
-        let display = prospective_pack.display_name.clone();
-        match pack_intents.iter_mut().find(|(name, _)| *name == display) {
-            Some((_, already)) => already.extend(plan.intents),
-            None => pack_intents.push((display, plan.intents)),
-        }
+    let mut prospective_pack = packs::Pack::new(
+        prospective.pack_dir.to_string(),
+        prospective.prepared_root.to_path_buf(),
+        Default::default(),
+    );
+    let pack_config = ctx.config_manager.config_for_pack(prospective.config_at)?;
+    prospective_pack.config = pack_config.to_handler_config();
+    let plan = collect_intents_passive(&prospective_pack, ctx)?;
+    unresolved.extend(plan.unresolved_claims);
+    let display = prospective_pack.display_name.clone();
+    match pack_intents.iter_mut().find(|(name, _)| *name == display) {
+        Some((_, already)) => already.extend(plan.intents),
+        None => pack_intents.push((display, plan.intents)),
     }
 
     // Incompleteness first: a conflict found among the claims dodot did

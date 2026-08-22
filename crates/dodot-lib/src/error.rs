@@ -71,6 +71,29 @@ pub enum DodotError {
     },
 
     #[error(
+        "adopt could not finish publishing into pack `{pack}`: {reason}\n  \
+         the entries it had already published are back where they were, so the pack \
+         holds its pre-adopt content: {}\n  \
+         no source file was changed — nothing was adopted.",
+        if .restored.is_empty() {
+            "the failure came before the first entry was published".to_string()
+        } else {
+            format!("restored {}", .restored.join(", "))
+        }
+    )]
+    PublicationRolledBack {
+        /// Display name of the pack publication was writing into.
+        pack: String,
+        /// What went wrong at the entry publication stopped on.
+        reason: String,
+        /// In-pack paths whose pre-adopt content publication put back,
+        /// in plan order. An entry `--force` displaced is restored to
+        /// the content it held before the run; an entry that had no
+        /// prior content is restored to not existing.
+        restored: Vec<String>,
+    },
+
+    #[error(
         "routing override conflict in pack `{pack}` for `{rel_path}`:\n  \
          filename routes via its prefix, and `[symlink.targets]` declares `{config_target}`.\n  \
          pick one — either rename the file (drop the `home.`/`app.`/`xdg.`/`lib.` or `_home/`/`_xdg/`/`_app/`/`_lib/` prefix) \
