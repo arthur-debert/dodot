@@ -4850,3 +4850,587 @@ fn tree_mentions(root: &std::path::Path, needle: &str) -> bool {
     }
     false
 }
+
+// ── Independent source replacement and its recovery ────────────────
+//
+// `docs/proposals/adopt-safety.lex` §5.5 is the last write adopt makes
+// and the only one that touches the user's own paths. Sources are
+// independent: a failure on one restores that source's pre-adopt pack
+// state, reports itself, and leaves every other source to be attempted
+// and to keep whatever it achieved. Any failed planned source makes the
+// command exit nonzero, while the result still renders all of them.
+
+/// True when `op` is the symlink step 5 creates for `source`.
+///
+/// Two shapes, because §5.5 replaces the two kinds of source
+/// differently: a file source gets a link at an adjacent temporary name
+/// that is then renamed over the original, a directory source gets one
+/// at the original path once the directory has been renamed aside.
+///
+/// Matched on the *link* rather than on what it points at, so the
+/// symlinks `copy_tree` recreates while staging an inner link of an
+/// adopted directory — which point into the pack too — stay out of it.
+fn is_source_replacement(op: &super::support::FsOp<'_>, source: &std::path::Path) -> bool {
+    let super::support::FsOp::Symlink { link, .. } = op else {
+        return false;
+    };
+    if *link == source {
+        return true;
+    }
+    let (Some(parent), Some(name)) = (source.parent(), source.file_name()) else {
+        return false;
+    };
+    link.parent() == Some(parent)
+        && link
+            .file_name()
+            .map(|link_name| {
+                let link_name = link_name.to_string_lossy();
+                link_name.starts_with(".dodot-adopt-tmp-")
+                    && link_name.contains(&*name.to_string_lossy())
+            })
+            .unwrap_or(false)
+}
+
+/// An `Fs` that fails every source replacement for the given sources
+/// and passes everything else through.
+fn fs_failing_replacement_of(
+    env: &TempEnvironment,
+    sources: Vec<std::path::PathBuf>,
+) -> Arc<dyn Fs> {
+    super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if sources.iter().any(|s| is_source_replacement(&op, s)) {
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        Ok(())
+    })
+}
+
+/// The `adopt failed:` notes a result carries, in order.
+fn failure_notes(result: &commands::PackStatusResult) -> Vec<String> {
+    result
+        .notes
+        .iter()
+        .map(|n| n.body.clone())
+        .filter(|text| text.starts_with("adopt failed:"))
+        .collect()
+}
+
+/// The names of the rows the result renders for the destination pack.
+fn rendered_rows(result: &commands::PackStatusResult, pack: &str) -> Vec<String> {
+    let mut rows: Vec<String> = result
+        .packs
+        .iter()
+        .filter(|p| p.name == pack)
+        .flat_map(|p| p.files.iter().map(|f| f.name.clone()))
+        .collect();
+    rows.sort();
+    rows
+}
+
+/// A file source is replaced by one rename over a path that holds the
+/// user's own readable file until the instant it holds the symlink
+/// (§5.5). Nothing in the sequence leaves the source's own directory,
+/// which is what makes a source on a filesystem of its own replace like
+/// any other: the only rename involved is between two names in one
+/// directory, and no promise of an invocation-wide atomic replacement
+/// is being made or needed.
+#[test]
+fn a_file_source_is_readable_until_one_rename_makes_it_the_symlink() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("keep.lua", "-- keep")
+        .done()
+        .home_file(".config/nvim/init.lua", "-- original")
+        .home_file(".config/nvim/lua/plugins.lua", "-- plugins")
+        .build();
+
+    let file_source = env.home.join(".config/nvim/init.lua");
+    let dir_source = env.home.join(".config/nvim/lua");
+
+    // What the file source's path held at the instant of each rename
+    // onto it, and every rename either side of which is under $HOME.
+    #[derive(Default)]
+    struct Observed {
+        onto_source: Vec<Option<String>>,
+        home_renames: Vec<(std::path::PathBuf, std::path::PathBuf)>,
+    }
+    let observed = Arc::new(std::sync::Mutex::new(Observed::default()));
+    let sink = observed.clone();
+    let watched = file_source.clone();
+    let home = env.home.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if let super::support::FsOp::Rename { from, to } = op {
+            let mut observed = sink.lock().unwrap();
+            if to == watched {
+                let readable = std::fs::symlink_metadata(&watched)
+                    .ok()
+                    .filter(|m| m.is_file())
+                    .and_then(|_| std::fs::read_to_string(&watched).ok());
+                observed.onto_source.push(readable);
+            }
+            if from.starts_with(&home) || to.starts_with(&home) {
+                observed
+                    .home_renames
+                    .push((from.to_path_buf(), to.to_path_buf()));
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let sources = vec![file_source.clone(), dir_source.clone()];
+    let result = commands::adopt::adopt(None, &sources, false, false, false, None, &ctx).unwrap();
+    assert_eq!(result.exit_code(), 0);
+
+    let observed = observed.lock().unwrap();
+    assert_eq!(
+        observed.onto_source,
+        vec![Some("-- original".to_string())],
+        "one rename lands on the file source, and the original is a \
+         readable file with its own content right up to it"
+    );
+    for (from, to) in &observed.home_renames {
+        assert_eq!(
+            from.parent(),
+            to.parent(),
+            "source replacement renames within the source's own \
+             directory only, so it never crosses a filesystem: {} -> {}",
+            from.display(),
+            to.display()
+        );
+    }
+
+    let pack = env.dotfiles_root.join("nvim");
+    env.assert_symlink(&file_source, &pack.join("init.lua"));
+    env.assert_symlink(&dir_source, &pack.join("lua"));
+    env.assert_file_contents(&pack.join("init.lua"), "-- original");
+    env.assert_file_contents(&pack.join("lua/plugins.lua"), "-- plugins");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A directory source is renamed to an adjacent backup before the
+/// symlink is created, and a symlink failure renames it back — the
+/// directory and all its content stand at the original path afterwards
+/// (§5.5). The backup name carries the original's own name so a process
+/// killed between the two steps leaves something restorable by hand.
+#[test]
+fn a_directory_source_whose_symlink_fails_comes_back_whole() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("keep.lua", "-- keep")
+        .done()
+        .home_file(".config/nvim/lua/init.lua", "-- init")
+        .home_file(".config/nvim/lua/plugins/spec.lua", "-- spec")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let before = file_snapshot(&pack);
+    let source = env.home.join(".config/nvim/lua");
+
+    // The backup path the run renames the directory aside to, captured
+    // from the rename itself.
+    let backups: Arc<std::sync::Mutex<Vec<std::path::PathBuf>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = backups.clone();
+    let watched = source.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if let super::support::FsOp::Rename { from, to } = &op {
+            if *from == watched {
+                sink.lock().unwrap().push(to.to_path_buf());
+            }
+        }
+        if is_source_replacement(&op, &watched) {
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.exit_code(),
+        1,
+        "a failed planned source exits nonzero"
+    );
+    let backups = backups.lock().unwrap();
+    assert_eq!(backups.len(), 1, "one rename aside, got: {backups:?}");
+    let backup_name = backups[0].file_name().unwrap().to_string_lossy();
+    assert_eq!(
+        backups[0].parent(),
+        source.parent(),
+        "adjacent to the original"
+    );
+    assert!(
+        backup_name.contains("lua"),
+        "the backup name carries the original's name so it can be \
+         restored by hand, got: {backup_name}"
+    );
+
+    // The source is a real directory again, with everything in it.
+    assert!(!env.fs.is_symlink(&source));
+    env.assert_regular_file(&source.join("init.lua"), "-- init");
+    env.assert_regular_file(&source.join("plugins/spec.lua"), "-- spec");
+    env.assert_not_exists(&backups[0]);
+
+    // And the pack is back to what it held before the run.
+    assert_eq!(file_snapshot(&pack), before);
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// Three planned sources with a failure injected on the second: the
+/// first and third finish adopted, the second is untouched with its pack
+/// entry taken back out, and all three outcomes are in the result
+/// (§5.5). A failure does not abandon the sources after it — stopping
+/// there would leave each of them a real file at its original path *and*
+/// a copy of itself in the pack.
+#[test]
+fn a_failure_on_the_second_of_three_sources_leaves_the_first_and_third_adopted() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("keep.lua", "-- keep")
+        .done()
+        .home_file(".config/nvim/one.lua", "-- one")
+        .home_file(".config/nvim/two.lua", "-- two")
+        .home_file(".config/nvim/three.lua", "-- three")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let sources: Vec<std::path::PathBuf> = ["one.lua", "two.lua", "three.lua"]
+        .iter()
+        .map(|name| env.home.join(".config/nvim").join(name))
+        .collect();
+
+    let fs = fs_failing_replacement_of(&env, vec![sources[1].clone()]);
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(None, &sources, false, false, false, None, &ctx).unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+
+    // One and three landed; two is exactly as the run found it.
+    env.assert_symlink(&sources[0], &pack.join("one.lua"));
+    env.assert_symlink(&sources[2], &pack.join("three.lua"));
+    env.assert_file_contents(&pack.join("one.lua"), "-- one");
+    env.assert_file_contents(&pack.join("three.lua"), "-- three");
+    env.assert_regular_file(&sources[1], "-- two");
+    env.assert_not_exists(&pack.join("two.lua"));
+    env.assert_file_contents(&pack.join("keep.lua"), "-- keep");
+
+    // Every planned source is rendered, replaced and failed alike.
+    let rows = rendered_rows(&result, "nvim");
+    for name in ["one.lua", "three.lua", "two.lua"] {
+        assert!(
+            rows.contains(&name.to_string()),
+            "expected {name} in {rows:?}"
+        );
+    }
+    let notes = failure_notes(&result);
+    assert_eq!(notes.len(), 1, "one failure reported, got: {notes:?}");
+    assert!(
+        notes[0].contains("two.lua") && notes[0].contains("injected replacement failure"),
+        "the note names the source and the reason: {}",
+        notes[0]
+    );
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A failed source under `--force` renames its displaced destination
+/// back rather than letting the discard in §5.6 commit an overwrite for
+/// a source that was never replaced.
+#[test]
+fn a_failed_source_puts_back_the_destination_force_displaced() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- OLD")
+        .file("opts.lua", "-- OLD OPTS")
+        .done()
+        .home_file(".config/nvim/init.lua", "-- NEW")
+        .home_file(".config/nvim/opts.lua", "-- NEW OPTS")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let sources = vec![
+        env.home.join(".config/nvim/init.lua"),
+        env.home.join(".config/nvim/opts.lua"),
+    ];
+
+    let fs = fs_failing_replacement_of(&env, vec![sources[1].clone()]);
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None, &sources, /*force=*/ true, false, false, None, &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+
+    // The replaced source's `--force` took effect; the failed one's did
+    // not, and its destination holds what it held before the run.
+    env.assert_symlink(&sources[0], &pack.join("init.lua"));
+    env.assert_file_contents(&pack.join("init.lua"), "-- NEW");
+    env.assert_regular_file(&sources[1], "-- NEW OPTS");
+    env.assert_file_contents(&pack.join("opts.lua"), "-- OLD OPTS");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// Rollback removes the intermediate directories publication created
+/// for the failed entry and leaves the ones that were already there
+/// (§5.5) — the residue §1.2 describes, closed.
+#[test]
+fn a_failed_source_takes_the_directories_publication_made_for_it() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("keep.lua", "-- keep")
+        .file("after/existing.lua", "-- pack's own")
+        .done()
+        .home_file(".config/nvim/lua/plugins/init.lua", "-- plugins")
+        .home_file(".config/nvim/after/ftplugin/rust.lua", "-- rust")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let before = file_snapshot(&pack);
+    let sources = vec![
+        env.home.join(".config/nvim/lua/plugins/init.lua"),
+        env.home.join(".config/nvim/after/ftplugin/rust.lua"),
+    ];
+
+    let fs = fs_failing_replacement_of(&env, sources.clone());
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(None, &sources, false, false, false, None, &ctx).unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+    assert_eq!(
+        file_snapshot(&pack),
+        before,
+        "the pack holds exactly what it held before the run"
+    );
+    // Created for the failed entries, so both come out …
+    env.assert_not_exists(&pack.join("lua"));
+    env.assert_not_exists(&pack.join("after/ftplugin"));
+    // … while the directory that was already there stays, content intact.
+    env.assert_file_contents(&pack.join("after/existing.lua"), "-- pack's own");
+    env.assert_regular_file(&sources[0], "-- plugins");
+    env.assert_regular_file(&sources[1], "-- rust");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// The same sweep leaves a directory a *successful* entry still
+/// occupies: emptiness is what decides a removal, so one failure among
+/// siblings takes only its own entry.
+#[test]
+fn the_directory_sweep_keeps_what_a_replaced_source_still_occupies() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("keep.lua", "-- keep")
+        .done()
+        .home_file(".config/nvim/lua/one.lua", "-- one")
+        .home_file(".config/nvim/lua/two.lua", "-- two")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let sources = vec![
+        env.home.join(".config/nvim/lua/one.lua"),
+        env.home.join(".config/nvim/lua/two.lua"),
+    ];
+
+    let fs = fs_failing_replacement_of(&env, vec![sources[1].clone()]);
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(None, &sources, false, false, false, None, &ctx).unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+    env.assert_file_contents(&pack.join("lua/one.lua"), "-- one");
+    env.assert_not_exists(&pack.join("lua/two.lua"));
+    env.assert_symlink(&sources[0], &pack.join("lua/one.lua"));
+    env.assert_regular_file(&sources[1], "-- two");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// A one-source inferred new pack whose source replacement fails leaves
+/// no pack directory: everything inside a pack this run published is
+/// this run's, so the last failed source takes the pack with it (§5.5).
+#[test]
+fn a_new_pack_whose_every_source_fails_is_taken_back_out() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/ghostty/config", "theme = dark")
+        .build();
+
+    let source = env.home.join(".config/ghostty/config");
+    let fs = fs_failing_replacement_of(&env, vec![source.clone()]);
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+    env.assert_not_exists(&env.dotfiles_root.join("ghostty"));
+    assert!(pack_names(&env).is_empty());
+    env.assert_regular_file(&source, "theme = dark");
+    assert!(preparation_dirs(&env).is_empty());
+
+    // The run still says what it tried and what happened, with no pack
+    // on disk to read a status from.
+    let notes = failure_notes(&result);
+    assert_eq!(notes.len(), 1, "got: {notes:?}");
+    assert!(notes[0].contains("config"), "got: {}", notes[0]);
+    assert_eq!(
+        rendered_rows(&result, "ghostty"),
+        vec!["config".to_string()]
+    );
+}
+
+/// One source succeeding keeps the pack and that source's published
+/// entry; only the failed entry and the directories made for it go.
+#[test]
+fn a_new_pack_keeps_the_entries_of_the_sources_that_were_replaced() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/helix/config.toml", "theme = \"onedark\"")
+        .home_file(".config/helix/themes/extra.toml", "fg = \"white\"")
+        .build();
+
+    let pack = env.dotfiles_root.join("helix");
+    let source = env.home.join(".config/helix");
+    let failing = source.join("themes");
+
+    let fs = fs_failing_replacement_of(&env, vec![failing.clone()]);
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+    assert_eq!(pack_names(&env), vec!["helix".to_string()]);
+    env.assert_file_contents(&pack.join("config.toml"), "theme = \"onedark\"");
+    env.assert_symlink(&source.join("config.toml"), &pack.join("config.toml"));
+
+    env.assert_not_exists(&pack.join("themes"));
+    assert!(!env.fs.is_symlink(&failing));
+    env.assert_regular_file(&failing.join("extra.toml"), "fg = \"white\"");
+    assert!(preparation_dirs(&env).is_empty());
+}
+
+/// Exit status (§5.5): every planned source replaced exits zero, and
+/// the §4 left-in-place report does not change that — those entries
+/// were never planned for adoption.
+#[test]
+fn a_run_of_successful_plans_and_left_in_place_reports_exits_zero() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/zed/settings.json", "{}")
+        .home_file(".config/zed/.DS_Store", "finder noise")
+        .build();
+
+    let source = env.home.join(".config/zed");
+    let result = adopt_source(&env, None, &source, false).unwrap();
+
+    assert_eq!(result.exit_code(), 0);
+    assert!(failure_notes(&result).is_empty());
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.starts_with("left in place:") && w.contains(".DS_Store")),
+        "the report is still there: {:?}",
+        result.warnings
+    );
+    env.assert_file_contents(&env.dotfiles_root.join("zed/settings.json"), "{}");
+}
+
+/// A recovery step can fail in turn — the rename that puts a displaced
+/// destination back hits the same error that stopped the replacement.
+/// Adopt does not delete anything to get past it: it names the entry and
+/// where its content is, and keeps the preparation directory rather than
+/// discarding what is then the only copy (§5.4's rule, applied at §5.5).
+#[test]
+fn a_recovery_that_cannot_put_a_displacement_back_keeps_the_staged_copy() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("init.lua", "-- OLD")
+        .done()
+        .home_file(".config/nvim/init.lua", "-- NEW")
+        .build();
+
+    let source = env.home.join(".config/nvim/init.lua");
+    let watched = source.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if is_source_replacement(&op, &watched) {
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        if let super::support::FsOp::Rename { from, .. } = &op {
+            if from.components().any(|c| c.as_os_str() == ".displaced") {
+                return Err(crate::DodotError::Other("injected recovery failure".into()));
+            }
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        /*force=*/ true,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+    env.assert_regular_file(&source, "-- NEW");
+
+    // Nothing was deleted to get past the failure: the destination's
+    // pre-adopt content is still staged, and the directory holding it
+    // survives the run that would otherwise have discarded it.
+    let staged = displaced_snapshot(&env);
+    assert_eq!(
+        staged,
+        vec![("init.lua".to_string(), Snapshot::file("-- OLD"))],
+        "the displaced destination is kept where the report says it is"
+    );
+    let kept = preparation_dirs(&env);
+    assert_eq!(
+        kept.len(),
+        1,
+        "the staging directory is kept, got: {kept:?}"
+    );
+
+    let named: Vec<&String> = result
+        .notes
+        .iter()
+        .map(|n| &n.body)
+        .filter(|t| t.contains("could not put back"))
+        .collect();
+    assert_eq!(named.len(), 1, "got: {named:?}");
+    assert!(
+        named[0].contains("init.lua") && named[0].contains(&kept[0]),
+        "the note names the entry and where its content is: {}",
+        named[0]
+    );
+}

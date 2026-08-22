@@ -81,26 +81,30 @@
 //!    original with a symlink to its published pack path. Files use a
 //!    symlink-at-temp + rename-over-original (POSIX atomic).
 //!    Directories use rename-to-backup + symlink + rm-backup
-//!    (recoverable, not atomic). A per-source failure removes that
-//!    source's pack entry and is reported; sources already replaced
-//!    stay replaced.
+//!    (recoverable, not atomic).
+//!
+//!    Sources are independent, and a failure does not stop the run:
+//!    every planned source is attempted, and each ends either replaced
+//!    or untouched with its pack entry taken back out
+//!    ([`restore_failed_entry`]). Taking it back out means the whole of
+//!    what publication did for that entry — a `--force` displacement
+//!    renamed back to its final path, the intermediate directories
+//!    publication created and this leaves empty removed, and a pack
+//!    this run published removed when no source was replaced at all.
+//!    Any failed planned source makes the command exit nonzero
+//!    ([`PackStatusResult::failed`](crate::commands::PackStatusResult::failed)),
+//!    while the result still renders every source, replaced and failed
+//!    alike.
 //!
 //! 6. **Finish** — remove the preparation directory, discarding the
 //!    content step 4 displaced. Nothing before this point discards it:
 //!    step 5 may still need an entry's pre-adopt content back, so a
 //!    `--force` displacement stays recoverable until every source has
-//!    been replaced or reported. The one run that does not reach this
-//!    step is one whose publication rollback could not finish: its
-//!    preparation directory holds content that belongs in the pack, and
-//!    the error names it rather than deleting it.
-//!
-//! One piece of `adopt-safety.lex` is deliberately not here yet: the
-//! **rest of a failed source replacement's recovery** — renaming a
-//! displaced destination back out of the preparation directory,
-//! removing the intermediate directories publication created for that
-//! entry, and removing a newly published pack when no source was
-//! replaced at all — is `#378` (WS04). Step 5 currently removes the
-//! failed source's own pack entry and no more.
+//!    been replaced or reported. Two runs do not reach this step: one
+//!    whose publication rollback could not finish, and one whose step-5
+//!    recovery could not put a displaced destination back. Both leave
+//!    content that belongs in the pack inside the preparation
+//!    directory, and both name it rather than deleting it.
 //!
 //! ## What adopt refuses, and what it leaves alone
 //!
@@ -385,35 +389,54 @@ pub fn adopt(
     let published = if pack_existed {
         prep.publish_into_existing(&pack_path, &pack_display, &plans, ctx.fs.as_ref())
     } else {
-        Published::discardable(prep.publish_new_pack(&pack_path, ctx.fs.as_ref()))
+        Published::new_pack(prep.publish_new_pack(&pack_path, ctx.fs.as_ref()))
     };
-    if let Published::Failed {
-        error,
-        keep_preparation,
-    } = published
-    {
-        // A rollback that could not finish left the pack's pre-adopt
-        // content in the preparation directory, and that is the only
-        // copy of it. Discarding here is what the error the user is
-        // about to read tells them has *not* happened.
-        if !keep_preparation {
-            prep.discard(ctx.fs.as_ref());
+    let publication = match published {
+        Published::Ok(publication) => publication,
+        Published::Failed {
+            error,
+            keep_preparation,
+        } => {
+            // A rollback that could not finish left the pack's pre-adopt
+            // content in the preparation directory, and that is the only
+            // copy of it. Discarding here is what the error the user is
+            // about to read tells them has *not* happened.
+            if !keep_preparation {
+                prep.discard(ctx.fs.as_ref());
+            }
+            return Err(error);
         }
-        return Err(error);
-    }
+    };
 
     // ── Step 5: Replace sources ──────────────────────────────────────
     //
-    // Per-source, and failures are recorded rather than fatal. Whatever
-    // `--force` displaced is still in the preparation directory while
-    // this runs, which is what lets #378 (WS04) put an individual failed
-    // source's pack entry back; step 6 is where that content goes.
-    let failures = swap_all(&plans, ctx.fs.as_ref());
+    // Per-source, and failures are recorded rather than fatal: every
+    // planned source is attempted whatever happened to the ones before
+    // it. Whatever `--force` displaced is still in the preparation
+    // directory while this runs, which is what lets a failed source put
+    // its destination's pre-adopt content back.
+    let replacement = swap_all(&plans, &publication, &pack_path, ctx.fs.as_ref());
 
     // ── Step 6: Finish ───────────────────────────────────────────────
-    prep.discard(ctx.fs.as_ref());
+    //
+    // Every source outcome is known now, so the displacements that
+    // survived go — that discard is where a successful `--force` takes
+    // effect. The exception is a recovery that could not put a displaced
+    // destination back: the preparation directory then holds the only
+    // copy of that content, and the notes below say where it is.
+    if replacement.stranded.is_empty() {
+        prep.discard(ctx.fs.as_ref());
+    }
 
-    let mut result = status::status(Some(std::slice::from_ref(&pack_display)), ctx)?;
+    // A run whose every source replacement failed on a pack this run
+    // published has no pack left to report the status of — §5.5 took it
+    // back out with the last entry. The failure rows below are then the
+    // whole report.
+    let mut result = if ctx.fs.exists(&pack_path) {
+        status::status(Some(std::slice::from_ref(&pack_display)), ctx)?
+    } else {
+        bare_result(&pack_display, Vec::new(), ctx)
+    };
     result.dry_run = false;
     for msg in skipped_already_adopted {
         result.warnings.push(msg);
@@ -562,31 +585,67 @@ pub fn adopt(
     // contain that file, so this row is purely informational about the
     // attempt — but it anchors the `[N]` back to a visible listing entry
     // instead of leaving an orphaned footnote at the bottom.
-    for f in &failures {
+    for f in &replacement.failures {
         let src_name = f
             .source
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| f.source.display().to_string());
         result.notes.push(DisplayNote::error(format!(
-            "adopt failed: {}: {}",
+            "adopt failed: {}: {} — its pack entry was taken back out",
             f.source.display(),
             f.reason
         )));
         let note_ref = Some(result.notes.len() as u32);
-        if let Some(pack) = result.packs.iter_mut().find(|p| p.name == pack_display) {
-            pack.files.push(DisplayFile {
-                name: src_name,
-                symbol: "×".into(),
-                description: "adopt failed".into(),
-                status: "error".into(),
-                status_label: "error".into(),
-                handler: String::new(),
-                note_ref,
-            });
-            pack.recompute_summary();
-        }
+        // The pack has no row of its own when `status` put it somewhere
+        // other than the listing — a pack gated off on this host — and
+        // none at all when this run published it and the last failed
+        // source took it back out. The failure still has to be visible,
+        // so the row it anchors to is created rather than skipped.
+        let pack = match result.packs.iter_mut().position(|p| p.name == pack_display) {
+            Some(index) => &mut result.packs[index],
+            None => {
+                result
+                    .packs
+                    .push(DisplayPack::new(pack_display.clone(), Vec::new()));
+                result.packs.last_mut().expect("just pushed")
+            }
+        };
+        pack.files.push(DisplayFile {
+            name: src_name,
+            symbol: "×".into(),
+            description: "adopt failed".into(),
+            status: "error".into(),
+            status_label: "error".into(),
+            handler: String::new(),
+            note_ref,
+        });
+        pack.recompute_summary();
     }
+
+    // A recovery that could not put a displaced destination back is the
+    // one outcome that leaves the user's own content somewhere other
+    // than where it belongs. Nothing was deleted to get past it and the
+    // preparation directory is still on disk, so the note is a pair of
+    // paths and an instruction, not an apology.
+    for entry in &replacement.stranded {
+        result.notes.push(DisplayNote::error(format!(
+            "adopt could not put back the content --force displaced for {}: \
+             it is at {}. The staging directory {} is kept rather than \
+             discarded — move the content back by hand.",
+            entry.in_pack,
+            entry.at,
+            prep.root.display()
+        )));
+    }
+
+    // Exit status (`adopt-safety.lex` §5.5): a partially adopted run is
+    // not a successful one. The result still renders every planned
+    // source, replaced and failed alike, so the user sees what did land
+    // — but a script reading the exit status has to be able to tell the
+    // two apart. The §4 left-in-place report does not reach here: those
+    // entries were never planned for adoption.
+    result.failed = !replacement.failures.is_empty();
     Ok(result)
 }
 
@@ -804,7 +863,7 @@ impl Preparation {
                 };
             }
         }
-        Published::Ok
+        Published::Ok(Publication::Existing(record))
     }
 
     /// Publish one prepared entry, appending to `record` everything a
@@ -1045,20 +1104,42 @@ impl PublicationRecord {
 /// directory, and discarding it there deletes the pre-adopt file the
 /// run promised to protect.
 enum Published {
-    Ok,
+    Ok(Publication),
     Failed {
         error: DodotError,
         keep_preparation: bool,
     },
 }
 
+/// What publication put in the pack, kept until every source
+/// replacement has committed or rolled back.
+///
+/// A source replacement that fails takes its entry back out of the pack
+/// (`adopt-safety.lex` §5.5), and what "back out" means is exactly what
+/// publication did for that entry — which is why the record outlives
+/// publication instead of being dropped at the end of it. The two
+/// variants are the two shapes §5.4 publishes in, and they differ in
+/// what a rollback may remove: everything inside a pack this run
+/// created is this run's, while a pack that was already there holds
+/// entries and directories no failure of this run's may touch.
+enum Publication {
+    /// One rename brought the whole prepared tree in, so nothing in the
+    /// pack predates the run and the last failed source takes the pack
+    /// directory with it.
+    NewPack,
+    /// Entries published one at a time into a pack that already
+    /// existed, with the record of what each one displaced and which
+    /// intermediate directories the sequence created.
+    Existing(PublicationRecord),
+}
+
 impl Published {
-    /// The verdict on a publication whose failure leaves nothing behind
-    /// worth keeping — the one-rename new-pack publication, which either
-    /// moved the prepared tree or did not touch anything.
-    fn discardable(result: Result<()>) -> Self {
+    /// The verdict on the one-rename new-pack publication, which either
+    /// moved the prepared tree or did not touch anything — so its
+    /// failure leaves nothing behind worth keeping.
+    fn new_pack(result: Result<()>) -> Self {
         match result {
-            Ok(()) => Published::Ok,
+            Ok(()) => Published::Ok(Publication::NewPack),
             Err(error) => Published::Failed {
                 error,
                 keep_preparation: false,
@@ -1141,7 +1222,24 @@ fn adopt_result(
         })
         .collect();
 
-    Ok(PackStatusResult {
+    Ok(bare_result(pack_display, files, ctx))
+}
+
+/// A result for the destination pack built from `files` alone, without
+/// reading the pack off disk.
+///
+/// The two callers are the two moments there is no pack to read: a
+/// `--dry-run` against an inferred pack that does not exist yet, and a
+/// run whose every source replacement failed on a pack it had published
+/// and has now taken back out. Both would otherwise have to create a
+/// pack to have something to render, which is exactly what
+/// `adopt-safety.lex` §5.3 and §5.5 forbid.
+fn bare_result(
+    pack_display: &str,
+    files: Vec<DisplayFile>,
+    ctx: &ExecutionContext,
+) -> PackStatusResult {
+    PackStatusResult {
         message: None,
         dry_run: false,
         packs: vec![DisplayPack::new(pack_display.to_string(), files)],
@@ -1155,7 +1253,7 @@ fn adopt_result(
         diffs: Vec::new(),
         shell_hookup: status::shell_hookup_notice(ctx),
         failed: false,
-    })
+    }
 }
 
 // ── Pack resolution (override / inference / aggregation) ─────────────
@@ -1605,16 +1703,10 @@ fn no_adoptable_children(dir: &Path, children: &[(String, SkipRule)], pack: &str
 /// The §4 report: each left-in-place path once, with the rule that
 /// matched it.
 ///
-/// These are not failures. §5.5 draws the exit status from what happened
-/// to the *planned* sources, and a left-in-place entry was never
-/// planned, so nothing here belongs on that signal.
-///
-/// Nothing here sets it either, and neither does anything else adopt
-/// does today: `swap_all`'s per-source failures render as error rows and
-/// leave `PackStatusResult::failed` false, so a partially adopted run
-/// still exits 0. Making a failed planned source exit nonzero is an
-/// acceptance criterion of `#378` (WS04), which owns per-source
-/// replacement recovery and the exit-status contract together.
+/// These are not failures, and nothing here touches the exit status.
+/// §5.5 draws that from what happened to the *planned* sources, and a
+/// left-in-place entry was never planned — so a run whose only report is
+/// this one exits 0, the same as a run with nothing to report.
 fn report_left_in_place(result: &mut PackStatusResult, left: &[LeftInPlace], pack: &str) {
     for entry in left {
         result.warnings.push(format!(
@@ -2068,13 +2160,52 @@ fn collect_intents_passive(
 
 // ── Step 5: Replace sources ───────────────────────────────────────
 
+/// One planned source that could not be replaced, and why.
 struct AdoptFailure {
     source: PathBuf,
     reason: String,
 }
 
-fn swap_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Vec<AdoptFailure> {
-    let mut failures = Vec::new();
+/// What step 5 did across every planned source.
+#[derive(Default)]
+struct Replacement {
+    /// The sources that could not be replaced, in plan order. Each one's
+    /// pack entry has been taken back out, and any of these makes the
+    /// command exit nonzero (§5.5).
+    failures: Vec<AdoptFailure>,
+    /// Entries whose `--force` displacement a recovery could not put
+    /// back, with the path its content is at now. Any of these keeps the
+    /// preparation directory instead of discarding it: what is in there
+    /// is then the only copy of the destination's pre-adopt content.
+    stranded: Vec<StrandedEntry>,
+}
+
+/// Replace every planned source with a symlink to its published pack
+/// path, and take the pack entry of each one that fails back out.
+///
+/// Sources are independent (`adopt-safety.lex` §5.5) and a failure does
+/// not stop the run. Stopping early would be the worse of the two
+/// options: publication has already put every planned entry in the pack,
+/// so abandoning the remaining sources would leave each of them a real
+/// file at its original path *and* a copy of itself in the pack — the
+/// duplicated state that makes the next `dodot up` report a conflict the
+/// user never created. Continuing means each source ends in exactly one
+/// of two states, replaced or untouched-with-its-pack-entry-rolled-back,
+/// whatever happened to the others.
+///
+/// The directory sweep runs once at the end rather than per failure, and
+/// only when something failed. `remove_dir_empty` is what keeps it from
+/// reaching a directory a successful source still occupies: emptiness is
+/// the kernel's verdict inside the same operation that removes, not a
+/// test this code makes and then acts on.
+fn swap_all(
+    plans: &[AdoptPlan],
+    publication: &Publication,
+    pack_path: &Path,
+    fs: &dyn Fs,
+) -> Replacement {
+    let mut out = Replacement::default();
+    let mut failed: Vec<&AdoptPlan> = Vec::new();
     for plan in plans {
         let result = if plan.is_dir {
             swap_dir(&plan.source, &plan.pack_dest, fs)
@@ -2082,19 +2213,141 @@ fn swap_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Vec<AdoptFailure> {
             swap_file_atomic(&plan.source, &plan.pack_dest, fs)
         };
         if let Err(e) = result {
-            // Roll back just this source: its pack copy is now orphaned.
-            remove_best_effort(fs, &plan.pack_dest);
-            failures.push(AdoptFailure {
+            if let Some(stranded) = restore_failed_entry(plan, publication, fs) {
+                out.stranded.push(stranded);
+            }
+            failed.push(plan);
+            out.failures.push(AdoptFailure {
                 source: plan.source.clone(),
-                reason: format!("{}", e),
+                reason: err_msg(&e),
             });
         }
     }
-    failures
+    if !failed.is_empty() {
+        prune_emptied_dirs(&failed, publication, pack_path, fs);
+    }
+    out
+}
+
+/// Put the pack back where it was for one source that could not be
+/// replaced, and name the content the attempt could not move.
+///
+/// "Where it was" is whatever publication did for this entry, undone
+/// (§5.5). Under `--force` that is the displaced destination renamed
+/// back; otherwise it is the published entry gone. Removing the entry is
+/// safe in a way it is not during a publication rollback: the
+/// replacement is what failed, so the user's own file is still a real
+/// file at its original path and the pack copy is a duplicate of it.
+///
+/// The copy is renamed back into the preparation directory rather than
+/// deleted where that works, which costs nothing — step 6 discards it —
+/// and keeps the bytes reachable if what fails is the removal.
+///
+/// Returns the entry whose displaced content is still in the preparation
+/// directory when the rename back could not happen. The caller keeps the
+/// directory in that case: deleting it there would destroy the pre-adopt
+/// destination that `--force` promised to hold until the run committed.
+fn restore_failed_entry(
+    plan: &AdoptPlan,
+    publication: &Publication,
+    fs: &dyn Fs,
+) -> Option<StrandedEntry> {
+    let entry = match publication {
+        // Nothing in a pack this run published predates the run, so
+        // there is nothing to put back and removing the entry is the
+        // whole restoration.
+        Publication::NewPack => None,
+        Publication::Existing(record) => record.entries.iter().find(|e| e.in_pack == plan.in_pack),
+    };
+    let Some(entry) = entry else {
+        remove_best_effort(fs, &plan.pack_dest);
+        return None;
+    };
+
+    let vacated = vacate(fs, &entry.final_path, &entry.prepared);
+    let displaced = entry.displaced.as_ref()?;
+    if vacated && fs.rename(displaced, &entry.final_path).is_ok() {
+        return None;
+    }
+    Some(StrandedEntry {
+        in_pack: entry.in_pack.display().to_string(),
+        at: displaced.display().to_string(),
+    })
+}
+
+/// Take this run's published copy out of `final_path` and say whether
+/// the path ended up free for whatever was there before it.
+///
+/// A rename back to `prepared` first — that path was vacated by
+/// publication and step 6 discards it, so the bytes stay reachable
+/// until the run ends. Removal is the fallback, and the answer is what
+/// the path holds afterwards rather than what either call returned:
+/// another process can have written there, and a caller about to rename
+/// a displaced destination back needs to know the path is actually
+/// free.
+fn vacate(fs: &dyn Fs, final_path: &Path, prepared: &Path) -> bool {
+    if fs.rename(final_path, prepared).is_err() {
+        remove_best_effort(fs, final_path);
+    }
+    !fs.exists(final_path) && !fs.is_symlink(final_path)
+}
+
+/// Remove the directories publication created that the failed entries
+/// have just emptied.
+///
+/// Removing an entry alone would leave `nvim/lua/plugins/` behind, or an
+/// empty `nvim/` for a one-source inferred pack — the residue
+/// `adopt-safety.lex` §1.2 describes. Which directories are removable
+/// differs by publication shape, and that is the whole of the split:
+///
+/// - A pack that already existed holds directories that predate the
+///   run, and none of those is a rollback's to remove. The record names
+///   exactly the ones publication created, so the sweep walks that list
+///   and nothing else.
+/// - A pack this run published arrived as one tree, so every directory
+///   inside it — the pack directory included — is this run's. The sweep
+///   walks each failed entry's ancestors up to the pack root, which is
+///   also what removes the pack when no source was replaced at all.
+///
+/// Empty ones only, and always by `remove_dir_empty`: a directory
+/// holding a successful entry, or content another process put there,
+/// refuses inside the same operation that would have removed it.
+fn prune_emptied_dirs(
+    failed: &[&AdoptPlan],
+    publication: &Publication,
+    pack_path: &Path,
+    fs: &dyn Fs,
+) {
+    match publication {
+        Publication::Existing(record) => {
+            for dir in record.created_dirs.iter().rev() {
+                let _ = fs.remove_dir_empty(dir);
+            }
+        }
+        Publication::NewPack => {
+            for plan in failed {
+                let mut dir = plan.pack_dest.parent().map(Path::to_path_buf);
+                while let Some(current) = dir {
+                    if !current.starts_with(pack_path) || fs.remove_dir_empty(&current).is_err() {
+                        break;
+                    }
+                    if current == pack_path {
+                        break;
+                    }
+                    dir = current.parent().map(Path::to_path_buf);
+                }
+            }
+        }
+    }
 }
 
 /// Atomic file swap: create symlink at a temp sibling, then rename over the
 /// original. `rename` is atomic on POSIX and replaces the existing file.
+///
+/// The original is a readable file at its own path until the instant it
+/// is the symlink, and the temp sibling sits in the source's own
+/// directory, so the rename never crosses a filesystem however far the
+/// pack is from the source.
 fn swap_file_atomic(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
     let tmp = temp_sibling(source, "tmp");
     fs.symlink(pack_dest, &tmp)?;
@@ -2107,6 +2360,18 @@ fn swap_file_atomic(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> 
 
 /// Directory swap: rename original aside, create symlink, remove backup. On
 /// symlink failure, restore the backup.
+///
+/// Recoverable rather than atomic, and `adopt-safety.lex` §5.5 says so
+/// rather than claiming otherwise: a process killed between the rename
+/// and the symlink leaves the directory at the backup path beside its
+/// original location. [`temp_sibling`] puts the original's own name in
+/// that path so it is restorable by hand — one `mv` back.
+///
+/// The rename back can fail in turn, and then the directory is at the
+/// backup path rather than where the user left it. The error says so
+/// and names the path instead of reporting only the symlink failure,
+/// which would send the user looking at an original path that is no
+/// longer there.
 fn swap_dir(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
     let backup = temp_sibling(source, "old");
     fs.rename(source, &backup)?;
@@ -2115,10 +2380,13 @@ fn swap_dir(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
             let _ = fs.remove_dir_all(&backup);
             Ok(())
         }
-        Err(e) => {
-            let _ = fs.rename(&backup, source);
-            Err(e)
-        }
+        Err(e) if fs.rename(&backup, source).is_ok() => Err(e),
+        Err(e) => Err(DodotError::Other(format!(
+            "{e}; and the directory could not be moved back to {} — it is \
+             at {}",
+            source.display(),
+            backup.display()
+        ))),
     }
 }
 
