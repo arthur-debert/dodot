@@ -98,6 +98,49 @@ pub struct PackPlan {
     /// Ephemeral: an availability is a fact about this machine right
     /// now and is never written to the datastore.
     pub provision_unavailable: Vec<ProvisionUnavailable>,
+    /// Files whose current deployment claims this plan does not
+    /// contain, because passive preprocessing surfaced them without a
+    /// current render and their handler reads its targets out of that
+    /// render. See [`UnresolvedClaim`].
+    ///
+    /// Always empty for an Active plan. A caller that only executes
+    /// the plan can ignore it; a caller that reads the plan as
+    /// evidence about a pack — adopt's cross-pack conflict analysis —
+    /// must treat a non-empty list as "the answer is unknown," not as
+    /// "there is nothing here."
+    pub unresolved_claims: Vec<UnresolvedClaim>,
+}
+
+/// One matched file whose deployment claims are missing from a
+/// [`PackPlan`], rather than absent from the pack.
+///
+/// Produced only in [`PreprocessMode::Passive`](crate::preprocessing::PreprocessMode::Passive),
+/// for the entries it lists in
+/// [`PreprocessResult::unrendered`](crate::preprocessing::pipeline::PreprocessResult::unrendered):
+/// a preprocessor entry dodot has never rendered, which surfaces as a
+/// placeholder carrying no bytes, and one whose cached render was
+/// produced from source bytes or a rendering context that have since
+/// changed, which carries the *previous* render's bytes. A handler whose
+/// [`targets_from_content`](crate::handlers::Handler::targets_from_content)
+/// is true — `externals`, whose every target is a field inside
+/// `externals.toml` — reads its claims out of those bytes, so for the
+/// first it emits no intent at all and for the second it emits the
+/// targets the pack claimed before the edit. Either way the plan is
+/// not what this pack deploys next.
+///
+/// The remedy is one `dodot up` on the owning pack: it renders the
+/// current source, writes the baseline, and every later passive plan
+/// reads the claims from that baseline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnresolvedClaim {
+    /// The pack the file belongs to.
+    pub pack: String,
+    /// The handler whose claims for this file the plan does not have.
+    pub handler: String,
+    /// The source file whose current contents are unrendered,
+    /// pack-relative — the path to name when telling a user what to
+    /// render, e.g. `externals.toml.tmpl`.
+    pub source: String,
 }
 
 /// One file dropped from a run by `--no-provision`, carrying what the
@@ -361,11 +404,15 @@ fn plan_pack_inner(
             current_os = %host.os,
             "pack inactive on this OS, returning empty plan"
         );
+        // Nothing to compute and nothing left uncomputed: a pack this
+        // OS excludes deploys nothing here, so an empty claim list is
+        // the whole truth rather than a gap in it.
         return Ok(PackPlan {
             intents: Vec::new(),
             warnings: Vec::new(),
             provision_skipped: Vec::new(),
             provision_unavailable: Vec::new(),
+            unresolved_claims: Vec::new(),
         });
     }
 
@@ -447,6 +494,16 @@ fn plan_pack_inner(
     let registry = handlers::create_registry(ctx.fs.as_ref());
     let order = rules::handler_execution_order(&groups, &registry);
     debug!(pack = %pack.name, handlers = ?order, "handler execution order");
+
+    // Which matched files have no render of their current contents,
+    // and therefore tell a content-reading handler nothing or tell it
+    // something out of date? Only passive planning produces any
+    // (`PreprocessResult::unrendered`); an active plan rendered
+    // everything it surfaced, so this set is empty and the loop below
+    // records nothing.
+    let unrendered: std::collections::HashSet<&PathBuf> =
+        preprocess_result.unrendered.iter().collect();
+    let mut unresolved_claims: Vec<UnresolvedClaim> = Vec::new();
 
     // Generate intents from each handler
     let mut all_intents = Vec::new();
@@ -555,6 +612,42 @@ fn plan_pack_inner(
         }
 
         if let Some(handler_matches) = groups.get(handler_name) {
+            // Reached only for a handler this run actually plans with:
+            // the `--no-provision` and absent-manager branches above
+            // already moved on, and a handler that generates no intent
+            // leaves nothing for a caller to find incomplete. What is
+            // recorded here are the files this handler was asked about
+            // and cannot answer for as they stand now — a placeholder
+            // or a superseded render given to a handler that reads its
+            // targets out of file content.
+            if !unrendered.is_empty() && handler.targets_from_content() {
+                for m in handler_matches {
+                    if !unrendered.contains(&m.absolute_path) {
+                        continue;
+                    }
+                    // Name the template the user has to render, not the
+                    // datastore path they have never seen.
+                    let source = m
+                        .preprocessor_source
+                        .as_ref()
+                        .and_then(|p| p.strip_prefix(&pack.path).ok())
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| m.relative_path.to_string_lossy().into_owned());
+                    debug!(
+                        pack = %pack.name,
+                        handler = %handler_name,
+                        file = %source,
+                        "no current render for a handler that reads its targets from \
+                         file content; the plan does not state what this pack claims"
+                    );
+                    unresolved_claims.push(UnresolvedClaim {
+                        pack: pack.name.clone(),
+                        handler: handler_name.clone(),
+                        source,
+                    });
+                }
+            }
+
             let mut intents = handler.to_intents(
                 handler_matches,
                 &pack.config,
@@ -661,6 +754,7 @@ fn plan_pack_inner(
         warnings: all_warnings,
         provision_skipped,
         provision_unavailable,
+        unresolved_claims,
     })
 }
 

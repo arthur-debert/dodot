@@ -85,6 +85,12 @@ impl Fs for OsFs {
         fs::create_dir_all(path).map_err(|e| fs_err(path, e))
     }
 
+    fn mkdir_exclusive(&self, path: &Path) -> Result<()> {
+        // `create_dir` is one `mkdir(2)`, which fails with EEXIST
+        // rather than adopting whatever is already at `path`.
+        fs::create_dir(path).map_err(|e| fs_err(path, e))
+    }
+
     fn symlink(&self, original: &Path, link: &Path) -> Result<()> {
         std::os::unix::fs::symlink(original, link).map_err(|e| fs_err(link, e))
     }
@@ -141,6 +147,10 @@ impl Fs for OsFs {
         fs::rename(from, to).map_err(|e| fs_err(from, e))
     }
 
+    fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()> {
+        rename_noreplace_raw(from, to).map_err(|e| fs_err(from, e))
+    }
+
     fn copy_file(&self, from: &Path, to: &Path) -> Result<()> {
         fs::copy(from, to).map(|_| ()).map_err(|e| fs_err(from, e))
     }
@@ -167,6 +177,72 @@ impl Fs for OsFs {
             .map_err(|e| fs_err(path, e))?;
         file.set_modified(time).map_err(|e| fs_err(path, e))
     }
+}
+
+/// `rename` that refuses to replace an existing destination, decided
+/// inside the one operation that moves the file.
+///
+/// std exposes no wrapper for it: the flag lives in a platform
+/// extension of `rename` on both systems dodot supports — `renameat2`
+/// with `RENAME_NOREPLACE` on Linux (kernel 3.15+), `renamex_np` with
+/// `RENAME_EXCL` on macOS (10.12+). Nothing portable can stand in:
+/// plain `rename` replaces its destination, so any emulation built on
+/// a separate existence test reopens the very window this closes.
+///
+/// A filesystem driver that does not implement the flag answers
+/// `EINVAL`/`ENOSYS` (Linux) or `ENOTSUP` (macOS), and that error
+/// reaches the caller — the operation never silently degrades into a
+/// replacing rename.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn rename_noreplace_raw(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::io;
+    use std::os::unix::ffi::OsStrExt;
+
+    let cstr = |p: &Path| {
+        CString::new(p.as_os_str().as_bytes())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
+    };
+    let from_c = cstr(from)?;
+    let to_c = cstr(to)?;
+
+    #[cfg(target_os = "linux")]
+    let rc = {
+        // Called as a raw syscall rather than through the libc
+        // `renameat2` wrapper: that wrapper is a glibc 2.28 symbol, and
+        // linking against it would refuse to run on older glibc even
+        // where the kernel has the call.
+        unsafe {
+            libc::syscall(
+                libc::SYS_renameat2,
+                libc::AT_FDCWD,
+                from_c.as_ptr(),
+                libc::AT_FDCWD,
+                to_c.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        }
+    };
+    #[cfg(target_os = "macos")]
+    let rc =
+        i64::from(unsafe { libc::renamex_np(from_c.as_ptr(), to_c.as_ptr(), libc::RENAME_EXCL) });
+
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+/// Refuses outright everywhere else: an atomic no-replace rename has
+/// no portable spelling, and quietly falling back to a replacing
+/// `rename` would hand the caller the race it asked to be free of.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn rename_noreplace_raw(_from: &Path, _to: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "no atomic no-replace rename on this platform (Linux renameat2 / macOS renamex_np only)",
+    ))
 }
 
 fn metadata_from_std(meta: &fs::Metadata, is_symlink: bool) -> FsMetadata {
@@ -319,6 +395,88 @@ mod tests {
 
         assert!(!fs.exists(&from));
         assert_eq!(fs.read_to_string(&to).unwrap(), "moved");
+    }
+
+    #[test]
+    fn mkdir_exclusive_refuses_an_existing_path() {
+        let tmp = TempDir::new().unwrap();
+        let fs = OsFs::new();
+
+        let dir = tmp.path().join("claimed");
+        fs.mkdir_exclusive(&dir).unwrap();
+        fs.write_file(&dir.join("mine.txt"), b"mine").unwrap();
+
+        // Second claimant is turned away, and the first one's content
+        // is untouched — the point of the exclusive create.
+        let err = fs.mkdir_exclusive(&dir).unwrap_err();
+        assert!(
+            crate::fs::is_already_exists(&err),
+            "expected an AlreadyExists refusal, got: {err}"
+        );
+        assert_eq!(fs.read_to_string(&dir.join("mine.txt")).unwrap(), "mine");
+
+        // A file is in the way just as much as a directory is.
+        let occupied = tmp.path().join("occupied");
+        fs.write_file(&occupied, b"not a directory").unwrap();
+        assert!(crate::fs::is_already_exists(
+            &fs.mkdir_exclusive(&occupied).unwrap_err()
+        ));
+    }
+
+    #[test]
+    fn rename_noreplace_moves_only_onto_a_free_path() {
+        let tmp = TempDir::new().unwrap();
+        let fs = OsFs::new();
+
+        let from = tmp.path().join("staged");
+        fs.mkdir_all(&from.join("inner")).unwrap();
+        fs.write_file(&from.join("inner/file.txt"), b"staged")
+            .unwrap();
+
+        let to = tmp.path().join("published");
+        fs.rename_noreplace(&from, &to).unwrap();
+        assert!(!fs.exists(&from));
+        assert_eq!(
+            fs.read_to_string(&to.join("inner/file.txt")).unwrap(),
+            "staged"
+        );
+    }
+
+    #[test]
+    fn rename_noreplace_refuses_the_destinations_plain_rename_replaces() {
+        let tmp = TempDir::new().unwrap();
+        let fs = OsFs::new();
+
+        // A staged tree, and the two destination shapes a POSIX
+        // `rename` swallows without a word.
+        let staged = |name: &str| {
+            let from = tmp.path().join(format!("from-{name}"));
+            fs.mkdir_all(&from).unwrap();
+            fs.write_file(&from.join("file.txt"), b"staged").unwrap();
+            from
+        };
+
+        let empty_dir = tmp.path().join("empty-dir");
+        std::fs::create_dir(&empty_dir).unwrap();
+        let from = staged("empty-dir");
+        let err = fs.rename_noreplace(&from, &empty_dir).unwrap_err();
+        assert!(
+            crate::fs::is_already_exists(&err),
+            "expected an AlreadyExists refusal for an empty directory, got: {err}"
+        );
+        assert_eq!(fs.read_to_string(&from.join("file.txt")).unwrap(), "staged");
+        assert!(fs.read_dir(&empty_dir).unwrap().is_empty());
+
+        let link = tmp.path().join("a-symlink");
+        std::os::unix::fs::symlink("elsewhere", &link).unwrap();
+        let from = staged("a-symlink");
+        let err = fs.rename_noreplace(&from, &link).unwrap_err();
+        assert!(
+            crate::fs::is_already_exists(&err),
+            "expected an AlreadyExists refusal for a symlink, got: {err}"
+        );
+        assert_eq!(fs.read_to_string(&from.join("file.txt")).unwrap(), "staged");
+        assert_eq!(fs.readlink(&link).unwrap(), Path::new("elsewhere"));
     }
 
     #[test]

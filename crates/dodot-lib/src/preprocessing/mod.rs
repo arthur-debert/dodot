@@ -89,14 +89,19 @@ pub struct ExpandedFile {
     /// reverse-diffs without re-rendering — the latter being important
     /// because re-rendering can re-trigger secret-provider auth prompts.
     pub tracked_render: Option<String>,
-    /// SHA-256 of the rendering context (variables, env values resolved
-    /// at render time). `None` for preprocessors that don't have a
-    /// meaningful context concept.
+    /// SHA-256 of the rendering context — the inputs other than the
+    /// source file that decide this output. For templates that is the
+    /// `dodot.*` namespace and the configured `vars`; `env.*` is
+    /// live-read and deliberately outside it
+    /// (`preprocessing-pipeline.lex` §6.4). `None` for preprocessors
+    /// that don't have a meaningful context concept.
     ///
     /// The pipeline pairs this with the source-file hash and rendered
     /// content hash in the baseline cache. `dodot up` re-rendering and
     /// install/homebrew sentinels both use the context hash to decide
-    /// when work is stale.
+    /// when work is stale, and so does passive planning when it asks
+    /// whether a cached render still describes its source — see
+    /// [`Preprocessor::context_hash`].
     pub context_hash: Option<[u8; 32]>,
     /// Per-render secret-line tracking. Empty when no `secret(...)`
     /// calls fired (the common case today; will be the common case
@@ -155,6 +160,35 @@ pub trait Preprocessor: Send + Sync {
     /// consider adding a streaming path rather than materialising the
     /// entire decoded stream at once.
     fn expand(&self, source: &Path, fs: &dyn Fs) -> Result<Vec<ExpandedFile>>;
+
+    /// SHA-256 of everything besides the source file that this
+    /// preprocessor's output depends on, as it stands right now —
+    /// for templates, the `dodot.*` namespace and the configured
+    /// `vars`. `None` when the preprocessor has no such inputs, which
+    /// is what the default returns.
+    ///
+    /// A baseline records the same hash in
+    /// [`Baseline::context_hash`](crate::preprocessing::baseline::Baseline::context_hash),
+    /// so a caller reading cached output can ask whether the render it
+    /// is about to trust was produced from the inputs in effect today.
+    /// [`PreprocessMode::Passive`] does exactly that: a template whose
+    /// `vars` changed since the last `dodot up` renders differently
+    /// now, so its cached output is listed in
+    /// [`PreprocessResult::unrendered`](crate::preprocessing::pipeline::PreprocessResult::unrendered)
+    /// rather than read as this pack's current claims.
+    ///
+    /// Computing it must stay free of side effects — no template
+    /// evaluation, no secret-provider calls — because Passive callers
+    /// ask for it (`docs/proposals/secrets.lex` §7.4). Secret *values*
+    /// are therefore outside it: they are resolved during rendering,
+    /// and a rotated secret that changes a rendered target is drift no
+    /// passive read can detect. So is a template's `env.*` namespace,
+    /// which `preprocessing-pipeline.lex` §6.4 defines as live-read and
+    /// deliberately outside cache invalidation; values that should
+    /// invalidate a render belong in `[preprocessor.template.vars]`.
+    fn context_hash(&self) -> Option<[u8; 32]> {
+        None
+    }
 
     /// Whether this preprocessor participates in the reverse-merge
     /// pipeline. Reverse-merge is the cache-backed flow that lets

@@ -236,6 +236,9 @@ impl Fs for StagedStat {
     fn mkdir_all(&self, path: &Path) -> Result<()> {
         self.inner.mkdir_all(path)
     }
+    fn mkdir_exclusive(&self, path: &Path) -> Result<()> {
+        self.inner.mkdir_exclusive(path)
+    }
     fn symlink(&self, original: &Path, link: &Path) -> Result<()> {
         self.inner.symlink(original, link)
     }
@@ -262,6 +265,9 @@ impl Fs for StagedStat {
     }
     fn rename(&self, from: &Path, to: &Path) -> Result<()> {
         self.inner.rename(from, to)
+    }
+    fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()> {
+        self.inner.rename_noreplace(from, to)
     }
     fn copy_file(&self, from: &Path, to: &Path) -> Result<()> {
         self.inner.copy_file(from, to)
