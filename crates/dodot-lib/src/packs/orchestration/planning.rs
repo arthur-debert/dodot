@@ -196,7 +196,39 @@ pub fn plan_pack(
         ctx.paths.as_ref(),
         ctx.command_runner.clone(),
     )?;
-    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode)
+    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode, &[])
+}
+
+/// [`plan_pack`], with the pack's own entries at `superseded` left out
+/// of the scan.
+///
+/// `adopt` is the caller: to decide whether the pack it is about to
+/// publish into would collide with another pack, it has to plan the
+/// tree that publication *will* leave, not the one on disk now. Under
+/// `--force` those differ — an entry the run replaces still claims its
+/// old deployment target, and planning it would refuse the run over a
+/// conflict the replacement removes. Passing the in-pack paths the run
+/// replaces drops them here, and the caller plans the prepared
+/// replacements separately and composes the two.
+///
+/// `superseded` holds paths relative to the pack root. A path that
+/// names a directory excludes everything under it, because an adopted
+/// directory replaces the whole subtree.
+pub fn plan_pack_without(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+    mode: crate::preprocessing::PreprocessMode,
+    superseded: &[PathBuf],
+) -> Result<PackPlan> {
+    let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+    let root_config = ctx.config_manager.root_config()?;
+    let (registry, _secret_registry) = crate::preprocessing::default_registry(
+        &pack_config.preprocessor,
+        &root_config.secret,
+        ctx.paths.as_ref(),
+        ctx.command_runner.clone(),
+    )?;
+    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode, superseded)
 }
 
 /// Resolve the gate table for a pack: built-in seed plus any
@@ -369,6 +401,7 @@ fn collect_pack_intents_inner(
         pack_config,
         preprocessors,
         crate::preprocessing::PreprocessMode::Active,
+        &[],
     )
     .map(|p| p.intents)
 }
@@ -387,6 +420,7 @@ fn plan_pack_inner(
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
     mode: crate::preprocessing::PreprocessMode,
+    superseded: &[PathBuf],
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
     let gates = build_gate_table(pack_config)?;
@@ -422,6 +456,21 @@ fn plan_pack_inner(
     let scanner = Scanner::new(ctx.fs.as_ref());
     let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
+
+    // Phase 1.1: Drop entries a caller has told us this plan supersedes
+    // — see `plan_pack_without`. Done on the walked paths, before the
+    // basename gates in phase 1.5 rewrite any `relative_path`, so the
+    // exclusion is matched against what is actually on disk.
+    let entries = if superseded.is_empty() {
+        entries
+    } else {
+        let kept: Vec<_> = entries
+            .into_iter()
+            .filter(|e| !superseded.iter().any(|s| e.relative_path.starts_with(s)))
+            .collect();
+        debug!(pack = %pack.name, entries = kept.len(), "dropped superseded entries");
+        kept
+    };
 
     // Phase 1.5: Apply the remaining gate sources before preprocessing
     // — see `filter_pre_preprocess_gates` for why they belong here.

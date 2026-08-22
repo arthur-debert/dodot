@@ -165,6 +165,7 @@ pub(super) enum FsOp<'a> {
     MkdirAll { path: &'a Path },
     MkdirExclusive { path: &'a Path },
     Symlink { original: &'a Path, link: &'a Path },
+    RemoveDirEmpty { path: &'a Path },
 }
 
 /// Wraps a real filesystem and runs a hook immediately before each
@@ -245,6 +246,10 @@ impl Fs for InterposedFs {
     }
     fn remove_dir_all(&self, path: &Path) -> Result<()> {
         self.inner.remove_dir_all(path)
+    }
+    fn remove_dir_empty(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::RemoveDirEmpty { path })?;
+        self.inner.remove_dir_empty(path)
     }
     fn exists(&self, path: &Path) -> bool {
         self.inner.exists(path)

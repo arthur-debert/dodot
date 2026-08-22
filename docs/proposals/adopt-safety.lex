@@ -209,6 +209,8 @@ Proposal: Safe Directory Adoption and Recoverable Publication
 
         Publishing into an existing pack is a sequence: create the intermediate directories the plan needs, then, per entry, displace any existing destination into the preparation directory and `rename` the prepared entry into place. Each individual entry's appearance is atomic. The sequence is not: it is *recoverable*, meaning adopt undoes its own renames on failure — displaced content renamed back, published entries removed, intermediate directories adopt created and left empty removed — and it reports what it restored. Adopt does not promise portable whole-directory atomic replacement for an existing pack, and does not promise crash-atomicity: a process killed mid-sequence leaves the pack in an intermediate state with the preparation directory still on disk. The fixed name prefix makes that leftover identifiable, and no later adopt run publishes from a leftover or deletes one.
 
+        A rollback step can fail in turn — the rename that puts a displaced destination back hits the same I/O or permission error that stopped publication. Adopt does not report those entries as restored. It names them, says where the content it could not move is, and keeps the preparation directory rather than discarding what is then the only copy of a destination's pre-adopt content. §5.6 does not run for such a run.
+
         Displaced content is kept until §5.6, not discarded here.
 
     5.5. Replace Sources
@@ -243,6 +245,7 @@ Proposal: Safe Directory Adoption and Recoverable Publication
         | `--dry-run` stop (§5.3) | untouched; preparation directory removed | untouched |
         | New-pack publication (§5.4) | pack does not exist | untouched |
         | Existing-pack publication (§5.4) | pre-adopt content restored; report names what was restored | untouched |
+        | A rollback step of the above (§5.4) | the entries it could restore are restored; the rest named with where their content is, preparation directory kept | untouched |
         | One source replacement (§5.5) | that entry's pre-adopt content restored; nothing §5.4 created for it left behind | that source untouched; every other planned source attempted, and replaced or reported |
         | Process killed during §5.4 | intermediate; preparation directory left with displaced content | untouched |
         | Process killed during §5.5 | published | at most one source at an adjacent backup path |
