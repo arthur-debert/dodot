@@ -95,9 +95,10 @@
 //!    publication created and this leaves empty removed, and a pack
 //!    this run published removed when no source was replaced at all.
 //!    A step of that can fail in turn — or find a path another writer
-//!    has taken over — and then nothing is deleted to get past it: the
-//!    entry is named along with the path its content is at, exactly as
-//!    a publication rollback does it.
+//!    has taken over, or a published directory another writer has
+//!    edited inside ([`still_published`]) — and then nothing is
+//!    deleted to get past it: the entry is named along with the path
+//!    its content is at, exactly as a publication rollback does it.
 //!    Any failed planned source makes the command exit nonzero
 //!    ([`PackStatusResult::failed`](crate::commands::PackStatusResult::failed)),
 //!    while the result still renders every source, replaced and failed
@@ -823,13 +824,9 @@ impl Preparation {
         plans: &[AdoptPlan],
         fs: &dyn Fs,
     ) -> Result<Published> {
-        let prepared_ids: Vec<Option<FileId>> = plans
+        let prepared_ids: Vec<Option<PreparedId>> = plans
             .iter()
-            .map(|plan| {
-                fs.lstat(&self.pack_root.join(&plan.in_pack))
-                    .ok()
-                    .map(|m| m.id)
-            })
+            .map(|plan| prepared_identity(fs, &self.pack_root.join(&plan.in_pack)))
             .collect();
 
         fs.rename_noreplace(&self.pack_root, pack_path)
@@ -973,7 +970,7 @@ impl Preparation {
             entry.displaced = Some(displaced);
         }
 
-        let prepared_id = fs.lstat(&entry.prepared).ok().map(|m| m.id);
+        let prepared_id = prepared_identity(fs, &entry.prepared);
         let result = fs.rename_noreplace(&entry.prepared, &plan.pack_dest);
         entry.published = result.is_ok();
         if entry.published {
@@ -1037,18 +1034,58 @@ struct PublishedEntry {
     /// Whether the rename into `final_path` succeeded. A recorded entry
     /// with this `false` displaced something and then failed to publish.
     published: bool,
-    /// Which entry publication moved to `final_path`, read from
-    /// `prepared` just before the rename that carried the id across
-    /// with it.
+    /// Which entry publication moved to `final_path`, and what it
+    /// carried inside it, read from `prepared` just before the rename.
     ///
     /// A rollback compares it against what stands at `final_path` now,
     /// and moves that content only while the two agree: an in-pack
     /// path can hold something else by then — another process's file
-    /// at the same path — and sweeping that into the preparation
-    /// directory hands it to [`Preparation::discard`]. `None` is the
-    /// answer when the id could not be read, and reads as "not
-    /// provably ours" for the same reason.
-    identity: Option<FileId>,
+    /// at the same path, or an edit inside a directory this run
+    /// published — and sweeping that into the preparation directory
+    /// hands it to [`Preparation::discard`]. `None` is the answer when
+    /// the identity could not be read, and reads as "not provably
+    /// ours" for the same reason.
+    identity: Option<PublishedId>,
+}
+
+/// What a rollback has to recognise at an in-pack path before it may
+/// move or remove what stands there: the entry publication put there,
+/// and — when that entry is a directory — everything inside it.
+///
+/// The entry's own id does not answer the question for a directory.
+/// Writing to a file nested inside one changes that file's ctime and
+/// leaves the directory's own `dev`/`ino`/ctime exactly as publication
+/// left them, so an identity that stopped at the top of the tree would
+/// let a recovery delete a concurrent writer's edit — see
+/// [`still_published`], which is where the two halves are checked.
+struct PublishedId {
+    /// The entry's own id, read at `final_path` after the rename that
+    /// published it.
+    entry: FileId,
+    /// Every descendant, by path relative to the entry, with the id it
+    /// had in the prepared tree. Empty for a file or a symlink.
+    ///
+    /// Recorded from the preparation directory rather than from the
+    /// pack, and still true of the pack afterwards: a rename restamps
+    /// only the entry it moves, so a descendant carries the same
+    /// `dev`/`ino`/ctime across publication. Reading them there is the
+    /// safer of the two, because the preparation directory is this
+    /// run's alone — nothing another process wrote can be recorded in
+    /// it as this run's own.
+    descendants: Vec<(PathBuf, FileId)>,
+}
+
+/// The same identity read at the path publication is about to move the
+/// entry *from*.
+///
+/// Separate from [`PublishedId`] because the two disagree about the
+/// entry's own id and agree about everything below it: the rename
+/// gives the entry a new ctime, so [`published_identity`] re-reads
+/// that one at the destination and cross-checks it against this
+/// `dev`/`ino`, while the descendants carry over untouched.
+struct PreparedId {
+    entry: FileId,
+    descendants: Vec<(PathBuf, FileId)>,
 }
 
 /// What a rollback reversed, and what it could not.
@@ -1212,12 +1249,15 @@ enum Publication {
     /// pack predates the run and the last failed source takes the pack
     /// directory with it.
     ///
-    /// `published` is the id each planned entry had inside the
-    /// prepared tree, which the one rename carried into the pack with
-    /// it. A recovery removing such an entry checks it first: "nothing
-    /// here predates the run" is true of the tree publication moved,
-    /// and says nothing about a path another process has written since.
-    NewPack { published: HashMap<PathBuf, FileId> },
+    /// `published` is the [`PublishedId`] of each planned entry —
+    /// what it was inside the prepared tree, which the one rename
+    /// carried into the pack with it, contents and all. A recovery
+    /// removing such an entry checks it first: "nothing here predates
+    /// the run" is true of the tree publication moved, and says
+    /// nothing about a path another process has written since.
+    NewPack {
+        published: HashMap<PathBuf, PublishedId>,
+    },
     /// Entries published one at a time into a pack that already
     /// existed, with the record of what each one displaced and which
     /// intermediate directories the sequence created.
@@ -2374,7 +2414,7 @@ fn restore_failed_entry(
         // else is left standing and reported — the same answer
         // [`vacate`] gives for a pack that already existed.
         Publication::NewPack { published } => {
-            if still_published(fs, &plan.pack_dest, published.get(&plan.in_pack).copied()) {
+            if still_published(fs, &plan.pack_dest, published.get(&plan.in_pack)) {
                 remove_best_effort(fs, &plan.pack_dest);
             }
             // A removal that failed, or one this declined to make,
@@ -2449,51 +2489,140 @@ fn restore_failed_entry(
 /// caller about to rename a displaced destination back needs to know
 /// the path is actually free.
 fn vacate(fs: &dyn Fs, entry: &PublishedEntry) -> bool {
-    if still_published(fs, &entry.final_path, entry.identity) {
+    if still_published(fs, &entry.final_path, entry.identity.as_ref()) {
         let _ = fs.rename_noreplace(&entry.final_path, &entry.prepared);
     }
     !occupied(fs, &entry.final_path)
 }
 
-/// The id to record for an entry publication has just moved to
-/// `final_path`, given `prepared` — the id it had at the path it came
-/// from, read before the move.
+/// The identity to record for an entry publication has just moved to
+/// `final_path`, given `prepared` — the [`PreparedId`] read at the
+/// path it came from, before the move.
 ///
-/// Read at the destination, because a `rename` stamps the entry it
-/// moves with a new ctime and the recorded id has to describe the
-/// entry as it now sits in the pack. Read *back* against `prepared`,
-/// because a destination read after the rename is a path another
-/// process can have taken in between, and recording that as this
-/// run's own is what would license a recovery to destroy it. The two
-/// reads agreeing on `dev`/`ino` is what says the path still holds
-/// the entry the rename moved.
+/// The entry's own id is read at the destination, because a `rename`
+/// stamps the entry it moves with a new ctime and the recorded id has
+/// to describe the entry as it now sits in the pack. Read *back*
+/// against `prepared`, because a destination read after the rename is
+/// a path another process can have taken in between, and recording
+/// that as this run's own is what would license a recovery to destroy
+/// it. The two reads agreeing on `dev`/`ino` is what says the path
+/// still holds the entry the rename moved.
+///
+/// The descendants come over from `prepared` unchanged: the rename
+/// restamps only the entry it moves, so what it recorded of the tree
+/// inside is as true at `final_path` as it was in the preparation
+/// directory.
 ///
 /// `None` whenever that cannot be established, which reads downstream
 /// as "not provably ours" and leaves the path alone.
-fn published_identity(fs: &dyn Fs, prepared: Option<FileId>, final_path: &Path) -> Option<FileId> {
+fn published_identity(
+    fs: &dyn Fs,
+    prepared: Option<PreparedId>,
+    final_path: &Path,
+) -> Option<PublishedId> {
     let prepared = prepared?;
     let published = fs.lstat(final_path).ok()?.id;
-    published.same_entry(&prepared).then_some(published)
+    published
+        .same_entry(&prepared.entry)
+        .then_some(PublishedId {
+            entry: published,
+            descendants: prepared.descendants,
+        })
 }
 
-/// Whether `path` still holds the entry publication put there, whose
-/// id at that moment is `published`.
+/// Read the identity of the entry sitting at `prepared`, before the
+/// rename that publishes it.
+///
+/// `None` when any part of it is unreadable. That leaves the entry
+/// with no recorded identity, which reads downstream as "not provably
+/// ours" and puts it out of reach of every recovery step that moves or
+/// removes.
+fn prepared_identity(fs: &dyn Fs, prepared: &Path) -> Option<PreparedId> {
+    Some(PreparedId {
+        entry: fs.lstat(prepared).ok()?.id,
+        descendants: subtree_ids(fs, prepared)?,
+    })
+}
+
+/// Every entry below `root`, by path relative to it, paired with its
+/// id, sorted by path.
+///
+/// Sorted so that two reads of an unchanged tree compare equal
+/// whatever order the filesystem lists names in.
+///
+/// A `root` that is not a directory has no descendants and gives an
+/// empty list. `None` whenever any part of the walk fails: a tree
+/// whose state cannot be read is one a recovery cannot call its own,
+/// the same answer an unreadable entry gives.
+///
+/// A symlink is recorded by its own id and not followed. Descending
+/// through one would read a tree outside the entry, and adopt copied
+/// the link rather than what it points at.
+fn subtree_ids(fs: &dyn Fs, root: &Path) -> Option<Vec<(PathBuf, FileId)>> {
+    let mut ids = Vec::new();
+    collect_subtree_ids(fs, root, PathBuf::new(), &mut ids)?;
+    ids.sort_by(|a, b| a.0.cmp(&b.0));
+    Some(ids)
+}
+
+/// Append every entry below `path` to `into`, naming each by
+/// `relative` — its path from the tree root the walk started at. The
+/// root itself is not appended: its id is recorded separately, because
+/// the rename that publishes it gives it a new ctime and the ids in
+/// here survive that rename untouched.
+fn collect_subtree_ids(
+    fs: &dyn Fs,
+    path: &Path,
+    relative: PathBuf,
+    into: &mut Vec<(PathBuf, FileId)>,
+) -> Option<()> {
+    let meta = fs.lstat(path).ok()?;
+    if !relative.as_os_str().is_empty() {
+        into.push((relative.clone(), meta.id));
+    }
+    if meta.is_dir && !meta.is_symlink {
+        for entry in fs.read_dir(path).ok()? {
+            collect_subtree_ids(fs, &entry.path, relative.join(&entry.name), into)?;
+        }
+    }
+    Some(())
+}
+
+/// Whether `path` still holds the entry publication put there, and —
+/// for a directory — the content it put inside it, as recorded in
+/// `published`.
 ///
 /// `false` whenever that cannot be established — the id was
-/// unreadable at publication, the path is unreadable now, or the two
-/// ids differ. Each of those means a recovery about to move the path's
+/// unreadable at publication, the path is unreadable now, the two ids
+/// differ, or the tree below the path is no longer the one publication
+/// carried in. Each of those means a recovery about to move the path's
 /// content cannot say the content is this run's, and the safe answer
 /// is the one that moves nothing.
+///
+/// The tree comparison is what makes the answer true of a directory
+/// rather than only of its top entry. Writing to a file nested inside
+/// an adopted directory changes that file's ctime and leaves the
+/// directory's own `dev`/`ino`/ctime as publication left them, so a
+/// check that read only the top would answer "still ours" for a tree
+/// another process had edited — and the caller would then remove it
+/// recursively, or rename it into the preparation directory that step
+/// 6 deletes. Either way the concurrent writer's content is gone,
+/// which is the one thing `adopt-safety.lex` §5.4 says a recovery
+/// never does.
 ///
 /// A check, not a lock: another process can replace the path between
 /// this `lstat` and the caller's rename. It converts the silent case
 /// — recovery assumes the path is its own and destroys what is there
 /// — into the reported one, which is as far as POSIX renames reach.
-fn still_published(fs: &dyn Fs, path: &Path, published: Option<FileId>) -> bool {
-    match (published, fs.lstat(path)) {
-        (Some(published), Ok(now)) => published == now.id,
-        _ => false,
-    }
+fn still_published(fs: &dyn Fs, path: &Path, published: Option<&PublishedId>) -> bool {
+    let Some(published) = published else {
+        return false;
+    };
+    let Ok(now) = fs.lstat(path) else {
+        return false;
+    };
+    published.entry == now.id
+        && subtree_ids(fs, path).is_some_and(|current| current == published.descendants)
 }
 
 /// Put displaced content back at `final_path`, and say whether it

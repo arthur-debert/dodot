@@ -6009,3 +6009,157 @@ fn a_recovery_that_cannot_remove_a_new_packs_entry_names_it() {
     );
     assert_stranded_failure_note(&result, &source);
 }
+
+/// A directory publication put in a new pack is this run's to remove —
+/// contents included, and only while the contents are still the ones it
+/// carried in.
+///
+/// Writing to a file nested inside an adopted directory changes that
+/// file's ctime and leaves the directory's own `dev`/`ino`/ctime alone,
+/// so an identity check that stopped at the top of the tree would call
+/// the directory unchanged and remove it recursively — deleting a
+/// concurrent writer's edit, which is exactly what §5.4 says a recovery
+/// never does. The recovery leaves the whole directory standing and
+/// names the entry instead.
+#[test]
+fn a_recovery_leaves_a_new_packs_directory_a_writer_edited_inside() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/lua/init.lua", "-- INIT")
+        .home_file(".config/nvim/lua/plugins/spec.lua", "-- SPEC")
+        .build();
+
+    let source = env.home.join(".config/nvim/lua");
+    let published = env.dotfiles_root.join("nvim/lua");
+    let nested = published.join("plugins/spec.lua");
+    let watched = source.clone();
+    let edited = nested.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if is_source_replacement(&op, &watched) {
+            // The pack is published by now; another process edits a
+            // file nested inside the published directory, in place, so
+            // nothing above it in the tree changes. Then the source
+            // replacement fails and the recovery runs.
+            std::fs::write(&edited, b"-- SOMEONE ELSE").unwrap();
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        /*force=*/ false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+
+    // The source is untouched, and the published directory is still
+    // standing with the concurrent write in it.
+    assert!(!env.fs.is_symlink(&source));
+    env.assert_regular_file(&source.join("init.lua"), "-- INIT");
+    env.assert_regular_file(&source.join("plugins/spec.lua"), "-- SPEC");
+    env.assert_file_contents(&nested, "-- SOMEONE ELSE");
+    env.assert_file_contents(&published.join("init.lua"), "-- INIT");
+
+    let named: Vec<&String> = result
+        .notes
+        .iter()
+        .map(|n| &n.body)
+        .filter(|t| t.contains("could not put back"))
+        .collect();
+    assert_eq!(named.len(), 1, "got: {named:?}");
+    assert!(
+        named[0].contains("lua") && named[0].contains(&published.display().to_string()),
+        "the note names the entry and the path its content is at: {}",
+        named[0]
+    );
+    assert_stranded_failure_note(&result, &source);
+}
+
+/// The same case for a pack that already existed, where the recovery
+/// vacates by renaming the entry into the preparation directory that
+/// step 6 then deletes.
+///
+/// The rename is not the deletion, but the discard behind it is: a
+/// directory swept in there with a concurrent writer's edit inside is
+/// destroyed a step later, and the run reports the entry as put back.
+/// So the same tree check gates the rename, and the entry stays where
+/// it is, named in the report, with the preparation directory kept.
+#[test]
+fn a_recovery_leaves_an_existing_packs_directory_a_writer_edited_inside() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("keep.lua", "-- keep")
+        .done()
+        .home_file(".config/nvim/lua/init.lua", "-- INIT")
+        .home_file(".config/nvim/lua/plugins/spec.lua", "-- SPEC")
+        .build();
+
+    let pack = env.dotfiles_root.join("nvim");
+    let source = env.home.join(".config/nvim/lua");
+    let published = pack.join("lua");
+    let nested = published.join("plugins/spec.lua");
+    let watched = source.clone();
+    let edited = nested.clone();
+    let fs = super::support::InterposedFs::wrap(env.fs.clone(), move |op| {
+        if is_source_replacement(&op, &watched) {
+            std::fs::write(&edited, b"-- SOMEONE ELSE").unwrap();
+            return Err(crate::DodotError::Other(
+                "injected replacement failure".into(),
+            ));
+        }
+        Ok(())
+    });
+
+    let ctx = make_ctx_with_fs(&env, fs);
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        /*force=*/ false,
+        false,
+        false,
+        None,
+        &ctx,
+    )
+    .unwrap();
+
+    assert_eq!(result.exit_code(), 1);
+
+    assert!(!env.fs.is_symlink(&source));
+    env.assert_regular_file(&source.join("plugins/spec.lua"), "-- SPEC");
+    env.assert_file_contents(&nested, "-- SOMEONE ELSE");
+    env.assert_file_contents(&published.join("init.lua"), "-- INIT");
+    env.assert_file_contents(&pack.join("keep.lua"), "-- keep");
+
+    // Kept, because the recovery could not put this entry back: the
+    // report names where its content is and the discard that would have
+    // taken the directory with it does not run.
+    let kept = preparation_dirs(&env);
+    assert_eq!(
+        kept.len(),
+        1,
+        "the staging directory is kept, got: {kept:?}"
+    );
+
+    let named: Vec<&String> = result
+        .notes
+        .iter()
+        .map(|n| &n.body)
+        .filter(|t| t.contains("could not put back"))
+        .collect();
+    assert_eq!(named.len(), 1, "got: {named:?}");
+    assert!(
+        named[0].contains("lua") && named[0].contains(&published.display().to_string()),
+        "the note names the entry and the path its content is at: {}",
+        named[0]
+    );
+    assert_stranded_failure_note(&result, &source);
+}
