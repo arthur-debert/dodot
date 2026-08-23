@@ -303,7 +303,11 @@ pub(crate) fn hex_sha256(bytes: &[u8]) -> String {
     hex_encode_32(&hasher.finalize().into())
 }
 
-fn hex_encode_32(bytes: &[u8; 32]) -> String {
+/// 32 raw bytes → 64-char lowercase hex. `pub(crate)` so callers
+/// holding a context hash as bytes can compare it against the
+/// hex-encoded [`Baseline::context_hash`] without re-deriving the
+/// encoding.
+pub(crate) fn hex_encode_32(bytes: &[u8; 32]) -> String {
     let mut out = String::with_capacity(64);
     for b in bytes {
         out.push(hex_nibble(b >> 4));

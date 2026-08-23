@@ -59,6 +59,7 @@ use serde::Serialize;
 
 use crate::fs::Fs;
 use crate::handlers::HandlerConfig;
+use crate::rules::matched_ignore_pattern;
 use crate::{DodotError, Result};
 
 /// A dotfile pack — a directory of related configuration files.
@@ -199,8 +200,10 @@ pub struct DiscoveredPacks {
 /// Scan the dotfiles root once, partitioning pack-shaped directories into
 /// active packs and those skipped via `.dodotignore`.
 ///
-/// Directories filtered out entirely (hidden, matching `ignore_patterns`,
-/// invalid names) appear in neither list — they aren't pack-shaped.
+/// Directories filtered out entirely appear in neither list — they
+/// aren't pack-shaped. [`classify_pack_dir`] holds that predicate, so a
+/// caller deciding whether a *prospective* pack directory would be read
+/// asks the same question this scan answers.
 ///
 /// Both lists are returned sorted lexicographically by on-disk
 /// directory name. That sort order is the contract that drives every
@@ -230,28 +233,18 @@ pub fn scan_packs(
 
         let name = &entry.name;
 
-        if name.starts_with('.') && name != ".config" {
-            continue;
-        }
-
-        if is_ignored(name, ignore_patterns) {
-            continue;
-        }
-
-        if !is_valid_pack_name(name) {
-            continue;
-        }
-
-        // Reject pack directories that look like an ordering prefix
-        // but have no name after the separator (e.g. `010-`, `010_`).
-        // Done here so the error carries the offending path.
-        if parse_prefix(name).is_err() {
-            return Err(DodotError::PackInvalid {
-                name: name.clone(),
-                reason:
-                    "directory looks like an ordering prefix but has no name after the separator"
-                        .into(),
-            });
+        match classify_pack_dir(name, ignore_patterns) {
+            // An empty-stem prefix is the one rule that fails the scan
+            // instead of skipping the directory. Reported here so the
+            // error carries the offending name.
+            Some(PackDirSkip::EmptyStem) => {
+                return Err(DodotError::PackInvalid {
+                    name: name.clone(),
+                    reason: EMPTY_STEM_REASON.into(),
+                })
+            }
+            Some(_) => continue,
+            None => {}
         }
 
         if fs.exists(&entry.path.join(".dodotignore")) {
@@ -294,19 +287,66 @@ pub fn discover_packs(
     Ok(scan_packs(fs, dotfiles_root, ignore_patterns)?.packs)
 }
 
-/// Check if a name matches any ignore pattern.
-fn is_ignored(name: &str, patterns: &[String]) -> bool {
-    for pattern in patterns {
-        if let Ok(glob) = glob::Pattern::new(pattern) {
-            if glob.matches(name) {
-                return true;
-            }
-        }
-        if name == pattern {
-            return true;
-        }
+/// Why [`scan_packs`] does not read a dotfiles-root directory as a pack.
+///
+/// Every variant but [`PackDirSkip::EmptyStem`] makes the scan pass the
+/// directory over in silence: it is not a pack, and no `dodot up` or
+/// `dodot status` ever reads what is inside it. `EmptyStem` instead
+/// fails the whole scan, because a name that looks like an ordering
+/// prefix with nothing after the separator is a naming mistake to
+/// report rather than a directory to skip.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PackDirSkip {
+    /// Matched the root `[pack] ignore` list, carrying the pattern that
+    /// matched.
+    Ignored(String),
+    /// Dot-prefixed, and not the `.config` exception.
+    Hidden,
+    /// Held a character a pack directory name may not contain.
+    InvalidName,
+    /// An ordering prefix with no name after the separator (`010-`).
+    EmptyStem,
+}
+
+/// What a `PackInvalid` empty-stem refusal says, shared by the scan and
+/// by callers that check a prospective pack name ahead of the scan.
+pub const EMPTY_STEM_REASON: &str =
+    "directory looks like an ordering prefix but has no name after the separator";
+
+/// The rule that keeps [`scan_packs`] from reading `name` as a pack, or
+/// `None` when the scan reads it.
+///
+/// This is the predicate the scan itself applies, so a caller that has
+/// to decide whether a *prospective* pack directory would be read —
+/// `adopt`, publishing a pack it inferred from a source path — asks the
+/// same question the scan will answer later instead of restating the
+/// rules and drifting from them.
+///
+/// `ignore_patterns` is the root `[pack] ignore` list, the one every
+/// [`scan_packs`] caller passes: pack-level lists live inside a pack and
+/// cannot decide whether that pack is discovered.
+///
+/// Rules are tested ignore-first so a name that is both hidden and
+/// ignored reports the pattern a user can edit rather than the rule they
+/// cannot. Which rule a doubly-matched name reports only changes the
+/// message; the scan skips it either way. `EmptyStem` stays last because
+/// it is the one verdict that is not a skip: a `010-` that a preceding
+/// rule already excluded is silently absent rather than fatal, and that
+/// stays true here.
+pub fn classify_pack_dir(name: &str, ignore_patterns: &[String]) -> Option<PackDirSkip> {
+    if let Some(pattern) = matched_ignore_pattern(name, ignore_patterns) {
+        return Some(PackDirSkip::Ignored(pattern.to_string()));
     }
-    false
+    if name.starts_with('.') && name != ".config" {
+        return Some(PackDirSkip::Hidden);
+    }
+    if !is_valid_pack_name(name) {
+        return Some(PackDirSkip::InvalidName);
+    }
+    if parse_prefix(name).is_err() {
+        return Some(PackDirSkip::EmptyStem);
+    }
+    None
 }
 
 /// Validate that a pack name contains only safe characters.

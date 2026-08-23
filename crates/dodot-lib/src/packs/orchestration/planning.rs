@@ -11,7 +11,7 @@
 //! the runner functions there then take the resulting intents and feed
 //! them to the executor.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tracing::{debug, info};
 
@@ -98,6 +98,49 @@ pub struct PackPlan {
     /// Ephemeral: an availability is a fact about this machine right
     /// now and is never written to the datastore.
     pub provision_unavailable: Vec<ProvisionUnavailable>,
+    /// Files whose current deployment claims this plan does not
+    /// contain, because passive preprocessing surfaced them without a
+    /// current render and their handler reads its targets out of that
+    /// render. See [`UnresolvedClaim`].
+    ///
+    /// Always empty for an Active plan. A caller that only executes
+    /// the plan can ignore it; a caller that reads the plan as
+    /// evidence about a pack — adopt's cross-pack conflict analysis —
+    /// must treat a non-empty list as "the answer is unknown," not as
+    /// "there is nothing here."
+    pub unresolved_claims: Vec<UnresolvedClaim>,
+}
+
+/// One matched file whose deployment claims are missing from a
+/// [`PackPlan`], rather than absent from the pack.
+///
+/// Produced only in [`PreprocessMode::Passive`](crate::preprocessing::PreprocessMode::Passive),
+/// for the entries it lists in
+/// [`PreprocessResult::unrendered`](crate::preprocessing::pipeline::PreprocessResult::unrendered):
+/// a preprocessor entry dodot has never rendered, which surfaces as a
+/// placeholder carrying no bytes, and one whose cached render was
+/// produced from source bytes or a rendering context that have since
+/// changed, which carries the *previous* render's bytes. A handler whose
+/// [`targets_from_content`](crate::handlers::Handler::targets_from_content)
+/// is true — `externals`, whose every target is a field inside
+/// `externals.toml` — reads its claims out of those bytes, so for the
+/// first it emits no intent at all and for the second it emits the
+/// targets the pack claimed before the edit. Either way the plan is
+/// not what this pack deploys next.
+///
+/// The remedy is one `dodot up` on the owning pack: it renders the
+/// current source, writes the baseline, and every later passive plan
+/// reads the claims from that baseline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnresolvedClaim {
+    /// The pack the file belongs to.
+    pub pack: String,
+    /// The handler whose claims for this file the plan does not have.
+    pub handler: String,
+    /// The source file whose current contents are unrendered,
+    /// pack-relative — the path to name when telling a user what to
+    /// render, e.g. `externals.toml.tmpl`.
+    pub source: String,
 }
 
 /// One file dropped from a run by `--no-provision`, carrying what the
@@ -153,7 +196,73 @@ pub fn plan_pack(
         ctx.paths.as_ref(),
         ctx.command_runner.clone(),
     )?;
-    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode)
+    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode, &[])
+}
+
+/// [`plan_pack`], with the pack's own entries at `superseded` left out
+/// of the scan and its configuration taken from `config_at` rather
+/// than from the directory being scanned.
+///
+/// `adopt` is the caller: to decide whether the pack it is about to
+/// publish into would collide with another pack, it has to plan the
+/// tree that publication *will* leave, not the one on disk now. Under
+/// `--force` those differ — an entry the run replaces still claims its
+/// old deployment target, and planning it would refuse the run over a
+/// conflict the replacement removes. Passing the in-pack paths the run
+/// replaces drops them here, and the caller plans the prepared
+/// replacements separately and composes the two.
+///
+/// `superseded` holds paths relative to the pack root **as they sit on
+/// disk**, `_<label>/` gate segments included — the paths publication
+/// writes, not the rewritten ones a passing directory gate produces
+/// (see [`is_superseded`]). A path that names a directory excludes
+/// everything under it, because an adopted directory replaces the whole
+/// subtree.
+///
+/// A path *nested inside* a top-level entry excludes nothing, and that
+/// is the tree publication leaves rather than an approximation of it:
+/// replacing `lua/plugins/init.lua` leaves the `lua` directory in the
+/// pack with the rest of its contents, so the entry has to stay in the
+/// plan. What it claims does not change across the replacement either.
+/// Only the top-level entries a pack walk returns reach the rule
+/// matcher and the handlers — a directory entry is handed to its
+/// handler whole, and preprocessing partitions the same top-level list
+/// rather than descending — so a nested file produces no claim of its
+/// own. The claims the entry does produce are derived from paths, which
+/// the replacement occupies identically. The one handler that reads its
+/// targets out of file content instead
+/// ([`Handler::targets_from_content`](crate::handlers::Handler::targets_from_content))
+/// therefore only ever reads a top-level file, which `superseded` names
+/// directly.
+///
+/// `config_at` is the pack path whose configuration governs the scan:
+/// the rules, gates, `[pack] ignore` list and preprocessor settings
+/// [`ConfigManager::config_for_pack`](crate::config::ConfigManager::config_for_pack)
+/// resolves there decide what the walk reads and how it reads it. It
+/// is `pack.path` for a pack on disk. It is not for the prepared tree,
+/// which sits in adopt's staging directory and carries no
+/// `.dodot.toml` of its own: resolving configuration from that path
+/// answers with the root layer and plans a pack nobody has. A
+/// destination pack whose `[pack] ignore` replaces the root list would
+/// then have its prospective entries dropped here while the scan of
+/// the real pack keeps them — and the cross-pack conflict this plan
+/// exists to find can be among exactly those entries.
+pub fn plan_pack_without(
+    pack: &Pack,
+    config_at: &Path,
+    ctx: &ExecutionContext,
+    mode: crate::preprocessing::PreprocessMode,
+    superseded: &[PathBuf],
+) -> Result<PackPlan> {
+    let pack_config = ctx.config_manager.config_for_pack(config_at)?;
+    let root_config = ctx.config_manager.root_config()?;
+    let (registry, _secret_registry) = crate::preprocessing::default_registry(
+        &pack_config.preprocessor,
+        &root_config.secret,
+        ctx.paths.as_ref(),
+        ctx.command_runner.clone(),
+    )?;
+    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode, superseded)
 }
 
 /// Resolve the gate table for a pack: built-in seed plus any
@@ -314,6 +423,28 @@ pub(crate) fn filter_pre_preprocess_gates(
     Ok(out)
 }
 
+/// Does `entry` sit at one of the pack paths the caller's plan
+/// replaces, or inside one of them?
+///
+/// The comparison is against the entry's path *as it sits in the pack*
+/// — `absolute_path` minus the pack root — not against
+/// `relative_path`, which the walk has already rewritten wherever a
+/// directory gate passed: a `_darwin/externals.toml` on a Darwin host
+/// surfaces as `externals.toml`, while the caller names the path
+/// publication writes, `_darwin/externals.toml`. Comparing the
+/// rewritten form would keep every entry an `--only-os` adoption
+/// replaces, planning both the old claims and the new ones. Comparing
+/// the on-disk path also drops the whole subtree of a gate directory
+/// the caller supersedes wholesale, since each child's on-disk path
+/// still carries the `_<label>/` segment.
+fn is_superseded(pack_path: &Path, entry: &rules::PackEntry, superseded: &[PathBuf]) -> bool {
+    let in_pack = entry
+        .absolute_path
+        .strip_prefix(pack_path)
+        .unwrap_or(entry.absolute_path.as_path());
+    superseded.iter().any(|s| in_pack.starts_with(s))
+}
+
 fn collect_pack_intents_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
@@ -326,6 +457,7 @@ fn collect_pack_intents_inner(
         pack_config,
         preprocessors,
         crate::preprocessing::PreprocessMode::Active,
+        &[],
     )
     .map(|p| p.intents)
 }
@@ -344,6 +476,7 @@ fn plan_pack_inner(
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
     mode: crate::preprocessing::PreprocessMode,
+    superseded: &[PathBuf],
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
     let gates = build_gate_table(pack_config)?;
@@ -361,11 +494,15 @@ fn plan_pack_inner(
             current_os = %host.os,
             "pack inactive on this OS, returning empty plan"
         );
+        // Nothing to compute and nothing left uncomputed: a pack this
+        // OS excludes deploys nothing here, so an empty claim list is
+        // the whole truth rather than a gap in it.
         return Ok(PackPlan {
             intents: Vec::new(),
             warnings: Vec::new(),
             provision_skipped: Vec::new(),
             provision_unavailable: Vec::new(),
+            unresolved_claims: Vec::new(),
         });
     }
 
@@ -375,6 +512,21 @@ fn plan_pack_inner(
     let scanner = Scanner::new(ctx.fs.as_ref());
     let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
+
+    // Phase 1.1: Drop entries a caller has told us this plan supersedes
+    // — see `plan_pack_without`. Matched on each entry's on-disk path
+    // rather than its `relative_path`, which the walk has already
+    // rewritten for a passing directory gate; `is_superseded` says why.
+    let entries = if superseded.is_empty() {
+        entries
+    } else {
+        let kept: Vec<_> = entries
+            .into_iter()
+            .filter(|e| !is_superseded(&pack.path, e, superseded))
+            .collect();
+        debug!(pack = %pack.name, entries = kept.len(), "dropped superseded entries");
+        kept
+    };
 
     // Phase 1.5: Apply the remaining gate sources before preprocessing
     // — see `filter_pre_preprocess_gates` for why they belong here.
@@ -447,6 +599,16 @@ fn plan_pack_inner(
     let registry = handlers::create_registry(ctx.fs.as_ref());
     let order = rules::handler_execution_order(&groups, &registry);
     debug!(pack = %pack.name, handlers = ?order, "handler execution order");
+
+    // Which matched files have no render of their current contents,
+    // and therefore tell a content-reading handler nothing or tell it
+    // something out of date? Only passive planning produces any
+    // (`PreprocessResult::unrendered`); an active plan rendered
+    // everything it surfaced, so this set is empty and the loop below
+    // records nothing.
+    let unrendered: std::collections::HashSet<&PathBuf> =
+        preprocess_result.unrendered.iter().collect();
+    let mut unresolved_claims: Vec<UnresolvedClaim> = Vec::new();
 
     // Generate intents from each handler
     let mut all_intents = Vec::new();
@@ -555,6 +717,42 @@ fn plan_pack_inner(
         }
 
         if let Some(handler_matches) = groups.get(handler_name) {
+            // Reached only for a handler this run actually plans with:
+            // the `--no-provision` and absent-manager branches above
+            // already moved on, and a handler that generates no intent
+            // leaves nothing for a caller to find incomplete. What is
+            // recorded here are the files this handler was asked about
+            // and cannot answer for as they stand now — a placeholder
+            // or a superseded render given to a handler that reads its
+            // targets out of file content.
+            if !unrendered.is_empty() && handler.targets_from_content() {
+                for m in handler_matches {
+                    if !unrendered.contains(&m.absolute_path) {
+                        continue;
+                    }
+                    // Name the template the user has to render, not the
+                    // datastore path they have never seen.
+                    let source = m
+                        .preprocessor_source
+                        .as_ref()
+                        .and_then(|p| p.strip_prefix(&pack.path).ok())
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| m.relative_path.to_string_lossy().into_owned());
+                    debug!(
+                        pack = %pack.name,
+                        handler = %handler_name,
+                        file = %source,
+                        "no current render for a handler that reads its targets from \
+                         file content; the plan does not state what this pack claims"
+                    );
+                    unresolved_claims.push(UnresolvedClaim {
+                        pack: pack.name.clone(),
+                        handler: handler_name.clone(),
+                        source,
+                    });
+                }
+            }
+
             let mut intents = handler.to_intents(
                 handler_matches,
                 &pack.config,
@@ -661,6 +859,7 @@ fn plan_pack_inner(
         warnings: all_warnings,
         provision_skipped,
         provision_unavailable,
+        unresolved_claims,
     })
 }
 

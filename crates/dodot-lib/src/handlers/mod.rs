@@ -225,6 +225,29 @@ pub trait Handler: Send + Sync {
         fs: &dyn Fs,
     ) -> Result<Vec<HandlerIntent>>;
 
+    /// Whether the deployment targets this handler claims are decided
+    /// by the *content* of a matched file rather than by its path.
+    ///
+    /// Cross-pack conflict analysis (`crate::conflicts`) compares the
+    /// user-visible targets each pack claims. For a path-decided
+    /// handler — `symlink`, whose target follows from the file's
+    /// pack-relative path and the `[symlink.targets]` mapping — a file
+    /// whose content dodot has not read still announces its target, so
+    /// the analysis is complete either way. `externals` is the
+    /// exception: every `target` it claims is a field inside
+    /// `externals.toml`, so an `externals.toml.tmpl` that has never
+    /// been rendered claims nothing dodot can see, and one rendered
+    /// before its last edit claims what it used to.
+    ///
+    /// Read this together with
+    /// [`PreprocessResult::unrendered`](crate::preprocessing::pipeline::PreprocessResult::unrendered):
+    /// a handler that answers `true` here, matched against an entry
+    /// listed there, is a hole in the analysis rather than a pack with
+    /// nothing to declare.
+    fn targets_from_content(&self) -> bool {
+        false
+    }
+
     /// Soft warnings produced for a set of matches — non-fatal,
     /// human-readable strings the orchestration surfaces in
     /// `PackStatusResult.warnings`.

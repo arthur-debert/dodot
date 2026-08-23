@@ -39,6 +39,12 @@ impl Handler for ExternalsHandler {
         MatchMode::Precise
     }
 
+    /// Every target this handler claims is a `target` field inside
+    /// `externals.toml`, so an unread file claims nothing.
+    fn targets_from_content(&self) -> bool {
+        true
+    }
+
     fn to_intents(
         &self,
         matches: &[RuleMatch],

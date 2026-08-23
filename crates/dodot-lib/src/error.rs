@@ -14,6 +14,25 @@ pub enum DodotError {
         source: std::io::Error,
     },
 
+    /// An operation between two paths that failed, where the cause can
+    /// belong to either end.
+    ///
+    /// A rename refused because its destination is taken is an error
+    /// about `to`; one refused because the source is gone is an error
+    /// about `from`. The same holds for a copy, which can fail opening
+    /// the one and creating the other. Naming a single path is a guess,
+    /// and a guess that lands on the wrong end sends the reader to a
+    /// path nothing is wrong with — so the message names both.
+    #[error("filesystem error {verb} {from} to {to}: {source}")]
+    FsBetween {
+        /// What was attempted, spelled as the message reads it:
+        /// `renaming`, `copying`.
+        verb: &'static str,
+        from: PathBuf,
+        to: PathBuf,
+        source: std::io::Error,
+    },
+
     #[error("symlink conflict: {path} already exists and is not managed by dodot")]
     SymlinkConflict { path: PathBuf },
 
@@ -51,6 +70,84 @@ pub enum DodotError {
     #[error("cross-pack deployment conflict detected (--force does not override this):\n{}", crate::conflicts::format_conflicts(.conflicts))]
     CrossPackConflict {
         conflicts: Vec<crate::conflicts::Conflict>,
+    },
+
+    #[error(
+        "cannot check for cross-pack deployment conflicts yet (--force does not override this):\n{}\n  \
+         each of these files declares the paths it deploys to inside its own contents, and \
+         dodot has not rendered those contents — either never, or not since they last \
+         changed. Rendering them here would resolve their secrets and write their output \
+         for a run you have not agreed to yet.\n  \
+         run `dodot up` for the pack(s) above, then re-run this command.",
+        .unresolved
+            .iter()
+            .map(|u| format!("  - pack '{}' ({} handler): {}", u.pack, u.handler, u.source))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )]
+    ConflictCheckIncomplete {
+        unresolved: Vec<crate::packs::orchestration::UnresolvedClaim>,
+    },
+
+    #[error(
+        "adopt could not finish publishing into pack `{pack}`: {reason}\n  \
+         the entries it had already published are back where they were, so the pack \
+         holds its pre-adopt content: {}\n  \
+         no source file was changed — nothing was adopted.",
+        if .restored.is_empty() {
+            "the failure came before the first entry was published".to_string()
+        } else {
+            format!("restored {}", .restored.join(", "))
+        }
+    )]
+    PublicationRolledBack {
+        /// Display name of the pack publication was writing into.
+        pack: String,
+        /// What went wrong at the entry publication stopped on.
+        reason: String,
+        /// In-pack paths whose pre-adopt content publication put back,
+        /// in plan order. An entry `--force` displaced is restored to
+        /// the content it held before the run; an entry that had no
+        /// prior content is restored to not existing.
+        restored: Vec<String>,
+    },
+
+    #[error(
+        "adopt could not finish publishing into pack `{pack}`: {reason}\n  \
+         and could not put the pack back the way it was:\n{}\n  \
+         nothing was deleted — that content is still on disk at the paths above, and \
+         this run has left `{preparation}` in place rather than cleaning it up. Move \
+         what you need back by hand, then remove that directory.{}\n  \
+         no source file was changed — nothing was adopted.",
+        .stranded
+            .iter()
+            .map(|s| format!("  - `{}` is at `{}`", s.in_pack, s.at))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        if .restored.is_empty() {
+            String::new()
+        } else {
+            format!("\n  the rest of the pack is back as it was: {}", .restored.join(", "))
+        }
+    )]
+    PublicationRollbackIncomplete {
+        /// Display name of the pack publication was writing into.
+        pack: String,
+        /// What went wrong at the entry publication stopped on.
+        reason: String,
+        /// In-pack paths whose pre-adopt content the rollback did put
+        /// back, in plan order.
+        restored: Vec<String>,
+        /// Entries the rollback could not put back, and where their
+        /// content is now — in the preparation directory for a
+        /// displacement that could not return, or at the in-pack path
+        /// for content publication put there and the rollback could not
+        /// move back out.
+        stranded: Vec<crate::commands::adopt::StrandedEntry>,
+        /// The preparation directory, kept rather than discarded
+        /// because it holds the only remaining copy of some of the
+        /// above.
+        preparation: String,
     },
 
     #[error(
@@ -110,6 +207,22 @@ pub type Result<T> = std::result::Result<T, DodotError>;
 pub(crate) fn fs_err(path: impl Into<PathBuf>, source: std::io::Error) -> DodotError {
     DodotError::Fs {
         path: path.into(),
+        source,
+    }
+}
+
+/// Helper to wrap an `io::Error` from a two-path operation with both
+/// ends of it. See [`DodotError::FsBetween`] for why both.
+pub(crate) fn fs_between_err(
+    verb: &'static str,
+    from: impl Into<PathBuf>,
+    to: impl Into<PathBuf>,
+    source: std::io::Error,
+) -> DodotError {
+    DodotError::FsBetween {
+        verb,
+        from: from.into(),
+        to: to.into(),
         source,
     }
 }

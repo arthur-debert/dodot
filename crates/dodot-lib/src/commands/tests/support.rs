@@ -1,5 +1,6 @@
 //! Shared command-test fixtures.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::config::ConfigManager;
@@ -135,5 +136,144 @@ pub(super) fn make_ctx_with_runner(
             crate::provisioners::availability::ProvisionHost::assume_present(),
         ),
         shell_env: crate::shell::ShellEnv::default(),
+    }
+}
+
+/// Like [`make_ctx`], but with the filesystem the commands see replaced.
+///
+/// Pair with [`InterposedFs`] to put a filesystem failure at an exact
+/// step of a command and check what the command leaves behind.
+pub(super) fn make_ctx_with_fs(env: &TempEnvironment, fs: Arc<dyn Fs>) -> ExecutionContext {
+    let mut ctx = make_ctx(env);
+    ctx.fs = fs;
+    ctx
+}
+
+/// A filesystem operation [`InterposedFs`] hands to its hook before
+/// delegating it.
+///
+/// Only the operations tests need to intercept are listed; everything
+/// else on [`Fs`] passes straight through.
+// Each variant carries the whole operation, so a hook can match on any
+// part of it. Which parts the tests currently read is a property of the
+// tests, not of the shape a hook is offered.
+#[allow(dead_code)]
+pub(super) enum FsOp<'a> {
+    CopyFile { from: &'a Path, to: &'a Path },
+    Rename { from: &'a Path, to: &'a Path },
+    RenameNoReplace { from: &'a Path, to: &'a Path },
+    MkdirAll { path: &'a Path },
+    MkdirExclusive { path: &'a Path },
+    Symlink { original: &'a Path, link: &'a Path },
+    RemoveFile { path: &'a Path },
+    RemoveDirAll { path: &'a Path },
+    RemoveDirEmpty { path: &'a Path },
+}
+
+/// Wraps a real filesystem and runs a hook immediately before each
+/// intercepted operation.
+///
+/// A hook returning `Err` becomes that operation's error and the
+/// operation never reaches the inner filesystem — which is how a test
+/// puts a failure at the one step whose recovery it is checking. A hook
+/// returning `Ok` may still have changed the world first, which is how a
+/// test stages a race: a path that appears between two steps of a
+/// command that checked for it earlier.
+pub(super) struct InterposedFs {
+    inner: Arc<dyn Fs>,
+    #[allow(clippy::type_complexity)]
+    before: Box<dyn Fn(FsOp<'_>) -> Result<()> + Send + Sync>,
+}
+
+impl InterposedFs {
+    pub(super) fn wrap(
+        inner: Arc<dyn Fs>,
+        before: impl Fn(FsOp<'_>) -> Result<()> + Send + Sync + 'static,
+    ) -> Arc<dyn Fs> {
+        Arc::new(InterposedFs {
+            inner,
+            before: Box::new(before),
+        })
+    }
+}
+
+impl Fs for InterposedFs {
+    fn copy_file(&self, from: &Path, to: &Path) -> Result<()> {
+        (self.before)(FsOp::CopyFile { from, to })?;
+        self.inner.copy_file(from, to)
+    }
+    fn rename(&self, from: &Path, to: &Path) -> Result<()> {
+        (self.before)(FsOp::Rename { from, to })?;
+        self.inner.rename(from, to)
+    }
+    fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()> {
+        (self.before)(FsOp::RenameNoReplace { from, to })?;
+        self.inner.rename_noreplace(from, to)
+    }
+    fn stat(&self, path: &Path) -> Result<crate::fs::FsMetadata> {
+        self.inner.stat(path)
+    }
+    fn lstat(&self, path: &Path) -> Result<crate::fs::FsMetadata> {
+        self.inner.lstat(path)
+    }
+    fn open_read(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send + Sync>> {
+        self.inner.open_read(path)
+    }
+    fn read_file(&self, path: &Path) -> Result<Vec<u8>> {
+        self.inner.read_file(path)
+    }
+    fn read_to_string(&self, path: &Path) -> Result<String> {
+        self.inner.read_to_string(path)
+    }
+    fn mkdir_all(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::MkdirAll { path })?;
+        self.inner.mkdir_all(path)
+    }
+    fn mkdir_exclusive(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::MkdirExclusive { path })?;
+        self.inner.mkdir_exclusive(path)
+    }
+    fn symlink(&self, original: &Path, link: &Path) -> Result<()> {
+        (self.before)(FsOp::Symlink { original, link })?;
+        self.inner.symlink(original, link)
+    }
+    fn write_file(&self, path: &Path, contents: &[u8]) -> Result<()> {
+        self.inner.write_file(path, contents)
+    }
+    fn readlink(&self, path: &Path) -> Result<PathBuf> {
+        self.inner.readlink(path)
+    }
+    fn remove_file(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::RemoveFile { path })?;
+        self.inner.remove_file(path)
+    }
+    fn remove_dir_all(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::RemoveDirAll { path })?;
+        self.inner.remove_dir_all(path)
+    }
+    fn remove_dir_empty(&self, path: &Path) -> Result<()> {
+        (self.before)(FsOp::RemoveDirEmpty { path })?;
+        self.inner.remove_dir_empty(path)
+    }
+    fn exists(&self, path: &Path) -> bool {
+        self.inner.exists(path)
+    }
+    fn is_symlink(&self, path: &Path) -> bool {
+        self.inner.is_symlink(path)
+    }
+    fn is_dir(&self, path: &Path) -> bool {
+        self.inner.is_dir(path)
+    }
+    fn read_dir(&self, path: &Path) -> Result<Vec<crate::fs::DirEntry>> {
+        self.inner.read_dir(path)
+    }
+    fn set_permissions(&self, path: &Path, mode: u32) -> Result<()> {
+        self.inner.set_permissions(path, mode)
+    }
+    fn modified(&self, path: &Path) -> Result<std::time::SystemTime> {
+        self.inner.modified(path)
+    }
+    fn set_modified(&self, path: &Path, time: std::time::SystemTime) -> Result<()> {
+        self.inner.set_modified(path, time)
     }
 }

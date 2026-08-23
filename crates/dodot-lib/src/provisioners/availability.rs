@@ -464,6 +464,7 @@ mod tests {
                     is_symlink: false,
                     len: 0,
                     mode: 0o755,
+                    id: Default::default(),
                 }),
                 Some(Entry::Plain) => Ok(FsMetadata {
                     is_file: true,
@@ -471,6 +472,7 @@ mod tests {
                     is_symlink: false,
                     len: 0,
                     mode: 0o644,
+                    id: Default::default(),
                 }),
                 Some(Entry::Directory) => Ok(FsMetadata {
                     is_file: false,
@@ -478,6 +480,7 @@ mod tests {
                     is_symlink: false,
                     len: 0,
                     mode: 0o755,
+                    id: Default::default(),
                 }),
                 Some(Entry::Fails(kind)) => Err(DodotError::Fs {
                     path: path.to_path_buf(),
@@ -507,6 +510,9 @@ mod tests {
         fn mkdir_all(&self, _: &Path) -> crate::Result<()> {
             unimplemented!("the presence probe never writes")
         }
+        fn mkdir_exclusive(&self, _: &Path) -> crate::Result<()> {
+            unimplemented!("the presence probe never writes")
+        }
         fn symlink(&self, _: &Path, _: &Path) -> crate::Result<()> {
             unimplemented!("the presence probe never writes")
         }
@@ -517,6 +523,9 @@ mod tests {
             unimplemented!("the presence probe never writes")
         }
         fn remove_dir_all(&self, _: &Path) -> crate::Result<()> {
+            unimplemented!("the presence probe never writes")
+        }
+        fn remove_dir_empty(&self, _: &Path) -> crate::Result<()> {
             unimplemented!("the presence probe never writes")
         }
         fn exists(&self, _: &Path) -> bool {
@@ -532,6 +541,9 @@ mod tests {
             unimplemented!("the presence probe stats and does nothing else")
         }
         fn rename(&self, _: &Path, _: &Path) -> crate::Result<()> {
+            unimplemented!("the presence probe never writes")
+        }
+        fn rename_noreplace(&self, _: &Path, _: &Path) -> crate::Result<()> {
             unimplemented!("the presence probe never writes")
         }
         fn copy_file(&self, _: &Path, _: &Path) -> crate::Result<()> {

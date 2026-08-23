@@ -15,6 +15,74 @@ pub struct FsMetadata {
     pub len: u64,
     /// Unix permission mode (e.g. `0o755`).
     pub mode: u32,
+    /// Which entry this is and when it last changed — what a caller
+    /// compares to ask whether a path still holds what it left there.
+    ///
+    /// See [`FileId`].
+    pub id: FileId,
+}
+
+/// A filesystem entry's identity and version: the device and inode
+/// numbers `stat(2)` reports, plus the entry's ctime.
+///
+/// A path answers "what is here now", and that answer changes under a
+/// caller whenever another process writes the same path. This answers
+/// "is this still the entry I left here", which is what a recovery
+/// step needs before it moves or removes something it believes it
+/// created.
+///
+/// All four numbers, because none of the three parts is sufficient
+/// alone:
+///
+/// - Inode numbers are unique only within a filesystem, so `dev` comes
+///   with `ino` — a mount appearing at a path is enough for one inode
+///   number to name a different file than it did a moment earlier.
+/// - A freed inode number is handed straight back out: removing a file
+///   and writing a fresh one at the same path commonly lands on the
+///   *same* `ino` on ext4 and tmpfs, so identity alone reads a
+///   replaced file as the original. The ctime of the replacement is
+///   its creation, which is later than the one recorded, and that is
+///   what separates the two.
+///
+/// The comparison is not free of races — another process can still
+/// act between the read and the move — but it turns "assume it is
+/// ours" into "check that it is", which is the difference between
+/// silently destroying a concurrent writer's file and leaving it
+/// alone. Note what a match means, too: the entry has not been
+/// replaced *and* nothing has touched its metadata since. A `chmod`
+/// by another process reads as "not the same state", which fails
+/// toward leaving the path alone.
+///
+/// A `rename` changes the ctime of the entry it moves, so a caller
+/// recording an entry it renames reads the id at its destination, and
+/// uses the pre-rename `dev`/`ino` to prove the destination is still
+/// that entry rather than something that raced it there.
+///
+/// The [`Default`] is the zeros a filesystem stub reports when it
+/// models no identity at all. Two such stubs compare equal, so a
+/// caller that decides anything on identity has to run against a real
+/// filesystem to be testing what it thinks it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FileId {
+    pub dev: u64,
+    pub ino: u64,
+    /// Seconds and nanoseconds of the entry's last status change.
+    pub ctime: i64,
+    pub ctime_nsec: i64,
+}
+
+impl FileId {
+    /// Whether both ids name the same filesystem entry, disregarding
+    /// when it last changed.
+    ///
+    /// This is the question a caller asks across its own `rename`,
+    /// which carries the entry over but stamps it with a new ctime.
+    /// Everywhere else the full comparison is the one that answers
+    /// "is this still what I left here", because a reused inode
+    /// number passes this one.
+    pub fn same_entry(&self, other: &FileId) -> bool {
+        self.dev == other.dev && self.ino == other.ino
+    }
 }
 
 /// A single directory entry returned by [`Fs::read_dir`].
@@ -143,6 +211,19 @@ pub trait Fs: Send + Sync {
     /// Creates `path` and all parent directories.
     fn mkdir_all(&self, path: &Path) -> Result<()>;
 
+    /// Creates `path` as a new directory, failing with
+    /// [`std::io::ErrorKind::AlreadyExists`] if anything is there
+    /// already. Parent directories must exist.
+    ///
+    /// The exclusive counterpart to [`Fs::mkdir_all`], which treats an
+    /// existing directory as success. A caller that needs the
+    /// directory to be *its own* — a staging area no other process is
+    /// also writing into — creates it with this and reads
+    /// `AlreadyExists` as "choose another name", never as success.
+    /// Creation and the existence test are one operation, so two
+    /// processes racing for the same name cannot both win.
+    fn mkdir_exclusive(&self, path: &Path) -> Result<()>;
+
     /// Creates a symbolic link at `link` pointing to `original`.
     fn symlink(&self, original: &Path, link: &Path) -> Result<()>;
 
@@ -154,6 +235,17 @@ pub trait Fs: Send + Sync {
 
     /// Removes a directory and all of its contents.
     fn remove_dir_all(&self, path: &Path) -> Result<()>;
+
+    /// Removes a directory only if it is empty, failing with
+    /// [`std::io::ErrorKind::DirectoryNotEmpty`] if it is not.
+    ///
+    /// The kernel decides emptiness inside the same operation that
+    /// removes, which is what a cleanup needs: "list it, see nothing,
+    /// then `remove_dir_all`" deletes whatever another process put
+    /// there between the two calls. A caller undoing its own work asks
+    /// here so that a directory which has since picked up someone
+    /// else's content survives.
+    fn remove_dir_empty(&self, path: &Path) -> Result<()>;
 
     /// Returns `true` if `path` exists (follows symlinks).
     fn exists(&self, path: &Path) -> bool;
@@ -167,8 +259,23 @@ pub trait Fs: Send + Sync {
     /// Lists entries in a directory, sorted by name.
     fn read_dir(&self, path: &Path) -> Result<Vec<DirEntry>>;
 
-    /// Renames (moves) `from` to `to`.
+    /// Renames (moves) `from` to `to`, replacing `to` if it exists —
+    /// POSIX `rename` semantics, including replacing an empty
+    /// directory or a symlink.
     fn rename(&self, from: &Path, to: &Path) -> Result<()>;
+
+    /// Renames `from` to `to` unless `to` exists, in which case it
+    /// fails with [`std::io::ErrorKind::AlreadyExists`] and leaves
+    /// both paths as they were.
+    ///
+    /// Because [`Fs::rename`] replaces its destination, "test that
+    /// `to` is free, then rename" still overwrites a destination that
+    /// appeared between the two calls — an empty directory or a
+    /// symlink is enough. Here the kernel makes that decision in the
+    /// same operation that moves the file: `renameat2` with
+    /// `RENAME_NOREPLACE` on Linux, `renamex_np` with `RENAME_EXCL` on
+    /// macOS.
+    fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()>;
 
     /// Copies a file from `from` to `to`.
     fn copy_file(&self, from: &Path, to: &Path) -> Result<()>;
@@ -197,6 +304,25 @@ pub trait Fs: Send + Sync {
     fn set_modified(&self, _path: &Path, _time: std::time::SystemTime) -> Result<()> {
         unimplemented!("Fs::set_modified is only implemented by OsFs")
     }
+}
+
+/// `true` when `e` is the "something is already there" refusal of
+/// [`Fs::mkdir_exclusive`] or [`Fs::rename_noreplace`].
+///
+/// Both report it as an [`std::io::ErrorKind::AlreadyExists`], the
+/// first in [`DodotError::Fs`](crate::DodotError::Fs) and the second
+/// in [`DodotError::FsBetween`](crate::DodotError::FsBetween), which
+/// names both ends of a rename because either can be the one at fault.
+/// Callers that retry under another name, or turn the collision into
+/// their own message, ask here rather than matching the variants
+/// themselves.
+pub(crate) fn is_already_exists(e: &crate::DodotError) -> bool {
+    let source = match e {
+        crate::DodotError::Fs { source, .. } => source,
+        crate::DodotError::FsBetween { source, .. } => source,
+        _ => return false,
+    };
+    source.kind() == std::io::ErrorKind::AlreadyExists
 }
 
 /// A dotted temp path in `path`'s own directory, for the write-then-
@@ -333,6 +459,9 @@ mod tests {
         fn mkdir_all(&self, path: &Path) -> Result<()> {
             self.inner.mkdir_all(path)
         }
+        fn mkdir_exclusive(&self, path: &Path) -> Result<()> {
+            self.inner.mkdir_exclusive(path)
+        }
         fn symlink(&self, original: &Path, link: &Path) -> Result<()> {
             self.inner.symlink(original, link)
         }
@@ -344,6 +473,9 @@ mod tests {
         }
         fn remove_dir_all(&self, path: &Path) -> Result<()> {
             self.inner.remove_dir_all(path)
+        }
+        fn remove_dir_empty(&self, path: &Path) -> Result<()> {
+            self.inner.remove_dir_empty(path)
         }
         fn exists(&self, path: &Path) -> bool {
             self.inner.exists(path)
@@ -359,6 +491,9 @@ mod tests {
         }
         fn rename(&self, from: &Path, to: &Path) -> Result<()> {
             self.inner.rename(from, to)
+        }
+        fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()> {
+            self.inner.rename_noreplace(from, to)
         }
         fn copy_file(&self, from: &Path, to: &Path) -> Result<()> {
             self.inner.copy_file(from, to)

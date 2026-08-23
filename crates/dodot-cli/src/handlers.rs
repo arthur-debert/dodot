@@ -262,6 +262,17 @@ pub fn fill_handler(
     Ok(Output::Render(result))
 }
 
+/// `dodot adopt <path>…` — move sources into a pack and symlink them
+/// back.
+///
+/// Exit code 0 when every planned source was replaced, 1 when any of
+/// them failed — `docs/proposals/adopt-safety.lex` §5.5. The result
+/// still renders every source, replaced and failed alike, so the user
+/// sees what did land; the code is what lets a script chaining
+/// `dodot adopt && …` tell a partial adoption from a complete one. The
+/// left-in-place report does not reach it: those entries were never
+/// planned for adoption. Refusals never reach it either — they
+/// propagate as `Err` and the CLI exits on the error's own status.
 pub fn adopt_handler(
     matches: &clap::ArgMatches,
     cmd: &CommandContext,
@@ -291,6 +302,7 @@ pub fn adopt_handler(
             }
         })?;
     print_warnings(&result.warnings);
+    PENDING_EXIT_CODE.store(result.exit_code(), Ordering::Relaxed);
     Ok(Output::Render(result))
 }
 

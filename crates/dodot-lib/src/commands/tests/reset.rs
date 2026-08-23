@@ -360,6 +360,9 @@ impl Fs for AbsentObservationProbe {
     fn mkdir_all(&self, path: &std::path::Path) -> crate::Result<()> {
         self.inner.mkdir_all(path)
     }
+    fn mkdir_exclusive(&self, path: &std::path::Path) -> crate::Result<()> {
+        self.inner.mkdir_exclusive(path)
+    }
     fn symlink(&self, original: &std::path::Path, link: &std::path::Path) -> crate::Result<()> {
         self.inner.symlink(original, link)
     }
@@ -371,6 +374,9 @@ impl Fs for AbsentObservationProbe {
     }
     fn remove_dir_all(&self, path: &std::path::Path) -> crate::Result<()> {
         self.inner.remove_dir_all(path)
+    }
+    fn remove_dir_empty(&self, path: &std::path::Path) -> crate::Result<()> {
+        self.inner.remove_dir_empty(path)
     }
     fn exists(&self, path: &std::path::Path) -> bool {
         self.inner.exists(path)
@@ -401,6 +407,9 @@ impl Fs for AbsentObservationProbe {
     }
     fn rename(&self, from: &std::path::Path, to: &std::path::Path) -> crate::Result<()> {
         self.inner.rename(from, to)
+    }
+    fn rename_noreplace(&self, from: &std::path::Path, to: &std::path::Path) -> crate::Result<()> {
+        self.inner.rename_noreplace(from, to)
     }
     fn copy_file(&self, from: &std::path::Path, to: &std::path::Path) -> crate::Result<()> {
         self.inner.copy_file(from, to)
