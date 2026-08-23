@@ -309,15 +309,20 @@ pub trait Fs: Send + Sync {
 /// `true` when `e` is the "something is already there" refusal of
 /// [`Fs::mkdir_exclusive`] or [`Fs::rename_noreplace`].
 ///
-/// Both report it as an [`std::io::ErrorKind::AlreadyExists`] inside
-/// [`DodotError::Fs`](crate::DodotError::Fs); callers that retry under
-/// another name, or turn the collision into their own message, ask
-/// here rather than matching the variant themselves.
+/// Both report it as an [`std::io::ErrorKind::AlreadyExists`], the
+/// first in [`DodotError::Fs`](crate::DodotError::Fs) and the second
+/// in [`DodotError::FsBetween`](crate::DodotError::FsBetween), which
+/// names both ends of a rename because either can be the one at fault.
+/// Callers that retry under another name, or turn the collision into
+/// their own message, ask here rather than matching the variants
+/// themselves.
 pub(crate) fn is_already_exists(e: &crate::DodotError) -> bool {
-    matches!(
-        e,
-        crate::DodotError::Fs { source, .. } if source.kind() == std::io::ErrorKind::AlreadyExists
-    )
+    let source = match e {
+        crate::DodotError::Fs { source, .. } => source,
+        crate::DodotError::FsBetween { source, .. } => source,
+        _ => return false,
+    };
+    source.kind() == std::io::ErrorKind::AlreadyExists
 }
 
 /// A dotted temp path in `path`'s own directory, for the write-then-

@@ -2,7 +2,7 @@ use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use crate::error::fs_err;
+use crate::error::{fs_between_err, fs_err};
 use crate::fs::{DirEntry, FileId, Fs, FsMetadata};
 use crate::Result;
 
@@ -148,15 +148,17 @@ impl Fs for OsFs {
     }
 
     fn rename(&self, from: &Path, to: &Path) -> Result<()> {
-        fs::rename(from, to).map_err(|e| fs_err(from, e))
+        fs::rename(from, to).map_err(|e| fs_between_err("renaming", from, to, e))
     }
 
     fn rename_noreplace(&self, from: &Path, to: &Path) -> Result<()> {
-        rename_noreplace_raw(from, to).map_err(|e| fs_err(from, e))
+        rename_noreplace_raw(from, to).map_err(|e| fs_between_err("renaming", from, to, e))
     }
 
     fn copy_file(&self, from: &Path, to: &Path) -> Result<()> {
-        fs::copy(from, to).map(|_| ()).map_err(|e| fs_err(from, e))
+        fs::copy(from, to)
+            .map(|_| ())
+            .map_err(|e| fs_between_err("copying", from, to, e))
     }
 
     fn set_permissions(&self, path: &Path, mode: u32) -> Result<()> {

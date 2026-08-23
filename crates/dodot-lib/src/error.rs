@@ -14,6 +14,25 @@ pub enum DodotError {
         source: std::io::Error,
     },
 
+    /// An operation between two paths that failed, where the cause can
+    /// belong to either end.
+    ///
+    /// A rename refused because its destination is taken is an error
+    /// about `to`; one refused because the source is gone is an error
+    /// about `from`. The same holds for a copy, which can fail opening
+    /// the one and creating the other. Naming a single path is a guess,
+    /// and a guess that lands on the wrong end sends the reader to a
+    /// path nothing is wrong with — so the message names both.
+    #[error("filesystem error {verb} {from} to {to}: {source}")]
+    FsBetween {
+        /// What was attempted, spelled as the message reads it:
+        /// `renaming`, `copying`.
+        verb: &'static str,
+        from: PathBuf,
+        to: PathBuf,
+        source: std::io::Error,
+    },
+
     #[error("symlink conflict: {path} already exists and is not managed by dodot")]
     SymlinkConflict { path: PathBuf },
 
@@ -188,6 +207,22 @@ pub type Result<T> = std::result::Result<T, DodotError>;
 pub(crate) fn fs_err(path: impl Into<PathBuf>, source: std::io::Error) -> DodotError {
     DodotError::Fs {
         path: path.into(),
+        source,
+    }
+}
+
+/// Helper to wrap an `io::Error` from a two-path operation with both
+/// ends of it. See [`DodotError::FsBetween`] for why both.
+pub(crate) fn fs_between_err(
+    verb: &'static str,
+    from: impl Into<PathBuf>,
+    to: impl Into<PathBuf>,
+    source: std::io::Error,
+) -> DodotError {
+    DodotError::FsBetween {
+        verb,
+        from: from.into(),
+        to: to.into(),
         source,
     }
 }
